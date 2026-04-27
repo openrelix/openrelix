@@ -1,0 +1,22 @@
+{
+  "id": "asset_example",
+  "title": "Example Asset",
+  "type": "playbook",
+  "domain": "general",
+  "scope": "personal",
+  "status": "active",
+  "created_at": "2026-04-26",
+  "updated_at": "2026-04-26",
+  "source_task": "example_task",
+  "reuse_count": 0,
+  "minutes_saved_total": 0,
+  "value_note": "Explain in one sentence why this asset matters.",
+  "artifact_paths": [
+    "/abs/path/to/artifact"
+  ],
+  "tags": [
+    "codex",
+    "workflow"
+  ],
+  "notes": "Store sanitized, durable information only."
+}

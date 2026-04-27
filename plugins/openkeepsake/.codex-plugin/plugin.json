@@ -1,0 +1,35 @@
+{
+  "name": "openkeepsake",
+  "version": "0.1.0",
+  "description": "Local-first asset workflows for AI coding agents, with a Codex plugin adapter for immediate task review and reusable asset capture.",
+  "author": {
+    "name": "OpenKeepsake Maintainers"
+  },
+  "license": "MIT",
+  "keywords": [
+    "codex",
+    "ai-agents",
+    "ai-cli",
+    "assets",
+    "review",
+    "knowledge"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "OpenKeepsake",
+    "shortDescription": "Capture reusable work and trigger immediate task review.",
+    "longDescription": "Provides the shared asset-capture workflow for OpenKeepsake. Pair it with the installer to add the stable /memory-review skill route, plus the optional /prompts:memory-review compatibility entrypoint, background refresh, and nightly organization.",
+    "developerName": "OpenKeepsake Maintainers",
+    "category": "Productivity",
+    "capabilities": [
+      "Interactive",
+      "Write"
+    ],
+    "defaultPrompt": [
+      "/memory-review",
+      "Update my asset registry after this task and rebuild the overview.",
+      "Capture reusable knowledge from this thread into local assets."
+    ],
+    "brandColor": "#2F7D79"
+  }
+}

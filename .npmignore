@@ -1,0 +1,18 @@
+.DS_Store
+.playwright-mcp/
+.tmp/
+__pycache__/
+*.pyc
+
+# User runtime state must never be packaged.
+raw/
+consolidated/
+registry/
+reviews/
+reports/
+runtime/
+log/
+
+# Local-only private skills that should not be packaged.
+.agents/skills/personal-asset-librarian/
+plugins/openkeepsake/skills/personal-asset-librarian

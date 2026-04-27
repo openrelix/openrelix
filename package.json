@@ -1,0 +1,66 @@
+{
+  "name": "openkeepsake",
+  "version": "0.1.0",
+  "description": "OpenKeepsake™ v0.1.0 preview: local-first personal AI asset system for AI coding agent workflows.",
+  "license": "MIT",
+  "author": {
+    "name": "kk_kais",
+    "url": "https://www.npmjs.com/~kk_kais"
+  },
+  "homepage": "https://github.com/Ray1Ren/openkeepsake#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Ray1Ren/openkeepsake.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Ray1Ren/openkeepsake/issues"
+  },
+  "keywords": [
+    "ai-agents",
+    "ai-cli",
+    "codex",
+    "assets",
+    "memory",
+    "automation",
+    "review"
+  ],
+  "bin": {
+    "openkeepsake": "install/npm-bin.js",
+    "okeep": "install/npm-bin.js"
+  },
+  "files": [
+    "AGENTS.md",
+    "CODE_OF_CONDUCT.md",
+    "CONTRIBUTING.md",
+    "LICENSE",
+    "README.md",
+    "SECURITY.md",
+    "TRADEMARKS.md",
+    ".agents/skills/memory-review/",
+    "docs/*.md",
+    "docs/index.html",
+    "docs/product-showcase.html",
+    "install/",
+    "ops/",
+    "scripts/okeep.py",
+    "scripts/asset_runtime.py",
+    "scripts/build_codex_memory_summary.py",
+    "scripts/build_overview.py",
+    "scripts/collect_codex_activity.py",
+    "scripts/migrate_legacy_state.py",
+    "scripts/nightly_consolidate.py",
+    "scripts/nightly_finalize_previous_day.sh",
+    "scripts/nightly_organize_today.sh",
+    "scripts/nightly_pipeline.sh",
+    "scripts/refresh_overview.sh",
+    "scripts/run_with_optional_caffeinate.sh",
+    "scripts/token_live_server.py",
+    "templates/"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "os": [
+    "darwin"
+  ]
+}

@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>io.github.openkeepsake.overview-refresh</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/zsh</string>
+    <string>__REPO_ROOT__/scripts/refresh_overview.sh</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>AI_ASSET_STATE_DIR</key>
+    <string>__STATE_ROOT__</string>
+    <key>CODEX_HOME</key>
+    <string>__CODEX_HOME__</string>
+    <key>OKEEP_ACTIVITY_SOURCE</key>
+    <string>__ACTIVITY_SOURCE__</string>
+    <key>PYTHON_BIN</key>
+    <string>__PYTHON_BIN__</string>
+  </dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>StartInterval</key>
+  <integer>1800</integer>
+  <key>StandardErrorPath</key>
+  <string>__STATE_ROOT__/log/overview-refresh.err.log</string>
+  <key>StandardOutPath</key>
+  <string>__STATE_ROOT__/log/overview-refresh.log</string>
+</dict>
+</plist>

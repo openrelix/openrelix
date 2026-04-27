@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>io.github.openkeepsake.token-live</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>__PYTHON_BIN__</string>
+    <string>__REPO_ROOT__/scripts/token_live_server.py</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>AI_ASSET_STATE_DIR</key>
+    <string>__STATE_ROOT__</string>
+    <key>CODEX_HOME</key>
+    <string>__CODEX_HOME__</string>
+    <key>PYTHON_BIN</key>
+    <string>__PYTHON_BIN__</string>
+  </dict>
+  <key>KeepAlive</key>
+  <true/>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>StandardErrorPath</key>
+  <string>__STATE_ROOT__/log/token-live.err.log</string>
+  <key>StandardOutPath</key>
+  <string>__STATE_ROOT__/log/token-live.log</string>
+</dict>
+</plist>

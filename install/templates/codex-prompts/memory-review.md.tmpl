@@ -1,0 +1,53 @@
+---
+description: Immediately capture the current task into a sanitized task review, refresh the local asset state, and summarize what was recorded.
+argument-hint: [TASK="<task-name>"] [FOCUS="<what to emphasize>"]
+---
+
+# memory-review
+
+The user invoked this custom prompt with: `$ARGUMENTS`
+
+Run an immediate task review for the work in the current Codex thread.
+
+## Goal
+
+Create or update a sanitized task review in the installed OpenKeepsake system, then refresh the overview so the result is visible right away.
+
+## Runtime references
+
+- Repo root: `__REPO_ROOT__`
+- Installed state root: `__STATE_ROOT__`
+- Review template: `__REPO_ROOT__/templates/task-review-template.md`
+- Overview builder: `python3 __REPO_ROOT__/scripts/build_overview.py`
+
+## Workflow
+
+1. Infer the task name from the current thread unless the user provided `TASK="..."`.
+2. If `FOCUS="..."` is present, emphasize that angle in the review.
+3. Resolve the runtime language from `__STATE_ROOT__/runtime/config.json` or `__REPO_ROOT__/scripts/asset_runtime.py`.
+4. Write or update a sanitized task review under the active state root in `reviews/YYYY/`.
+5. If the work created or updated durable reusable knowledge, update `registry/assets.jsonl`.
+6. If an existing asset clearly helped on this task, append a row to `registry/usage_events.jsonl`.
+7. Rebuild the overview and panel with `python3 __REPO_ROOT__/scripts/build_overview.py`.
+
+## Language rule
+
+- If runtime language is `zh`, write human-facing stored fields in Chinese by default: review `Task` / `Domain` / prose sections, asset `title` / `source_task` / `value_note` / `notes`, and usage-event `task` / `note`.
+- If runtime language is `en`, write those human-facing fields in English.
+- Keep stable enum keys canonical (`type`, `domain`, `scope`, `status`, `memory_type`, `priority`) so scripts can still classify them; the overview layer translates their display labels.
+- Preserve file paths, commands, code symbols, IDs, package names, and user-provided proper nouns exactly instead of translating them.
+
+## Quality bar
+
+- Do not store secrets, tokens, cookies, raw internal logs, or large proprietary code dumps.
+- Prefer concrete outcome, reusable value, evidence, and follow-up risk over a chat transcript.
+- Keep the review specific enough to be reused later by another Codex session.
+
+## Final response
+
+When the review is done, summarize:
+
+- the review file path
+- any asset ids created or updated
+- whether a usage event was appended
+- whether the overview and panel were rebuilt

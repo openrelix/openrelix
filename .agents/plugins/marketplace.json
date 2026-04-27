@@ -1,0 +1,20 @@
+{
+  "name": "openkeepsake",
+  "interface": {
+    "displayName": "OpenKeepsake"
+  },
+  "plugins": [
+    {
+      "name": "openkeepsake",
+      "source": {
+        "source": "local",
+        "path": "./plugins/openkeepsake"
+      },
+      "policy": {
+        "installation": "NOT_AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

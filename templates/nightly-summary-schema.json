@@ -1,0 +1,110 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "date",
+    "day_summary",
+    "window_summaries",
+    "durable_memories",
+    "session_memories",
+    "low_priority_memories",
+    "keywords",
+    "next_actions"
+  ],
+  "properties": {
+    "date": {
+      "type": "string"
+    },
+    "day_summary": {
+      "type": "string"
+    },
+    "window_summaries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "window_id",
+          "cwd",
+          "question_summary",
+          "question_count",
+          "conclusion_count",
+          "keywords",
+          "main_takeaway"
+        ],
+        "properties": {
+          "window_id": { "type": "string" },
+          "cwd": { "type": "string" },
+          "question_summary": { "type": "string" },
+          "question_count": { "type": "integer" },
+          "conclusion_count": { "type": "integer" },
+          "keywords": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "main_takeaway": { "type": "string" }
+        }
+      }
+    },
+    "durable_memories": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/memoryItem"
+      }
+    },
+    "session_memories": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/memoryItem"
+      }
+    },
+    "low_priority_memories": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/memoryItem"
+      }
+    },
+    "keywords": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "next_actions": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  },
+  "$defs": {
+    "memoryItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "title",
+        "memory_type",
+        "priority",
+        "value_note",
+        "source_window_ids",
+        "keywords"
+      ],
+      "properties": {
+        "title": { "type": "string" },
+        "memory_type": {
+          "type": "string",
+          "enum": ["procedural", "semantic", "episodic", "task"]
+        },
+        "priority": {
+          "type": "string",
+          "enum": ["high", "medium", "low"]
+        },
+        "value_note": { "type": "string" },
+        "source_window_ids": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "keywords": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    }
+  }
+}

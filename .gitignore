@@ -1,0 +1,32 @@
+__pycache__/
+*.pyc
+
+# Local runtime state and generated reports stay outside version control.
+raw/
+consolidated/
+registry/
+reviews/
+reports/
+runtime/
+log/
+
+# Local scratch artifacts.
+.tmp/
+test-results/
+.DS_Store
+.playwright-mcp/
+*.png
+*.jpg
+*.jpeg
+*.webp
+
+# Keep the sanitized product showcase screenshots publishable.
+!docs/product-showcase-assets/
+docs/product-showcase-assets/*.png
+!docs/product-showcase-assets/real-panel-*.png
+
+# Local-only private skills that should not be published.
+.agents/skills/personal-asset-librarian/
+plugins/ai-personal-assets/skills/personal-asset-librarian
+plugins/codex-personal-assets/skills/personal-asset-librarian
+plugins/openkeepsake/skills/personal-asset-librarian
