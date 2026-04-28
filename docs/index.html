@@ -1,127 +1,661 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-language="zh">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>OpenRelix™ 使用引导</title>
-  <meta name="description" content="OpenRelix™ GitHub Pages 使用引导：快速安装、查看产品展示、阅读文档和进入开源仓库。">
+  <meta name="color-scheme" content="light dark">
+  <title>OpenRelix™ 产品展示</title>
+  <meta name="description" content="OpenRelix™ v0.1.0 预览版是一套开源的个人记忆珍藏系统，面向 AI coding agents / AI CLI，把重复工作沉淀成可复用技能、记忆、模板、复盘和可视化面板。">
+  <script>
+    (() => {
+      try {
+        if (window.location.hash && "scrollRestoration" in window.history) {
+          window.history.scrollRestoration = "manual";
+        }
+        const theme = window.localStorage.getItem("openrelix-showcase-theme");
+        if (theme === "light" || theme === "dark") {
+          document.documentElement.dataset.theme = theme;
+        }
+      } catch (_) {
+        // Keep system theme when localStorage is unavailable.
+      }
+    })();
+  </script>
   <style>
     :root {
-      color-scheme: light;
-      --bg: #f7f5ef;
-      --panel: #ffffff;
-      --ink: #17212f;
-      --muted: #5f6b7a;
-      --line: #ddd7cb;
-      --brand: #16735f;
-      --brand-strong: #0e5b4a;
-      --accent: #b95f24;
-      --code: #10251f;
-      --code-line: #29483f;
-      --shadow: 0 18px 48px rgba(33, 42, 52, 0.12);
+      color-scheme: light dark;
+      --ink: #171717;
+      --muted: #62626a;
+      --soft: #f5f5f7;
+      --paper: #ffffff;
+      --paper-soft: #f8fafc;
+      --paper-alt: #fbfbfd;
+      --line: #dedee3;
+      --line-strong: #c9c9d1;
+      --accent: #0f766e;
+      --accent-soft: #e8f4f1;
+      --accent-tint: #eefaf6;
+      --accent-line: #cfe7df;
+      --accent-ink: #12413d;
+      --on-accent: #ffffff;
+      --blue: #2563eb;
+      --blue-strong: #1d4ed8;
+      --blue-soft: #eff6ff;
+      --blue-line: #d8e3fb;
+      --system-blue: #0a84ff;
+      --system-blue-end: #64d2ff;
+      --system-blue-soft: #eef7ff;
+      --system-blue-line: #b7dbff;
+      --success: #34c759;
+      --success-soft: #98edaa;
+      --bar-neutral: #a1a1aa;
+      --amber: #b45309;
+      --amber-soft: #fff7ed;
+      --amber-line: #f1dec2;
+      --rose: #be123c;
+      --rose-soft: #fff1f2;
+      --rose-line: #f5cbd5;
+      --danger: #d70015;
+      --nav-bg: rgba(255, 255, 255, 0.93);
+      --nav-border: rgba(222, 222, 227, 0.82);
+      --mark-bg: var(--accent);
+      --mark-fg: var(--on-accent);
+      --hero-bg: #eef2f7;
+      --hero-overlay: linear-gradient(90deg, rgba(247, 249, 252, 0.9) 0%, rgba(247, 249, 252, 0.82) 42%, rgba(247, 249, 252, 0.3) 72%, rgba(247, 249, 252, 0.05) 100%);
+      --hero-copy: #374151;
+      --dashboard-shell-bg: #ffffff;
+      --dashboard-body-bg: #f5f7fb;
+      --dashboard-line: #e5e7eb;
+      --dashboard-border: #d8dde6;
+      --dashboard-card-line: #e1e5eb;
+      --dashboard-muted: #6b7280;
+      --dashboard-copy: #4b5563;
+      --dashboard-soft: #f9fafb;
+      --dashboard-track: #e5e7eb;
+      --dashboard-rail: #9ca3af;
+      --dashboard-ink: #111827;
+      --button-primary-bg: #111827;
+      --button-primary-fg: #ffffff;
+      --button-secondary-border: #cbd5e1;
+      --button-github-bg: #f7fffd;
+      --button-github-border: #b7d8d2;
+      --tag-line: #e5e7eb;
+      --shadow-dashboard: 0 28px 70px rgba(15, 23, 42, 0.17);
+      --shadow-card: 0 10px 28px rgba(15, 23, 42, 0.04);
+      --shadow-card-strong: 0 10px 28px rgba(15, 23, 42, 0.08);
+      --shadow-shot: 0 18px 42px rgba(17, 24, 39, 0.11);
+      --shadow-hover: 0 14px 28px rgba(15, 23, 42, 0.09);
+      --code-bg: #111827;
+      --code-fg: #f8fafc;
+      --code-muted: #a7b0c0;
+      --code-copy-border: rgba(248, 250, 252, 0.2);
+      --code-copy-bg: rgba(248, 250, 252, 0.08);
+      --anchor-offset: 92px;
+      --radius: 8px;
+      --max: 1160px;
+    }
+
+    :root[data-theme="dark"] {
+      color-scheme: dark;
+      --ink: #f8fafc;
+      --muted: #a7b0c0;
+      --soft: #0d121a;
+      --paper: #151c26;
+      --paper-soft: #111827;
+      --paper-alt: #17202b;
+      --line: #2b3645;
+      --line-strong: #3f4d61;
+      --accent: #5eead4;
+      --accent-soft: #0e2a29;
+      --accent-tint: #113a36;
+      --accent-line: #24534e;
+      --accent-ink: #d1fae5;
+      --on-accent: #042f2e;
+      --blue: #8ab4ff;
+      --blue-strong: #93c5fd;
+      --blue-soft: #10233f;
+      --blue-line: #28496f;
+      --system-blue: #64d2ff;
+      --system-blue-end: #38bdf8;
+      --system-blue-soft: #10283a;
+      --system-blue-line: #255472;
+      --success: #4ade80;
+      --success-soft: #86efac;
+      --bar-neutral: #64748b;
+      --amber: #fbbf24;
+      --amber-soft: #33250f;
+      --amber-line: #5c4215;
+      --rose: #fb7185;
+      --rose-soft: #35151d;
+      --rose-line: #693040;
+      --danger: #ff6b7a;
+      --nav-bg: rgba(18, 25, 35, 0.92);
+      --nav-border: rgba(68, 80, 96, 0.76);
+      --mark-bg: var(--accent);
+      --mark-fg: var(--on-accent);
+      --hero-bg: #0b1018;
+      --hero-overlay: linear-gradient(90deg, rgba(12, 18, 28, 0.96) 0%, rgba(12, 18, 28, 0.84) 42%, rgba(12, 18, 28, 0.42) 72%, rgba(12, 18, 28, 0.1) 100%);
+      --hero-copy: #cbd5e1;
+      --dashboard-shell-bg: #121923;
+      --dashboard-body-bg: #0f1520;
+      --dashboard-line: #263142;
+      --dashboard-border: #334155;
+      --dashboard-card-line: #2b3648;
+      --dashboard-muted: #9da8b7;
+      --dashboard-copy: #cbd5e1;
+      --dashboard-soft: #17202b;
+      --dashboard-track: #293445;
+      --dashboard-rail: #7d8998;
+      --dashboard-ink: #f8fafc;
+      --button-primary-bg: #f8fafc;
+      --button-primary-fg: #0f172a;
+      --button-secondary-border: #475569;
+      --button-github-bg: #112d2a;
+      --button-github-border: #24534e;
+      --tag-line: #334155;
+      --shadow-dashboard: 0 28px 70px rgba(0, 0, 0, 0.55);
+      --shadow-card: 0 10px 28px rgba(0, 0, 0, 0.24);
+      --shadow-card-strong: 0 10px 28px rgba(0, 0, 0, 0.35);
+      --shadow-shot: 0 18px 42px rgba(0, 0, 0, 0.34);
+      --shadow-hover: 0 14px 28px rgba(0, 0, 0, 0.32);
+      --code-bg: #090d14;
+      --code-fg: #f8fafc;
+      --code-muted: #9aa6b6;
+      --code-copy-border: rgba(248, 250, 252, 0.18);
+      --code-copy-bg: rgba(248, 250, 252, 0.07);
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) {
+        color-scheme: dark;
+        --ink: #f8fafc;
+        --muted: #a7b0c0;
+        --soft: #0d121a;
+        --paper: #151c26;
+        --paper-soft: #111827;
+        --paper-alt: #17202b;
+        --line: #2b3645;
+        --line-strong: #3f4d61;
+        --accent: #5eead4;
+        --accent-soft: #0e2a29;
+        --accent-tint: #113a36;
+        --accent-line: #24534e;
+        --accent-ink: #d1fae5;
+        --on-accent: #042f2e;
+        --blue: #8ab4ff;
+        --blue-strong: #93c5fd;
+        --blue-soft: #10233f;
+        --blue-line: #28496f;
+        --system-blue: #64d2ff;
+        --system-blue-end: #38bdf8;
+        --system-blue-soft: #10283a;
+        --system-blue-line: #255472;
+        --success: #4ade80;
+        --success-soft: #86efac;
+        --bar-neutral: #64748b;
+        --amber: #fbbf24;
+        --amber-soft: #33250f;
+        --amber-line: #5c4215;
+        --rose: #fb7185;
+        --rose-soft: #35151d;
+        --rose-line: #693040;
+        --danger: #ff6b7a;
+        --nav-bg: rgba(18, 25, 35, 0.92);
+        --nav-border: rgba(68, 80, 96, 0.76);
+        --mark-bg: var(--accent);
+        --mark-fg: var(--on-accent);
+        --hero-bg: #0b1018;
+        --hero-overlay: linear-gradient(90deg, rgba(12, 18, 28, 0.96) 0%, rgba(12, 18, 28, 0.84) 42%, rgba(12, 18, 28, 0.42) 72%, rgba(12, 18, 28, 0.1) 100%);
+        --hero-copy: #cbd5e1;
+        --dashboard-shell-bg: #121923;
+        --dashboard-body-bg: #0f1520;
+        --dashboard-line: #263142;
+        --dashboard-border: #334155;
+        --dashboard-card-line: #2b3648;
+        --dashboard-muted: #9da8b7;
+        --dashboard-copy: #cbd5e1;
+        --dashboard-soft: #17202b;
+        --dashboard-track: #293445;
+        --dashboard-rail: #7d8998;
+        --dashboard-ink: #f8fafc;
+        --button-primary-bg: #f8fafc;
+        --button-primary-fg: #0f172a;
+        --button-secondary-border: #475569;
+        --button-github-bg: #112d2a;
+        --button-github-border: #24534e;
+        --tag-line: #334155;
+        --shadow-dashboard: 0 28px 70px rgba(0, 0, 0, 0.55);
+        --shadow-card: 0 10px 28px rgba(0, 0, 0, 0.24);
+        --shadow-card-strong: 0 10px 28px rgba(0, 0, 0, 0.35);
+        --shadow-shot: 0 18px 42px rgba(0, 0, 0, 0.34);
+        --shadow-hover: 0 14px 28px rgba(0, 0, 0, 0.32);
+        --code-bg: #090d14;
+        --code-fg: #f8fafc;
+        --code-muted: #9aa6b6;
+        --code-copy-border: rgba(248, 250, 252, 0.18);
+        --code-copy-bg: rgba(248, 250, 252, 0.07);
+      }
     }
 
     * {
       box-sizing: border-box;
     }
 
+    html {
+      scroll-behavior: smooth;
+      scroll-padding-top: var(--anchor-offset);
+    }
+
     body {
       margin: 0;
-      background: var(--bg);
+      background: var(--soft);
       color: var(--ink);
-      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      line-height: 1.6;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", sans-serif;
+      letter-spacing: 0;
+      overflow-x: hidden;
     }
 
     a {
-      color: var(--brand-strong);
-      text-decoration-thickness: 1px;
-      text-underline-offset: 3px;
+      color: inherit;
+      text-decoration: none;
     }
 
-    .page {
-      min-height: 100vh;
+    img {
+      display: block;
+      max-width: 100%;
     }
 
-    .nav {
+    .site-nav {
       position: sticky;
       top: 0;
-      z-index: 10;
-      border-bottom: 1px solid rgba(221, 215, 203, 0.9);
-      background: rgba(247, 245, 239, 0.94);
-      backdrop-filter: blur(16px);
-    }
-
-    .nav-inner,
-    .section-inner {
-      width: min(1120px, calc(100% - 40px));
-      margin: 0 auto;
+      z-index: 20;
+      height: 64px;
+      border-bottom: 1px solid var(--nav-border);
+      background: var(--nav-bg);
+      backdrop-filter: saturate(180%) blur(18px);
     }
 
     .nav-inner {
-      display: flex;
-      min-height: 64px;
+      width: min(1680px, calc(100% - 44px));
+      max-width: none;
+      height: 100%;
+      margin: 0 auto;
+      padding: 0;
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) auto;
       align-items: center;
-      justify-content: space-between;
-      gap: 24px;
+      gap: 20px;
     }
 
     .brand {
       display: inline-flex;
       align-items: center;
-      gap: 10px;
-      color: var(--ink);
-      font-weight: 750;
-      text-decoration: none;
+      gap: 12px;
+      font-weight: 780;
+      white-space: nowrap;
     }
 
-    .brand-mark {
-      display: grid;
-      width: 30px;
-      height: 30px;
-      place-items: center;
-      border: 1px solid rgba(22, 115, 95, 0.35);
+    .mark {
+      width: 34px;
+      height: 34px;
       border-radius: 8px;
-      background: #eef6f2;
-      color: var(--brand-strong);
-      font-size: 14px;
-      font-weight: 850;
+      display: grid;
+      place-items: center;
+      background: var(--mark-bg);
+      color: var(--mark-fg);
+      font-size: 13px;
+      font-weight: 820;
+      line-height: 1;
+      overflow: hidden;
     }
 
     .nav-links {
       display: flex;
-      flex-wrap: wrap;
       align-items: center;
       justify-content: flex-end;
-      gap: 18px;
+      gap: 6px;
+      min-width: 0;
+      color: var(--muted);
       font-size: 14px;
-      font-weight: 650;
+      white-space: nowrap;
     }
 
-    .hero {
-      padding: 72px 0 52px;
-    }
-
-    .hero-grid {
-      display: grid;
-      grid-template-columns: minmax(0, 1.08fr) minmax(320px, 0.92fr);
-      gap: 42px;
+    .nav-actions {
+      display: flex;
       align-items: center;
-    }
-
-    .hero-grid > *,
-    .steps > *,
-    .link-grid > * {
+      justify-content: flex-end;
+      gap: 14px;
       min-width: 0;
     }
 
+    .nav-utility {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 8px;
+      min-width: 0;
+    }
+
+    .nav-utility .github-button {
+      min-height: 38px;
+      padding: 0 14px;
+      border-radius: 999px;
+      box-shadow: none;
+    }
+
+    .nav-links a {
+      padding: 8px 10px;
+      border-radius: 8px;
+    }
+
+    .nav-links a:hover {
+      background: var(--soft);
+      color: var(--ink);
+    }
+
+    .lang-switch,
+    .theme-switch {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      padding: 3px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: var(--paper);
+      color: var(--muted);
+      white-space: nowrap;
+    }
+
+    .lang-switch button,
+    .theme-switch button {
+      appearance: none;
+      border: 0;
+      border-radius: 999px;
+      background: transparent;
+      color: inherit;
+      cursor: pointer;
+      font: inherit;
+      font-size: 12px;
+      font-weight: 740;
+      line-height: 1;
+      padding: 7px 9px;
+    }
+
+    .lang-switch button[aria-pressed="true"],
+    .theme-switch button[aria-pressed="true"] {
+      background: var(--accent);
+      color: var(--on-accent);
+    }
+
+    .hero {
+      min-height: 82vh;
+      display: flex;
+      align-items: center;
+      position: relative;
+      overflow: hidden;
+      isolation: isolate;
+      background-color: var(--hero-bg);
+    }
+
+    .hero::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+      background: rgba(17, 24, 39, 0.58);
+      pointer-events: none;
+    }
+
+    .hero-dashboard {
+      position: absolute;
+      inset: 0;
+      z-index: 0;
+      display: flex;
+      align-items: center;
+      padding: 34px 22px;
+      pointer-events: none;
+    }
+
+    .hero-dashboard-shell {
+      width: min(1280px, calc(100vw - 44px));
+      min-height: 620px;
+      margin-left: auto;
+      transform: translateX(110px) scale(1.02);
+      transform-origin: center right;
+      border: 1px solid var(--dashboard-border);
+      border-radius: 8px;
+      background: var(--dashboard-shell-bg);
+      box-shadow: var(--shadow-dashboard);
+      opacity: 0.96;
+      overflow: hidden;
+    }
+
+    .hero-dashboard-top {
+      height: 52px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+      padding: 0 22px;
+      border-bottom: 1px solid var(--dashboard-line);
+      color: var(--dashboard-copy);
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .hero-dashboard-pill {
+      padding: 6px 10px;
+      border: 1px solid var(--accent-line);
+      border-radius: 999px;
+      background: var(--accent-tint);
+      color: var(--accent);
+      font-size: 12px;
+      white-space: nowrap;
+    }
+
+    .hero-dashboard-body {
+      display: grid;
+      grid-template-columns: 58px minmax(0, 1fr);
+      min-height: 568px;
+      background: var(--dashboard-body-bg);
+    }
+
+    .hero-dashboard-rail {
+      display: grid;
+      align-content: start;
+      gap: 14px;
+      padding: 24px 12px;
+      border-right: 1px solid var(--dashboard-line);
+      background: var(--dashboard-shell-bg);
+      color: var(--dashboard-rail);
+      font-size: 13px;
+      font-weight: 760;
+      text-align: center;
+    }
+
+    .hero-dashboard-rail span {
+      padding: 8px 0;
+      border-radius: 8px;
+    }
+
+    .hero-dashboard-rail span:first-child {
+      background: var(--blue-soft);
+      color: var(--blue);
+    }
+
+    .hero-dashboard-main {
+      display: grid;
+      grid-template-columns: minmax(0, 1.25fr) minmax(280px, 0.85fr);
+      grid-template-rows: auto 1fr;
+      gap: 18px;
+      padding: 22px;
+    }
+
+    .hero-dashboard-summary,
+    .hero-dashboard-metrics,
+    .hero-dashboard-token {
+      border: 1px solid var(--dashboard-card-line);
+      border-radius: 8px;
+      background: var(--dashboard-shell-bg);
+      box-shadow: var(--shadow-card);
+    }
+
+    .hero-dashboard-summary {
+      min-height: 236px;
+      padding: 26px;
+    }
+
+    .hero-dashboard-kicker,
+    .hero-dashboard-label {
+      color: var(--dashboard-muted);
+      font-size: 13px;
+      font-weight: 760;
+      line-height: 1.25;
+    }
+
+    .hero-dashboard-summary strong {
+      display: block;
+      max-width: 640px;
+      margin-top: 18px;
+      color: var(--dashboard-ink);
+      font-size: 34px;
+      line-height: 1.18;
+      letter-spacing: 0;
+    }
+
+    .hero-dashboard-summary p {
+      max-width: 610px;
+      margin: 12px 0 0;
+      color: var(--dashboard-copy);
+      font-size: 16px;
+      line-height: 1.55;
+    }
+
+    .hero-dashboard-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 20px;
+    }
+
+    .hero-dashboard-tags span {
+      padding: 7px 10px;
+      border-radius: 999px;
+      background: var(--blue-soft);
+      color: var(--blue);
+      font-size: 13px;
+      font-weight: 720;
+    }
+
+    .hero-dashboard-metrics {
+      padding: 22px;
+    }
+
+    .hero-dashboard-metric-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+      margin-top: 16px;
+    }
+
+    .hero-dashboard-metric {
+      min-height: 112px;
+      padding: 16px;
+      border: 1px solid var(--dashboard-line);
+      border-radius: 8px;
+      background: var(--dashboard-soft);
+    }
+
+    .hero-dashboard-metric b {
+      display: block;
+      margin-top: 12px;
+      color: var(--dashboard-ink);
+      font-size: 38px;
+      line-height: 1;
+    }
+
+    .hero-dashboard-token {
+      grid-column: 1 / -1;
+      padding: 22px 24px 24px;
+    }
+
+    .hero-dashboard-token-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 18px;
+    }
+
+    .hero-dashboard-token-head strong {
+      color: var(--dashboard-ink);
+      font-size: 24px;
+      line-height: 1.2;
+    }
+
+    .hero-dashboard-token-head span {
+      color: var(--dashboard-muted);
+      font-size: 13px;
+      font-weight: 680;
+    }
+
+    .hero-dashboard-bars {
+      display: grid;
+      gap: 13px;
+    }
+
+    .hero-dashboard-bar-row {
+      display: grid;
+      grid-template-columns: 150px minmax(0, 1fr) 78px;
+      gap: 14px;
+      align-items: center;
+      color: var(--dashboard-copy);
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .hero-dashboard-track {
+      height: 9px;
+      border-radius: 999px;
+      background: var(--dashboard-track);
+      overflow: hidden;
+    }
+
+    .hero-dashboard-fill {
+      height: 100%;
+      border-radius: inherit;
+      background: var(--accent);
+    }
+
+    .hero-dashboard-fill.blue {
+      background: var(--blue);
+    }
+
+    .hero-dashboard-fill.amber {
+      background: var(--amber);
+    }
+
+    .hero-inner {
+      position: relative;
+      z-index: 2;
+      width: 100%;
+      max-width: var(--max);
+      margin: 0 auto;
+      padding: 68px 22px 86px;
+      color: #ffffff;
+    }
+
     .eyebrow {
-      margin: 0 0 14px;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border: 1px solid var(--accent-line);
+      border-radius: 999px;
+      background: var(--accent-tint);
       color: var(--accent);
       font-size: 13px;
-      font-weight: 800;
-      letter-spacing: 0;
-      text-transform: uppercase;
+      font-weight: 680;
     }
 
     h1,
@@ -133,22 +667,23 @@
 
     h1 {
       max-width: 760px;
-      margin-bottom: 18px;
-      font-size: 54px;
-      line-height: 1.05;
+      margin: 22px 0 18px;
+      font-size: 64px;
+      line-height: 1.02;
+      font-weight: 820;
       letter-spacing: 0;
-      overflow-wrap: anywhere;
+      overflow-wrap: break-word;
     }
 
-    .lead {
-      max-width: 720px;
+    .hero-copy {
+      max-width: 680px;
       margin-bottom: 28px;
-      color: var(--muted);
-      font-size: 18px;
-      overflow-wrap: anywhere;
+      color: rgba(255, 255, 255, 0.86);
+      font-size: 20px;
+      line-height: 1.62;
     }
 
-    .actions {
+    .hero-actions {
       display: flex;
       flex-wrap: wrap;
       gap: 12px;
@@ -157,342 +692,3836 @@
 
     .button {
       display: inline-flex;
-      min-height: 42px;
       align-items: center;
       justify-content: center;
-      border: 1px solid var(--brand);
+      min-height: 44px;
       border-radius: 8px;
-      padding: 9px 16px;
-      background: var(--brand);
-      color: #ffffff;
-      font-weight: 750;
-      text-decoration: none;
-      white-space: nowrap;
+      padding: 0 16px;
+      border: 1px solid var(--line);
+      background: var(--button-primary-bg);
+      color: var(--button-primary-fg);
+      font-weight: 720;
+      font-size: 14px;
     }
 
     .button.secondary {
-      border-color: var(--line);
-      background: var(--panel);
+      background: var(--paper);
       color: var(--ink);
+      border-color: var(--button-secondary-border);
     }
 
-    .command-panel {
-      min-width: 0;
-      border: 1px solid rgba(16, 37, 31, 0.22);
-      border-radius: 8px;
-      overflow: hidden;
-      background: var(--code);
-      box-shadow: var(--shadow);
+    .button.github-button {
+      color: var(--accent);
+      border-color: var(--button-github-border);
+      background: var(--button-github-bg);
     }
 
-    .command-top {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      min-height: 44px;
-      border-bottom: 1px solid var(--code-line);
-      padding: 0 16px;
-      color: #b9cbc4;
-      font-size: 13px;
-      font-weight: 700;
-    }
-
-    .dots {
-      display: inline-flex;
-      gap: 7px;
-    }
-
-    .dots span {
-      width: 9px;
-      height: 9px;
-      border-radius: 50%;
-      background: #d7894e;
-    }
-
-    .dots span:nth-child(2) {
-      background: #d9ba58;
-    }
-
-    .dots span:nth-child(3) {
-      background: #54b88f;
-    }
-
-    .command-body {
-      padding: 20px;
-    }
-
-    .prompt {
-      color: #76d5b0;
-      font-weight: 800;
-    }
-
-    code {
-      font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
-    }
-
-    .command {
-      display: block;
-      margin: 8px 0 18px;
-      color: #f3f5ef;
-      font-size: 14px;
-      line-height: 1.65;
-      white-space: pre-wrap;
-      overflow-wrap: anywhere;
-      word-break: break-word;
-    }
-
-    .note {
-      margin: 0;
-      color: #b9cbc4;
+    .hero-note {
+      position: absolute;
+      left: 22px;
+      bottom: 20px;
+      color: rgba(255, 255, 255, 0.74);
       font-size: 13px;
     }
 
     .section {
-      padding: 34px 0;
+      padding: 96px 22px;
+      scroll-margin-top: var(--anchor-offset);
     }
 
-    .section-title {
-      display: flex;
-      align-items: flex-end;
-      justify-content: space-between;
-      gap: 20px;
-      margin-bottom: 18px;
+    @supports (content-visibility: auto) {
+      .footer {
+        content-visibility: auto;
+        contain-intrinsic-size: auto 180px;
+      }
     }
 
-    h2 {
-      margin-bottom: 0;
-      font-size: 28px;
-      line-height: 1.2;
-      letter-spacing: 0;
+    .section.tight {
+      padding-top: 68px;
+    }
+
+    .inner {
+      max-width: var(--max);
+      margin: 0 auto;
+    }
+
+    .section-head {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(320px, 0.72fr);
+      align-items: start;
+      column-gap: 56px;
+      row-gap: 18px;
+      margin-bottom: 40px;
     }
 
     .section-kicker {
+      margin-bottom: 10px;
+      color: var(--accent);
+      font-size: 13px;
+      font-weight: 780;
+      text-transform: uppercase;
+    }
+
+    h2 {
+      max-width: 800px;
+      margin-bottom: 0;
+      font-size: 42px;
+      line-height: 1.12;
+      font-weight: 810;
+      letter-spacing: 0;
+    }
+
+    .lead {
+      max-width: 560px;
+      margin: 0;
+      color: var(--muted);
+      font-size: 17px;
+      line-height: 1.68;
+    }
+
+    .section-head > .lead {
+      align-self: end;
+      margin-bottom: 4px;
+    }
+
+    .grid {
+      display: grid;
+      gap: 22px;
+    }
+
+    .cols-4 {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+
+    .cols-3 {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .cols-2 {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .tile {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--paper);
+      padding: 28px;
+    }
+
+    .tile h3 {
+      margin-bottom: 12px;
+      font-size: 19px;
+      line-height: 1.34;
+    }
+
+    .tile p {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.72;
+      font-size: 15px;
+    }
+
+    .tile > .chip + h3 {
+      margin-top: 14px;
+    }
+
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      height: 28px;
+      padding: 0 10px;
+      border-radius: 999px;
+      border: 1px solid var(--accent-line);
+      background: var(--accent-tint);
+      color: var(--accent);
+      font-size: 12px;
+      font-weight: 680;
+      white-space: nowrap;
+    }
+
+    .chip.blue {
+      border-color: var(--blue-line);
+      background: var(--blue-soft);
+      color: var(--blue-strong);
+    }
+
+    .chip.amber {
+      border-color: var(--amber-line);
+      background: var(--amber-soft);
+      color: var(--amber);
+    }
+
+    .chip.rose {
+      border-color: var(--rose-line);
+      background: var(--rose-soft);
+      color: var(--rose);
+    }
+
+    .feature {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      gap: 22px;
+      align-items: stretch;
+      padding: 36px 0;
+      border-top: 1px solid var(--line);
+    }
+
+    .feature:first-of-type {
+      border-top: 0;
+      padding-top: 0;
+    }
+
+    .feature h3 {
+      margin: 0 0 12px;
+      font-size: 28px;
+      line-height: 1.18;
+    }
+
+    .feature .chip {
+      display: flex;
+      width: fit-content;
+      margin: 0 0 20px;
+    }
+
+    .feature p {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.68;
+      font-size: 16px;
+    }
+
+    .feature ul,
+    .tips ul {
+      margin: 18px 0 0;
+      padding-left: 18px;
+      color: var(--muted);
+      line-height: 1.8;
+    }
+
+    .feature > div:first-child {
+      max-width: 760px;
+    }
+
+    .shot {
+      border: 1px solid var(--line-strong);
+      border-radius: 8px;
+      overflow: hidden;
+      background: var(--paper);
+      box-shadow: var(--shadow-shot);
+    }
+
+    .shot img {
+      width: 100%;
+      height: auto;
+    }
+
+    .mock-shot {
+      min-height: 300px;
+      padding: 18px;
+    }
+
+    .mock-toolbar {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 18px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .mock-title {
+      margin-bottom: 18px;
+    }
+
+    .mock-title strong {
+      display: block;
+      color: var(--ink);
+      font-size: 24px;
+      line-height: 1.15;
+    }
+
+    .mock-title span {
+      display: block;
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .mock-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+
+    .mock-card {
+      min-height: 78px;
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--paper-soft);
+    }
+
+    .mock-card b {
+      display: block;
+      margin-top: 8px;
+      color: var(--ink);
+      font-size: 24px;
+      line-height: 1;
+    }
+
+    .mock-card span,
+    .mock-row span {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .mock-list {
+      display: grid;
+      gap: 8px;
+    }
+
+    .mock-row {
+      display: grid;
+      grid-template-columns: 86px 1fr 52px;
+      gap: 10px;
+      align-items: center;
+      min-height: 34px;
+      padding: 8px 10px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      font-size: 12px;
+    }
+
+    .mock-row strong {
+      color: var(--ink);
+      font-size: 13px;
+    }
+
+    .context-distribution-shot {
+      padding: 24px;
+      border-radius: 8px;
+      background:
+        radial-gradient(circle at 86% 12%, rgba(251, 191, 36, 0.1), transparent 32%),
+        var(--paper);
+    }
+
+    .context-distribution-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 20px;
+      margin-bottom: 22px;
+    }
+
+    .context-distribution-kicker {
+      display: block;
+      margin-bottom: 8px;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 760;
+    }
+
+    .context-distribution-head h4 {
+      margin: 0;
+      color: var(--ink);
+      font-size: 32px;
+      line-height: 1.14;
+      letter-spacing: 0;
+    }
+
+    .context-distribution-copy {
+      max-width: 360px;
       margin: 0;
       color: var(--muted);
       font-size: 14px;
+      line-height: 1.5;
+      text-align: right;
     }
 
-    .steps {
+    .context-help {
+      display: inline-grid;
+      place-items: center;
+      width: 30px;
+      height: 30px;
+      margin-left: 8px;
+      border: 1px solid var(--line-strong);
+      border-radius: 999px;
+      color: var(--muted);
+      font-size: 16px;
+      font-weight: 760;
+    }
+
+    .context-period-pill {
+      display: inline-flex;
+      align-items: center;
+      min-height: 28px;
+      margin-top: 12px;
+      padding: 0 10px;
+      border: 1px solid var(--amber-line);
+      border-radius: 999px;
+      background: var(--amber-soft);
+      color: var(--amber);
+      font-size: 12px;
+      font-weight: 760;
+    }
+
+    .context-bar-list {
       display: grid;
+      gap: 18px;
+    }
+
+    .context-bar-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: end;
+      gap: 18px;
+      margin-bottom: 8px;
+    }
+
+    .context-bar-title {
+      display: grid;
+      gap: 5px;
+    }
+
+    .context-bar-title strong {
+      color: var(--ink);
+      font-size: 18px;
+      line-height: 1.16;
+      font-weight: 760;
+    }
+
+    .context-bar-title span {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.25;
+    }
+
+    .context-count {
+      color: var(--ink);
+      font-size: 22px;
+      line-height: 1;
+      font-weight: 780;
+    }
+
+    .context-track {
+      height: 10px;
+      border-radius: 999px;
+      background: var(--dashboard-track);
+      overflow: hidden;
+    }
+
+    .context-fill {
+      height: 100%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, #d97706, #f59e0b, #fbbf24);
+    }
+
+    .context-fill.secondary {
+      background: linear-gradient(90deg, var(--system-blue), var(--system-blue-end));
+    }
+
+    .context-fill.tertiary {
+      background: linear-gradient(90deg, var(--success), var(--success-soft));
+    }
+
+    .context-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 8px;
+    }
+
+    .context-tags span {
+      display: inline-flex;
+      align-items: center;
+      min-height: 24px;
+      padding: 0 9px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 650;
+    }
+
+    .context-distribution-foot {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 22px;
+    }
+
+    .context-insight {
+      min-height: 70px;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--paper-soft);
+    }
+
+    .context-insight strong {
+      display: block;
+      margin-bottom: 6px;
+      color: var(--ink);
+      font-size: 14px;
+    }
+
+    .context-insight span {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.42;
+    }
+
+    .memory-real-shot {
+      min-height: 0;
+    }
+
+    .memory-layer-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .memory-layer-card {
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--paper-soft);
+    }
+
+    .memory-layer-card.is-openrelix {
+      background: var(--accent-soft);
+    }
+
+    .memory-layer-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 12px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .memory-layer-kicker {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 720;
+      line-height: 1.2;
+    }
+
+    .memory-layer-head h4 {
+      margin: 6px 0 0;
+      color: var(--ink);
+      font-size: 18px;
+      line-height: 1.22;
+    }
+
+    .memory-layer-count {
+      flex: 0 0 auto;
+      padding: 5px 8px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: var(--paper);
+      color: var(--ink);
+      font-size: 12px;
+      font-weight: 720;
+      line-height: 1.2;
+      white-space: nowrap;
+    }
+
+    .memory-entry-list {
+      display: grid;
+      gap: 10px;
+      margin-top: 12px;
+    }
+
+    .memory-entry {
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--paper);
+    }
+
+    .memory-entry strong {
+      color: var(--ink);
+      font-size: 14px;
+      line-height: 1.25;
+    }
+
+    .memory-entry p {
+      margin: 8px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.48;
+    }
+
+    .memory-entry-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 10px;
+    }
+
+    .memory-entry-meta span {
+      padding: 4px 7px;
+      border: 1px solid var(--tag-line);
+      border-radius: 999px;
+      background: var(--paper-soft);
+      color: var(--dashboard-copy);
+      font-size: 11px;
+      line-height: 1.2;
+      white-space: nowrap;
+    }
+
+    .memory-footnote {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      margin-top: 14px;
+      padding: 10px 12px;
+      border: 1px dashed var(--line);
+      border-radius: 8px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.35;
+    }
+
+    .daily-panel-shot {
+      padding: 28px;
+      border-radius: 28px;
+      background: var(--paper);
+    }
+
+    .daily-panel-card {
+      display: grid;
+      grid-template-columns: minmax(0, 1.55fr) minmax(320px, 0.9fr);
+      gap: 34px;
+      align-items: stretch;
+    }
+
+    .daily-panel-kicker {
+      margin-bottom: 18px;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 760;
+    }
+
+    .daily-title-row {
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      flex-wrap: wrap;
+      margin-bottom: 20px;
+    }
+
+    .daily-title-row h4 {
+      margin: 0;
+      color: var(--ink);
+      font-size: 48px;
+      line-height: 1.08;
+      letter-spacing: 0;
+    }
+
+    .daily-date-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 12px;
+      min-height: 44px;
+      padding: 0 18px;
+      border: 1px solid var(--line-strong);
+      border-radius: 999px;
+      background: var(--paper);
+      color: var(--ink);
+      box-shadow: var(--shadow-card-strong);
+      font-weight: 720;
+      white-space: nowrap;
+    }
+
+    .daily-lead {
+      max-width: 760px;
+      margin: 0 0 24px;
+      color: var(--ink);
+      font-size: 30px;
+      line-height: 1.42;
+      font-weight: 760;
+    }
+
+    .daily-bullets {
+      display: grid;
+      gap: 16px;
+      margin: 0 0 24px;
+      padding: 0;
+      list-style: none;
+      color: var(--muted);
+      font-size: 18px;
+      line-height: 1.55;
+    }
+
+    .daily-bullets li {
+      position: relative;
+      padding-left: 28px;
+    }
+
+    .daily-bullets li::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 0.72em;
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: var(--system-blue);
+    }
+
+    .daily-context-title {
+      margin-bottom: 10px;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 720;
+    }
+
+    .daily-chip-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    .daily-chip {
+      display: inline-flex;
+      align-items: center;
+      min-height: 38px;
+      padding: 0 16px;
+      border: 1px solid var(--system-blue-line);
+      border-radius: 999px;
+      background: var(--system-blue-soft);
+      color: var(--system-blue);
+      font-size: 15px;
+      font-weight: 650;
+    }
+
+    .daily-metric-panel {
+      border: 1px solid var(--line-strong);
+      border-radius: 28px;
+      padding: 28px;
+      background: var(--paper-soft);
+    }
+
+    .daily-metric-title {
+      margin-bottom: 24px;
+      color: var(--muted);
+      font-size: 16px;
+      font-weight: 760;
+    }
+
+    .daily-metric-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+      margin-bottom: 22px;
+    }
+
+    .daily-metric {
+      min-height: 118px;
+      padding: 22px;
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      background: var(--paper);
+      box-shadow: var(--shadow-card);
+    }
+
+    .daily-metric span {
+      display: block;
+      color: var(--muted);
+      font-size: 15px;
+      line-height: 1.3;
+    }
+
+    .daily-metric b {
+      display: block;
+      margin-top: 14px;
+      color: var(--ink);
+      font-size: 45px;
+      line-height: 1;
+    }
+
+    .daily-note {
+      margin: 0;
+      color: var(--muted);
+      font-size: 16px;
+      line-height: 1.58;
+    }
+
+    .token-showcase-shot {
+      padding: 24px;
+      border-radius: 28px;
+      background: var(--paper);
+    }
+
+    .token-summary-grid {
+      display: grid;
+      grid-template-columns: minmax(180px, 0.8fr) minmax(180px, 0.8fr) minmax(360px, 2.2fr);
+      gap: 18px;
+      margin-bottom: 18px;
+    }
+
+    .token-stat-card,
+    .token-overview-card,
+    .token-panel-card {
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      background: var(--paper-alt);
+      box-shadow: var(--shadow-card);
+    }
+
+    .token-stat-card {
+      min-height: 156px;
+      padding: 22px;
+      display: grid;
+      align-content: space-between;
+    }
+
+    .token-card-label,
+    .token-small-label,
+    .token-panel-meta {
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.35;
+      font-weight: 640;
+    }
+
+    .token-card-value {
+      color: var(--ink);
+      font-size: 52px;
+      font-weight: 780;
+      line-height: 1;
+    }
+
+    .token-card-note {
+      color: var(--muted);
+      font-size: 15px;
+      line-height: 1.4;
+    }
+
+    .token-live-note {
+      color: var(--system-blue);
+      font-size: 14px;
+      font-weight: 680;
+    }
+
+    .token-overview-card {
+      padding: 22px;
+    }
+
+    .token-overview-head,
+    .token-panel-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+
+    .token-overview-head h4,
+    .token-panel-head h4 {
+      margin: 0;
+      color: var(--ink);
+      font-size: 28px;
+      line-height: 1.16;
+    }
+
+    .token-overview-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      overflow: hidden;
+      background: var(--paper);
+    }
+
+    .token-overview-item {
+      min-height: 108px;
+      padding: 18px;
+      border-left: 1px solid var(--line);
+    }
+
+    .token-overview-item:first-child {
+      border-left: 0;
+    }
+
+    .token-overview-item b {
+      display: block;
+      margin-top: 10px;
+      color: var(--ink);
+      font-size: 32px;
+      line-height: 1;
+    }
+
+    .token-overview-item strong {
+      display: block;
+      margin-top: 10px;
+      color: var(--danger);
+      font-size: 32px;
+      line-height: 1;
+    }
+
+    .token-panel-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 18px;
+    }
+
+    .token-panel-card {
+      padding: 22px;
+    }
+
+    .token-bar-list {
+      display: grid;
+      gap: 18px;
+    }
+
+    .token-bar-copy {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 8px;
+      color: var(--ink);
+      font-size: 18px;
+      font-weight: 650;
+    }
+
+    .token-bar-track {
+      height: 10px;
+      border-radius: 999px;
+      background: var(--dashboard-track);
+      overflow: hidden;
+    }
+
+    .token-bar-fill {
+      height: 100%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, var(--system-blue), var(--system-blue-end));
+    }
+
+    .token-bar-fill.green {
+      background: linear-gradient(90deg, var(--success), var(--success-soft));
+    }
+
+    .token-bar-fill.gray {
+      background: var(--bar-neutral);
+    }
+
+    .workflow {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 12px;
+      counter-reset: step;
+    }
+
+    .workflow.memory-flow {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      margin-bottom: 22px;
+    }
+
+    .roadmap-timeline {
+      position: relative;
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 18px;
+      counter-reset: roadmap;
+    }
+
+    .roadmap-timeline::before {
+      content: "";
+      position: absolute;
+      left: 8%;
+      right: 8%;
+      top: 26px;
+      height: 2px;
+      background: var(--line-strong);
+    }
+
+    .roadmap-item {
+      position: relative;
+      display: grid;
+      align-content: start;
+      gap: 12px;
+      min-height: 300px;
+      padding: 0 0 24px;
+    }
+
+    .roadmap-marker {
+      position: relative;
+      z-index: 1;
+      width: 54px;
+      height: 54px;
+      display: grid;
+      place-items: center;
+      border: 2px solid var(--line-strong);
+      border-radius: 999px;
+      background: var(--paper);
+      color: var(--ink);
+      box-shadow: var(--shadow-card);
+      font-size: 13px;
+      font-weight: 780;
+    }
+
+    .roadmap-marker::before {
+      counter-increment: roadmap;
+      content: "0" counter(roadmap);
+    }
+
+    .roadmap-item.is-released .roadmap-marker {
+      border-color: var(--accent);
+      background: var(--accent);
+      color: var(--on-accent);
+    }
+
+    .roadmap-content {
+      min-height: 232px;
+      padding: 24px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--paper);
+      box-shadow: var(--shadow-card);
+    }
+
+    .roadmap-status {
+      display: block;
+      margin: 14px 0 12px;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 720;
+      line-height: 1.35;
+    }
+
+    .roadmap-content h3 {
+      margin: 0 0 12px;
+      color: var(--ink);
+      font-size: 21px;
+      line-height: 1.26;
+    }
+
+    .roadmap-content p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 15px;
+      line-height: 1.68;
+    }
+
+    .roadmap-note {
+      max-width: 760px;
+      margin: 26px 0 0;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.62;
+    }
+
+    .stage {
+      position: relative;
+      min-height: 184px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 18px;
+      background: var(--paper);
+    }
+
+    .stage::before {
+      counter-increment: step;
+      content: counter(step);
+      width: 30px;
+      height: 30px;
+      display: grid;
+      place-items: center;
+      border-radius: 8px;
+      margin-bottom: 16px;
+      background: var(--button-primary-bg);
+      color: var(--button-primary-fg);
+      font-weight: 760;
+      font-size: 13px;
+    }
+
+    .stage strong {
+      display: block;
+      margin-bottom: 8px;
+      font-size: 16px;
+    }
+
+    .stage span {
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.55;
+    }
+
+    .command {
+      border-radius: 8px;
+      background: var(--code-bg);
+      color: var(--code-fg);
+      padding: 18px;
+      font-family: "SFMono-Regular", Consolas, monospace;
+      font-size: 14px;
+      line-height: 1.55;
+      max-height: min(68vh, 560px);
+      overflow: auto;
+      scrollbar-color: var(--code-muted) transparent;
+    }
+
+    .command .muted {
+      color: var(--code-muted);
+    }
+
+    .command-block + .command-block {
+      margin-top: 22px;
+    }
+
+    .command-caption {
+      margin-bottom: 7px;
+      line-height: 1.5;
+    }
+
+    .command-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 10px;
+      align-items: center;
+      min-height: 32px;
+    }
+
+    .command-row + .command-row {
+      margin-top: 7px;
+    }
+
+    .command-code {
+      display: block;
+      min-width: 0;
+      color: var(--code-fg);
+      font: inherit;
+      overflow-wrap: anywhere;
+      white-space: pre-wrap;
+    }
+
+    .command-copy {
+      appearance: none;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 58px;
+      height: 30px;
+      border: 1px solid var(--code-copy-border);
+      border-radius: 6px;
+      background: var(--code-copy-bg);
+      color: #e5e7eb;
+      cursor: pointer;
+      font: inherit;
+      font-size: 12px;
+      font-weight: 720;
+      line-height: 1;
+      transition: background 160ms ease, border-color 160ms ease, color 160ms ease, transform 160ms ease;
+    }
+
+    .command-copy:hover {
+      border-color: rgba(248, 250, 252, 0.42);
+      background: rgba(248, 250, 252, 0.15);
+      color: #fff;
+    }
+
+    .command-copy:active {
+      transform: translateY(1px);
+    }
+
+    .command-copy:focus-visible {
+      outline: 2px solid #99f6e4;
+      outline-offset: 2px;
+    }
+
+    .command-copy.is-copied {
+      border-color: rgba(153, 246, 228, 0.8);
+      background: rgba(15, 118, 110, 0.34);
+      color: #d1fae5;
+    }
+
+    .command-copy.is-error {
+      border-color: rgba(254, 202, 202, 0.82);
+      background: rgba(190, 18, 60, 0.28);
+      color: #ffe4e6;
+    }
+
+    .install-section {
+      background: var(--paper-soft);
+    }
+
+    .install-module {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 16px;
+    }
+
+    .install-path,
+    .mode-card {
+      min-width: 0;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 20px;
+      background: var(--paper);
+      box-shadow: var(--shadow-card);
+    }
+
+    .install-path.featured {
+      border-color: var(--accent-line);
+      background: var(--accent-soft);
+    }
+
+    .install-path h3,
+    .mode-card h3 {
+      margin: 12px 0 8px;
+      font-size: 21px;
+      line-height: 1.25;
+    }
+
+    .install-path p,
+    .mode-card p {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.62;
+      font-size: 15px;
+    }
+
+    .install-path .install-hint {
+      margin-top: 14px;
+      color: var(--ink-soft);
+      font-size: 14px;
+    }
+
+    .install-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+      margin-top: 16px;
+    }
+
+    .inline-command {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 10px;
+      align-items: center;
+      min-height: 42px;
+      margin-top: 16px;
+      padding: 9px 10px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--paper-alt);
+    }
+
+    .inline-command .command-code {
+      color: var(--ink);
+      font-family: "SFMono-Regular", Consolas, monospace;
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .inline-command .command-copy {
+      border-color: var(--accent-line);
+      background: var(--accent-tint);
+      color: var(--accent);
+    }
+
+    .install-steps {
+      display: grid;
+      gap: 10px;
+      margin: 16px 0 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .install-steps li {
+      display: grid;
+      grid-template-columns: 26px minmax(0, 1fr);
+      gap: 10px;
+      align-items: start;
+      color: var(--muted);
+      line-height: 1.55;
+      font-size: 14px;
+    }
+
+    .install-step-index {
+      display: grid;
+      place-items: center;
+      width: 24px;
+      height: 24px;
+      border-radius: 999px;
+      background: var(--blue-soft);
+      color: var(--blue-strong);
+      font-size: 12px;
+      font-weight: 760;
+    }
+
+    #tips {
+      background: linear-gradient(180deg, var(--paper-alt), var(--soft));
+    }
+
+    #tips .inner {
+      max-width: var(--max);
+    }
+
+    .tips-subhead {
+      max-width: none;
+      margin-bottom: 40px;
+      text-align: left;
+    }
+
+    .tips-subhead .section-kicker {
+      color: var(--system-blue);
+    }
+
+    .tips-subhead h2 {
+      margin-bottom: 0;
+    }
+
+    .tips-subhead .lead {
+      max-width: 640px;
+    }
+
+    .mode-list {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 14px;
+    }
+
+    .mode-list .mode-card.is-wide,
+    .mode-list .mode-card.is-terminal {
+      grid-column: 1 / -1;
+    }
+
+    .mode-kicker {
+      display: inline-flex;
+      align-items: center;
+      align-self: flex-start;
+      height: 26px;
+      padding: 0 10px;
+      border: 1px solid var(--system-blue-line);
+      border-radius: 999px;
+      background: var(--system-blue-soft);
+      color: var(--system-blue);
+      font-size: 11px;
+      font-weight: 780;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .tips {
+      display: grid;
+      gap: 14px;
+      align-items: start;
+    }
+
+    .tips .mode-card,
+    .tips .callout,
+    .tips .tile {
+      position: relative;
+      overflow: hidden;
+      background: linear-gradient(180deg, var(--paper), var(--paper-alt));
+      border-color: var(--line);
+      box-shadow: var(--shadow-card);
+      backdrop-filter: saturate(180%) blur(18px);
+      -webkit-backdrop-filter: saturate(180%) blur(18px);
+    }
+
+    .tips .mode-card {
+      display: flex;
+      min-height: 226px;
+      flex-direction: column;
+      gap: 0;
+      padding: 20px;
+    }
+
+    .tips .mode-card h3 {
+      margin: 15px 0 9px;
+      font-size: 20px;
+      line-height: 1.22;
+    }
+
+    .tips .mode-card p {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.56;
+      font-size: 14px;
+    }
+
+    .step-visual {
+      display: grid;
+      gap: 10px;
+      margin: 16px 0;
+      min-height: 132px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 14px;
+      background: var(--paper-soft);
+    }
+
+    .visual-panel {
+      display: grid;
+      gap: 10px;
+    }
+
+    .visual-local-panel {
+      padding: 10px;
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.54), rgba(255, 255, 255, 0)),
+        var(--paper-soft);
+    }
+
+    .visual-local-shell {
+      display: grid;
+      grid-template-columns: 56px minmax(0, 1fr);
+      min-height: 190px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--paper);
+      overflow: hidden;
+    }
+
+    .visual-local-nav {
+      display: grid;
+      align-content: start;
+      gap: 8px;
+      padding: 12px 8px;
+      border-right: 1px solid var(--line);
+      background: var(--paper-soft);
+    }
+
+    .visual-local-nav span {
+      display: grid;
+      place-items: center;
+      min-height: 22px;
+      border-radius: 7px;
+      color: var(--muted);
+      font-size: 10px;
+      font-weight: 760;
+      line-height: 1;
+    }
+
+    .visual-local-nav span:first-child {
+      background: var(--blue-soft);
+      color: var(--system-blue);
+    }
+
+    .visual-local-main {
+      display: grid;
+      gap: 10px;
+      align-content: start;
+      min-width: 0;
+      padding: 12px;
+    }
+
+    .visual-local-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .visual-local-head strong {
+      color: var(--ink);
+      font-size: 14px;
+      line-height: 1.2;
+    }
+
+    .visual-local-status {
+      flex: 0 0 auto;
+      padding: 4px 8px;
+      border: 1px solid var(--accent-line);
+      border-radius: 999px;
+      background: var(--accent-tint);
+      color: var(--accent);
+      font-size: 10px;
+      font-weight: 760;
+      line-height: 1;
+      white-space: nowrap;
+    }
+
+    .visual-local-review {
+      min-width: 0;
+      padding: 10px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--paper-soft);
+    }
+
+    .visual-local-review span {
+      display: block;
+      color: var(--muted);
+      font-size: 10px;
+      font-weight: 760;
+      line-height: 1.2;
+    }
+
+    .visual-local-review p {
+      margin: 6px 0 0;
+      color: var(--ink);
+      font-size: 13px;
+      font-weight: 760;
+      line-height: 1.36;
+    }
+
+    .visual-local-metrics {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .visual-local-metric {
+      min-width: 0;
+      padding: 9px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--paper);
+    }
+
+    .visual-local-metric span {
+      display: block;
+      color: var(--muted);
+      font-size: 10px;
+      font-weight: 700;
+      line-height: 1.2;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .visual-local-metric b {
+      display: block;
+      margin-top: 6px;
+      color: var(--ink);
+      font-size: 21px;
+      font-weight: 820;
+      line-height: 1;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .visual-local-sync {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 8px 10px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--paper-soft);
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 680;
+      line-height: 1.25;
+    }
+
+    .visual-local-sync strong {
+      color: var(--accent);
+      font-weight: 780;
+      white-space: nowrap;
+    }
+
+    .visual-panel-bar {
+      display: flex;
+      gap: 6px;
+    }
+
+    .visual-panel-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: var(--system-blue);
+    }
+
+    .visual-panel-row,
+    .visual-memory-card,
+    .visual-terminal-line {
+      min-height: 28px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: var(--paper);
+    }
+
+    .visual-panel-row {
+      display: grid;
+      grid-template-columns: 46px minmax(0, 1fr) 52px;
+      gap: 8px;
+      align-items: center;
+      padding: 7px 8px;
+    }
+
+    .visual-pill,
+    .visual-line {
+      height: 8px;
+      border-radius: 999px;
+      background: var(--accent-tint);
+    }
+
+    .visual-line {
+      background: var(--line-strong);
+    }
+
+    .visual-memory-flow {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto minmax(0, 1fr);
+      gap: 8px;
+      align-items: center;
+      height: 100%;
+    }
+
+    .visual-memory-card {
+      display: grid;
+      align-content: center;
+      gap: 8px;
+      padding: 10px;
+    }
+
+    .visual-memory-card strong {
+      color: var(--ink);
+      font-size: 12px;
+      line-height: 1.2;
+    }
+
+    .visual-arrow {
+      color: var(--system-blue);
+      font-weight: 800;
+    }
+
+    .visual-mode-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .visual-mode-chip {
+      min-height: 96px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 10px;
+      background: var(--paper);
+    }
+
+    .visual-mode-chip strong,
+    .mode-option strong {
+      display: block;
+      color: var(--ink);
+      font-size: 13px;
+      line-height: 1.25;
+    }
+
+    .visual-mode-chip span,
+    .mode-option span {
+      display: block;
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.4;
+    }
+
+    .visual-terminal {
+      align-content: start;
+      background: var(--code-bg);
+      color: var(--code-fg);
+      gap: 10px;
+      justify-self: stretch;
+      max-width: 760px;
+      overflow: hidden;
+      font-family: "SFMono-Regular", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    }
+
+    .visual-terminal-line {
+      border-color: var(--code-copy-border);
+      background: rgba(248, 250, 252, 0.08);
+    }
+
+    .visual-terminal-chrome {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin: -4px -4px 2px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid rgba(148, 163, 184, 0.24);
+    }
+
+    .visual-terminal-dots {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+    }
+
+    .visual-terminal-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: rgba(148, 163, 184, 0.72);
+    }
+
+    .visual-terminal-title {
+      color: var(--code-muted);
+      font-size: 10px;
+      font-weight: 680;
+      line-height: 1.2;
+      white-space: nowrap;
+    }
+
+    .visual-terminal-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: baseline;
+      color: var(--code-fg);
+      font-size: 13px;
+      font-weight: 760;
+      line-height: 1.3;
+    }
+
+    .visual-terminal-head span {
+      color: var(--code-muted);
+      font-size: 11px;
+      font-weight: 640;
+      white-space: nowrap;
+    }
+
+    .visual-terminal-head strong {
+      color: var(--code-fg);
+      font-size: 13px;
+      line-height: 1.3;
+    }
+
+    .visual-terminal-prompt {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      min-width: 0;
+      color: var(--code-fg);
+      font-size: 11px;
+      font-weight: 720;
+      line-height: 1.3;
+    }
+
+    .visual-terminal-prompt span {
+      color: #60a5fa;
+      font-weight: 820;
+    }
+
+    .visual-terminal-prompt code {
+      min-width: 0;
+      color: var(--code-fg);
+      font: inherit;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .visual-terminal-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .visual-terminal-metric,
+    .visual-terminal-row,
+    .visual-terminal-review {
+      min-width: 0;
+      border: 1px solid var(--code-copy-border);
+      border-radius: 7px;
+      background: rgba(248, 250, 252, 0.08);
+    }
+
+    .visual-terminal-metric {
+      display: grid;
+      gap: 4px;
+      padding: 8px;
+    }
+
+    .visual-terminal-metric span,
+    .visual-terminal-row b {
+      color: var(--code-muted);
+      font-size: 10px;
+      font-weight: 640;
+      line-height: 1.2;
+    }
+
+    .visual-terminal-metric strong {
+      color: var(--code-fg);
+      font-size: 20px;
+      line-height: 1;
+    }
+
+    .visual-terminal-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 8px 10px;
+      color: var(--code-fg);
+      font-size: 12px;
+      font-weight: 720;
+      line-height: 1.25;
+    }
+
+    .visual-terminal-row span {
+      color: var(--code-fg);
+      white-space: nowrap;
+    }
+
+    .visual-terminal-review {
+      padding: 9px 10px;
+      color: var(--code-muted);
+      font-size: 11px;
+      font-weight: 620;
+      line-height: 1.45;
+    }
+
+    .visual-terminal-table {
+      display: grid;
+      gap: 6px;
+    }
+
+    .visual-terminal-data-row {
+      display: grid;
+      grid-template-columns: minmax(92px, 0.78fr) minmax(58px, 0.42fr) minmax(0, 1.8fr);
+      gap: 10px;
+      align-items: center;
+      min-width: 0;
+      padding: 7px 9px;
+      border: 1px solid var(--code-copy-border);
+      border-radius: 7px;
+      background: rgba(248, 250, 252, 0.08);
+      line-height: 1.3;
+    }
+
+    .visual-terminal-data-row b {
+      color: var(--code-muted);
+      font-size: 10px;
+      font-weight: 700;
+    }
+
+    .visual-terminal-data-row strong {
+      color: var(--code-fg);
+      font-size: 13px;
+      font-weight: 820;
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+
+    .visual-terminal-data-row span {
+      min-width: 0;
+      color: var(--code-muted);
+      font-size: 10px;
+      font-weight: 620;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .visual-terminal-review-title {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 6px;
+      color: var(--code-fg);
+      font-size: 11px;
+      font-weight: 780;
+    }
+
+    .visual-terminal-review-title span {
+      color: var(--code-muted);
+      font-weight: 660;
+      white-space: nowrap;
+    }
+
+    .visual-terminal-review p {
+      margin: 0;
+    }
+
+    .visual-terminal-review-meta {
+      display: block;
+      margin-top: 6px;
+      color: var(--code-fg);
+      font-weight: 720;
+    }
+
+    .mode-options {
+      display: grid;
+      gap: 12px;
+      margin-top: 16px;
+    }
+
+    .mode-option {
+      min-width: 0;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 14px;
+      background: var(--paper-soft);
+    }
+
+    .mode-option .inline-command {
+      margin-top: 12px;
+    }
+
+    .tips .inline-command {
+      width: min(100%, 760px);
+      margin-top: auto;
+      border-color: var(--line);
+      background: var(--paper-soft);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.36);
+    }
+
+    .tips .inline-command .command-code {
+      color: var(--dashboard-ink);
+    }
+
+    .tips .inline-command .command-copy {
+      border-color: var(--system-blue-line);
+      background: var(--system-blue-soft);
+      color: var(--system-blue);
+    }
+
+    .tips .inline-command .command-copy:hover {
+      border-color: var(--system-blue);
+      background: var(--system-blue);
+      color: #fff;
+    }
+
+    .tips > .grid {
       grid-template-columns: repeat(3, minmax(0, 1fr));
       gap: 14px;
     }
 
-    .step,
-    .link-card {
+    .callout {
       border: 1px solid var(--line);
       border-radius: 8px;
-      background: var(--panel);
-      padding: 18px;
-    }
-
-    .step-index {
-      display: inline-flex;
-      width: 28px;
-      height: 28px;
-      align-items: center;
-      justify-content: center;
-      margin-bottom: 12px;
-      border-radius: 8px;
-      background: #eef6f2;
-      color: var(--brand-strong);
-      font-size: 13px;
-      font-weight: 850;
-    }
-
-    h3 {
-      margin-bottom: 8px;
-      font-size: 18px;
-      line-height: 1.28;
-      letter-spacing: 0;
-    }
-
-    .step p,
-    .link-card p {
-      margin-bottom: 0;
-      color: var(--muted);
-      font-size: 14px;
-    }
-
-    .link-grid {
-      display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
-      gap: 14px;
-    }
-
-    .link-card {
+      padding: 22px;
       color: var(--ink);
-      text-decoration: none;
     }
 
-    .link-card strong {
-      display: block;
-      margin-bottom: 6px;
+    .callout h3 {
+      margin-bottom: 10px;
+      font-size: 19px;
+      line-height: 1.28;
+    }
+
+    .callout p {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.62;
       font-size: 15px;
     }
 
+    .install-path,
+    .mode-card,
+    .tips .callout,
+    .tips .tile {
+      transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease, background 180ms ease;
+    }
+
+    .install-path:hover,
+    .mode-card:hover,
+    .tips .callout:hover,
+    .tips .tile:hover {
+      transform: translateY(-2px);
+      border-color: var(--accent-line);
+      box-shadow: var(--shadow-hover);
+    }
+
+    .tips .tile:hover {
+      background: var(--paper-alt);
+    }
+
+    .compare {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 22px;
+    }
+
+    .compare .tile {
+      min-height: 244px;
+    }
+
+    @media (max-width: 1500px) {
+      .nav-utility .github-button {
+        display: none;
+      }
+    }
+
+    @media (max-width: 1360px) {
+      .brand > span:last-child {
+        display: none;
+      }
+    }
+
+    @media (max-width: 1280px) {
+      .section-head {
+        grid-template-columns: minmax(0, 1fr);
+        margin-bottom: 34px;
+      }
+
+      .lead {
+        max-width: 760px;
+      }
+
+      .section-head > .lead {
+        align-self: auto;
+        margin-bottom: 0;
+      }
+
+      .cols-4,
+      .roadmap-timeline,
+      .compare {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .roadmap-timeline::before {
+        display: none;
+      }
+
+    }
+
     .footer {
-      margin-top: 28px;
+      padding: 48px 22px 60px;
       border-top: 1px solid var(--line);
-      padding: 24px 0 34px;
+      background: var(--paper);
+      color: var(--muted);
+    }
+
+    .footer .inner {
+      display: flex;
+      justify-content: space-between;
+      gap: 20px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .small {
       color: var(--muted);
       font-size: 13px;
+      line-height: 1.62;
     }
 
-    @media (max-width: 880px) {
-      .hero {
-        padding-top: 46px;
-      }
-
-      .hero-grid,
-      .steps,
-      .link-grid {
-        grid-template-columns: 1fr;
-      }
-
-      h1 {
-        font-size: 40px;
-      }
-
-      .section-title {
-        display: block;
-      }
+    .text-link {
+      color: var(--accent);
+      font-weight: 720;
+      text-decoration: underline;
+      text-underline-offset: 3px;
     }
 
-    @media (max-width: 620px) {
-      .nav-inner,
-      .section-inner {
-        width: min(100% - 28px, 1120px);
-      }
-
-      .nav-inner {
-        align-items: flex-start;
-        flex-direction: column;
-        gap: 12px;
-        padding: 14px 0;
-      }
-
+    @media (max-width: 1240px) {
       .nav-links {
-        justify-content: flex-start;
-        gap: 12px;
+        display: none;
+      }
+
+      .nav-utility {
+        justify-self: end;
       }
 
       h1 {
+        font-size: 46px;
+      }
+
+      h2 {
         font-size: 34px;
       }
 
+      .section-head,
+      .feature,
+      .install-module,
+      .tips-subhead,
+      .tips {
+        display: block;
+      }
+
+      .lead {
+        margin-top: 14px;
+      }
+
+      .cols-4,
+      .cols-3,
+      .cols-2,
+      .workflow,
+      .workflow.memory-flow,
+      .roadmap-timeline,
+      .compare {
+        grid-template-columns: 1fr;
+      }
+
+      .roadmap-timeline {
+        gap: 20px;
+      }
+
+      .roadmap-item {
+        min-height: 0;
+        padding-bottom: 0;
+      }
+
+      .roadmap-content {
+        min-height: 0;
+      }
+
+      .feature {
+        padding: 30px 0;
+      }
+
+      .feature .shot {
+        margin-top: 20px;
+      }
+
+      .tips > .grid {
+        margin-top: 20px;
+        grid-template-columns: 1fr;
+      }
+
+      .mode-list {
+        grid-template-columns: 1fr;
+        margin-bottom: 20px;
+      }
+
+      .mode-list .mode-card.is-wide,
+      .mode-list .mode-card.is-terminal {
+        grid-column: 1 / -1;
+      }
+
+      .tips {
+        display: grid;
+      }
+
+      .install-path + .install-path {
+        margin-top: 20px;
+      }
+
+      .hero-dashboard {
+        padding: 22px;
+      }
+
+      .hero-dashboard-shell {
+        min-width: 920px;
+        transform: translateX(260px) scale(0.92);
+      }
+
+      .memory-layer-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .memory-footnote {
+        display: grid;
+      }
+
+      .context-distribution-head {
+        display: grid;
+      }
+
+      .context-distribution-copy {
+        max-width: none;
+        text-align: left;
+      }
+
+      .daily-panel-card {
+        grid-template-columns: 1fr;
+      }
+
+      .daily-panel-shot {
+        padding: 22px;
+      }
+
+    }
+
+    @media (max-width: 560px) {
+      .nav-inner {
+        width: calc(100% - 28px);
+        gap: 12px;
+      }
+
+      .brand > span:last-child {
+        display: none;
+      }
+
+      .nav-actions {
+        gap: 8px;
+      }
+
+      .nav-utility {
+        gap: 6px;
+      }
+
+      .lang-switch button,
+      .theme-switch button {
+        padding: 7px 8px;
+      }
+
+      .hero {
+        min-height: 78vh;
+      }
+
+      .hero-inner {
+        padding: 52px 76px 76px 18px;
+      }
+
+      .hero-dashboard {
+        padding: 12px;
+      }
+
+      .hero-dashboard-shell {
+        min-width: 840px;
+        transform: translateX(330px) scale(0.82);
+      }
+
+      .hero-dashboard-main {
+        grid-template-columns: minmax(0, 1fr);
+      }
+
+      .hero-dashboard-metrics {
+        display: none;
+      }
+
+      h1 {
+        max-width: 330px;
+        font-size: 34px;
+        line-height: 1.08;
+      }
+
+      h2 {
+        font-size: 29px;
+      }
+
+      .daily-panel-shot {
+        padding: 16px;
+        border-radius: 18px;
+      }
+
+      .daily-title-row h4 {
+        font-size: 32px;
+      }
+
+      .daily-lead {
+        font-size: 22px;
+      }
+
+      .daily-bullets {
+        font-size: 15px;
+      }
+
+      .daily-metric-panel {
+        padding: 18px;
+        border-radius: 18px;
+      }
+
+      .daily-metric-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .context-distribution-shot {
+        padding: 18px;
+        border-radius: 8px;
+      }
+
+      .context-distribution-head h4 {
+        font-size: 26px;
+      }
+
+      .context-distribution-foot {
+        grid-template-columns: 1fr;
+      }
+
+      .context-bar-title strong {
+        font-size: 16px;
+      }
+
+      .context-count {
+        font-size: 20px;
+      }
+
+      .hero-copy,
       .lead {
         font-size: 16px;
       }
 
-      .button {
+      .section {
+        padding: 58px 18px;
+      }
+
+      .tile,
+      .callout {
+        padding: 18px;
+      }
+
+      .command {
+        max-height: 430px;
+        padding: 14px;
+        font-size: 13px;
+      }
+
+      .install-actions .button {
+        flex: 1 1 100%;
+      }
+
+      .inline-command {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 8px;
+      }
+
+      .inline-command .command-copy {
         width: 100%;
+      }
+
+      .tips-subhead {
+        text-align: left;
+      }
+
+      .mode-list {
+        grid-template-columns: 1fr;
+      }
+
+      .mode-list .mode-card.is-wide,
+      .mode-list .mode-card.is-terminal {
+        grid-column: auto;
+      }
+
+      .visual-memory-flow,
+      .visual-mode-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .visual-local-shell {
+        grid-template-columns: 1fr;
+      }
+
+      .visual-local-nav {
+        display: flex;
+        border-right: 0;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .visual-local-nav span {
+        min-width: 34px;
+      }
+
+      .visual-local-metrics {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .visual-terminal-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .visual-terminal-head {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+
+      .visual-terminal-head span {
+        white-space: normal;
+      }
+
+      .visual-terminal-data-row {
+        grid-template-columns: minmax(76px, 0.72fr) minmax(0, 0.7fr);
+      }
+
+      .visual-terminal-data-row span {
+        grid-column: 1 / -1;
+        white-space: normal;
+      }
+
+      .visual-arrow {
+        transform: rotate(90deg);
+        text-align: center;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      html {
+        scroll-behavior: auto;
+      }
+
+      .command-copy,
+      .install-path,
+      .mode-card,
+      .tips .callout,
+      .tips .tile {
+        transition: none;
+      }
+
+      .command-copy:active,
+      .install-path:hover,
+      .mode-card:hover,
+      .tips .callout:hover,
+      .tips .tile:hover {
+        transform: none;
       }
     }
   </style>
 </head>
 <body>
-  <div class="page">
-    <header class="nav">
-      <div class="nav-inner">
-        <a class="brand" href="#top" aria-label="OpenRelix 使用引导">
-          <span class="brand-mark">OR</span>
-          <span>OpenRelix™</span>
-        </a>
-        <nav class="nav-links" aria-label="主要链接">
-          <a href="product-showcase.html">产品展示</a>
-          <a href="https://github.com/openrelix/openrelix">GitHub</a>
-          <a href="https://www.npmjs.com/package/openrelix">npm</a>
-        </nav>
+  <nav class="site-nav" aria-label="页面导航">
+    <div class="nav-inner">
+      <a class="brand" href="#top" aria-label="OpenRelix 首页">
+        <span class="mark" aria-hidden="true">OR</span>
+        <span>OpenRelix</span>
+      </a>
+      <div class="nav-actions">
+        <div class="nav-links">
+          <a href="#pain">痛点</a>
+          <a href="#what">产品</a>
+          <a href="#memory-system">记忆系统</a>
+          <a href="#tour">导览</a>
+          <a href="#install">安装</a>
+          <a href="#tips">快速上手</a>
+          <a href="#roadmap">更新计划</a>
+          <a href="#open">开源边界</a>
+          <a href="#license">授权</a>
+        </div>
       </div>
-    </header>
+      <div class="nav-utility" aria-label="页面设置">
+        <div class="theme-switch" aria-label="主题切换">
+          <button type="button" data-theme-option="system" aria-pressed="true">系统</button>
+          <button type="button" data-theme-option="light" aria-pressed="false">浅色</button>
+          <button type="button" data-theme-option="dark" aria-pressed="false">深色</button>
+        </div>
+        <div class="lang-switch" aria-label="语言切换">
+          <button type="button" data-language-option="zh" aria-pressed="true">中文</button>
+          <button type="button" data-language-option="en" aria-pressed="false">EN</button>
+        </div>
+        <a class="button secondary github-button" href="https://github.com/openrelix/openrelix" target="_blank" rel="noopener noreferrer">GitHub 点星支持</a>
+      </div>
+    </div>
+  </nav>
 
-    <main id="top">
-      <section class="hero">
-        <div class="section-inner hero-grid">
+  <main id="top">
+    <section class="hero">
+      <div class="hero-dashboard" aria-hidden="true">
+        <div class="hero-dashboard-shell">
+          <div class="hero-dashboard-top">
+            <span>OpenRelix 工作台</span>
+            <span>2026/04/27</span>
+            <span class="hero-dashboard-pill">仅本地</span>
+          </div>
+          <div class="hero-dashboard-body">
+            <aside class="hero-dashboard-rail">
+              <span>01</span>
+              <span>02</span>
+              <span>03</span>
+              <span>04</span>
+              <span>05</span>
+            </aside>
+            <div class="hero-dashboard-main">
+              <section class="hero-dashboard-summary">
+                <div class="hero-dashboard-kicker">每日摘要</div>
+                <strong>今天整理了 12 个窗口</strong>
+                <p>发布检查、模板整理、本地自动化脚本与记忆候选已归类。</p>
+                <div class="hero-dashboard-tags">
+                  <span>Host 原生记忆</span>
+                  <span>OpenRelix 个人记忆</span>
+                  <span>Token 信号</span>
+                </div>
+              </section>
+              <section class="hero-dashboard-metrics">
+                <div class="hero-dashboard-label">关键指标</div>
+                <div class="hero-dashboard-metric-grid">
+                  <div class="hero-dashboard-metric"><span>窗口</span><b>12</b></div>
+                  <div class="hero-dashboard-metric"><span>长期记忆</span><b>8</b></div>
+                  <div class="hero-dashboard-metric"><span>短期记忆</span><b>6</b></div>
+                  <div class="hero-dashboard-metric"><span>待升级资产</span><b>4</b></div>
+                </div>
+              </section>
+              <section class="hero-dashboard-token">
+                <div class="hero-dashboard-token-head">
+                  <strong>Token 速览</strong>
+                  <span>近 7 天中 5 天有记录</span>
+                </div>
+                <div class="hero-dashboard-bars">
+                  <div class="hero-dashboard-bar-row"><span>今日 Token</span><div class="hero-dashboard-track"><div class="hero-dashboard-fill" style="width: 42%"></div></div><span>120 万</span></div>
+                  <div class="hero-dashboard-bar-row"><span>近 7 日 Token</span><div class="hero-dashboard-track"><div class="hero-dashboard-fill blue" style="width: 78%"></div></div><span>620 万</span></div>
+                  <div class="hero-dashboard-bar-row"><span>实时刷新</span><div class="hero-dashboard-track"><div class="hero-dashboard-fill amber" style="width: 58%"></div></div><span>开启</span></div>
+                </div>
+              </section>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="hero-inner">
+        <span class="eyebrow">你的专属AI记忆珍藏</span>
+        <h1>OpenRelix™</h1>
+        <p class="hero-copy">OpenRelix 意为开源的个人记忆珍藏：把每天和 AI CLI 一起做过的工作，沉淀成可复用的技能、方法手册、模板、自动化、记忆和可视化复盘，而不是散落在聊天记录里。</p>
+        <div class="hero-actions">
+          <a class="button" href="#tour">查看功能导览</a>
+          <a class="button secondary" href="#install">安装方式</a>
+        </div>
+        <p class="hero-note">v0.1.0 预览版：产品定位不绑定单一 AI host；当前首个公开适配器是 Codex CLI，Claude Code、Gemini CLI 等其他 AI CLI / coding-agent host 在后续适配计划中。本页预览使用脱敏示例面板，不包含真实项目、账号、路径、日志或工作内容。</p>
+      </div>
+    </section>
+
+    <section class="section tight" id="pain">
+      <div class="inner">
+        <div class="section-head">
           <div>
-            <p class="eyebrow">GitHub Pages guide</p>
-            <h1>OpenRelix 使用引导</h1>
-            <p class="lead">面向 AI coding agents / AI CLI 的本地优先个人资产层。先在 macOS 上用 npm 安装，再让已完成的 agent 工作沉淀为复盘、技能、模板、自动化、受限记忆摘要和私有面板。</p>
-            <div class="actions">
-              <a class="button" href="#quick-start">快速安装</a>
-              <a class="button secondary" href="product-showcase.html">查看产品展示</a>
-            </div>
+            <div class="section-kicker">痛点</div>
+            <h2>AI 编程越来越强，但个人经验和记忆仍然很容易流失。</h2>
           </div>
-
-          <aside class="command-panel" aria-label="OpenRelix 安装命令">
-            <div class="command-top">
-              <span>terminal</span>
-              <span class="dots" aria-hidden="true"><span></span><span></span><span></span></span>
-            </div>
-            <div class="command-body">
-              <span class="prompt">$</span>
-              <code class="command">npx openrelix install --profile integrated --enable-learning-refresh</code>
-              <p class="note">需要显式读取 Codex app-server 线程时，在安装命令后追加 <code>--read-codex-app</code>。</p>
-            </div>
-          </aside>
+          <p class="lead">一次很有价值的排障、一次高质量代码审查、一次顺手写出的脚本，如果没有结构化沉淀，过几天就只剩“我好像做过”。</p>
         </div>
-      </section>
-
-      <section class="section" id="quick-start">
-        <div class="section-inner">
-          <div class="section-title">
-            <h2>快速开始</h2>
-            <p class="section-kicker">v0.1 预览版：macOS + Codex CLI 优先支持。</p>
-          </div>
-          <div class="steps">
-            <article class="step">
-              <span class="step-index">1</span>
-              <h3>确认环境</h3>
-              <p>准备 macOS、Node.js 18+、npm / npx、zsh、Python 3.10+，以及可写的 Codex CLI 用户目录。</p>
-            </article>
-            <article class="step">
-              <span class="step-index">2</span>
-              <h3>执行安装</h3>
-              <p>运行上方 npm 命令。安装器会写入用户级配置、安装 repo skill，并按选项注册本地后台任务。</p>
-            </article>
-            <article class="step">
-              <span class="step-index">3</span>
-              <h3>查看面板</h3>
-              <p>完成一次整理后，打开本地生成的 overview / panel，核对复盘、资产、记忆摘要和隐私边界。</p>
-            </article>
-          </div>
+        <div class="grid cols-4">
+          <article class="tile">
+            <span class="chip">聊天碎片</span>
+            <h3>工作成果留在会话里</h3>
+            <p>复盘、规则、排障路径和模板散落在不同窗口，想复用时需要重新翻上下文。</p>
+          </article>
+          <article class="tile">
+            <span class="chip blue">记忆失控</span>
+            <h3>AI host 记忆不可视</h3>
+            <p>AI host 原生记忆很有用，但很难直接比较、盘点和判断哪些记忆真正带来了复用价值。</p>
+          </article>
+          <article class="tile">
+            <span class="chip amber">隐私边界</span>
+            <h3>个人数据不该跟源码混在一起</h3>
+            <p>可复用能力适合开源，但真实日志、复盘、登记册和运行缓存必须留在本地。</p>
+          </article>
+          <article class="tile">
+            <span class="chip rose">复用困难</span>
+            <h3>OpenRelix 个人记忆需要账本</h3>
+            <p>你需要看见哪些方法最常复用、节省了多少时间、哪些经验值得升级成技能，同时不挤占过多上下文。</p>
+          </article>
         </div>
-      </section>
-
-      <section class="section" aria-labelledby="links-title">
-        <div class="section-inner">
-          <div class="section-title">
-            <h2 id="links-title">继续阅读</h2>
-            <p class="section-kicker">公开说明、安装细节和项目实现都保留在仓库中。</p>
-          </div>
-          <div class="link-grid">
-            <a class="link-card" href="product-showcase.html">
-              <strong>产品展示页</strong>
-              <p>查看 OpenRelix 的产品说明、安装区和脱敏面板预览。</p>
-            </a>
-            <a class="link-card" href="https://github.com/openrelix/openrelix#readme">
-              <strong>GitHub README</strong>
-              <p>阅读项目定位、支持范围、安装命令、许可证和商标边界。</p>
-            </a>
-            <a class="link-card" href="https://github.com/openrelix/openrelix/blob/main/docs/open-source-install-and-project-overview.md">
-              <strong>安装说明</strong>
-              <p>了解 v0.1 预览版的安装路径、证据清单和当前限制。</p>
-            </a>
-            <a class="link-card" href="https://github.com/openrelix/openrelix/blob/main/docs/technical-solution.md">
-              <strong>技术方案</strong>
-              <p>查看运行模型、数据流、模块职责和发布边界。</p>
-            </a>
-          </div>
-        </div>
-      </section>
-    </main>
-
-    <footer class="footer">
-      <div class="section-inner">
-        OpenRelix™ keeps reusable work organized locally. User runtime data, raw agent logs, credentials, and private dashboards stay outside the public repository by default.
       </div>
-    </footer>
-  </div>
+    </section>
+
+    <section class="section" id="what">
+      <div class="inner">
+        <div class="section-head">
+          <div>
+            <div class="section-kicker">它是什么</div>
+            <h2>它是 AI CLI 的本地个人资产层，不是另一个云端知识库。</h2>
+          </div>
+          <p class="lead">仓库只放可复用能力；用户自己的运行状态写到独立状态目录。默认开启本地个人记忆，当前 Codex 适配器只把压缩后的有界摘要同步进 host 原生上下文。</p>
+        </div>
+        <div class="compare">
+          <article class="tile">
+            <span class="chip">源码仓库</span>
+            <h3>可开源能力层</h3>
+            <p>安装器、技能、模板、LaunchAgent 模板、自动化脚本和产品文档都能公开审阅。</p>
+          </article>
+          <article class="tile">
+            <span class="chip blue">状态目录</span>
+            <h3>本地个人数据层</h3>
+            <p>复盘、登记册、原始窗口、汇总摘要、报表和运行缓存都保存在用户机器。</p>
+          </article>
+          <article class="tile">
+            <span class="chip amber">上下文策略</span>
+            <h3>上下文轻量可控</h3>
+            <p>默认 integrated：本地记忆入库，轻量摘要进入当前 host 上下文；需要隔离时再显式使用 local-only 或 off。</p>
+          </article>
+          <article class="tile">
+            <span class="chip rose">个人归属</span>
+            <h3>资产永远归个人</h3>
+            <p>方法手册、技能、模板、自动化和记忆账本不绑定单一平台，未来可迁移到 Claude Code、其他 CLI 或团队工作流。</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="memory-system">
+      <div class="inner">
+        <div class="section-head">
+          <div>
+            <div class="section-kicker">记忆系统</div>
+            <h2>先沉淀成本地账本，再把必要摘要交给 AI host。</h2>
+          </div>
+          <p class="lead">OpenRelix 不会把所有聊天都塞回上下文。它先把工作记录留在本机，再按固定节奏整理：平时每 30 分钟做小结，深夜做当天总账；需要时也能手动立刻生成。</p>
+        </div>
+        <div class="workflow memory-flow">
+          <div class="stage"><strong>先把这段工作记下来</strong><span>从 AI CLI 已保存的会话记录里读取刚做过的窗口，标清日期、项目和主题；Codex 应用里的对话只有你开启后才会读。</span></div>
+          <div class="stage"><strong>每 30 分钟做一次小结</strong><span>开启后台学习刷新后，它会每 30 分钟看一眼最近窗口，把新结论、待跟进事项和可复用做法整理进本地记忆和面板。</span></div>
+          <div class="stage"><strong>深夜把一天收成总账</strong><span>晚上 23:00 先整理当天窗口，00:10 再把前一天结果固定下来，生成长期记忆、短期跟进、报告和面板。</span></div>
+          <div class="stage"><strong>着急时手动跑一次</strong><span>不想等后台任务时，直接运行 review 或 refresh，就能马上从当前窗口生成记忆；默认只同步压缩摘要，local-only 时只留本地。</span></div>
+        </div>
+        <div class="grid cols-3">
+          <article class="tile">
+            <span class="chip">默认模式</span>
+            <h3>本地记忆 + 轻量上下文</h3>
+            <p>完整记忆账本留在本机；进入 host 的只是压缩摘要，目标 4.2K、上限 5K token，避免长期上下文膨胀。</p>
+          </article>
+          <article class="tile">
+            <span class="chip blue">可追溯</span>
+            <h3>每条记忆都有来源</h3>
+            <p>记忆会保留来源窗口、日期、项目上下文和隐私边界，方便之后回看为什么沉淀、是否还值得保留。</p>
+          </article>
+          <article class="tile">
+            <span class="chip amber">可升级</span>
+            <h3>重复经验会变成资产</h3>
+            <p>多次复用的排障路径、检查清单或提示词会进入资产候选，后续可以升级为 skill、playbook、template 或 automation。</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="tour">
+      <div class="inner">
+        <div class="section-head">
+          <div>
+            <div class="section-kicker">功能导览</div>
+            <h2>从一天的 AI agent 工作，到可复用资产面板。</h2>
+          </div>
+          <p class="lead">下面的预览是脱敏示例面板：保留真实布局、交互密度和模块结构，内容替换为示例工作区和示例数值。</p>
+        </div>
+
+        <article class="feature">
+          <div>
+            <span class="chip">面板</span>
+            <h3>每天自动把工作变成资产</h3>
+            <p>AI agent 窗口结束后，OpenRelix 把当天的结论、下一步、可复用做法和隐私状态整理进一个本地面板。</p>
+            <ul>
+              <li>今天做了什么、沉淀了什么、还缺什么，一屏能扫完。</li>
+              <li>重复出现的流程会标成技能、模板或自动化候选。</li>
+              <li>只存脱敏摘要和来源索引，个人状态默认留在本机。</li>
+              <li>输出 HTML、Markdown、JSON、CSV，方便本地查看或二次加工。</li>
+            </ul>
+          </div>
+          <figure class="shot daily-panel-shot" aria-label="OpenRelix 每日资产账本脱敏预览">
+            <div class="daily-panel-card">
+              <div class="daily-panel-main">
+                <div class="daily-panel-kicker">每日资产账本</div>
+                <div class="daily-title-row">
+                  <h4>今天哪些工作能复用？</h4>
+                  <span class="daily-date-pill">日期&nbsp;&nbsp;2026/04/27</span>
+                </div>
+                <p class="daily-lead">12 个 agent 窗口已归档：8 条长期记忆、6 条短期跟进、4 个资产升级候选。</p>
+                <ul class="daily-bullets">
+                  <li>长期规则进 OpenRelix 登记册；临时上下文进短期工作记忆，避免混成一锅。</li>
+                  <li>每条结论保留来源窗口和隐私边界，只沉淀方法，不保存原始日志。</li>
+                  <li>同一结果可导出 HTML / Markdown / JSONL，后续迁移到其他 CLI 不重做。</li>
+                </ul>
+                <div class="daily-context-title">相关上下文</div>
+                <div class="daily-chip-row">
+                  <span class="daily-chip">OpenRelix</span>
+                  <span class="daily-chip">AI CLI</span>
+                  <span class="daily-chip">本地隐私边界</span>
+                </div>
+              </div>
+              <aside class="daily-metric-panel">
+                <div class="daily-metric-title">关键指标</div>
+                <div class="daily-metric-grid">
+                  <div class="daily-metric"><span>工作窗口</span><b>12</b></div>
+                  <div class="daily-metric"><span>长期记忆</span><b>8</b></div>
+                  <div class="daily-metric"><span>短期跟进</span><b>6</b></div>
+                  <div class="daily-metric"><span>可升级资产</span><b>4</b></div>
+                </div>
+                <p class="daily-note">看板回答三个问题：今天做了什么、哪些能复用、哪些还要补。</p>
+              </aside>
+            </div>
+          </figure>
+        </article>
+
+        <article class="feature">
+          <div>
+            <span class="chip blue">复盘</span>
+            <h3>立刻分清模型记忆和个人资产账本</h3>
+            <p>左边是会影响下次回答的 host 原生记忆；右边是 OpenRelix 本地账本，记录来源、状态和可升级动作。</p>
+            <ul>
+              <li>稳定偏好和通用方法可以进上下文，临时任务默认留本地。</li>
+              <li>每条 OpenRelix 记忆带来源、分桶和更新时间，方便回溯核对。</li>
+              <li>重复工作可以从候选升级为技能、模板或自动化。</li>
+            </ul>
+          </div>
+          <figure class="shot mock-shot memory-real-shot" aria-label="OpenRelix 记忆分层功能预览">
+            <div class="mock-toolbar"><span>记忆分层</span><span>Host 与 OpenRelix</span></div>
+            <div class="mock-title">
+              <strong>两套记忆，各管一件事</strong>
+              <span>Host 原生记忆影响模型回答；OpenRelix 本地记忆保留来源、状态和升级动作。</span>
+            </div>
+            <div class="memory-layer-grid">
+              <section class="memory-layer-card">
+                <div class="memory-layer-head">
+                  <div>
+                    <span class="memory-layer-kicker">Host 原生记忆</span>
+                    <h4>模型会带着走的规则</h4>
+                  </div>
+                  <span class="memory-layer-count">12 条</span>
+                </div>
+                <div class="memory-entry-list">
+                  <article class="memory-entry">
+                    <strong>回答偏好</strong>
+                    <p>下次遇到配置问题先给准确值；运行态问题先现场验证。</p>
+                    <div class="memory-entry-meta"><span>来源：memory_summary.md</span><span>类型：偏好</span></div>
+                  </article>
+                  <article class="memory-entry">
+                    <strong>操作习惯</strong>
+                    <p>搜索文件先用 rg；编辑默认 apply_patch。</p>
+                    <div class="memory-entry-meta"><span>来源：memory_summary.md</span><span>类型：提示</span></div>
+                  </article>
+                  <article class="memory-entry">
+                    <strong>长期任务地图</strong>
+                    <p>记录常见项目、排障路线和协作偏好，作为模型上下文入口。</p>
+                    <div class="memory-entry-meta"><span>来源：MEMORY.md</span><span>类型：任务组</span></div>
+                  </article>
+                </div>
+              </section>
+              <section class="memory-layer-card is-openrelix">
+                <div class="memory-layer-head">
+                  <div>
+                    <span class="memory-layer-kicker">OpenRelix 个人记忆</span>
+                    <h4>本地可追溯的资产账本</h4>
+                  </div>
+                  <span class="memory-layer-count">14 条</span>
+                </div>
+                <div class="memory-entry-list">
+                  <article class="memory-entry">
+                    <strong>长期资产</strong>
+                    <p>稳定规则、脚本入口、LaunchAgent 等沉淀为可复用方法手册或自动化。</p>
+                    <div class="memory-entry-meta"><span>来源：registry/memory_items.jsonl</span><span>分桶：长期</span></div>
+                  </article>
+                  <article class="memory-entry">
+                    <strong>短期跟进</strong>
+                    <p>近 7 天窗口按项目归类，保留下一步和责任状态，不自动塞进上下文。</p>
+                    <div class="memory-entry-meta"><span>来源：夜间整理</span><span>分桶：任务</span></div>
+                  </article>
+                  <article class="memory-entry">
+                    <strong>升级候选</strong>
+                    <p>低优先级内容先留本地；重复出现后再升级为技能或模板。</p>
+                    <div class="memory-entry-meta"><span>来源：复盘输出</span><span>优先级：低</span><span>更新：今天</span></div>
+                  </article>
+                </div>
+              </section>
+            </div>
+            <div class="memory-footnote">
+              <span>看左边：模型下次怎么响应</span>
+              <span>看右边：资产从哪里来、下一步做什么</span>
+            </div>
+          </figure>
+        </article>
+
+        <article class="feature">
+          <div>
+            <span class="chip amber">记忆模式</span>
+            <h3>上下文只放该放的内容</h3>
+            <p>OpenRelix 会把窗口先按项目和主题收拢，再决定哪些进模型上下文、哪些只留在本地资产账本。</p>
+            <ul>
+              <li>默认 integrated：完整登记册留在状态目录，压缩摘要进入当前 host 原生上下文。</li>
+              <li>`--use-integrated`：显式选择 host 上下文注入模式。</li>
+              <li>`--record-memory-only`：只做本地记录和可视化，不注入模型上下文。</li>
+              <li>压缩策略：同签名记忆跨天归并，优先长期和任务记忆，低优先级只留本地；摘要目标 4.2K、上限 5K token。</li>
+            </ul>
+          </div>
+          <figure class="shot context-distribution-shot" aria-label="OpenRelix 项目上下文分布预览">
+            <div class="context-distribution-head">
+              <div>
+                <span class="context-distribution-kicker">上下文分布</span>
+                <h4>项目 / 上下文分布</h4>
+              </div>
+              <div>
+                <p class="context-distribution-copy">根据最近工作自动归纳，让你一眼知道时间花在哪、哪些主题值得沉淀。</p>
+                <span class="context-period-pill">1 天 / 7 天</span><span class="context-help">?</span>
+              </div>
+            </div>
+            <div class="context-bar-list">
+              <div class="context-bar-item">
+                <div class="context-bar-head">
+                  <div class="context-bar-title">
+                    <strong>跨场景通用</strong>
+                    <span>通用流程</span>
+                  </div>
+                  <b class="context-count">5</b>
+                </div>
+                <div class="context-track"><div class="context-fill" style="width: 100%"></div></div>
+                <div class="context-tags"><span>安装流程</span><span>运行时路径</span><span>LaunchAgent</span></div>
+              </div>
+              <div class="context-bar-item">
+                <div class="context-bar-head">
+                  <div class="context-bar-title">
+                    <strong>OpenRelix</strong>
+                    <span>项目工作区</span>
+                  </div>
+                  <b class="context-count">4</b>
+                </div>
+                <div class="context-track"><div class="context-fill secondary" style="width: 78%"></div></div>
+                <div class="context-tags"><span>产品展示页</span><span>模板文档</span><span>隐私边界</span></div>
+              </div>
+              <div class="context-bar-item">
+                <div class="context-bar-head">
+                  <div class="context-bar-title">
+                    <strong>协作复盘</strong>
+                    <span>复盘跟进</span>
+                  </div>
+                  <b class="context-count">3</b>
+                </div>
+                <div class="context-track"><div class="context-fill tertiary" style="width: 58%"></div></div>
+                <div class="context-tags"><span>代码审查</span><span>记忆候选</span><span>下一步动作</span></div>
+              </div>
+            </div>
+            <div class="context-distribution-foot">
+              <div class="context-insight">
+                <strong>读图方式</strong>
+                <span>条越长，说明这类窗口越集中，越适合抽成固定流程。</span>
+              </div>
+              <div class="context-insight">
+                <strong>下一步</strong>
+                <span>高频主题进入资产候选；低频主题只保留来源索引。</span>
+              </div>
+            </div>
+          </figure>
+        </article>
+
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="inner">
+        <div class="section-head">
+          <div>
+            <div class="section-kicker">流程</div>
+            <h2>流程很短，自动化可控。</h2>
+          </div>
+          <p class="lead">首次使用按快速上手来：先整理最近 7 天，再打开本地面板看结果。它不靠实时 hook 打断工作，而是本地离线采集、按需刷新、定时整理、可视化查看。</p>
+        </div>
+        <div class="workflow">
+          <div class="stage"><strong>采集</strong><span>后台刷新或手动脚本读取当前 host 历史和会话元数据，按日期和窗口归档。</span></div>
+          <div class="stage"><strong>打开</strong><span>补齐最近 7 天后运行 `openrelix open panel`，查看本地账本和同步状态。</span></div>
+          <div class="stage"><strong>分类</strong><span>手动复盘和夜间整理都会区分长期、任务、低优先级记忆，减少长期记忆噪声。</span></div>
+          <div class="stage"><strong>登记</strong><span>把可复用内容记录到 JSONL 登记册，保留类型、范围、复用价值和来源。</span></div>
+          <div class="stage"><strong>可视化</strong><span>后台刷新、夜间任务或手动脚本生成概览、面板和 CSV，让资产是否有用变得可见。</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section install-section" id="install">
+      <div class="inner">
+        <div class="section-head">
+          <div>
+            <div class="section-kicker">安装</div>
+            <h2>安装方式。</h2>
+          </div>
+          <p class="lead">推荐命令会安装 `openrelix`、创建本地资产账本，并开启每 30 分钟的增量学习。只想手动整理时，使用不带自动学习开关的安装命令；需要读取 Codex 应用对话时，再选择带应用读取参数的命令。</p>
+        </div>
+        <div class="install-module" aria-label="安装方式">
+          <article class="install-path featured">
+            <span class="chip">推荐安装</span>
+            <h3>一行命令安装。</h3>
+              <p>已经有 Node.js 18+ 和 Python 3.10+ 的 macOS 用户，直接跑这一行。它会安装 `openrelix` 命令、创建本地资产账本，并开启每 30 分钟的增量学习；后台运行可能消耗 token，需要纯手动模式时去掉自动学习开关。</p>
+              <div class="command-row inline-command" aria-label="npx 安装命令">
+              <code class="command-code">npx openrelix install --profile integrated --enable-learning-refresh</code>
+              <button class="command-copy" type="button" aria-label="复制 npx 安装命令"><span data-copy-label aria-live="polite">复制</span></button>
+            </div>
+            <p class="install-hint">如果你主要用 Codex 应用，也想把应用里的对话纳入整理，安装时用下面这行；默认仍只读 Codex CLI 的本地记录。</p>
+            <div class="command-row inline-command" aria-label="Codex 应用安装命令">
+              <code class="command-code">npx openrelix install --profile integrated --enable-learning-refresh --read-codex-app</code>
+              <button class="command-copy" type="button" aria-label="复制 Codex 应用安装命令"><span data-copy-label aria-live="polite">复制</span></button>
+            </div>
+          </article>
+          <article class="install-path">
+            <span class="chip blue">手动下载</span>
+            <h3>也可以从 GitHub 下载源码。</h3>
+            <p data-zh-html='打开 <a class="text-link" href="https://github.com/openrelix/openrelix" target="_blank" rel="noopener noreferrer">openrelix/openrelix</a>，选择 Code -> Download ZIP；也可以直接点下面的 ZIP 链接。' data-en-html='Open <a class="text-link" href="https://github.com/openrelix/openrelix" target="_blank" rel="noopener noreferrer">openrelix/openrelix</a> and choose Code -> Download ZIP, or use the ZIP link below directly.'>打开 <a class="text-link" href="https://github.com/openrelix/openrelix" target="_blank" rel="noopener noreferrer">openrelix/openrelix</a>，选择 Code -> Download ZIP；也可以直接点下面的 ZIP 链接。</p>
+            <div class="install-actions">
+              <a class="button secondary github-button" href="https://github.com/openrelix/openrelix" target="_blank" rel="noopener noreferrer">打开 GitHub</a>
+              <a class="button secondary" href="https://github.com/openrelix/openrelix/archive/refs/heads/main.zip" target="_blank" rel="noopener noreferrer">下载 ZIP</a>
+            </div>
+            <ol class="install-steps">
+              <li><span class="install-step-index">1</span><span>下载并解压源码。</span></li>
+              <li><span class="install-step-index">2</span><span>进入解压后的仓库目录。</span></li>
+              <li><span class="install-step-index">3</span><span>执行安装脚本。</span></li>
+            </ol>
+            <div class="command-row inline-command" aria-label="GitHub 手动下载与安装命令">
+              <code class="command-code">./install/install.sh --profile integrated --enable-learning-refresh</code>
+              <button class="command-copy" type="button" aria-label="复制安装脚本命令"><span data-copy-label aria-live="polite">复制</span></button>
+            </div>
+            <p class="install-hint">源码安装也一样：只有要读 Codex 应用时，才额外加 `--read-codex-app`。</p>
+            <div class="command-row inline-command" aria-label="源码 Codex 应用安装命令">
+              <code class="command-code">./install/install.sh --profile integrated --enable-learning-refresh --read-codex-app</code>
+              <button class="command-copy" type="button" aria-label="复制源码 Codex 应用安装命令"><span data-copy-label aria-live="polite">复制</span></button>
+            </div>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="tips">
+      <div class="inner">
+        <div class="section-head tips-subhead">
+          <div>
+            <div class="section-kicker">快速上手</div>
+            <h2>安装后运行顺序。</h2>
+          </div>
+          <p class="lead">安装完成后，先执行一次近 7 天整理，把已有 Codex 窗口写入本地账本；如果安装时保留 `--enable-learning-refresh`，后台会每 30 分钟增量刷新；最后打开面板确认结果。</p>
+        </div>
+        <div class="tips">
+          <div class="mode-list" aria-label="快速上手教程">
+            <article class="mode-card">
+              <span class="mode-kicker">第一步</span>
+              <h3>整理最近 7 天</h3>
+              <p>先手动跑一次，把最近 7 天的 Codex CLI 记录整理进 OpenRelix 本地账本和面板。安装时加了 `--read-codex-app` 的话，也会尝试纳入 Codex 应用里的对话。</p>
+              <div class="command-row inline-command">
+                <code class="command-code">openrelix refresh --learn-memory --learn-window-days 7</code>
+                <button class="command-copy" type="button" aria-label="复制学习窗口命令"><span data-copy-label aria-live="polite">复制</span></button>
+              </div>
+              <div class="step-visual" aria-hidden="true">
+                <div class="visual-memory-flow">
+                  <div class="visual-memory-card"><strong>7 天窗口</strong><span class="visual-line"></span><span class="visual-line"></span></div>
+                  <div class="visual-arrow">→</div>
+                  <div class="visual-memory-card"><strong>OpenRelix 本地记忆</strong><span class="visual-line"></span><span class="visual-line"></span></div>
+                  <div class="visual-arrow">→</div>
+                  <div class="visual-memory-card"><strong>本地面板</strong><span class="visual-line"></span><span class="visual-line"></span></div>
+                </div>
+              </div>
+            </article>
+            <article class="mode-card">
+              <span class="mode-kicker">第二步</span>
+              <h3>开启 30 分钟自动学习（推荐）</h3>
+              <p>如果安装命令已经带了 `--enable-learning-refresh`，这一步不用重跑。没带的话，运行下面这行开启后台自动学习；它会每 30 分钟调用 Codex 提炼记忆，可能消耗 token 和后台运行时间，不想后台调模型就跳过。</p>
+              <div class="command-row inline-command">
+                <code class="command-code">npx openrelix install --profile integrated --enable-learning-refresh</code>
+                <button class="command-copy" type="button" aria-label="复制自动学习安装命令"><span data-copy-label aria-live="polite">复制</span></button>
+              </div>
+              <div class="step-visual" aria-hidden="true">
+                <div class="visual-memory-flow">
+                  <div class="visual-memory-card"><strong>30 分钟</strong><span class="visual-line"></span><span class="visual-line"></span></div>
+                  <div class="visual-arrow">→</div>
+                  <div class="visual-memory-card"><strong>Codex 学习</strong><span class="visual-line"></span><span class="visual-line"></span></div>
+                  <div class="visual-arrow">→</div>
+                  <div class="visual-memory-card"><strong>OpenRelix 本地记忆</strong><span class="visual-line"></span><span class="visual-line"></span></div>
+                </div>
+              </div>
+            </article>
+            <article class="mode-card">
+              <span class="mode-kicker">第三步</span>
+              <h3>再打开本地面板</h3>
+              <p>整理完成后打开面板，看今天整理了什么、长期和短期记忆有哪些、同步是否正常。</p>
+              <div class="command-row inline-command">
+                <code class="command-code">openrelix open panel</code>
+                <button class="command-copy" type="button" aria-label="复制打开面板命令"><span data-copy-label aria-live="polite">复制</span></button>
+              </div>
+              <div class="step-visual visual-local-panel" aria-hidden="true">
+                <div class="visual-local-shell">
+                  <div class="visual-local-nav">
+                    <span>概览</span>
+                    <span>长期</span>
+                    <span>短期</span>
+                    <span>低优先</span>
+                  </div>
+                  <div class="visual-local-main">
+                    <div class="visual-local-head">
+                      <strong>OpenRelix 概览</strong>
+                      <span class="visual-local-status">同步正常</span>
+                    </div>
+                    <div class="visual-local-review">
+                      <span>今日 Review</span>
+                      <p>开源发布、面板可视化、host 记忆分层。</p>
+                    </div>
+                    <div class="visual-local-metrics">
+                      <div class="visual-local-metric"><span>窗口</span><b>43</b></div>
+                      <div class="visual-local-metric"><span>长期</span><b>36</b></div>
+                      <div class="visual-local-metric"><span>短期</span><b>40</b></div>
+                      <div class="visual-local-metric"><span>低优先</span><b>18</b></div>
+                    </div>
+                    <div class="visual-local-sync">
+                      <span>Host context 预算 ≤ 5K</span>
+                      <strong>受控</strong>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </article>
+            <article class="mode-card is-wide">
+              <span class="mode-kicker">第四步（可选）</span>
+              <h3>查看或切换 OpenRelix 记忆模式</h3>
+              <p>`integrated` 同时是推荐安装档位和默认记忆模式；使用 `--profile integrated` 安装后，后续只在需要严格隔离或只做可视化时才用 `openrelix mode` 切换。</p>
+              <div class="mode-options">
+                <div class="mode-option">
+                  <strong>OpenRelix 记忆全开模式（默认）</strong>
+                  <span>生成 OpenRelix 本地记忆文件和资产面板；完整 registry 留在 state root，压缩摘要注入当前 host 上下文。</span>
+                  <div class="command-row inline-command">
+                    <code class="command-code">openrelix mode integrated</code>
+                    <button class="command-copy" type="button" aria-label="复制 OpenRelix 全开模式命令"><span data-copy-label aria-live="polite">复制</span></button>
+                  </div>
+                </div>
+                <div class="mode-option">
+                  <strong>OpenRelix 记忆本地存储模式</strong>
+                  <span>仅生成和存储 OpenRelix 本地记忆与面板，不做上下文注入。</span>
+                  <div class="command-row inline-command">
+                    <code class="command-code">openrelix mode local-only</code>
+                    <button class="command-copy" type="button" aria-label="复制 OpenRelix 本地存储模式命令"><span data-copy-label aria-live="polite">复制</span></button>
+                  </div>
+                </div>
+                <div class="mode-option">
+                  <strong>禁用 OpenRelix 记忆模式</strong>
+                  <span>不生成 OpenRelix 记忆文件，不写 OpenRelix 本地 memory registry；本项目仅做当前 host 的资产可视化。</span>
+                  <div class="command-row inline-command">
+                    <code class="command-code">openrelix mode off</code>
+                    <button class="command-copy" type="button" aria-label="复制禁用 OpenRelix 记忆模式命令"><span data-copy-label aria-live="polite">复制</span></button>
+                  </div>
+                </div>
+              </div>
+              <div class="step-visual" aria-hidden="true">
+                <div class="visual-mode-grid">
+                  <div class="visual-mode-chip"><strong>全开</strong><span>本地记忆 + 上下文注入</span></div>
+                  <div class="visual-mode-chip"><strong>本地存储</strong><span>只写本地，不注入</span></div>
+                  <div class="visual-mode-chip"><strong>禁用</strong><span>只做资产可视化</span></div>
+                </div>
+              </div>
+            </article>
+            <article class="mode-card is-terminal">
+              <span class="mode-kicker">第五步（可选）</span>
+              <h3>终端状态速览</h3>
+              <p>需要在终端快速看核心指标时使用。</p>
+              <div class="command-row inline-command">
+                <code class="command-code">openrelix core</code>
+                <button class="command-copy" type="button" aria-label="复制核心命令"><span data-copy-label aria-live="polite">复制</span></button>
+              </div>
+              <div class="step-visual visual-terminal" aria-hidden="true">
+                <div class="visual-terminal-chrome">
+                  <div class="visual-terminal-dots">
+                    <span class="visual-terminal-dot"></span>
+                    <span class="visual-terminal-dot"></span>
+                    <span class="visual-terminal-dot"></span>
+                  </div>
+                  <span class="visual-terminal-title">openrelix core</span>
+                </div>
+                <div class="visual-terminal-prompt"><span>$</span><code>openrelix core</code></div>
+                <div class="visual-terminal-head"><strong>核心数据</strong><span>快照时间 2026-04-27 23:49:05</span></div>
+                <div class="visual-terminal-table">
+                  <div class="visual-terminal-data-row"><b>资产总数</b><strong>6</strong><span>资产注册表中的稳定条目</span></div>
+                  <div class="visual-terminal-data-row"><b>活跃资产</b><strong>6</strong><span>当前仍在使用的条目</span></div>
+                  <div class="visual-terminal-data-row"><b>任务复盘</b><strong>7</strong><span>本地保存的脱敏复盘</span></div>
+                  <div class="visual-terminal-data-row"><b>复用记录</b><strong>6</strong><span>被记录下来的复用时刻</span></div>
+                  <div class="visual-terminal-data-row"><b>估算节省</b><strong>94 分钟</strong><span>原始记录分钟数 30</span></div>
+                  <div class="visual-terminal-data-row"><b>仓库场景资产</b><strong>1</strong><span>绑定某个仓库或场景的条目</span></div>
+                  <div class="visual-terminal-data-row"><b>今日 Token</b><strong>17.7 亿</strong><span>04-27 总消耗</span></div>
+                  <div class="visual-terminal-data-row"><b>近 7 日 Token</b><strong>38.2 亿</strong><span>最近 7 天累计消耗</span></div>
+                  <div class="visual-terminal-data-row"><b>个人资产记忆</b><strong>36 / 38 / 17</strong><span>长期 / 短期 / 低优先</span></div>
+                  <div class="visual-terminal-data-row"><b>每日窗口数</b><strong>43</strong><span>2026-04-27 捕获的窗口数</span></div>
+                </div>
+                <div class="visual-terminal-review">
+                  <div class="visual-terminal-review-title"><strong>今日 Review</strong><span>2026-04-27</span></div>
+                  <p>今日复盘：开源发布、面板可视化、host 记忆分层；示例工作区完成发布检查、模板整理与稳定性分析。</p>
+                  <span class="visual-terminal-review-meta">窗口 41 | 长期记忆 12 | 短期记忆 15 | 低优先记忆 5</span>
+                </div>
+              </div>
+            </article>
+          </div>
+          <div class="grid">
+            <div class="callout">
+              <h3>默认轻量注入，不塞原始窗口。</h3>
+              <p>默认上下文模式只写压缩摘要：合并重复记忆，优先长期和任务记忆，低优先只留本地，目标 4.2K、上限 5K token。</p>
+            </div>
+            <article class="tile">
+              <h3>把“反复出现的做法”升级成技能</h3>
+              <p>当同类复盘、排障或发布动作重复出现时，把步骤固化到 `.agents/skills/`，比继续写长提示词更稳定。</p>
+            </article>
+            <article class="tile">
+              <h3>把“固定格式输出”升级成模板</h3>
+              <p>周报、复盘、代码审查报告、发布检查表这类稳定产物，适合放进 `templates/`。</p>
+            </article>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="roadmap">
+      <div class="inner">
+        <div class="section-head">
+          <div>
+            <div class="section-kicker">更新计划</div>
+            <h2>按 AI host 适配和个人记忆系统两条主线推进。</h2>
+          </div>
+          <p class="lead">更新计划以 2026/04/28 的 v0.1.0 公开预览版为起点：先把 Codex 体验做深，再扩展到 Claude 生态，最后收口成正式版个人记忆系统。</p>
+        </div>
+        <div class="roadmap-timeline" aria-label="更新计划时间线">
+          <article class="roadmap-item is-released">
+            <div class="roadmap-marker" aria-hidden="true"></div>
+            <div class="roadmap-content">
+              <span class="chip">v0.1.0 已发布</span>
+              <span class="roadmap-status">已发布 · 2026/04/28</span>
+              <h3>预览版闭环发布</h3>
+              <p>跑通本地优先个人 AI 资产系统的最小完整闭环：一键安装、Codex CLI 工作窗口采集、任务复盘、资产登记、记忆分层、面板可视化和 macOS 后台自动化。</p>
+            </div>
+          </article>
+          <article class="roadmap-item">
+            <div class="roadmap-marker" aria-hidden="true"></div>
+            <div class="roadmap-content">
+              <span class="chip blue">v0.2.0</span>
+              <span class="roadmap-status">预计两日内 · 约 2026/04/30 前</span>
+              <h3>深度适配 Codex 软件</h3>
+              <p>把 Codex CLI 与 Codex 软件的活动来源、线程读取、上下文同步和异常回退做得更稳定，同时优化记忆去重、压缩预算、短期/长期分层和面板呈现。</p>
+            </div>
+          </article>
+          <article class="roadmap-item">
+            <div class="roadmap-marker" aria-hidden="true"></div>
+            <div class="roadmap-content">
+              <span class="chip amber">v0.3.0</span>
+              <span class="roadmap-status">预计一周内 · 约 2026/05/05 前</span>
+              <h3>适配 Claude Code CLI + Claude 软件</h3>
+              <p>新增 Claude Code CLI 与 Claude 软件 adapter，把 history、session、工作流和 memory/context 表面映射到同一套本地资产模型，验证跨 host 迁移路径。</p>
+            </div>
+          </article>
+          <article class="roadmap-item">
+            <div class="roadmap-marker" aria-hidden="true"></div>
+            <div class="roadmap-content">
+              <span class="chip rose">v1.0.0</span>
+              <span class="roadmap-status">预计 1-2 周 · 约 2026/05/05 - 2026/05/12</span>
+              <h3>正式版：深度改造个人记忆系统</h3>
+              <p>围绕个人记忆系统做正式版收口：更清晰的长期/短期/低优先分层、更强的资产升级规则、更稳定的跨 host 记忆同步和正式发布文档。</p>
+            </div>
+          </article>
+        </div>
+        <p class="roadmap-note">以上时间是基于 2026/04/28 发布节奏的预估，具体范围会随 host 适配验证、隐私边界检查和安装稳定性测试微调。</p>
+      </div>
+    </section>
+
+    <section class="section" id="open">
+      <div class="inner">
+        <div class="section-head">
+          <div>
+            <div class="section-kicker">开源边界</div>
+            <h2>开源的是能力层，不是你的个人数据。</h2>
+          </div>
+          <p class="lead">项目的公开可信度来自边界清晰：源码在 GitHub 公开，用户状态默认在仓库外，公开展示只使用示例数据；如果有帮助，欢迎点星支持。</p>
+        </div>
+        <div class="grid cols-4">
+          <article class="tile">
+            <span class="chip">可以公开</span>
+            <h3>安装器 / 技能 / 模板</h3>
+            <p>这些是可复用逻辑，适合随 npm 包和 GitHub 仓库一起发布。</p>
+          </article>
+          <article class="tile">
+            <span class="chip blue">v0.1.0 预览版</span>
+            <h3>AI CLI 优先</h3>
+            <p>当前首个公开适配器是 Codex CLI；Codex app-server 是 opt-in 预览读取，Claude Code、Gemini CLI 等其他 AI CLI / coding-agent host 是后续适配目标。</p>
+          </article>
+          <article class="tile">
+            <span class="chip amber">留在本地</span>
+            <h3>注册表 / 复盘 / 原始库 / 报表</h3>
+            <p>这些包含个人工作轨迹，默认写入状态目录，不进入 npm 包和源码仓库。</p>
+          </article>
+          <article class="tile">
+            <span class="chip rose">禁止沉淀</span>
+            <h3>密钥 / Token / Cookie / 原始日志</h3>
+            <p>密钥、账号、Cookie、原始内部日志和用户数据不进入资产库，也不进入公开截图。</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section tight" id="license">
+      <div class="inner">
+        <div class="section-head">
+          <div>
+            <div class="section-kicker">授权</div>
+            <h2>标准 MIT 授权，个人免费使用。</h2>
+          </div>
+          <p
+            class="lead"
+            data-zh-html='项目由 <a class="text-link" href="https://www.npmjs.com/~kk_kais" target="_blank" rel="noopener noreferrer">kk_kais</a> 以 MIT 授权发布。授权文本放在仓库根目录 `LICENSE`，适合随源码和 npm 包一起分发。'
+            data-en-html='Published under the MIT License by <a class="text-link" href="https://www.npmjs.com/~kk_kais" target="_blank" rel="noopener noreferrer">kk_kais</a>. The license text lives in the root `LICENSE` file and is suitable for source and npm distribution.'
+          >项目由 <a class="text-link" href="https://www.npmjs.com/~kk_kais" target="_blank" rel="noopener noreferrer">kk_kais</a> 以 MIT 授权发布。授权文本放在仓库根目录 `LICENSE`，适合随源码和 npm 包一起分发。</p>
+        </div>
+        <div class="grid cols-3">
+          <article class="tile">
+            <span class="chip">MIT 授权</span>
+            <h3>免费使用和修改</h3>
+            <p>允许个人免费使用、复制、修改、合并、发布、分发和再授权本项目。</p>
+          </article>
+          <article class="tile">
+            <span class="chip blue">版权声明</span>
+            <h3>保留署名</h3>
+            <p>分发本项目或主要部分时，需要保留版权声明、作者署名和完整授权文本。</p>
+          </article>
+          <article class="tile">
+            <span class="chip amber">无担保</span>
+            <h3>按现状提供</h3>
+            <p>软件不附带明示或暗示担保，使用、修改和分发时需要自行承担相应风险。</p>
+          </article>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="inner">
+      <div>
+        <strong>OpenRelix™</strong>
+        <div class="small">面向 AI coding agents / AI CLI 的本地优先个人 AI 资产系统。当前 v0.1.0 预览版首个适配器是 Codex CLI；非官方项目，与 OpenAI 无官方关联。</div>
+        <div
+          class="small"
+          data-zh-html='MIT 授权。版权 (c) 2026 <a class="text-link" href="https://www.npmjs.com/~kk_kais" target="_blank" rel="noopener noreferrer">kk_kais</a>。'
+          data-en-html='MIT License. Copyright (c) 2026 <a class="text-link" href="https://www.npmjs.com/~kk_kais" target="_blank" rel="noopener noreferrer">kk_kais</a>.'
+        >MIT 授权。版权 (c) 2026 <a class="text-link" href="https://www.npmjs.com/~kk_kais" target="_blank" rel="noopener noreferrer">kk_kais</a>。</div>
+        <div class="small" data-zh-html='GitHub 项目页：<a class="text-link" href="https://github.com/openrelix/openrelix" target="_blank" rel="noopener noreferrer">openrelix/openrelix</a>，欢迎点星支持。' data-en-html='GitHub project: <a class="text-link" href="https://github.com/openrelix/openrelix" target="_blank" rel="noopener noreferrer">openrelix/openrelix</a>. Stars are welcome.'>GitHub 项目页：<a class="text-link" href="https://github.com/openrelix/openrelix" target="_blank" rel="noopener noreferrer">openrelix/openrelix</a>，欢迎点星支持。</div>
+      </div>
+      <div class="small">本页产品预览使用脱敏示例数据。</div>
+    </div>
+  </footer>
+  <script>
+    (() => {
+      let translations;
+      function getTranslations() {
+        if (translations) {
+          return translations;
+        }
+        translations = {
+        "痛点": "Pain Points",
+        "产品": "Product",
+        "更新计划": "Update Plan",
+        "记忆系统": "Memory System",
+        "导览": "Tour",
+        "安装": "Install",
+        "快速上手": "Quick Start",
+        "开源边界": "Open Boundary",
+        "授权": "License",
+        "它是什么": "What It Is",
+        "功能导览": "Product Tour",
+        "流程": "Flow",
+        "系统": "System",
+        "浅色": "Light",
+        "深色": "Dark",
+        "仅本地": "Local only",
+        "你的专属AI记忆珍藏": "Your personal AI memory keepsake",
+        "OpenRelix 意为开源的个人记忆珍藏：把每天和 AI CLI 一起做过的工作，沉淀成可复用的技能、方法手册、模板、自动化、记忆和可视化复盘，而不是散落在聊天记录里。": "OpenRelix means an open-source personal memory keepsake: it turns daily work with AI CLIs into reusable skills, playbooks, templates, automations, memories, and visual reviews instead of leaving it scattered across chat history.",
+        "查看功能导览": "View Product Tour",
+        "安装方式": "Install Options",
+        "复制安装命令": "Copy Install Commands",
+        "GitHub 点星支持": "Star on GitHub",
+        "v0.1.0 预览版：产品定位不绑定单一 AI host；当前首个公开适配器是 Codex CLI，Claude Code、Gemini CLI 等其他 AI CLI / coding-agent host 在后续适配计划中。本页预览使用脱敏示例面板，不包含真实项目、账号、路径、日志或工作内容。": "v0.1.0 preview: the product is not tied to one AI host; the first public adapter is Codex CLI, with Claude Code, Gemini CLI, and other AI CLI / coding-agent hosts on the adapter roadmap. This page uses sanitized sample panels and contains no real projects, accounts, paths, logs, or work content.",
+        "AI 编程越来越强，但个人经验和记忆仍然很容易流失。": "AI coding keeps getting stronger, but personal know-how still disappears easily.",
+        "一次很有价值的排障、一次高质量代码审查、一次顺手写出的脚本，如果没有结构化沉淀，过几天就只剩“我好像做过”。": "A useful debug session, a good code review, or a quick script is hard to reuse a few days later unless it is captured in a structured way.",
+        "聊天碎片": "Chat fragments",
+        "工作成果留在会话里": "Work stays inside sessions",
+        "复盘、规则、排障路径和模板散落在不同窗口，想复用时需要重新翻上下文。": "Reviews, rules, debugging paths, and templates are scattered across windows, so reuse means digging through context again.",
+        "记忆失控": "Memory sprawl",
+        "AI host 记忆不可视": "AI host memory is not visible enough",
+        "AI host 原生记忆很有用，但很难直接比较、盘点和判断哪些记忆真正带来了复用价值。": "AI host native memory is useful, but it is hard to compare, audit, and judge which memories actually create reuse value.",
+        "隐私边界": "Privacy boundary",
+        "个人数据不该跟源码混在一起": "Personal data should not live with source code",
+        "可复用能力适合开源，但真实日志、复盘、登记册和运行缓存必须留在本地。": "Reusable capabilities can be open sourced, while real logs, reviews, registries, and runtime caches must stay local.",
+        "复用困难": "Hard to reuse",
+        "OpenRelix 个人记忆需要账本": "OpenRelix memory needs a ledger",
+        "你需要看见哪些方法最常复用、节省了多少时间、哪些经验值得升级成技能，同时不挤占过多上下文。": "You need to see which methods are reused, how much time they save, and what should become a skill without overloading model context.",
+        "它是 AI CLI 的本地个人资产层，不是另一个云端知识库。": "It is a local personal asset layer for AI CLIs, not another cloud knowledge base.",
+        "仓库只放可复用能力；用户自己的运行状态写到独立状态目录。默认开启本地个人记忆，当前 Codex 适配器只把压缩后的有界摘要同步进 host 原生上下文。": "The repo stores reusable capabilities; user runtime state goes to an external state root. Local personal memory is on by default, and the current Codex adapter syncs only a compressed bounded summary into host-native context.",
+        "源码仓库": "Source repo",
+        "可开源能力层": "Open-source capability layer",
+        "安装器、技能、模板、LaunchAgent 模板、自动化脚本和产品文档都能公开审阅。": "Installers, skills, templates, LaunchAgent templates, automation scripts, and product docs can be publicly reviewed.",
+        "状态目录": "State root",
+        "本地个人数据层": "Local personal data layer",
+        "复盘、登记册、原始窗口、汇总摘要、报表和运行缓存都保存在用户机器。": "Reviews, registries, raw windows, consolidated summaries, reports, and runtime caches stay on the user's machine.",
+        "上下文策略": "Context policy",
+        "上下文轻量可控": "Context stays light and controlled",
+        "默认 integrated：本地记忆入库，轻量摘要进入当前 host 上下文；需要隔离时再显式使用 local-only 或 off。": "Default is integrated: local memory is recorded, a lightweight summary enters the current host context, and local-only or off are explicit isolation choices.",
+        "个人归属": "Ownership",
+        "资产永远归个人": "Assets remain personal",
+        "方法手册、技能、模板、自动化和记忆账本不绑定单一平台，未来可迁移到 Claude Code、其他 CLI 或团队工作流。": "Playbooks, skills, templates, automations, and the memory ledger are not tied to one platform and can move to Claude Code, other CLIs, or team workflows later.",
+        "按 AI host 适配和个人记忆系统两条主线推进。": "Advance along two tracks: AI host adapters and the personal memory system.",
+        "更新计划以 2026/04/28 的 v0.1.0 公开预览版为起点：先把 Codex 体验做深，再扩展到 Claude 生态，最后收口成正式版个人记忆系统。": "The update plan starts from the v0.1.0 public preview on 2026/04/28: deepen the Codex experience first, expand into the Claude ecosystem next, then finish the official personal memory system.",
+        "v0.1.0 已发布": "v0.1.0 Released",
+        "已发布 · 2026/04/28": "Released · 2026/04/28",
+        "预览版闭环发布": "Preview Loop Released",
+        "跑通本地优先个人 AI 资产系统的最小完整闭环：一键安装、Codex CLI 工作窗口采集、任务复盘、资产登记、记忆分层、面板可视化和 macOS 后台自动化。": "Delivered the smallest complete loop for a local-first personal AI asset system: one-command install, Codex CLI work-window collection, task reviews, asset registry, memory layering, dashboard visualization, and macOS background automation.",
+        "预计两日内 · 约 2026/04/30 前": "Expected within two days · around 2026/04/30",
+        "深度适配 Codex 软件": "Deep Codex App Adaptation",
+        "把 Codex CLI 与 Codex 软件的活动来源、线程读取、上下文同步和异常回退做得更稳定，同时优化记忆去重、压缩预算、短期/长期分层和面板呈现。": "Make Codex CLI and the Codex app more stable across activity sources, thread reading, context sync, and fallback behavior, while improving memory deduplication, compression budgets, short/long-term layering, and panel presentation.",
+        "预计一周内 · 约 2026/05/05 前": "Expected within one week · around 2026/05/05",
+        "适配 Claude Code CLI + Claude 软件": "Adapt Claude Code CLI + Claude App",
+        "新增 Claude Code CLI 与 Claude 软件 adapter，把 history、session、工作流和 memory/context 表面映射到同一套本地资产模型，验证跨 host 迁移路径。": "Add Claude Code CLI and Claude app adapters, mapping history, sessions, workflows, and memory/context surfaces into the same local asset model to validate cross-host migration.",
+        "预计 1-2 周 · 约 2026/05/05 - 2026/05/12": "Expected in 1-2 weeks · around 2026/05/05 - 2026/05/12",
+        "正式版：深度改造个人记忆系统": "Official Release: Deep Personal Memory System Upgrade",
+        "围绕个人记忆系统做正式版收口：更清晰的长期/短期/低优先分层、更强的资产升级规则、更稳定的跨 host 记忆同步和正式发布文档。": "Finalize the official release around the personal memory system: clearer long-term / short-term / low-priority layers, stronger asset promotion rules, more stable cross-host memory sync, and official release docs.",
+        "以上时间是基于 2026/04/28 发布节奏的预估，具体范围会随 host 适配验证、隐私边界检查和安装稳定性测试微调。": "These dates are estimates based on the 2026/04/28 release cadence; scope may adjust after host-adapter validation, privacy-boundary checks, and install stability testing.",
+        "先沉淀成本地账本，再把必要摘要交给 AI host。": "First capture a local ledger, then hand only the necessary summary to the AI host.",
+        "OpenRelix 不会把所有聊天都塞回上下文。它先把工作记录留在本机，再按固定节奏整理：平时每 30 分钟做小结，深夜做当天总账；需要时也能手动立刻生成。": "OpenRelix does not push every chat back into context. It keeps the work record on your machine first, then organizes it on a steady rhythm: short summaries every 30 minutes, a daily ledger late at night, and manual generation when you need it now.",
+        "先把这段工作记下来": "First, Save This Work Session",
+        "从 AI CLI 已保存的会话记录里读取刚做过的窗口，标清日期、项目和主题；Codex 应用里的对话只有你开启后才会读。": "It reads the recent windows from saved AI CLI session records, labels the date, project, and topic, and only reads Codex app conversations after you turn that source on.",
+        "每 30 分钟做一次小结": "Summarize Every 30 Minutes",
+        "开启后台学习刷新后，它会每 30 分钟看一眼最近窗口，把新结论、待跟进事项和可复用做法整理进本地记忆和面板。": "After background learning refresh is enabled, it checks recent windows every 30 minutes and organizes new conclusions, follow-ups, and reusable practices into local memory and the panel.",
+        "深夜把一天收成总账": "Turn The Day Into A Ledger Late At Night",
+        "晚上 23:00 先整理当天窗口，00:10 再把前一天结果固定下来，生成长期记忆、短期跟进、报告和面板。": "At 23:00 it organizes the current day's windows; at 00:10 it finalizes the previous day into long-term memories, short-term follow-ups, reports, and panels.",
+        "着急时手动跑一次": "Run It Manually When You Need It",
+        "不想等后台任务时，直接运行 review 或 refresh，就能马上从当前窗口生成记忆；默认只同步压缩摘要，local-only 时只留本地。": "When you do not want to wait for the background job, run review or refresh to generate memory from the current windows right away; by default only the compressed summary syncs, and local-only keeps it on the machine.",
+        "默认模式": "Default Mode",
+        "本地记忆 + 轻量上下文": "Local memory + light context",
+        "完整记忆账本留在本机；进入 host 的只是压缩摘要，目标 4.2K、上限 5K token，避免长期上下文膨胀。": "The full memory ledger stays on the machine; the host receives only a compressed summary with a 4.2K target and 5K token cap to avoid long-term context bloat.",
+        "可追溯": "Traceable",
+        "每条记忆都有来源": "Every Memory Has A Source",
+        "记忆会保留来源窗口、日期、项目上下文和隐私边界，方便之后回看为什么沉淀、是否还值得保留。": "Memory keeps the source window, date, project context, and privacy boundary, making it easier to review why it was captured and whether it still deserves to stay.",
+        "可升级": "Upgradeable",
+        "重复经验会变成资产": "Repeated Experience Becomes Assets",
+        "多次复用的排障路径、检查清单或提示词会进入资产候选，后续可以升级为 skill、playbook、template 或 automation。": "Repeated debugging paths, checklists, or prompts become asset candidates that can later be upgraded into skills, playbooks, templates, or automations.",
+        "从一天的 AI agent 工作，到可复用资产面板。": "From one day of AI agent work to a reusable asset panel.",
+        "下面的预览是脱敏示例面板：保留真实布局、交互密度和模块结构，内容替换为示例工作区和示例数值。": "The previews below use sanitized sample panels: the layout, density, and module structure are retained, while content is sample workspace data.",
+        "OpenRelix 工作台": "OpenRelix Workspace",
+        "每日摘要": "Daily Summary",
+        "每日整理结果": "Daily Synthesis",
+        "日期\u00a0\u00a02026/04/27": "Date  2026/04/27",
+        "今天主要整理了 OpenRelix 的发布准备、隐私边界、记忆模式和本地面板展示。": "Today focused on OpenRelix release preparation, privacy boundaries, memory modes, and the local panel presentation.",
+        "Host 原生记忆用于模型上下文，OpenRelix 个人记忆用于本地资产账本，两者分层展示。": "Host-native memory serves model context, while OpenRelix personal memory serves the local asset ledger; the two are shown as separate layers.",
+        "默认 integrated：长期可复用内容写入本地 registry，并用 4.2K target / 5K max 的摘要进入当前 host native context。": "Default integrated: long-term reusable content is written to the local registry and summarized into the current host-native context with a 4.2K target / 5K max budget.",
+        "资产使用 Markdown、JSONL 和可视化 panel 保存，未来可迁移到 Claude Code 或其他 CLI。": "Assets are saved as Markdown, JSONL, and visual panels, and can later move to Claude Code or other CLIs.",
+        "相关上下文": "Related Context",
+        "本地隐私边界": "Local Privacy Boundary",
+        "OpenRelix 长期记忆": "OpenRelix Long-term Memory",
+        "OpenRelix 短期记忆": "OpenRelix Short-term Memory",
+        "这些数字是脱敏示例，用来展示面板如何可视化个人 AI 资产。": "These numbers are sanitized samples showing how the panel visualizes personal AI assets.",
+        "今天整理了 12 个窗口": "Organized 12 windows today",
+        "发布检查、模板整理、本地自动化脚本与记忆候选已归类。": "Release checks, template cleanup, local automation scripts, and memory candidates are grouped.",
+        "Token 信号": "Token Signals",
+        "关键指标": "Key Metrics",
+        "Token 速览": "Token Overview",
+        "近 7 天中 5 天有记录": "Records found on 5 of the last 7 days",
+        "今日 Token": "Today Tokens",
+        "近 7 日 Token": "Last 7 Days Tokens",
+        "实时刷新": "Live Refresh",
+        "120 万": "1.2M",
+        "620 万": "6.2M",
+        "开启": "On",
+        "每天自动把工作变成资产": "Turn daily work into assets automatically",
+        "面板": "Dashboard",
+        "AI agent 窗口结束后，OpenRelix 把当天的结论、下一步、可复用做法和隐私状态整理进一个本地面板。": "After AI agent windows finish, OpenRelix organizes conclusions, next steps, reusable practices, and privacy status into one local panel.",
+        "今天做了什么、沉淀了什么、还缺什么，一屏能扫完。": "See what happened today, what was captured, and what is still missing on one screen.",
+        "重复出现的流程会标成技能、模板或自动化候选。": "Repeated workflows are marked as skill, template, or automation candidates.",
+        "只存脱敏摘要和来源索引，个人状态默认留在本机。": "Only sanitized summaries and source indexes are stored; personal state stays on the machine by default.",
+        "每日资产账本": "Daily Asset Ledger",
+        "今天哪些工作能复用？": "Which work can be reused today?",
+        "日期 2026/04/27": "Date 2026/04/27",
+        "12 个 agent 窗口已归档：8 条长期记忆、6 条短期跟进、4 个资产升级候选。": "12 agent windows archived: 8 long-term memories, 6 short-term follow-ups, and 4 asset upgrade candidates.",
+        "长期规则进 OpenRelix 登记册；临时上下文进短期工作记忆，避免混成一锅。": "Long-term rules go into the OpenRelix registry; temporary context stays in short-term work memory.",
+        "每条结论保留来源窗口和隐私边界，只沉淀方法，不保存原始日志。": "Each conclusion keeps its source window and privacy boundary; methods are captured, raw logs are not.",
+        "同一结果可导出 HTML / Markdown / JSONL，后续迁移到其他 CLI 不重做。": "The same result exports to HTML, Markdown, and JSONL, so later CLI migration does not start from scratch.",
+        "工作窗口": "Work Windows",
+        "短期跟进": "Short-term Follow-ups",
+        "可升级资产": "Upgradable Assets",
+        "看板回答三个问题：今天做了什么、哪些能复用、哪些还要补。": "The board answers three questions: what happened today, what can be reused, and what still needs work.",
+        "一眼看清资产健康度": "See asset health at a glance",
+        "概览面板把最近的工作窗口、可复用资产、记忆候选、Token 轻量化信号和时间节省估算放到同一个本地 HTML 里。": "The overview panel brings recent windows, reusable assets, memory candidates, lightweight token signals, and estimated time savings into one local HTML file.",
+	        "按项目上下文聚合，不依赖硬编码项目名。": "Groups by project context without hard-coded project names.",
+	        "同一条记忆跨天出现时会归并统计。": "Merges the same memory across days.",
+	        "每天自动总结你的辛勤劳动。": "Automatically summarizes your hard work every day.",
+	        "输出 HTML、Markdown、JSON、CSV，方便本地查看或二次加工。": "Outputs HTML, Markdown, JSON, and CSV for local viewing or further processing.",
+        "OpenRelix 概览": "OpenRelix Overview",
+        "最近整理、核心指标、窗口和记忆明细在本地聚合。": "Recent synthesis, core metrics, windows, and memory details are aggregated locally.",
+        "窗口": "Windows",
+        "长期记忆": "Long-term Memory",
+        "短期记忆": "Short-term Memory",
+        "待升级资产": "Asset Candidates",
+        "发布检查、模板整理、本地自动化": "Release checks, template cleanup, local automation",
+        "按项目和上下文归类": "Grouped by project and context",
+        "同时看见 host 记忆和 OpenRelix 个人记忆": "See host memory and OpenRelix memory together",
+        "`/memory-review` 和 `openrelix review` 会从本地 AI agent 窗口整理当天工作，输出脱敏复盘、长期记忆、短期任务记忆和下一步动作。": "`/memory-review` and `openrelix review` organize the day's local AI agent windows into sanitized reviews, long-term memory, short-term task memory, and next actions.",
+        "保留结论、方法和决策，不保留原始私有日志。": "Keep conclusions, methods, and decisions, not raw private logs.",
+        "面板把 host native memory 与 OpenRelix 本地记忆登记册分层展示。": "The panel separates host-native memory from the OpenRelix local memory registry.",
+        "适合把重复操作升级成 skill 或 automation。": "Repeated operations can be promoted into skills or automations.",
+        "立刻分清模型记忆和个人资产账本": "Immediately separate model memory from the personal asset ledger",
+        "复盘": "Review",
+        "左边是会影响下次回答的 host 原生记忆；右边是 OpenRelix 本地账本，记录来源、状态和可升级动作。": "The left side is host-native memory that can affect future answers; the right side is the OpenRelix local ledger with sources, status, and upgrade actions.",
+        "稳定偏好和通用方法可以进上下文，临时任务默认留本地。": "Stable preferences and general methods can enter context; temporary tasks stay local by default.",
+        "每条 OpenRelix 记忆带来源、分桶和更新时间，方便回溯核对。": "Every OpenRelix memory carries source, bucket, and update time for traceable review.",
+        "重复工作可以从候选升级为技能、模板或自动化。": "Repeated work can move from candidate to skill, template, or automation.",
+        "记忆分层": "Memory Layers",
+        "Host 与 OpenRelix": "Host + OpenRelix",
+        "记忆分层展示": "Layered memory display",
+        "Host native memory 与本地个人记忆分开显示，来源和优先级可追溯。": "Host-native memory and local personal memory are displayed separately with traceable sources and priorities.",
+        "真实记忆视图": "Real memory view",
+        "按真实来源拆开：当前 host 读 memory_summary 与 MEMORY.md，OpenRelix 读 registry/memory_items.jsonl。": "Split by real sources: the current host reads memory_summary and MEMORY.md, while OpenRelix reads registry/memory_items.jsonl.",
+        "两套记忆，各管一件事": "Two memory layers, each with one job",
+        "Host 原生记忆影响模型回答；OpenRelix 本地记忆保留来源、状态和升级动作。": "Host-native memory shapes model answers; OpenRelix local memory keeps sources, status, and upgrade actions.",
+        "Host 原生记忆": "Host Native Memory",
+        "模型长期摘要": "Model-readable long-term summary",
+        "模型会带着走的规则": "Rules the model carries forward",
+        "12 条": "12 items",
+        "用户偏好": "User Preferences",
+        "回答偏好": "Response Preferences",
+        "回答具体配置时先给准确值；运行态问题优先现场验证。": "Give exact values first for concrete configuration questions; verify runtime issues live.",
+        "下次遇到配置问题先给准确值；运行态问题先现场验证。": "Next time a configuration issue appears, give exact values first; verify runtime issues live.",
+        "来源：memory_summary.md": "source: memory_summary.md",
+        "类型：偏好": "kind: preference",
+        "通用 Tips": "General Tips",
+        "操作习惯": "Operating Habits",
+        "搜索文件先用 rg；编辑默认 apply_patch。": "Use rg first for file search; use apply_patch by default for edits.",
+        "类型：提示": "kind: tip",
+        "任务组": "Task Groups",
+        "长期任务地图": "Long-term Task Map",
+        "OpenRelix 本地优先系统、独立 Review 流程、host 配置排障。": "OpenRelix local-first system, independent review workflow, and host configuration debugging.",
+        "记录常见项目、排障路线和协作偏好，作为模型上下文入口。": "Record common projects, debugging routes, and collaboration preferences as model-context entry points.",
+        "来源：MEMORY.md": "source: MEMORY.md",
+        "类型：任务组": "kind: task_group",
+        "OpenRelix 个人记忆": "OpenRelix Personal Memory",
+        "本地可追溯的资产账本": "A local, traceable asset ledger",
+        "14 条": "14 items",
+        "本地优先、state root、LaunchAgent 等稳定规则沉淀为可复用资产。": "Local-first, state root, LaunchAgent, and other stable rules captured as reusable assets.",
+        "长期资产": "Long-term Assets",
+        "稳定规则、脚本入口、LaunchAgent 等沉淀为可复用方法手册或自动化。": "Stable rules, script entrypoints, and LaunchAgents become reusable playbooks or automations.",
+        "来源：registry/memory_items.jsonl": "source: registry/memory_items.jsonl",
+        "分桶：长期": "bucket: durable",
+        "短期工作记忆": "Short-term Work Memory",
+        "近 7 天窗口按项目和上下文二次归类，支持只看最近 1 天或最多 7 天。": "Recent 7-day windows are grouped by project and context, with filters for the latest 1 day up to 7 days.",
+        "近 7 天窗口按项目归类，保留下一步和责任状态，不自动塞进上下文。": "Recent 7-day windows are grouped by project, keeping next steps and status without automatically injecting context.",
+        "来源：夜间整理": "source: nightly synthesis",
+        "分桶：任务": "bucket: session",
+        "低优先级候选": "Low-priority Candidates",
+        "升级候选": "Upgrade Candidates",
+        "默认不进入上下文，只保留来源窗口和后续动作。": "Excluded from context by default; only source windows and next actions are kept.",
+        "低优先级内容先留本地；重复出现后再升级为技能或模板。": "Low-priority content stays local first; repeated items can later become skills or templates.",
+        "来源：复盘输出": "source: review output",
+        "优先级：低": "priority: low",
+        "更新：今天": "updated: today",
+        "updated: 今天": "updated: today",
+        "共同来源：本地 AI agent 工作窗口": "Shared source: local AI agent work windows",
+        "展示方式：分层对照，不混写": "Display mode: layered comparison, not mixed together",
+        "看左边：模型下次怎么响应": "Left: how the model responds next time",
+        "看右边：资产从哪里来、下一步做什么": "Right: where assets came from and what happens next",
+        "默认 integrated，轻量注入上下文": "Default integrated with lightweight context injection",
+        "稳定流程沉淀为可复用 skill": "Stable workflows become reusable skills",
+        "任务复盘保留结论与方法": "Task reviews keep conclusions and methods",
+        "只展示轻量消耗信号": "Only lightweight usage signals are shown",
+        "上下文只放该放的内容": "Only put the right content into context",
+        "记忆模式": "Memory Modes",
+        "OpenRelix 会把窗口先按项目和主题收拢，再决定哪些进模型上下文、哪些只留在本地资产账本。": "OpenRelix first groups windows by project and topic, then decides what enters model context and what stays in the local asset ledger.",
+        "个人记忆系统默认开启，默认模式是 integrated：完整 registry 留在 state root，压缩摘要进入当前 host native context。": "Personal memory is on by default in integrated mode: the full registry stays in the state root, and a compressed summary enters the current host-native context.",
+        "默认 integrated：完整登记册留在状态目录，压缩摘要进入当前 host 原生上下文。": "Default integrated: the full registry stays in the state root and a compressed summary enters the current host-native context.",
+        "`--record-memory-only`：严格本地记录，不注入 host native context。": "`--record-memory-only`: strict local recording without injecting host-native context.",
+        "`--record-memory-only`：只做本地记录和可视化，不注入模型上下文。": "`--record-memory-only`: only record and visualize locally, without injecting model context.",
+        "`--use-integrated`：显式选择 host 上下文注入模式。": "`--use-integrated`: explicitly select host-context injection mode.",
+        "`--disable-personal-memory`：关闭本系统本地 memory registry 写入。": "`--disable-personal-memory`: disable this system's local memory-registry writes.",
+        "压缩策略：同签名记忆跨天归并，优先长期和任务记忆，低优先级只留本地；摘要目标 4.2K、上限 5K token。": "Compression strategy: merge same-signature memories across days, prioritize durable / session, keep low-priority local only, and cap the summary at a 4.2K target / 5K max token budget.",
+        "低优先级内容只留本地；长期规则和短期跟进分开归档，避免上下文噪声。": "Low-priority content stays local; long-term rules and short-term follow-ups are archived separately to reduce context noise.",
+        "窗口二次归类": "Second-level window grouping",
+        "多窗口先按项目归并，再按上下文主题展示，避免把历史窗口一次性铺满。": "Many windows are first grouped by project, then by context topic, so history does not flood the page at once.",
+        "项目 / 上下文分布": "Project / Context Distribution",
+        "上下文分布": "Context Distribution",
+        "根据最近工作自动归纳，让你一眼知道时间花在哪、哪些主题值得沉淀。": "Automatically summarizes recent work so you can see where time went and which topics deserve capture.",
+        "1 天 / 7 天": "1 day / 7 days",
+        "跨场景通用": "Cross-scenario General",
+        "通用流程": "General workflows",
+        "安装流程": "Install flow",
+        "运行时路径": "Runtime paths",
+        "项目工作区": "Project workspace",
+        "产品展示页": "Product showcase",
+        "模板文档": "Template docs",
+        "协作复盘": "Collaboration Review",
+        "复盘跟进": "Review and follow-up",
+        "代码审查": "Code review",
+        "记忆候选": "Memory candidates",
+        "下一步动作": "Next actions",
+        "读图方式": "How to read it",
+        "条越长，说明这类窗口越集中，越适合抽成固定流程。": "The longer the bar, the more concentrated the windows are and the better they fit a reusable workflow.",
+        "下一步": "Next step",
+        "高频主题进入资产候选；低频主题只保留来源索引。": "High-frequency topics become asset candidates; low-frequency topics keep only source indexes.",
+        "流程很短，自动化可控。": "Short flow, controlled automation.",
+        "首次使用按快速上手来：先整理最近 7 天，再打开本地面板看结果。它不靠实时 hook 打断工作，而是本地离线采集、按需刷新、定时整理、可视化查看。": "For first use, follow Quick Start: organize the last 7 days, then open the local panel to inspect the result. It does not interrupt work with real-time hooks: it collects locally offline, refreshes on demand, organizes on a schedule, and visualizes the result.",
+        "采集": "Collect",
+        "后台刷新或手动脚本读取当前 host 历史和会话元数据，按日期和窗口归档。": "Background refresh or manual scripts read current host history and session metadata, then archive by date and window.",
+        "打开": "Open",
+        "补齐最近 7 天后运行 `openrelix open panel`，查看本地账本和同步状态。": "After backfilling the last 7 days, run `openrelix open panel` to inspect the local ledger and sync status.",
+        "分类": "Classify",
+        "手动复盘和夜间整理都会区分长期、任务、低优先级记忆，减少长期记忆噪声。": "Manual reviews and nightly organization both separate durable, session, and low-priority memory to reduce long-term noise.",
+        "登记": "Register",
+        "把可复用内容记录到 JSONL 登记册，保留类型、范围、复用价值和来源。": "Write reusable content into a JSONL registry with type, scope, reuse value, and source.",
+        "可视化": "Visualize",
+        "后台刷新、夜间任务或手动脚本生成概览、面板和 CSV，让资产是否有用变得可见。": "Background refresh, nightly jobs, or manual scripts generate overview, panel, and CSV outputs so asset value becomes visible.",
+        "装完后怎么用。": "What to do after install.",
+        "安装后运行顺序。": "Post-install run order.",
+        "安装方式。": "Install Options.",
+        "先安装 OpenRelix。推荐命令会开启 30 分钟自动 Codex 学习；如果只想手动整理，可以删掉 `--enable-learning-refresh`。默认只读取 Codex CLI 本地记录；如果也要读取 Codex 应用里的对话，安装命令里额外加 `--read-codex-app`。": "Install OpenRelix first. The recommended command enables 30-minute automatic Codex learning; if you only want manual organization, remove `--enable-learning-refresh`. By default it reads only local Codex CLI records; to include conversations from the Codex app, add `--read-codex-app` to the install command.",
+        "推荐命令会安装 `openrelix`、创建本地资产账本，并开启每 30 分钟的增量学习。只想手动整理时，使用不带自动学习开关的安装命令；需要读取 Codex 应用对话时，再选择带应用读取参数的命令。": "The recommended command installs `openrelix`, creates the local asset ledger, and enables incremental learning every 30 minutes. For manual-only use, install without the automatic-learning option; to include Codex app conversations, choose the command with the app-reading option.",
+        "推荐安装": "Recommended",
+        "一行命令安装。": "Install with one command.",
+        "已经有 Node.js 18+ 和 Python 3.10+ 的 macOS 用户，直接跑这一行。它会安装 `openrelix` 命令、创建本地资产账本，并开启 30 分钟自动学习。这个模式会定时调用 Codex，可能消耗 token 和后台运行时间；不想自动学习时删掉 `--enable-learning-refresh`。": "If you already have Node.js 18+ and Python 3.10+ on macOS, run this line. It installs the `openrelix` command, creates the local asset ledger, and enables 30-minute automatic learning. This mode calls Codex on a schedule and may consume tokens and background runtime; remove `--enable-learning-refresh` if you do not want automatic learning.",
+        "已经有 Node.js 18+ 和 Python 3.10+ 的 macOS 用户，直接跑这一行。它会安装 `openrelix` 命令、创建本地资产账本，并开启每 30 分钟的增量学习；后台运行可能消耗 token，需要纯手动模式时去掉自动学习开关。": "If you already have Node.js 18+ and Python 3.10+ on macOS, run this line. It installs the `openrelix` command, creates the local asset ledger, and enables incremental learning every 30 minutes; background runs may consume tokens, so remove the automatic-learning option for a manual-only setup.",
+        "# npx 快速安装": "# quick npx install",
+        "如果你主要用 Codex 应用，也想把应用里的对话纳入整理，安装时用下面这行；默认仍只读 Codex CLI 的本地记录。": "If you mainly use the Codex app and want those conversations included, use the line below during install; by default OpenRelix still reads only local Codex CLI records.",
+        "手动下载": "Manual download",
+        "也可以从 GitHub 下载源码。": "You can also download the source from GitHub.",
+        "打开 GitHub": "Open GitHub",
+        "下载 ZIP": "Download ZIP",
+        "下载并解压源码。": "Download and extract the source.",
+        "进入解压后的仓库目录。": "Enter the extracted repository directory.",
+        "执行安装脚本。": "Run the installer script.",
+        "源码安装也一样：只有要读 Codex 应用时，才额外加 `--read-codex-app`。": "Source install works the same way: add `--read-codex-app` only when you want to read the Codex app.",
+        "装好以后按这个顺序来：先把最近 7 天的 Codex 记录整理一次；再确认是否开启 30 分钟自动学习；最后打开面板看结果。自动学习会定时调用 Codex，不想消耗 token 时可以跳过。": "After install, use this order: organize the last 7 days of Codex records once; then confirm whether 30-minute automatic learning is enabled; finally open the panel to inspect the result. Automatic learning calls Codex on a schedule, so skip it if you do not want token usage.",
+        "安装完成后，先执行一次近 7 天整理，把已有 Codex 窗口写入本地账本；如果安装时保留 `--enable-learning-refresh`，后台会每 30 分钟增量刷新；最后打开面板确认结果。": "After install, run one 7-day organization pass to write existing Codex windows into the local ledger. If you kept `--enable-learning-refresh`, the background job refreshes incrementally every 30 minutes. Then open the panel to verify the result.",
+        "第一步": "Step 1",
+        "先补齐最近 7 天": "Backfill the last 7 days first",
+        "整理最近 7 天": "Organize the last 7 days",
+        "装完后先跑一次，把最近几天的 Codex 记录整理进 OpenRelix 本地记忆和面板。安装时加了 `--read-codex-app` 的话，这里也会读取 Codex 应用里的对话。": "Run this once after install to organize recent Codex records into OpenRelix local memory and the panel. If you installed with `--read-codex-app`, this also reads conversations from the Codex app.",
+        "先手动跑一次，把最近 7 天的 Codex CLI 记录整理进 OpenRelix 本地账本和面板。安装时加了 `--read-codex-app` 的话，也会尝试纳入 Codex 应用里的对话。": "Run this manually once to organize the last 7 days of Codex CLI records into the OpenRelix local ledger and panel. If you installed with `--read-codex-app`, it also tries to include Codex app conversations.",
+        "同步正常": "Synced",
+        "概览": "Overview",
+        "今日 Review": "Today Review",
+        "开源发布、面板可视化、host 记忆分层。": "Open-source release, panel visualization, host memory layering.",
+        "长期": "Long",
+        "短期": "Short",
+        "低优先": "Low",
+        "Host context 预算 ≤ 5K": "Host context budget ≤ 5K",
+        "受控": "Bounded",
+        "第二步": "Step 2",
+        "开启 30 分钟自动学习（推荐）": "Enable 30-minute automatic learning (recommended)",
+        "如果安装命令已经带了 `--enable-learning-refresh`，这一步不用重跑。没带的话，运行下面这行开启后台自动学习；它会每 30 分钟调用 Codex 提炼记忆，可能消耗 token 和后台运行时间，不想后台调模型就跳过。": "If your install command already included `--enable-learning-refresh`, you do not need to rerun this step. If it did not, run the line below to enable background learning; it calls Codex every 30 minutes to synthesize memory, which may consume tokens and background runtime, so skip it if you do not want background model calls.",
+        "30 分钟": "30 minutes",
+        "Codex 学习": "Codex learning",
+        "第三步": "Step 3",
+        "再打开本地面板": "Then open the local panel",
+        "整理完成后打开面板，看今天整理了什么、长期和短期记忆有哪些、同步是否正常。": "After organizing, open the panel to see what was captured today, which long-term and short-term memories exist, and whether sync is healthy.",
+        "7 天窗口": "7-day windows",
+        "OpenRelix 本地记忆": "OpenRelix local memory",
+        "本地面板": "Local panel",
+        "查看或切换 OpenRelix 记忆模式": "View or switch OpenRelix memory mode",
+        "`integrated` 同时是推荐安装档位和默认记忆模式；使用 `--profile integrated` 安装后，后续只在需要严格隔离或只做可视化时才用 `openrelix mode` 切换。": "`integrated` is both the recommended install profile and the default memory mode. After installing with `--profile integrated`, use `openrelix mode` later only for strict isolation or visualization-only usage.",
+        "全开": "Full",
+        "本地记忆 + 上下文注入": "Local memory + context injection",
+        "本地存储": "Local storage",
+        "只写本地，不注入": "Write locally, no injection",
+        "禁用": "Disabled",
+        "只做资产可视化": "Asset visualization only",
+        "OpenRelix 记忆全开模式（默认）": "OpenRelix memory full mode (default)",
+        "生成 OpenRelix 本地记忆文件和资产面板；完整 registry 留在 state root，压缩摘要注入当前 host 上下文。": "Generate OpenRelix local memory files and the asset panel; the full registry stays in the state root, and the compressed summary is injected into the current host context.",
+        "OpenRelix 记忆本地存储模式": "OpenRelix memory local-storage mode",
+        "仅生成和存储 OpenRelix 本地记忆与面板，不做上下文注入。": "Only generate and store OpenRelix local memory and the panel, without context injection.",
+        "禁用 OpenRelix 记忆模式": "Disable OpenRelix memory mode",
+        "不生成 OpenRelix 记忆文件，不写 OpenRelix 本地 memory registry；本项目仅做当前 host 的资产可视化。": "Do not generate OpenRelix memory files or write the OpenRelix local memory registry; this project only visualizes current-host assets.",
+        "第四步（可选）": "Step 4 (optional)",
+        "第五步（可选）": "Step 5 (optional)",
+        "终端状态速览": "Terminal status",
+        "需要在终端快速看核心指标时使用。": "Use this when you need a quick terminal view of core metrics.",
+        "核心数据": "Core data",
+        "快照时间 2026-04-27 23:49": "Snapshot 2026-04-27 23:49",
+        "快照时间 2026-04-27 23:49:05": "Snapshot 2026-04-27 23:49:05",
+        "资产总数": "Assets",
+        "资产注册表中的稳定条目": "Stable entries in the asset registry",
+        "活跃资产": "Active",
+        "当前仍在使用的条目": "Entries still in active use",
+        "任务复盘": "Reviews",
+        "本地保存的脱敏复盘": "Sanitized reviews saved locally",
+        "复用记录": "Reuse logs",
+        "被记录下来的复用时刻": "Recorded reuse moments",
+        "估算节省": "Estimated savings",
+        "94 分钟": "94 min",
+        "原始记录分钟数 30": "Raw recorded minutes 30",
+        "仓库场景资产": "Repo-scoped assets",
+        "绑定某个仓库或场景的条目": "Entries bound to a repo or scenario",
+        "17.7 亿": "1.77B",
+        "04-27 总消耗": "04-27 total usage",
+        "近 7 日 Token": "7-day Token",
+        "38.2 亿": "3.82B",
+        "最近 7 天累计消耗": "Total usage over the last 7 days",
+        "个人资产记忆": "Personal asset memories",
+        "长期 / 短期 / 低优先": "Long / Short / Low",
+        "每日窗口数": "Daily windows",
+        "2026-04-27 捕获的窗口数": "Windows captured on 2026-04-27",
+        "今日 Review": "Today Review",
+        "今日复盘：开源发布、面板可视化、host 记忆分层。": "Today review: open-source release, panel visualization, host memory layering.",
+        "今日复盘：开源发布、面板可视化、host 记忆分层；示例工作区完成发布检查、模板整理与稳定性分析。": "Today review: open-source release, panel visualization, and host memory layering; the sample workspace covered release checks, template cleanup, and stability analysis.",
+        "窗口 41 | 长期记忆 12 | 短期记忆 15 | 低优先记忆 5": "Windows 41 | Long-term memories 12 | Short-term memories 15 | Low-priority memories 5",
+        "# GitHub 手动下载后安装": "# install after manual GitHub download",
+        "# 严格本地记录：仅可视化和本地存储，不注入 host context": "# strict local record: visualize and store locally only, without injecting host context",
+        "# 默认：本地记忆 + host context 轻量摘要": "# default: local memory + lightweight host context summary",
+        "# 可选：禁用个人资产本地记录，仅可视化 AI CLI 的记忆": "# optional: disable OpenRelix local memory writes; only visualize AI CLI memory",
+        "# 安装后先打开面板": "# after install, open the panel first",
+        "# 推荐：开启 30 分钟自动学习刷新": "# recommended: enable 30-minute automatic learning refresh",
+        "# 终端状态速览": "# terminal status",
+        "复制": "Copy",
+        "已复制": "Copied",
+        "复制失败": "Failed",
+        "默认轻量注入，不塞原始窗口。": "Lightweight injection by default, without raw windows.",
+        "默认上下文模式只写压缩摘要：合并重复记忆，优先长期和任务记忆，低优先只留本地，目标 4.2K、上限 5K token。": "Default context mode writes only a compressed summary: merge duplicates, prioritize durable / session, keep low-priority local only, with a 4.2K target and 5K token max.",
+        "把“反复出现的做法”升级成技能": "Promote repeated practices into skills",
+        "当同类复盘、排障或发布动作重复出现时，把步骤固化到 `.agents/skills/`，比继续写长提示词更稳定。": "When the same review, debugging, or release actions repeat, capture the steps in `.agents/skills/` instead of writing another long prompt.",
+        "把“固定格式输出”升级成模板": "Promote fixed-format output into templates",
+        "周报、复盘、代码审查报告、发布检查表这类稳定产物，适合放进 `templates/`。": "Weekly reports, reviews, code review reports, and release checklists are stable artifacts that fit in `templates/`.",
+        "开源的是能力层，不是你的个人数据。": "Open source the capability layer, not your personal data.",
+        "项目的公开可信度来自边界清晰：源码在 GitHub 公开，用户状态默认在仓库外，公开展示只使用示例数据；如果有帮助，欢迎点星支持。": "Public trust comes from clear boundaries: the source is public on GitHub, user state stays outside the repo by default, and public displays use sample data. If it helps, stars are welcome.",
+        "可以公开": "Shareable",
+        "安装器 / 技能 / 模板": "Installer / Skills / Templates",
+        "这些是可复用逻辑，适合随 npm 包和 GitHub 仓库一起发布。": "These are reusable logic and can ship with the npm package and GitHub repo.",
+        "v0.1.0 预览版": "v0.1.0 Preview",
+        "AI CLI 优先": "AI CLI First",
+        "当前首个公开适配器是 Codex CLI；Codex app-server 是 opt-in 预览读取，Claude Code、Gemini CLI 等其他 AI CLI / coding-agent host 是后续适配目标。": "The first public adapter is Codex CLI; Codex app-server is an opt-in preview source, while Claude Code, Gemini CLI, and other AI CLI / coding-agent hosts are later adapter targets.",
+        "留在本地": "Keep local",
+        "注册表 / 复盘 / 原始库 / 报表": "Registry / Reviews / Raw / Reports",
+        "这些包含个人工作轨迹，默认写入状态目录，不进入 npm 包和源码仓库。": "These contain personal work traces, are written to the state root by default, and do not enter the npm tarball or source repo.",
+        "禁止沉淀": "Never store",
+        "密钥 / Token / Cookie / 原始日志": "Secrets / Tokens / Cookies / Raw Logs",
+        "密钥、账号、Cookie、原始内部日志和用户数据不进入资产库，也不进入公开截图。": "Secrets, accounts, cookies, raw internal logs, and user data do not enter the asset library or public screenshots.",
+        "标准 MIT 授权，个人免费使用。": "Standard MIT License, free for personal use.",
+        "MIT 授权": "MIT License",
+        "免费使用和修改": "Free to use and modify",
+        "允许个人免费使用、复制、修改、合并、发布、分发和再授权本项目。": "You may use, copy, modify, merge, publish, distribute, and sublicense this project for personal use.",
+        "版权声明": "Copyright",
+        "保留署名": "Keep attribution",
+        "分发本项目或主要部分时，需要保留版权声明、作者署名和完整授权文本。": "When distributing this project or substantial portions of it, keep the copyright notice, attribution, and full license text.",
+        "无担保": "Warranty",
+        "按现状提供": "Provided as is",
+        "软件不附带明示或暗示担保，使用、修改和分发时需要自行承担相应风险。": "The software is provided without express or implied warranty; use, modify, and distribute it at your own risk.",
+        "面向 AI coding agents / AI CLI 的本地优先个人 AI 资产系统。当前 v0.1.0 预览版首个适配器是 Codex CLI；非官方项目，与 OpenAI 无官方关联。": "A local-first personal AI asset system for AI coding agents / AI CLI. The first v0.1.0 preview adapter is Codex CLI; unofficial and not affiliated with OpenAI.",
+        "MIT 授权。版权 (c) 2026": "MIT License. Copyright (c) 2026",
+        "本页产品预览使用脱敏示例数据。": "Product previews on this page use sanitized sample data."
+        };
+        return translations;
+      }
+
+      let attrTranslations;
+      function getAttrTranslations() {
+        if (attrTranslations) {
+          return attrTranslations;
+        }
+        attrTranslations = {
+        "页面导航": "Page navigation",
+        "页面设置": "Page settings",
+        "OpenRelix 首页": "OpenRelix home",
+        "语言切换": "Language switch",
+        "主题切换": "Theme switch",
+        "安装和使用命令": "Install and usage commands",
+        "安装方式": "Install options",
+        "npx 安装命令": "npx install command",
+        "复制 npx 安装命令": "Copy npx install command",
+        "Codex 应用安装命令": "Codex app install command",
+        "复制 Codex 应用安装命令": "Copy Codex app install command",
+        "GitHub 手动下载与安装命令": "GitHub manual download and install commands",
+        "源码 Codex 应用安装命令": "Source Codex app install command",
+        "复制源码 Codex 应用安装命令": "Copy source Codex app install command",
+        "复制下载 ZIP 命令": "Copy download ZIP command",
+        "复制解压命令": "Copy unzip command",
+        "复制进入源码目录命令": "Copy source-directory command",
+        "复制安装脚本命令": "Copy installer command",
+        "快速上手教程": "Quick start guide",
+        "复制一行安装命令": "Copy one-line install command",
+        "复制本地记录安装命令": "Copy local-record install command",
+        "复制 host 上下文安装命令": "Copy host-context install command",
+        "复制 OpenRelix 全开模式命令": "Copy OpenRelix full-mode command",
+        "复制 OpenRelix 本地存储模式命令": "Copy OpenRelix local-storage mode command",
+        "复制禁用个人记忆命令": "Copy command to disable personal memory",
+        "复制禁用 OpenRelix 记忆模式命令": "Copy command to disable OpenRelix memory",
+        "复制学习窗口命令": "Copy learning-window command",
+        "复制核心命令": "Copy core command",
+        "复制打开面板命令": "Copy open-panel command",
+        "OpenRelix 脱敏每日整理结果预览": "OpenRelix sanitized daily synthesis preview",
+        "OpenRelix 每日资产账本脱敏预览": "OpenRelix sanitized daily asset ledger preview",
+        "OpenRelix 示例概览面板": "OpenRelix sample overview panel",
+        "OpenRelix 示例记忆面板": "OpenRelix sample memory panel",
+        "OpenRelix 记忆分层真实视图": "OpenRelix real layered memory view",
+        "OpenRelix 记忆分层功能预览": "OpenRelix layered memory feature preview",
+        "OpenRelix 示例窗口面板": "OpenRelix sample window panel",
+        "OpenRelix 项目上下文分布预览": "OpenRelix project context distribution preview",
+        "更新计划时间线": "Update plan timeline"
+        };
+        return attrTranslations;
+      }
+
+      const metaDescription = {
+        zh: "OpenRelix 是一套本地优先的个人 AI 资产系统，把重复工作沉淀成可复用技能、记忆、模板、复盘和可视化面板。",
+        en: "OpenRelix is a local-first personal AI asset system that turns repeated work into reusable skills, memories, templates, reviews, and visual panels."
+      };
+
+      function translatePlainText(language) {
+        const textTranslations = getTranslations();
+        document.querySelectorAll("body *").forEach((node) => {
+          if (node.children.length !== 0) {
+            return;
+          }
+          const original = node.dataset.zhText || node.textContent.trim();
+          if (!original || !Object.prototype.hasOwnProperty.call(textTranslations, original)) {
+            return;
+          }
+          node.dataset.zhText = original;
+          node.textContent = language === "en" ? textTranslations[original] : original;
+        });
+      }
+
+      function translateHtml(language) {
+        document.querySelectorAll("[data-zh-html][data-en-html]").forEach((node) => {
+          node.innerHTML = language === "en" ? node.dataset.enHtml : node.dataset.zhHtml;
+        });
+      }
+
+      function translateAttributes(language) {
+        const ariaTranslations = getAttrTranslations();
+        document.querySelectorAll("[aria-label]").forEach((node) => {
+          const original = node.dataset.zhAriaLabel || node.getAttribute("aria-label");
+          if (!original || !Object.prototype.hasOwnProperty.call(ariaTranslations, original)) {
+            return;
+          }
+          node.dataset.zhAriaLabel = original;
+          node.setAttribute("aria-label", language === "en" ? ariaTranslations[original] : original);
+        });
+      }
+
+      function restoreInitialHashPosition() {
+        const rawHash = window.location.hash ? window.location.hash.slice(1) : "";
+        if (!rawHash) {
+          return;
+        }
+        const target = document.getElementById(decodeURIComponent(rawHash));
+        if (!target) {
+          return;
+        }
+        const scrollToTarget = () => {
+          target.scrollIntoView({ block: "start", behavior: "auto" });
+        };
+        window.requestAnimationFrame(scrollToTarget);
+        window.setTimeout(scrollToTarget, 60);
+        window.setTimeout(scrollToTarget, 180);
+      }
+
+      let activeLanguage = document.documentElement.dataset.language === "en" ? "en" : "zh";
+
+      function setLanguageControls(language) {
+        document.querySelectorAll("[data-language-option]").forEach((button) => {
+          button.setAttribute("aria-pressed", button.dataset.languageOption === language ? "true" : "false");
+        });
+      }
+
+      function applyLanguage(language, options = {}) {
+        const normalized = language === "en" ? "en" : "zh";
+        const shouldTranslate = normalized !== activeLanguage;
+        activeLanguage = normalized;
+        document.documentElement.dataset.language = normalized;
+        document.documentElement.lang = normalized === "en" ? "en" : "zh-CN";
+        document.title = normalized === "en" ? "OpenRelix™ Product Showcase" : "OpenRelix™ 产品展示";
+        const description = document.querySelector('meta[name="description"]');
+        if (description) {
+          description.setAttribute("content", metaDescription[normalized]);
+        }
+        if (shouldTranslate) {
+          translateHtml(normalized);
+          translatePlainText(normalized);
+          translateAttributes(normalized);
+        }
+        setLanguageControls(normalized);
+        if (options.persist !== false) {
+          try {
+            window.localStorage.setItem("openrelix-showcase-language", normalized);
+          } catch (_) {
+            // Ignore storage errors in private browsing or restricted environments.
+          }
+        }
+      }
+
+      const themeOptions = new Set(["system", "light", "dark"]);
+
+      function applyTheme(theme) {
+        const normalized = themeOptions.has(theme) ? theme : "system";
+        if (normalized === "system") {
+          document.documentElement.removeAttribute("data-theme");
+        } else {
+          document.documentElement.dataset.theme = normalized;
+        }
+        document.querySelectorAll("[data-theme-option]").forEach((button) => {
+          button.setAttribute("aria-pressed", button.dataset.themeOption === normalized ? "true" : "false");
+        });
+        try {
+          window.localStorage.setItem("openrelix-showcase-theme", normalized);
+        } catch (_) {
+          // Ignore storage errors in private browsing or restricted environments.
+        }
+      }
+
+      const copyLabels = {
+        zh: {
+          idle: "复制",
+          copied: "已复制",
+          error: "复制失败"
+        },
+        en: {
+          idle: "Copy",
+          copied: "Copied",
+          error: "Failed"
+        }
+      };
+
+      function currentLanguage() {
+        return document.documentElement.dataset.language === "en" ? "en" : "zh";
+      }
+
+      function updateCopyButton(button, state) {
+        const label = button.querySelector("[data-copy-label]");
+        const labels = copyLabels[currentLanguage()];
+        if (!label || !labels[state]) {
+          return;
+        }
+        button.classList.toggle("is-copied", state === "copied");
+        button.classList.toggle("is-error", state === "error");
+        label.textContent = labels[state];
+      }
+
+      function fallbackCopy(text) {
+        const textarea = document.createElement("textarea");
+        textarea.value = text;
+        textarea.setAttribute("readonly", "");
+        textarea.style.position = "fixed";
+        textarea.style.top = "0";
+        textarea.style.left = "-9999px";
+        document.body.appendChild(textarea);
+        textarea.select();
+        const didCopy = document.execCommand("copy");
+        document.body.removeChild(textarea);
+        if (!didCopy) {
+          throw new Error("copy failed");
+        }
+      }
+
+      async function copyCommand(text) {
+        if (navigator.clipboard && window.isSecureContext) {
+          try {
+            await navigator.clipboard.writeText(text);
+            return;
+          } catch (_) {
+            // Fall back for local file previews or browsers with stricter clipboard permissions.
+          }
+        }
+        fallbackCopy(text);
+      }
+
+      async function handleCopyButton(button) {
+        const row = button.closest(".command-row");
+        const command = row ? row.querySelector(".command-code") : null;
+        const text = command ? command.textContent.trim() : "";
+        if (!text) {
+          return;
+        }
+        window.clearTimeout(button.copyResetTimer);
+        try {
+          await copyCommand(text);
+          updateCopyButton(button, "copied");
+        } catch (_) {
+          updateCopyButton(button, "error");
+        }
+        button.copyResetTimer = window.setTimeout(() => updateCopyButton(button, "idle"), 1400);
+      }
+
+      document.addEventListener("click", (event) => {
+        const target = event.target instanceof Element ? event.target : event.target && event.target.parentElement;
+        if (!target) {
+          return;
+        }
+        const languageButton = target.closest("[data-language-option]");
+        if (languageButton) {
+          applyLanguage(languageButton.dataset.languageOption);
+          return;
+        }
+        const themeButton = target.closest("[data-theme-option]");
+        if (themeButton) {
+          applyTheme(themeButton.dataset.themeOption);
+          return;
+        }
+        const copyButton = target.closest(".command-copy");
+        if (copyButton) {
+          event.preventDefault();
+          handleCopyButton(copyButton);
+        }
+      });
+
+      let initialLanguage = "zh";
+      try {
+        initialLanguage = window.localStorage.getItem("openrelix-showcase-language") || initialLanguage;
+      } catch (_) {
+        initialLanguage = "zh";
+      }
+      initialLanguage = initialLanguage === "en" ? "en" : "zh";
+      if (initialLanguage === "en") {
+        applyLanguage(initialLanguage, { persist: false });
+      } else {
+        setLanguageControls("zh");
+      }
+
+      let initialTheme = "system";
+      try {
+        initialTheme = window.localStorage.getItem("openrelix-showcase-theme") || initialTheme;
+      } catch (_) {
+        initialTheme = "system";
+      }
+      applyTheme(initialTheme);
+      restoreInitialHashPosition();
+    })();
+  </script>
 </body>
 </html>
