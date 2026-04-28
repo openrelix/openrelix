@@ -3698,6 +3698,9 @@ applies_to: cwd=/tmp/OpenRelix
                 openrelix,
                 "run_checked_with_progress",
                 side_effect=fake_run_checked_with_progress,
+            ), mock.patch.object(
+                openrelix,
+                "sync_review_outputs",
             ), mock.patch("sys.stdout", new_callable=io.StringIO):
                 openrelix.command_review(args)
 
@@ -3707,6 +3710,103 @@ applies_to: cwd=/tmp/OpenRelix
             self.assertEqual(calls[0][3], 0)
             self.assertIs(calls[0][4], True)
             self.assertEqual(calls[1][0], "review")
+
+    def test_review_syncs_summary_and_panel_after_pipeline(self):
+        with TemporaryDirectory() as tmpdir:
+            consolidated_daily_dir = Path(tmpdir) / "consolidated" / "daily"
+            summary_dir = consolidated_daily_dir / "2026-04-28"
+            summary_json_path = summary_dir / "summary.json"
+            summary_md_path = summary_dir / "summary.md"
+            calls = []
+
+            def fake_run_checked_with_progress(cmd, progress_messages, interval_seconds=20, reminder_seconds=60):
+                calls.append(("pipeline", cmd))
+                summary_dir.mkdir(parents=True)
+                summary_json_path.write_text(
+                    json.dumps(
+                        {
+                            "date": "2026-04-28",
+                            "stage": "final",
+                            "day_summary": "done",
+                            "window_summaries": [],
+                            "durable_memories": [],
+                            "session_memories": [],
+                            "low_priority_memories": [],
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+                summary_md_path.write_text("# done\n", encoding="utf-8")
+
+            args = argparse.Namespace(
+                date="2026-04-28",
+                stage="final",
+                open=False,
+                json=False,
+                learn_window_days=0,
+            )
+
+            with mock.patch.object(openrelix, "CONSOLIDATED_DAILY_DIR", consolidated_daily_dir), mock.patch.object(
+                openrelix,
+                "run_checked_with_progress",
+                side_effect=fake_run_checked_with_progress,
+            ), mock.patch.object(
+                openrelix,
+                "sync_review_outputs",
+                side_effect=lambda: calls.append(("refresh", None)),
+            ), mock.patch("sys.stdout", new_callable=io.StringIO):
+                openrelix.command_review(args)
+
+            self.assertEqual([item[0] for item in calls], ["pipeline", "refresh"])
+
+    def test_review_json_syncs_outputs_without_polluting_json(self):
+        with TemporaryDirectory() as tmpdir:
+            consolidated_daily_dir = Path(tmpdir) / "consolidated" / "daily"
+            summary_dir = consolidated_daily_dir / "2026-04-28"
+            summary_json_path = summary_dir / "summary.json"
+            calls = []
+
+            def fake_run_checked_with_progress(cmd, progress_messages, interval_seconds=20, reminder_seconds=60):
+                calls.append(("pipeline", cmd, progress_messages))
+                summary_dir.mkdir(parents=True)
+                summary_json_path.write_text(
+                    json.dumps(
+                        {
+                            "date": "2026-04-28",
+                            "stage": "final",
+                            "day_summary": "json ok",
+                            "window_summaries": [],
+                            "durable_memories": [],
+                            "session_memories": [],
+                            "low_priority_memories": [],
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+
+            args = argparse.Namespace(
+                date="2026-04-28",
+                stage="final",
+                open=False,
+                json=True,
+                learn_window_days=0,
+            )
+
+            with mock.patch.object(openrelix, "CONSOLIDATED_DAILY_DIR", consolidated_daily_dir), mock.patch.object(
+                openrelix,
+                "run_checked_with_progress",
+                side_effect=fake_run_checked_with_progress,
+            ), mock.patch.object(
+                openrelix,
+                "sync_review_outputs",
+                side_effect=lambda: calls.append(("refresh", None, None)),
+            ), mock.patch("sys.stdout", new_callable=io.StringIO) as stdout:
+                openrelix.command_review(args)
+
+            self.assertEqual([item[0] for item in calls], ["pipeline", "refresh"])
+            self.assertEqual(calls[0][2], [])
+            payload = json.loads(stdout.getvalue())
+            self.assertEqual(payload["day_summary"], "json ok")
 
     def test_nightly_summary_panel_shows_copyable_backfill_command_for_missing_date(self):
         html = build_overview.make_nightly_summary_panel(

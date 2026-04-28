@@ -42,6 +42,7 @@ CONSOLIDATED_DAILY_DIR = PATHS.consolidated_daily_dir
 REFRESH_SCRIPT = REPO_ROOT / "scripts" / "refresh_overview.sh"
 NIGHTLY_PIPELINE_SCRIPT = REPO_ROOT / "scripts" / "nightly_pipeline.sh"
 BUILD_OVERVIEW_SCRIPT = REPO_ROOT / "scripts" / "build_overview.py"
+BUILD_CODEX_MEMORY_SUMMARY_SCRIPT = REPO_ROOT / "scripts" / "build_codex_memory_summary.py"
 CONFIGURE_CODEX_USER_SCRIPT = REPO_ROOT / "install" / "configure_codex_user.py"
 
 
@@ -533,6 +534,34 @@ def run_checked(cmd):
     subprocess.run(cmd, cwd=str(REPO_ROOT), check=True)
 
 
+def run_checked_quiet(cmd):
+    result = subprocess.run(
+        cmd,
+        cwd=str(REPO_ROOT),
+        text=True,
+        capture_output=True,
+    )
+    if result.returncode == 0:
+        return result
+    print(
+        localized(
+            "子流程执行失败，保留原始输出用于排查：",
+            "Subprocess failed; raw output follows for debugging:",
+        ),
+        file=sys.stderr,
+    )
+    if result.stdout.strip():
+        print(result.stdout.strip(), file=sys.stderr)
+    if result.stderr.strip():
+        print(result.stderr.strip(), file=sys.stderr)
+    raise subprocess.CalledProcessError(
+        result.returncode,
+        cmd,
+        output=result.stdout,
+        stderr=result.stderr,
+    )
+
+
 def run_checked_with_progress(cmd, progress_messages, interval_seconds=20, reminder_seconds=60):
     process = subprocess.Popen(
         cmd,
@@ -592,6 +621,19 @@ def ensure_overview_snapshot():
         return overview_path
     run_checked([sys.executable, str(BUILD_OVERVIEW_SCRIPT)])
     return overview_path
+
+
+def sync_review_outputs():
+    if get_memory_mode(PATHS) == "integrated":
+        run_checked_quiet(
+            [
+                sys.executable,
+                str(BUILD_CODEX_MEMORY_SUMMARY_SCRIPT),
+                "--memory-summary",
+                str(PATHS.codex_home / "memories" / "memory_summary.md"),
+            ]
+        )
+    run_checked_quiet([sys.executable, str(BUILD_OVERVIEW_SCRIPT)])
 
 
 def load_json(path):
@@ -998,6 +1040,10 @@ def command_review(args):
                 ),
             ],
         )
+    if not args.json:
+        print(localized("刷新中: 同步 Codex context 摘要和面板。", "Refreshing: syncing Codex context summary and panel."))
+    sync_review_outputs()
+    if not args.json:
         print(localized("生成完成: 读取摘要。", "Generation complete: reading summary."))
     summary_json_path, summary_md_path = review_summary_paths(args.date)
     if not summary_json_path.exists():
