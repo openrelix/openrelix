@@ -576,7 +576,7 @@ PANEL_I18N_EN = {
     "今日": "Today",
     "近 7 日 Token": "7-day Token",
     "Token 速览": "Token Overview",
-    "较上一日": "Vs Previous Day",
+    "7 日账单": "7-day Bill",
     "7 日均值": "7-day Average",
     "峰值日": "Peak Day",
     "缓存占输入": "Cached / Input",
@@ -850,8 +850,8 @@ PANEL_I18N_EN = {
     "优先来自 daily capture；原始明细缺失时会退回最近一次 nightly summary。": (
         "Uses daily capture first; if raw details are missing, it falls back to the latest nightly summary."
     ),
-    "把 ccusage 的日维度数据再加工成较上一日、7 日均值、峰值日和缓存占输入等快速判断信号。": (
-        "Turns ccusage daily data into quick signals like previous-day delta, 7-day average, peak day, and cached/input ratio."
+    "把 ccusage 的日维度数据再加工成 7 日账单、7 日均值、峰值日和缓存占输入等快速判断信号。": (
+        "Turns ccusage daily data into quick signals like 7-day estimated bill, 7-day average, peak day, and cached/input ratio."
     ),
     "上方两张大卡看总量，速览区看变化和结构，下面的每日 / 今日柱条可以 hover 到具体构成。": (
         "Use the two large cards for totals, the overview for change and structure, and hover the daily/today bars for breakdowns."
@@ -2539,51 +2539,45 @@ def make_token_summary_card(label, value, caption, tone="neutral"):
     }
 
 
+def format_usd(value):
+    amount = safe_float(value)
+    if amount <= 0:
+        return "—"
+    return "${:,.2f}".format(amount)
+
+
+def compact_token_with_cost(token_value, cost_value, language=None):
+    token_display = compact_token(token_value, language=language)
+    cost_display = format_usd(cost_value)
+    if cost_display == "—":
+        return token_display
+    return "{} · {}".format(token_display, cost_display)
+
+
 def build_token_summary_cards(parsed_rows, trailing_rows, latest, language=None):
     language = current_language(language)
     if not latest:
         return []
 
     active_trailing_rows = [row for row in trailing_rows if row.get("totalTokens", 0) > 0]
-    previous = parsed_rows[-2] if len(parsed_rows) >= 2 else None
     summary_cards = []
 
-    if previous and previous.get("totalTokens", 0) > 0:
-        delta = latest["totalTokens"] - previous["totalTokens"]
-        delta_percent = percent_of(delta, previous["totalTokens"])
-        trend_tone = "up" if delta > 0 else "down" if delta < 0 else "neutral"
-        summary_cards.append(
-            make_token_summary_card(
-                localized("较上一日", "Vs previous day", language),
-                compact_signed_token(delta, language=language),
-                localized(
-                    "{} · 上一日 {}".format(
-                        format_percent(delta_percent, digits=1, signed=True),
-                        compact_token(previous["totalTokens"], language=language),
-                    ),
-                    "{} · previous {}".format(
-                        format_percent(delta_percent, digits=1, signed=True),
-                        compact_token(previous["totalTokens"], language=language),
-                    ),
-                    language,
-                ),
-                trend_tone,
-            )
-        )
-    else:
-        summary_cards.append(
-            make_token_summary_card(
-                localized("较上一日", "Vs previous day", language),
-                "—",
-                localized("暂无可比较日期", "No comparable day yet", language),
-            )
-        )
-
     if active_trailing_rows:
+        seven_day_total = sum(row["totalTokens"] for row in active_trailing_rows)
+        seven_day_cost = sum(safe_float(row.get("costUSD")) for row in active_trailing_rows)
         seven_day_average = sum(row["totalTokens"] for row in active_trailing_rows) // len(active_trailing_rows)
         peak_row = max(active_trailing_rows, key=lambda row: row["totalTokens"])
         summary_cards.extend(
             [
+                make_token_summary_card(
+                    localized("7 日账单", "7-day bill", language),
+                    format_usd(seven_day_cost),
+                    localized(
+                        "{} Token · ccusage 估算".format(compact_token(seven_day_total, language=language)),
+                        "{} Tokens · ccusage estimate".format(compact_token(seven_day_total, language=language)),
+                        language,
+                    ),
+                ),
                 make_token_summary_card(
                     localized("7 日均值", "7-day average", language),
                     compact_token(seven_day_average, language=language),
@@ -2603,6 +2597,14 @@ def build_token_summary_cards(parsed_rows, trailing_rows, latest, language=None)
                     ),
                 ),
             ]
+        )
+    else:
+        summary_cards.append(
+            make_token_summary_card(
+                localized("7 日账单", "7-day bill", language),
+                "—",
+                localized("暂无 7 日账单数据", "No 7-day bill data yet", language),
+            )
         )
 
     cached_share = percent_of(latest["cachedInputTokens"], latest["inputTokens"])
@@ -2664,6 +2666,8 @@ def build_token_usage_view(ccusage_result, language=None):
             "today_total_tokens_display": "—",
             "seven_day_total_tokens": None,
             "seven_day_total_tokens_display": "—",
+            "seven_day_cost_usd": None,
+            "seven_day_cost_display": "—",
             "today_date_label": localized("今日", "Today", language),
             "summary_cards": [],
             "overview_note": localized(
@@ -2697,7 +2701,7 @@ def build_token_usage_view(ccusage_result, language=None):
                 "reasoningOutputTokens": safe_int(row.get("reasoningOutputTokens", 0)),
                 "totalTokens": safe_int(row.get("totalTokens", 0)),
                 "display_total_tokens": compact_token(row.get("totalTokens", 0), language=language),
-                "costUSD": row.get("costUSD", 0),
+                "costUSD": safe_float(row.get("costUSD", 0)),
             }
         )
 
@@ -2706,6 +2710,7 @@ def build_token_usage_view(ccusage_result, language=None):
     latest = parsed_rows[-1] if parsed_rows else None
     trailing = parsed_rows[-7:]
     seven_day_total = sum(item["totalTokens"] for item in trailing)
+    seven_day_cost = sum(safe_float(item.get("costUSD")) for item in trailing)
     active_trailing_count = sum(1 for item in trailing if item["totalTokens"] > 0)
     overview_note = localized(
         "近 {} 天中 {} 天有记录 · {}".format(
@@ -2808,7 +2813,10 @@ def build_token_usage_view(ccusage_result, language=None):
             {
                 "label": row["date_label"],
                 "value": row["totalTokens"],
-                "display": row["display_total_tokens"],
+                "display": compact_token_with_cost(row["totalTokens"], row.get("costUSD"), language=language),
+                "token_display": row["display_total_tokens"],
+                "costUSD": row.get("costUSD", 0),
+                "cost_display": format_usd(row.get("costUSD")),
                 "tone": token_daily_tone(row["totalTokens"], max_daily_tokens),
                 "details": build_token_breakdown_details(row, language=language),
                 "details_heading": localized(
@@ -2824,6 +2832,8 @@ def build_token_usage_view(ccusage_result, language=None):
         "today_total_tokens_display": compact_token(latest["totalTokens"], language=language) if latest else "0",
         "seven_day_total_tokens": seven_day_total,
         "seven_day_total_tokens_display": compact_token(seven_day_total, language=language),
+        "seven_day_cost_usd": seven_day_cost,
+        "seven_day_cost_display": format_usd(seven_day_cost),
         "today_date_label": latest["date_label"] if latest else localized("今日", "Today", language),
         "summary_cards": build_token_summary_cards(parsed_rows, trailing, latest, language=language),
         "overview_note": overview_note,
@@ -11097,7 +11107,7 @@ def build_html(data):
         [
             {
                 "label": "统计什么",
-                "body": "把 ccusage 的日维度数据再加工成较上一日、7 日均值、峰值日和缓存占输入等快速判断信号。",
+                "body": "把 ccusage 的日维度数据再加工成 7 日账单、7 日均值、峰值日和缓存占输入等快速判断信号。",
             },
             {
                 "label": "怎么看",
@@ -15739,6 +15749,63 @@ def build_html(data):
         return sign + number.toFixed(digits || 0) + "%";
       }}
 
+      function formatUsdValue(value) {{
+        if (value === null || value === undefined || Number.isNaN(Number(value))) {{
+          return "—";
+        }}
+        const number = Number(value);
+        if (number <= 0) {{
+          return "—";
+        }}
+        return "$" + number.toLocaleString("en-US", {{
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        }});
+      }}
+
+      function parseUsdFromText(text) {{
+        const match = String(text || "").match(/\\$\\s*([0-9][0-9,]*(?:\\.\\d+)?)/);
+        if (!match) {{
+          return 0;
+        }}
+        return Number(match[1].replace(/,/g, "")) || 0;
+      }}
+
+      function extractTokenRowCost(row) {{
+        if (!row) {{
+          return 0;
+        }}
+        const directCost = Number(row.costUSD);
+        if (directCost > 0) {{
+          return directCost;
+        }}
+        const displayCost = parseUsdFromText(row.cost_display);
+        if (displayCost > 0) {{
+          return displayCost;
+        }}
+        const details = Array.isArray(row.details) ? row.details : [];
+        for (const detail of details) {{
+          const detailCost = parseUsdFromText(
+            (detail && typeof detail === "object")
+              ? [detail.title, detail.meta, detail.label].filter(Boolean).join(" ")
+              : detail
+          );
+          if (detailCost > 0) {{
+            return detailCost;
+          }}
+        }}
+        return 0;
+      }}
+
+      function compactTokenWithCostValue(tokenValue, costValue) {{
+        const tokenDisplay = compactTokenValue(tokenValue);
+        const costDisplay = formatUsdValue(costValue);
+        if (costDisplay === "—") {{
+          return tokenDisplay;
+        }}
+        return tokenDisplay + " · " + costDisplay;
+      }}
+
       function findTokenBreakdownValue(rows, labels) {{
         const candidates = Array.isArray(rows) ? rows : [];
         const needles = labels.map(function (label) {{
@@ -15804,38 +15871,36 @@ def build_html(data):
           return (Number(row.value) || 0) > 0;
         }});
         const latest = dailyRows.length ? dailyRows[dailyRows.length - 1] : null;
-        const previous = dailyRows.length >= 2 ? dailyRows[dailyRows.length - 2] : null;
         if (!latest) {{
           return [];
         }}
 
         const cards = [];
-        const latestValue = Number(latest.value) || 0;
-        const previousValue = previous ? Number(previous.value) || 0 : 0;
-        if (previousValue > 0) {{
-          const delta = latestValue - previousValue;
-          const deltaPercent = (delta / previousValue) * 100;
+        const total = trailingRows.reduce(function (sum, row) {{
+          return sum + (Number(row.value) || 0);
+        }}, 0);
+        const totalCost = trailingRows.reduce(function (sum, row) {{
+          return sum + extractTokenRowCost(row);
+        }}, 0);
+        if (trailingRows.length) {{
           cards.push({{
-            label: currentLanguage === "en" ? "Vs Previous Day" : "较上一日",
-            value: compactSignedTokenValue(delta),
+            label: currentLanguage === "en" ? "7-day Bill" : "7 日账单",
+            value: formatUsdValue(tokenUsage.seven_day_cost_usd || totalCost),
             caption: currentLanguage === "en"
-              ? formatPercentValue(deltaPercent, 1, true) + " · previous " + compactTokenValue(previousValue)
-              : formatPercentValue(deltaPercent, 1, true) + " · 上一日 " + compactTokenValue(previousValue),
-            tone: delta > 0 ? "up" : delta < 0 ? "down" : "neutral",
+              ? compactTokenValue(tokenUsage.seven_day_total_tokens || total) + " Tokens · ccusage estimate"
+              : compactTokenValue(tokenUsage.seven_day_total_tokens || total) + " Token · ccusage 估算",
+            tone: "neutral",
           }});
         }} else {{
           cards.push({{
-            label: currentLanguage === "en" ? "Vs Previous Day" : "较上一日",
+            label: currentLanguage === "en" ? "7-day Bill" : "7 日账单",
             value: "—",
-            caption: currentLanguage === "en" ? "No comparable day yet" : "暂无可比较日期",
+            caption: currentLanguage === "en" ? "No 7-day bill data yet" : "暂无 7 日账单数据",
             tone: "neutral",
           }});
         }}
 
         if (trailingRows.length) {{
-          const total = trailingRows.reduce(function (sum, row) {{
-            return sum + (Number(row.value) || 0);
-          }}, 0);
           const average = Math.floor(total / trailingRows.length);
           const peak = trailingRows.reduce(function (currentPeak, row) {{
             return (Number(row.value) || 0) > (Number(currentPeak.value) || 0) ? row : currentPeak;
@@ -15879,8 +15944,12 @@ def build_html(data):
           return Math.max(currentMax, Number(row.value) || 0);
         }}, 0);
         prepared.daily_rows = dailyRows.map(function (row) {{
+          const rowCost = extractTokenRowCost(row);
           return Object.assign({{}}, row, {{
-            display: compactTokenValue(row.value),
+            token_display: row.token_display || compactTokenValue(row.value),
+            costUSD: Number(row.costUSD) > 0 ? Number(row.costUSD) : rowCost,
+            cost_display: row.cost_display || formatUsdValue(rowCost),
+            display: compactTokenWithCostValue(row.value, rowCost),
             tone: row.tone || deriveDailyTokenTone(row.value, dailyMax),
           }});
         }});

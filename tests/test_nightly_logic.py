@@ -2609,7 +2609,8 @@ applies_to: cwd=/tmp/OpenRelix
 
         self.assertIn('const todayTokenValue = tokenTotalDisplay(tokenUsage, "today_total_tokens", "today_total_tokens_display");', html)
         self.assertIn('const sevenDayTokenValue = tokenTotalDisplay(tokenUsage, "seven_day_total_tokens", "seven_day_total_tokens_display");', html)
-        self.assertIn("display: compactTokenValue(row.value)", html)
+        self.assertIn("function extractTokenRowCost(row)", html)
+        self.assertIn("display: compactTokenWithCostValue(row.value, rowCost)", html)
         self.assertIn("prepared.summary_cards = deriveTokenSummaryCards(prepared);", html)
         self.assertNotIn('updateMetricCard(\n          "today_token",\n          tokenUsage.today_total_tokens_display', html)
 
@@ -3945,6 +3946,7 @@ applies_to: cwd=/tmp/OpenRelix
                             "outputTokens": 100,
                             "reasoningOutputTokens": 50,
                             "totalTokens": 1150,
+                            "costUSD": 2.5,
                         },
                         {
                             "date": "Apr 27, 2026",
@@ -3953,6 +3955,7 @@ applies_to: cwd=/tmp/OpenRelix
                             "outputTokens": 300,
                             "reasoningOutputTokens": 100,
                             "totalTokens": 2400,
+                            "costUSD": 4.5,
                         },
                     ]
                 },
@@ -3965,8 +3968,11 @@ applies_to: cwd=/tmp/OpenRelix
 
         self.assertEqual(view["today_total_tokens"], 2400)
         self.assertIn("近 7 天中 2 天有记录", view["overview_note"])
-        self.assertIn("较上一日", [card["label"] for card in view["summary_cards"]])
+        self.assertIn("7 日账单", [card["label"] for card in view["summary_cards"]])
+        self.assertEqual(view["summary_cards"][0]["value"], "$7.00")
+        self.assertIn("3550 Token", view["summary_cards"][0]["caption"])
         self.assertIn("缓存占输入", [card["label"] for card in view["summary_cards"]])
+        self.assertEqual(view["daily_rows"][-1]["display"], "2400 · $4.50")
         self.assertIn("details", view["daily_rows"][-1])
         self.assertIn("占输入", view["daily_rows"][-1]["details"][1]["meta"])
         self.assertIn("details", view["today_breakdown"][1])
