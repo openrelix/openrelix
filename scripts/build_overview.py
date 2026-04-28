@@ -2,11 +2,13 @@
 
 import csv
 import json
+import math
 import os
 import re
 import shutil
 import subprocess
 from collections import Counter, defaultdict
+from decimal import Decimal, ROUND_HALF_UP
 from datetime import datetime, timedelta
 from functools import lru_cache
 from html import escape
@@ -2541,9 +2543,10 @@ def make_token_summary_card(label, value, caption, tone="neutral"):
 
 def format_usd(value):
     amount = safe_float(value)
-    if amount <= 0:
+    if amount <= 0 or not math.isfinite(amount):
         return "—"
-    return "${:,.2f}".format(amount)
+    rounded = Decimal(str(amount)).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+    return "${:,}".format(int(rounded))
 
 
 def compact_token_with_cost(token_value, cost_value, language=None):
@@ -13199,7 +13202,8 @@ def build_html(data):
       font-weight: 650;
       line-height: 1;
       font-variant-numeric: tabular-nums;
-      overflow-wrap: anywhere;
+      overflow-wrap: normal;
+      white-space: nowrap;
     }}
 
     .token-stat.is-up .token-stat-value {{
@@ -15758,8 +15762,8 @@ def build_html(data):
           return "—";
         }}
         return "$" + number.toLocaleString("en-US", {{
-          minimumFractionDigits: 2,
-          maximumFractionDigits: 2,
+          minimumFractionDigits: 0,
+          maximumFractionDigits: 0,
         }});
       }}
 
