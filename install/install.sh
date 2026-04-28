@@ -8,7 +8,7 @@ CODEX_HOME="${CODEX_HOME:-$HOME/.codex}"
 STATE_DIR="${AI_ASSET_STATE_DIR:-}"
 LANGUAGE="${AI_ASSET_LANGUAGE:-}"
 MEMORY_MODE="${AI_ASSET_MEMORY_MODE:-}"
-ACTIVITY_SOURCE="${OKEEP_ACTIVITY_SOURCE:-${AI_ASSET_ACTIVITY_SOURCE:-history}}"
+ACTIVITY_SOURCE="${OPENRELIX_ACTIVITY_SOURCE:-${AI_ASSET_ACTIVITY_SOURCE:-history}}"
 STATE_DIR_EXPLICIT=0
 if [[ -n "${AI_ASSET_STATE_DIR:-}" ]]; then
   STATE_DIR_EXPLICIT=1
@@ -27,13 +27,22 @@ CODEX_MEMORIES_EXPLICIT=0
 CODEX_HISTORY_EXPLICIT=0
 ENABLE_BACKGROUND_SERVICES=0
 ENABLE_NIGHTLY=0
+ENABLE_LEARNING_REFRESH=0
+LEARNING_REFRESH_WINDOW_DAYS="${OPENRELIX_REFRESH_LEARN_WINDOW_DAYS:-7}"
 MEMORY_MODE_EXPLICIT=0
 KEEP_AWAKE="none"
+NIGHTLY_ORGANIZE_TIME="${OPENRELIX_NIGHTLY_ORGANIZE_TIME:-23:00}"
+NIGHTLY_FINALIZE_TIME="${OPENRELIX_NIGHTLY_FINALIZE_TIME:-00:10}"
+NIGHTLY_ORGANIZE_HOUR=23
+NIGHTLY_ORGANIZE_MINUTE=0
+NIGHTLY_FINALIZE_HOUR=0
+NIGHTLY_FINALIZE_MINUTE=10
 BIN_DIR="${AI_ASSET_BIN_DIR:-}"
 SHELL_RC_PATH=""
 PATH_EXPORT_ADDED=0
 STEP_INDEX=0
 TOTAL_STEPS=1
+OVERVIEW_RUN_AT_LOAD="<true/>"
 
 usage() {
   cat <<'EOF'
@@ -48,12 +57,12 @@ Options:
   --codex-home PATH             Override CODEX_HOME. Default: ~/.codex
   --language CODE               Runtime language: zh | en.
                                 If omitted, interactive installs prompt; non-interactive installs default to zh.
-  --memory-mode MODE            Memory mode: local-only | codex-context | off.
-                                Default: codex-context.
+  --memory-mode MODE            Memory mode: integrated | local-only | off.
+                                Default: integrated.
   --record-memory-only          Record personal memory locally, but disable Codex native context injection.
                                 Alias for --memory-mode local-only.
-  --use-codex-context           Record personal memory and fully use Codex native memory context.
-                                Alias for --memory-mode codex-context.
+  --use-integrated              Record personal memory and use host context injection.
+                                Alias for --memory-mode integrated.
   --disable-personal-memory     Turn off this system's local memory writes.
                                 Alias for --memory-mode off.
   --python PATH                 Override the Python binary used by launchd jobs.
@@ -63,12 +72,21 @@ Options:
   --no-global-skills            Skip global skill symlinks.
   --install-custom-prompts      Install repo-provided Codex custom prompts.
   --no-custom-prompts           Skip Codex custom prompt installation.
-  --install-global-command      Install the global `okeep` command.
-  --no-global-command           Skip global `okeep` command installation.
-  --bin-dir PATH                Override the install location for the `okeep` command.
+  --install-global-command      Install the global `openrelix` command.
+  --no-global-command           Skip global `openrelix` command installation.
+  --bin-dir PATH                Override the install location for the `openrelix` command.
   --enable-background-services  Install overview refresh and token-live LaunchAgents.
   --enable-nightly              Install nightly organize/finalize LaunchAgents.
+  --enable-learning-refresh     Make the 30-minute overview refresh call the
+                                Codex adapter and learn memory with a 7-day
+                                window. Implies --enable-background-services.
+  --disable-learning-refresh    Keep the 30-minute overview refresh no-model.
+  --learning-refresh-window-days N
+                                Window days for --enable-learning-refresh.
+                                Default: 7.
   --disable-background-services Skip overview refresh and token-live LaunchAgents.
+  --nightly-organize-time HH:MM Time for same-day nightly preview. Default: 23:00
+  --nightly-finalize-time HH:MM Time for previous-day finalize. Default: 00:10
   --keep-awake MODE             Sleep policy for nightly jobs: none | during-job
   --enable-memories             Enable Codex memories config.
   --disable-memories            Do not touch Codex memories config.
@@ -84,7 +102,7 @@ Options:
   -h, --help                    Show this help text.
 
 This v0.1.0 preview installer currently supports macOS only.
-The installer defaults to codex-context personal memory: it records into the
+The installer defaults to integrated personal memory: it records into the
 configured state root and syncs a bounded summary into Codex native context.
 Use --record-memory-only when you explicitly want strict local-only recording
 without context injection.
@@ -119,6 +137,28 @@ require_option_value() {
     echo "$option requires a value" >&2
     exit 1
   fi
+}
+
+validate_time_option() {
+  local option="$1"
+  local value="$2"
+  if [[ ! "$value" =~ '^([01][0-9]|2[0-3]):[0-5][0-9]$' ]]; then
+    echo "Unsupported $option: $value" >&2
+    echo "$option must use 24-hour HH:MM format, for example 23:00 or 00:10." >&2
+    exit 1
+  fi
+}
+
+time_hour() {
+  local value="$1"
+  local hour="${value%%:*}"
+  print -r -- "$((10#$hour))"
+}
+
+time_minute() {
+  local value="$1"
+  local minute="${value#*:}"
+  print -r -- "$((10#$minute))"
 }
 
 detect_install_profile() {
@@ -335,8 +375,8 @@ while [[ $# -gt 0 ]]; do
       MEMORY_MODE_EXPLICIT=1
       shift
       ;;
-    --use-codex-context)
-      MEMORY_MODE="codex-context"
+    --use-integrated|--use-codex-context)
+      MEMORY_MODE="integrated"
       MEMORY_MODE_EXPLICIT=1
       shift
       ;;
@@ -397,8 +437,27 @@ while [[ $# -gt 0 ]]; do
       ENABLE_NIGHTLY=1
       shift
       ;;
+    --enable-learning-refresh)
+      ENABLE_LEARNING_REFRESH=1
+      ENABLE_BACKGROUND_SERVICES=1
+      shift
+      ;;
+    --disable-learning-refresh)
+      ENABLE_LEARNING_REFRESH=0
+      shift
+      ;;
+    --learning-refresh-window-days)
+      require_option_value "$1" "${2-}"
+      LEARNING_REFRESH_WINDOW_DAYS="$2"
+      shift 2
+      ;;
+    --learning-refresh-window-days=*)
+      LEARNING_REFRESH_WINDOW_DAYS="${1#*=}"
+      shift
+      ;;
     --disable-background-services)
       ENABLE_BACKGROUND_SERVICES=0
+      ENABLE_LEARNING_REFRESH=0
       shift
       ;;
     --keep-awake)
@@ -408,6 +467,24 @@ while [[ $# -gt 0 ]]; do
       ;;
     --keep-awake=*)
       KEEP_AWAKE="${1#*=}"
+      shift
+      ;;
+    --nightly-organize-time)
+      require_option_value "$1" "${2-}"
+      NIGHTLY_ORGANIZE_TIME="$2"
+      shift 2
+      ;;
+    --nightly-organize-time=*)
+      NIGHTLY_ORGANIZE_TIME="${1#*=}"
+      shift
+      ;;
+    --nightly-finalize-time)
+      require_option_value "$1" "${2-}"
+      NIGHTLY_FINALIZE_TIME="$2"
+      shift 2
+      ;;
+    --nightly-finalize-time=*)
+      NIGHTLY_FINALIZE_TIME="${1#*=}"
       shift
       ;;
     --enable-memories)
@@ -461,6 +538,12 @@ if [[ "$KEEP_AWAKE" != "none" && "$KEEP_AWAKE" != "during-job" ]]; then
   echo "Unsupported keep-awake mode: $KEEP_AWAKE" >&2
   exit 1
 fi
+validate_time_option "--nightly-organize-time" "$NIGHTLY_ORGANIZE_TIME"
+validate_time_option "--nightly-finalize-time" "$NIGHTLY_FINALIZE_TIME"
+NIGHTLY_ORGANIZE_HOUR="$(time_hour "$NIGHTLY_ORGANIZE_TIME")"
+NIGHTLY_ORGANIZE_MINUTE="$(time_minute "$NIGHTLY_ORGANIZE_TIME")"
+NIGHTLY_FINALIZE_HOUR="$(time_hour "$NIGHTLY_FINALIZE_TIME")"
+NIGHTLY_FINALIZE_MINUTE="$(time_minute "$NIGHTLY_FINALIZE_TIME")"
 
 case "$ACTIVITY_SOURCE" in
   history|app-server|auto)
@@ -473,7 +556,7 @@ case "$ACTIVITY_SOURCE" in
 esac
 
 if [[ "$OSTYPE" != darwin* ]]; then
-  echo "OpenKeepsake v0.1.0 preview installer currently supports macOS only." >&2
+  echo "OpenRelix v0.1.0 preview installer currently supports macOS only." >&2
   echo "Set AI_ASSET_STATE_DIR and run lower-level scripts manually if you are experimenting on another platform." >&2
   exit 1
 fi
@@ -545,7 +628,7 @@ except ValueError as exc:
 PY
 )"
 
-if (( CODEX_MEMORY_SUMMARY_EXPLICIT )) && (( ! ENABLE_CODEX_MEMORY_SUMMARY )) && [[ "$MEMORY_MODE" == "codex-context" ]]; then
+if (( CODEX_MEMORY_SUMMARY_EXPLICIT )) && (( ! ENABLE_CODEX_MEMORY_SUMMARY )) && [[ "$MEMORY_MODE" == "integrated" ]]; then
   MEMORY_MODE="local-only"
 fi
 
@@ -562,7 +645,7 @@ case "$MEMORY_MODE" in
       DISABLE_CODEX_MEMORIES=1
     fi
     ;;
-  codex-context)
+  integrated)
     if (( ! CODEX_MEMORY_SUMMARY_EXPLICIT )); then
       ENABLE_CODEX_MEMORY_SUMMARY=1
     fi
@@ -587,6 +670,14 @@ case "$MEMORY_MODE" in
     fi
     ;;
 esac
+
+if ! [[ "$LEARNING_REFRESH_WINDOW_DAYS" =~ '^[0-9]+$' ]]; then
+  echo "--learning-refresh-window-days must be a non-negative integer: $LEARNING_REFRESH_WINDOW_DAYS" >&2
+  exit 1
+fi
+if (( ENABLE_LEARNING_REFRESH )); then
+  OVERVIEW_RUN_AT_LOAD="<false/>"
+fi
 
 if (( INSTALL_GLOBAL_COMMAND )); then
   if [[ -z "$BIN_DIR" ]]; then
@@ -629,17 +720,26 @@ render_plist() {
     --set "PYTHON_BIN=$PYTHON_BIN" \
     --set "CODEX_HOME=$CODEX_HOME" \
     --set "ACTIVITY_SOURCE=$ACTIVITY_SOURCE" \
-    --set "KEEP_AWAKE=$KEEP_AWAKE"
+    --set "LEARNING_REFRESH=$ENABLE_LEARNING_REFRESH" \
+    --set "LEARNING_REFRESH_WINDOW_DAYS=$LEARNING_REFRESH_WINDOW_DAYS" \
+    --set "OVERVIEW_RUN_AT_LOAD=$OVERVIEW_RUN_AT_LOAD" \
+    --set "KEEP_AWAKE=$KEEP_AWAKE" \
+    --set "NIGHTLY_ORGANIZE_HOUR=$NIGHTLY_ORGANIZE_HOUR" \
+    --set "NIGHTLY_ORGANIZE_MINUTE=$NIGHTLY_ORGANIZE_MINUTE" \
+    --set "NIGHTLY_FINALIZE_HOUR=$NIGHTLY_FINALIZE_HOUR" \
+    --set "NIGHTLY_FINALIZE_MINUTE=$NIGHTLY_FINALIZE_MINUTE"
 }
 
 bootstrap_launch_agent() {
   local plist_path="$1"
   local label="$2"
+  local kickstart="${3:-1}"
+  local previous_public_prefix="io.github.open""keepsake"
   local legacy_prefix=""
   local legacy_label=""
   local legacy_plist=""
-  for legacy_prefix in io.github.ai-personal-assets io.github.codex-personal-assets; do
-    legacy_label="${label/io.github.openkeepsake/$legacy_prefix}"
+  for legacy_prefix in "$previous_public_prefix" io.github.ai-personal-assets io.github.codex-personal-assets; do
+    legacy_label="${label/io.github.openrelix/$legacy_prefix}"
     legacy_plist="$HOME/Library/LaunchAgents/${legacy_label}.plist"
     [[ "$legacy_label" == "$label" ]] && continue
     launchctl bootout "gui/$(id -u)/$legacy_label" >/dev/null 2>&1 || true
@@ -651,7 +751,9 @@ bootstrap_launch_agent() {
   /usr/bin/plutil -lint "$plist_path" >/dev/null
   launchctl bootout "gui/$(id -u)" "$plist_path" >/dev/null 2>&1 || true
   launchctl bootstrap "gui/$(id -u)" "$plist_path"
-  launchctl kickstart -k "gui/$(id -u)/$label" >/dev/null 2>&1 || true
+  if [[ "$kickstart" == "1" ]]; then
+    launchctl kickstart -k "gui/$(id -u)/$label" >/dev/null 2>&1 || true
+  fi
 }
 
 if (( ENABLE_CODEX_MEMORY_SUMMARY || DISABLE_CODEX_MEMORIES || ENABLE_MEMORIES || ENABLE_HISTORY || INSTALL_GLOBAL_SKILLS || INSTALL_CUSTOM_PROMPTS )); then
@@ -662,21 +764,27 @@ export CODEX_HOME="$CODEX_HOME"
 export PYTHON_BIN="$PYTHON_BIN"
 export AI_ASSET_LANGUAGE="$LANGUAGE"
 export AI_ASSET_MEMORY_MODE="$MEMORY_MODE"
-export OKEEP_ACTIVITY_SOURCE="$ACTIVITY_SOURCE"
+export OPENRELIX_ACTIVITY_SOURCE="$ACTIVITY_SOURCE"
 
 initialize_state_root() {
-  "$PYTHON_BIN" - "$REPO_ROOT" "$LANGUAGE" "$MEMORY_MODE" <<'PY'
+  "$PYTHON_BIN" - "$REPO_ROOT" "$LANGUAGE" "$MEMORY_MODE" "$ACTIVITY_SOURCE" <<'PY'
 import sys
 
 repo_root = sys.argv[1]
 language = sys.argv[2]
 memory_mode = sys.argv[3]
+activity_source = sys.argv[4]
 sys.path.insert(0, repo_root + "/scripts")
 
 from asset_runtime import ensure_state_layout, write_runtime_config  # noqa: E402
 
 paths = ensure_state_layout()
-write_runtime_config(language=language, memory_mode=memory_mode, paths=paths)
+write_runtime_config(
+    language=language,
+    memory_mode=memory_mode,
+    activity_source=activity_source,
+    paths=paths,
+)
 PY
   "$PYTHON_BIN" "$REPO_ROOT/scripts/build_overview.py"
   "$PYTHON_BIN" - "$REPO_ROOT" "$LANGUAGE" <<'PY'
@@ -778,17 +886,17 @@ if (( INSTALL_CUSTOM_PROMPTS )); then
 fi
 
 if (( INSTALL_GLOBAL_COMMAND )); then
-  step "Installing the global okeep command..."
+  step "Installing the global openrelix command..."
   mkdir -p "$BIN_DIR"
   "$PYTHON_BIN" "$REPO_ROOT/install/render_template.py" \
-    --template "$REPO_ROOT/install/templates/bin/okeep.tmpl" \
-    --output "$BIN_DIR/okeep" \
+    --template "$REPO_ROOT/install/templates/bin/openrelix.tmpl" \
+    --output "$BIN_DIR/openrelix" \
     --set "REPO_ROOT=$REPO_ROOT" \
     --set "STATE_ROOT=$STATE_DIR" \
     --set "CODEX_HOME=$CODEX_HOME" \
     --set "PYTHON_BIN=$PYTHON_BIN" \
     --set "ACTIVITY_SOURCE=$ACTIVITY_SOURCE"
-  chmod +x "$BIN_DIR/okeep"
+  chmod +x "$BIN_DIR/openrelix"
   if ! path_contains_dir "$BIN_DIR"; then
     "$PYTHON_BIN" "$REPO_ROOT/install/configure_shell_path.py" \
       --config "$SHELL_RC_PATH" \
@@ -804,75 +912,77 @@ if [[ "$OSTYPE" == darwin* ]] && (( ENABLE_BACKGROUND_SERVICES || ENABLE_NIGHTLY
   if (( ENABLE_BACKGROUND_SERVICES )); then
     step "Installing background refresh services..."
     render_plist \
-      "io.github.openkeepsake.overview-refresh.plist.tmpl" \
-      "$HOME/Library/LaunchAgents/io.github.openkeepsake.overview-refresh.plist"
+      "io.github.openrelix.overview-refresh.plist.tmpl" \
+      "$HOME/Library/LaunchAgents/io.github.openrelix.overview-refresh.plist"
     bootstrap_launch_agent \
-      "$HOME/Library/LaunchAgents/io.github.openkeepsake.overview-refresh.plist" \
-      "io.github.openkeepsake.overview-refresh"
+      "$HOME/Library/LaunchAgents/io.github.openrelix.overview-refresh.plist" \
+      "io.github.openrelix.overview-refresh" \
+      "$(( ENABLE_LEARNING_REFRESH ? 0 : 1 ))"
 
     render_plist \
-      "io.github.openkeepsake.token-live.plist.tmpl" \
-      "$HOME/Library/LaunchAgents/io.github.openkeepsake.token-live.plist"
+      "io.github.openrelix.token-live.plist.tmpl" \
+      "$HOME/Library/LaunchAgents/io.github.openrelix.token-live.plist"
     bootstrap_launch_agent \
-      "$HOME/Library/LaunchAgents/io.github.openkeepsake.token-live.plist" \
-      "io.github.openkeepsake.token-live"
+      "$HOME/Library/LaunchAgents/io.github.openrelix.token-live.plist" \
+      "io.github.openrelix.token-live"
     step_done
   fi
 
   if (( ENABLE_NIGHTLY )); then
     step "Installing nightly organization services..."
     render_plist \
-      "io.github.openkeepsake.nightly-organize.plist.tmpl" \
-      "$HOME/Library/LaunchAgents/io.github.openkeepsake.nightly-organize.plist"
+      "io.github.openrelix.nightly-organize.plist.tmpl" \
+      "$HOME/Library/LaunchAgents/io.github.openrelix.nightly-organize.plist"
     bootstrap_launch_agent \
-      "$HOME/Library/LaunchAgents/io.github.openkeepsake.nightly-organize.plist" \
-      "io.github.openkeepsake.nightly-organize"
+      "$HOME/Library/LaunchAgents/io.github.openrelix.nightly-organize.plist" \
+      "io.github.openrelix.nightly-organize"
 
     render_plist \
-      "io.github.openkeepsake.nightly-finalize-previous-day.plist.tmpl" \
-      "$HOME/Library/LaunchAgents/io.github.openkeepsake.nightly-finalize-previous-day.plist"
+      "io.github.openrelix.nightly-finalize-previous-day.plist.tmpl" \
+      "$HOME/Library/LaunchAgents/io.github.openrelix.nightly-finalize-previous-day.plist"
     bootstrap_launch_agent \
-      "$HOME/Library/LaunchAgents/io.github.openkeepsake.nightly-finalize-previous-day.plist" \
-      "io.github.openkeepsake.nightly-finalize-previous-day"
+      "$HOME/Library/LaunchAgents/io.github.openrelix.nightly-finalize-previous-day.plist" \
+      "io.github.openrelix.nightly-finalize-previous-day"
     step_done
   fi
 fi
 
-manual_review_command() {
+learn_memory_command() {
   if (( INSTALL_GLOBAL_COMMAND )); then
-    printf 'okeep review --date "$(date +%%F)" --learn-window-days 7\n'
+    printf 'openrelix refresh --learn-memory --learn-window-days %s\n' "$LEARNING_REFRESH_WINDOW_DAYS"
     return
   fi
-  printf 'AI_ASSET_STATE_DIR=%q CODEX_HOME=%q AI_ASSET_LANGUAGE=%q OKEEP_ACTIVITY_SOURCE=%q %q %q review --date "$(date +%%F)" --learn-window-days 7\n' \
+  printf 'AI_ASSET_STATE_DIR=%q CODEX_HOME=%q AI_ASSET_LANGUAGE=%q OPENRELIX_ACTIVITY_SOURCE=%q %q %q refresh --learn-memory --learn-window-days %s\n' \
     "$STATE_DIR" \
     "$CODEX_HOME" \
     "$LANGUAGE" \
     "$ACTIVITY_SOURCE" \
     "$PYTHON_BIN" \
-    "$REPO_ROOT/scripts/okeep.py"
+    "$REPO_ROOT/scripts/openrelix.py" \
+    "$LEARNING_REFRESH_WINDOW_DAYS"
 }
 
 open_panel_command() {
   if (( INSTALL_GLOBAL_COMMAND )); then
-    printf 'okeep open panel\n'
+    printf 'openrelix open panel\n'
     return
   fi
   printf 'open %q\n' "$STATE_DIR/reports/panel.html"
 }
 
-MANUAL_REVIEW_COMMAND="$(manual_review_command)"
+LEARN_MEMORY_COMMAND="$(learn_memory_command)"
 OPEN_PANEL_COMMAND="$(open_panel_command)"
-if [[ "$MEMORY_MODE" == "codex-context" ]]; then
-  REVIEW_CONTEXT_NOTE_ZH="这一步可能需要一点时间；它会先补齐最近 7 天缺失或非 final 的日报，且不会给每个历史日期再扩展学习窗口；随后生成本地 memory / overview。当前 codex-context 会同步 bounded summary，但不会把原始窗口写进 Codex 原生 memory。"
-  REVIEW_CONTEXT_NOTE_EN="This can take a while; it first backfills missing or non-final daily reports in the last 7 days without expanding each historical day into another learning window, then updates local memory / overview. The current codex-context mode syncs a bounded summary, but does not write raw windows into Codex native memory."
+if [[ "$MEMORY_MODE" == "integrated" ]]; then
+  REVIEW_CONTEXT_NOTE_ZH="这一步会显式调用当前 Codex 适配器，学习今日和最近 ${LEARNING_REFRESH_WINDOW_DAYS} 天窗口，随后生成本地 memory / overview。当前 integrated 会同步 bounded summary，但不会把原始窗口写进 Codex 原生 memory。"
+  REVIEW_CONTEXT_NOTE_EN="This explicitly calls the current Codex adapter, learns from today plus the last ${LEARNING_REFRESH_WINDOW_DAYS} days of windows, then updates local memory / overview. The current integrated mode syncs a bounded summary, but does not write raw windows into Codex native memory."
 else
-  REVIEW_CONTEXT_NOTE_ZH="这一步可能需要一点时间；它会先补齐最近 7 天缺失或非 final 的日报，且不会给每个历史日期再扩展学习窗口；随后生成本地 memory / overview。当前 $MEMORY_MODE 不会向 Codex context 同步摘要。"
-  REVIEW_CONTEXT_NOTE_EN="This can take a while; it first backfills missing or non-final daily reports in the last 7 days without expanding each historical day into another learning window, then updates local memory / overview. The current $MEMORY_MODE mode does not sync a summary into Codex context."
+  REVIEW_CONTEXT_NOTE_ZH="这一步会显式调用当前 Codex 适配器，学习今日和最近 ${LEARNING_REFRESH_WINDOW_DAYS} 天窗口，随后生成本地 memory / overview。当前 $MEMORY_MODE 不会向 Codex context 同步摘要。"
+  REVIEW_CONTEXT_NOTE_EN="This explicitly calls the current Codex adapter, learns from today plus the last ${LEARNING_REFRESH_WINDOW_DAYS} days of windows, then updates local memory / overview. The current $MEMORY_MODE mode does not sync a summary into Codex context."
 fi
 
 if [[ "$LANGUAGE" == "zh" ]]; then
   cat <<EOF
-OpenKeepsake 已安装完成。
+OpenRelix 已安装完成。
 
 安装信息：
   安装模式: $INSTALL_PROFILE
@@ -887,11 +997,21 @@ OpenKeepsake 已安装完成。
 建议下一步：
   1. 先打开可视化面板：
      $OPEN_PANEL_COMMAND
-  2. 可选：需要补齐最近 7 天本地记忆时再运行：
-     $MANUAL_REVIEW_COMMAND
+EOF
+
+  if (( ENABLE_LEARNING_REFRESH )); then
+    cat <<EOF
+  2. 已开启 30 分钟自动学习刷新；首次自动学习会在下一个 30 分钟周期运行。
+     如果要读取 Codex 应用线程，安装时请显式加 --read-codex-app 或 --activity-source auto；默认只读取稳定的 Codex CLI history/session 文件。
+EOF
+  else
+    cat <<EOF
+  2. 推荐：安装后立刻学习今日和最近 ${LEARNING_REFRESH_WINDOW_DAYS} 天窗口，刷新本地记忆：
+     $LEARN_MEMORY_COMMAND
      $REVIEW_CONTEXT_NOTE_ZH
      如果要读取 Codex 应用线程，安装时请显式加 --read-codex-app 或 --activity-source auto；默认只读取稳定的 Codex CLI history/session 文件。
 EOF
+  fi
 
   if (( INSTALL_GLOBAL_SKILLS )); then
     cat <<EOF
@@ -909,8 +1029,8 @@ EOF
     cat <<EOF
 
 Shell 入口：
-  $BIN_DIR/okeep
-  常用命令：okeep open panel、okeep core、okeep review
+  $BIN_DIR/openrelix
+  常用命令：openrelix open panel、openrelix core、openrelix refresh --learn-memory
 EOF
   fi
 
@@ -918,13 +1038,29 @@ EOF
     cat <<EOF
 
 后台整理：
-  已安装 nightly LaunchAgents：23:00 预览整理，00:10 finalized 前一天结果。
+  已安装 nightly LaunchAgents：$NIGHTLY_ORGANIZE_TIME 预览整理，$NIGHTLY_FINALIZE_TIME 回补前一天终版整理。
   锁屏可以继续跑；退出登录后用户级 LaunchAgents 不会继续执行。
 EOF
   fi
+
+  if [[ "$OSTYPE" == darwin* ]] && (( ENABLE_BACKGROUND_SERVICES )); then
+    if (( ENABLE_LEARNING_REFRESH )); then
+      cat <<EOF
+
+后台刷新：
+  overview-refresh 已安装为每 30 分钟自动学习刷新一次，会调用当前 Codex 适配器并使用最近 ${LEARNING_REFRESH_WINDOW_DAYS} 天窗口。
+EOF
+    else
+      cat <<EOF
+
+后台刷新：
+  overview-refresh 已安装为每 30 分钟刷新一次；当前保持 no-model。如需自动学习刷新，重新安装时加 --enable-learning-refresh。
+EOF
+    fi
+  fi
 else
   cat <<EOF
-Installed OpenKeepsake.
+Installed OpenRelix.
 
 Install info:
   Profile: $INSTALL_PROFILE
@@ -939,11 +1075,21 @@ Install info:
 Recommended next steps:
   1. Open the visual panel first:
      $OPEN_PANEL_COMMAND
-  2. Optional: run this only when you want to backfill a 7-day local-memory window:
-     $MANUAL_REVIEW_COMMAND
+EOF
+
+  if (( ENABLE_LEARNING_REFRESH )); then
+    cat <<EOF
+  2. Automatic learning refresh is enabled; the first learning run will happen on the next 30-minute interval.
+     To read Codex app threads, install with --read-codex-app or --activity-source auto explicitly; by default only the stable Codex CLI history/session files are read.
+EOF
+  else
+    cat <<EOF
+  2. Recommended: learn from today plus the last ${LEARNING_REFRESH_WINDOW_DAYS} days of windows and refresh local memory:
+     $LEARN_MEMORY_COMMAND
      $REVIEW_CONTEXT_NOTE_EN
      To read Codex app threads, install with --read-codex-app or --activity-source auto explicitly; by default only the stable Codex CLI history/session files are read.
 EOF
+  fi
 
   if (( INSTALL_GLOBAL_SKILLS )); then
     cat <<EOF
@@ -961,8 +1107,8 @@ EOF
     cat <<EOF
 
 Shell entrypoint:
-  $BIN_DIR/okeep
-  Common commands: okeep open panel, okeep core, okeep review
+  $BIN_DIR/openrelix
+  Common commands: openrelix open panel, openrelix core, openrelix refresh --learn-memory
 EOF
   fi
 
@@ -970,9 +1116,25 @@ EOF
     cat <<EOF
 
 Background organization:
-  Nightly LaunchAgents are installed: preview at 23:00 and previous-day finalize at 00:10.
+  Nightly LaunchAgents are installed: preview at $NIGHTLY_ORGANIZE_TIME and previous-day finalize at $NIGHTLY_FINALIZE_TIME.
   A locked screen is fine; logging out stops user-level LaunchAgents.
 EOF
+  fi
+
+  if [[ "$OSTYPE" == darwin* ]] && (( ENABLE_BACKGROUND_SERVICES )); then
+    if (( ENABLE_LEARNING_REFRESH )); then
+      cat <<EOF
+
+Background refresh:
+  overview-refresh is installed to learn automatically every 30 minutes. It calls the current Codex adapter with the last ${LEARNING_REFRESH_WINDOW_DAYS} days of windows.
+EOF
+    else
+      cat <<EOF
+
+Background refresh:
+  overview-refresh is installed to refresh every 30 minutes in no-model mode. Reinstall with --enable-learning-refresh for automatic learning refresh.
+EOF
+    fi
   fi
 fi
 
@@ -984,7 +1146,7 @@ PATH 提示：
   installer 已把 $BIN_DIR 写入:
     $SHELL_RC_PATH
 
-当前 shell 里如果马上要用 \`okeep\`，先执行：
+当前 shell 里如果马上要用 \`openrelix\`，先执行：
   export PATH="$BIN_DIR:\$PATH"
 EOF
   else
@@ -994,7 +1156,7 @@ PATH note:
   The installer added $BIN_DIR to PATH in:
     $SHELL_RC_PATH
 
-To use \`okeep\` in the current shell immediately, run:
+To use \`openrelix\` in the current shell immediately, run:
   export PATH="$BIN_DIR:\$PATH"
 EOF
   fi

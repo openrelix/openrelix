@@ -8,7 +8,7 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", required=True)
     parser.add_argument("--path-entry", required=True)
-    parser.add_argument("--marker", default="openkeepsake")
+    parser.add_argument("--marker", default="openrelix")
     return parser.parse_args()
 
 

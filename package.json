@@ -1,19 +1,19 @@
 {
-  "name": "openkeepsake",
+  "name": "openrelix",
   "version": "0.1.0",
-  "description": "OpenKeepsake™ v0.1.0 preview: local-first personal AI asset system for AI coding agent workflows.",
+  "description": "OpenRelix™ v0.1.0 preview: open-source personal memory keepsake for AI coding agent workflows.",
   "license": "MIT",
   "author": {
     "name": "kk_kais",
     "url": "https://www.npmjs.com/~kk_kais"
   },
-  "homepage": "https://github.com/Ray1Ren/openkeepsake#readme",
+  "homepage": "https://github.com/openrelix/openrelix#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Ray1Ren/openkeepsake.git"
+    "url": "git+https://github.com/openrelix/openrelix.git"
   },
   "bugs": {
-    "url": "https://github.com/Ray1Ren/openkeepsake/issues"
+    "url": "https://github.com/openrelix/openrelix/issues"
   },
   "keywords": [
     "ai-agents",
@@ -25,8 +25,7 @@
     "review"
   ],
   "bin": {
-    "openkeepsake": "install/npm-bin.js",
-    "okeep": "install/npm-bin.js"
+    "openrelix": "install/npm-bin.js"
   },
   "files": [
     "AGENTS.md",
@@ -42,7 +41,7 @@
     "docs/product-showcase.html",
     "install/",
     "ops/",
-    "scripts/okeep.py",
+    "scripts/openrelix.py",
     "scripts/asset_runtime.py",
     "scripts/build_codex_memory_summary.py",
     "scripts/build_overview.py",

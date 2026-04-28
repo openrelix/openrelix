@@ -12,6 +12,6 @@ Do not include secrets, tokens, cookies, account identifiers, raw Codex history,
 
 ## Data Boundary
 
-OpenKeepsake is local-first. The repository should contain reusable logic only. User state belongs in the configured state root, not in source control.
+OpenRelix is local-first. The repository should contain reusable logic only. User state belongs in the configured state root, not in source control.
 
 When reporting security issues, prefer sanitized reproduction steps and reduced examples over raw local data.

@@ -9,7 +9,7 @@ import subprocess
 import time
 from datetime import datetime, timedelta
 
-from asset_runtime import atomic_write_json, ensure_state_layout, get_runtime_paths
+from asset_runtime import atomic_write_json, ensure_state_layout, get_activity_source, get_runtime_paths
 
 PATHS = get_runtime_paths()
 CODEX_HOME = PATHS.codex_home
@@ -46,7 +46,7 @@ def parse_args():
     parser.add_argument("--stage", default="manual", choices=["manual", "preliminary", "final"])
     parser.add_argument(
         "--activity-source",
-        default=os.environ.get("OKEEP_ACTIVITY_SOURCE", os.environ.get("AI_ASSET_ACTIVITY_SOURCE", "history")),
+        default=get_activity_source(PATHS),
         choices=["history", "app-server", "auto"],
         help=(
             "Activity source. 'history' reads CODEX_HOME JSONL files, "
@@ -116,7 +116,7 @@ class CodexAppServerClient:
                 "initialize",
                 {
                     "clientInfo": {
-                        "name": "openkeepsake",
+                        "name": "openrelix",
                         "version": "0.1.0",
                     },
                     "capabilities": {

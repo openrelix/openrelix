@@ -29,6 +29,45 @@ if [[ -z "${PYTHON_BIN:-}" ]]; then
   exit 1
 fi
 
+target_date="${OPENRELIX_REFRESH_DATE:-$(date +%F)}"
+stage="${OPENRELIX_REFRESH_STAGE:-manual}"
+learn_memory="${OPENRELIX_REFRESH_LEARN_MEMORY:-0}"
+learn_window_days="${OPENRELIX_REFRESH_LEARN_WINDOW_DAYS:-0}"
+skip_unchanged="${OPENRELIX_REFRESH_SKIP_UNCHANGED:-0}"
+
+while (( $# > 0 )); do
+  case "$1" in
+    --learn-memory)
+      learn_memory=1
+      shift
+      ;;
+    --date)
+      target_date="${2:?missing value for --date}"
+      shift 2
+      ;;
+    --stage)
+      stage="${2:?missing value for --stage}"
+      shift 2
+      ;;
+    --learn-window-days)
+      learn_window_days="${2:?missing value for --learn-window-days}"
+      shift 2
+      ;;
+    --learn-window-days=*)
+      learn_window_days="${1#--learn-window-days=}"
+      shift
+      ;;
+    --skip-if-unchanged)
+      skip_unchanged=1
+      shift
+      ;;
+    *)
+      echo "unknown refresh_overview argument: $1" >&2
+      exit 2
+      ;;
+  esac
+done
+
 sync_codex_memory_summary_if_enabled() {
   local memory_mode=""
   local codex_home="${CODEX_HOME:-$HOME/.codex}"
@@ -44,12 +83,28 @@ from asset_runtime import get_memory_mode  # noqa: E402
 print(get_memory_mode())
 PY
   )"
-  if [[ "$memory_mode" == "codex-context" ]]; then
+  if [[ "$memory_mode" == "integrated" ]]; then
     "$PYTHON_BIN" "$REPO_ROOT/scripts/build_codex_memory_summary.py" \
       --memory-summary "$codex_home/memories/memory_summary.md"
   fi
 }
 
-"$PYTHON_BIN" "$REPO_ROOT/scripts/collect_codex_activity.py" --date "$(date +%F)" --stage manual
+case "${learn_memory:l}" in
+  1|true|yes|on)
+    extra_args=()
+    if [[ "$learn_window_days" =~ '^[0-9]+$' ]] && (( learn_window_days > 0 )); then
+      extra_args=(--learn-window-days "$learn_window_days")
+    fi
+    case "${skip_unchanged:l}" in
+      1|true|yes|on)
+        extra_args+=(--skip-if-unchanged)
+        ;;
+    esac
+    /bin/zsh "$REPO_ROOT/scripts/nightly_pipeline.sh" "$target_date" "$stage" "${extra_args[@]}"
+    exit 0
+    ;;
+esac
+
+"$PYTHON_BIN" "$REPO_ROOT/scripts/collect_codex_activity.py" --date "$target_date" --stage manual
 sync_codex_memory_summary_if_enabled
 "$PYTHON_BIN" "$REPO_ROOT/scripts/build_overview.py"

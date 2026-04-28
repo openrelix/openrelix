@@ -1,7 +1,7 @@
 # China Trademark Filing Kit
 
 This is an operational checklist for preparing a fast China trademark filing for
-the OpenKeepsake word mark. It is not legal advice.
+the OpenRelix word mark. It is not legal advice.
 
 Last reviewed: 2026-04-28.
 
@@ -10,11 +10,11 @@ Last reviewed: 2026-04-28.
 Create the earliest practical China trademark application record for the mark:
 
 ```text
-OPENKEEPSAKE
+OPENRELIX
 ```
 
 File this as a word mark / plain text mark first. Do not wait for a logo. Do not
-assume that a U.S. application for `OPENKEEPSAKE` protects the mark in China.
+assume that a U.S. application for `OPENRELIX` protects the mark in China.
 
 ## Short Recommendation
 
@@ -23,7 +23,7 @@ Recommended first application:
 - Jurisdiction: Mainland China.
 - Filing office: CNIPA / China trademark system, or a Chinese trademark agency
   recorded with CNIPA.
-- Mark: `OPENKEEPSAKE`
+- Mark: `OPENRELIX`
 - Mark type: word mark containing Latin letters.
 - Color: no color claim.
 - Owner: the individual or legal entity that controls the project brand.
@@ -92,10 +92,10 @@ Prepare these values before opening the filing form or sending agency intake:
 - Applicant identity / registration document.
 - Domicile or registered address.
 - Correspondence contact.
-- Mark text: `OPENKEEPSAKE`
+- Mark text: `OPENRELIX`
 - Mark type: word mark.
 - Color claim: none.
-- Mark explanation: `OpenKeepsake` is used as the project source identifier.
+- Mark explanation: `OpenRelix` is used as the project source identifier.
 - Translation / transliteration: explain only if the form or agent asks.
 - Priority claim: none unless counsel confirms a valid priority basis for the
   same mark and goods / services.
@@ -110,8 +110,8 @@ Prepare these values before opening the filing form or sending agency intake:
 Do not rely on a general web search. Before filing, search the official trademark
 system or ask the agency to search at least:
 
-- `OPENKEEPSAKE`
-- `OpenKeepsake`
+- `OPENRELIX`
+- `OpenRelix`
 - Similar English marks containing `Keepsake`
 - Similar Chinese transliterations or translations suggested by counsel
 
@@ -121,7 +121,7 @@ ask the agency for a same-day fallback name or narrower goods strategy.
 
 ## Distinctiveness Risk
 
-`OpenKeepsake` is closer to a coined project name than a direct software
+`OpenRelix` is closer to a coined project name than a direct software
 description, which is generally stronger than a purely descriptive product
 phrase. Counsel should still search for similar `Keepsake` marks and any
 localized equivalents before filing.
@@ -133,7 +133,7 @@ Risk posture:
 - Expect the agent to search for both prior rights and absolute-ground risk.
 - Keep fallback brand options available in case the examiner or search results
   show a serious problem.
-- Use `OpenKeepsake` consistently in Chinese project docs after filing so evidence
+- Use `OpenRelix` consistently in Chinese project docs after filing so evidence
   of source-identifying use can accumulate.
 
 ## Same-Day Execution Checklist
@@ -143,20 +143,20 @@ Risk posture:
 3. Run exact and similar searches for the checklist terms above.
 4. Select Class 9 goods from the official system, staying within 10 goods if
    possible.
-5. File `OPENKEEPSAKE` as a plain word mark with no color claim, or send this packet
+5. File `OPENRELIX` as a plain word mark with no color claim, or send this packet
    to the agency for filing.
 6. Save the application number, receipt, filing timestamp, and agency messages
    outside the public repository.
-7. Use `OpenKeepsake™` only where appropriate while pending. Use the registered
+7. Use `OpenRelix™` only where appropriate while pending. Use the registered
    trademark symbol only after registration issues, and only for the registered
    jurisdiction and goods / services.
 
 ## Agency Handoff Note
 
 ```text
-请尽快评估并提交中国大陆商标注册申请，标识为“OPENKEEPSAKE”，文字商标，不指定颜色。项目是开源、可下载的 CLI / 安装器和本地优先的 AI 工作流资产系统，用于创建、组织、存储、复盘和展示技能、模板、自动化和任务复盘等可复用资产。
+请尽快评估并提交中国大陆商标注册申请，标识为“OPENRELIX”，文字商标，不指定颜色。项目是开源、可下载的 CLI / 安装器和本地优先的 AI 工作流资产系统，用于创建、组织、存储、复盘和展示技能、模板、自动化和任务复盘等可复用资产。
 
-请优先提交第9类软件商品，尽量使用官方标准商品/服务名称，并尽量控制在10个商品内。只有在您认为托管服务/SaaS覆盖必要时，再建议另报第42类。请先做第9类和第42类的近似检索，并评估“OPENKEEPSAKE”是否存在显著性或近似冲突风险。如风险较高，请当天给出可替代方案；不要等 Logo。
+请优先提交第9类软件商品，尽量使用官方标准商品/服务名称，并尽量控制在10个商品内。只有在您认为托管服务/SaaS覆盖必要时，再建议另报第42类。请先做第9类和第42类的近似检索，并评估“OPENRELIX”是否存在显著性或近似冲突风险。如风险较高，请当天给出可替代方案；不要等 Logo。
 ```
 
 ## Official Sources To Recheck

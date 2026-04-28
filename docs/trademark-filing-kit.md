@@ -1,7 +1,7 @@
 # Trademark Filing Kit
 
 This is an operational checklist for preparing a fast trademark filing for the
-open source OpenKeepsake project. It is not legal advice.
+open source OpenRelix project. It is not legal advice.
 
 Last reviewed: 2026-04-27.
 
@@ -13,7 +13,7 @@ Recommended first filing:
 
 - Jurisdiction: United States, if the project is distributed through GitHub,
   npm, or another channel that reaches U.S. users.
-- Mark: `OPENKEEPSAKE`
+- Mark: `OPENRELIX`
 - Drawing: Standard characters
 - Owner: the individual or legal entity that will control the project brand
 - Primary class: International Class 9
@@ -25,10 +25,10 @@ Add Class 42 only if there is a hosted web service, SaaS product, or online
 non-downloadable software service under the same mark. The current v0.1.0 preview repo is a
 downloadable CLI / installer project, so Class 9 is the clean first filing.
 
-Use `OPENKEEPSAKE` as the first protection target. Do not lead with an acronym or
+Use `OPENRELIX` as the first protection target. Do not lead with an acronym or
 nickname unless a trademark attorney clears it.
 
-For China coverage, file `OPENKEEPSAKE` separately in China. A U.S. filing does
+For China coverage, file `OPENRELIX` separately in China. A U.S. filing does
 not automatically protect the mark there. See
 `docs/china-chinese-trademark-filing-kit.md`.
 
@@ -67,16 +67,16 @@ the mark and the downloadable software together.
 
 Best specimen options:
 
-- npm package page showing `openkeepsake`, the project description, and an
+- npm package page showing `openrelix`, the project description, and an
   install command.
-- GitHub README page showing `OpenKeepsake` and `npx openkeepsake
+- GitHub README page showing `OpenRelix` and `npx openrelix
   install`.
-- GitHub release or download page showing `OpenKeepsake` and a downloadable
+- GitHub release or download page showing `OpenRelix` and a downloadable
   artifact or ZIP download.
 
 The screenshot or webpage printout should include:
 
-- The mark exactly as filed, ideally `OpenKeepsake`.
+- The mark exactly as filed, ideally `OpenRelix`.
 - A download, install, package, release, or repository action that makes the
   software available.
 - The page URL and access date.
@@ -91,7 +91,7 @@ Prepare these values before opening the filing form:
 - Applicant entity type and jurisdiction, if filing through a company
 - Domicile address
 - Public correspondence email
-- Mark text: `OPENKEEPSAKE`
+- Mark text: `OPENRELIX`
 - Translation / transliteration: none
 - Color claim: none for standard-character filing
 - Prior registrations: none, unless you already own related marks
@@ -107,9 +107,9 @@ Before publishing broadly:
 
 - Keep `LICENSE` for source-code copyright permission.
 - Keep `TRADEMARKS.md` for brand-name permission.
-- Use `OpenKeepsake` consistently as the brand.
-- Use `openkeepsake` consistently as the npm package name.
-- Use `okeep` consistently as the CLI command.
+- Use `OpenRelix` consistently as the brand.
+- Use `openrelix` consistently as the npm package name.
+- Use `openrelix` consistently as the CLI command.
 - Avoid saying the mark is registered until registration issues.
 - Use `TM` while pending; use `R` in a circle only after registration and only in
   the registered jurisdiction.

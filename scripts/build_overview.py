@@ -18,9 +18,11 @@ from asset_runtime import (
     atomic_write_text,
     ensure_state_layout,
     get_memory_mode,
+    get_memory_summary_budget,
     get_runtime_language,
     get_runtime_paths,
     normalize_language,
+    PREVIOUS_PUBLIC_APP_SLUG,
     render_path,
 )
 from build_codex_memory_summary import (
@@ -29,6 +31,9 @@ from build_codex_memory_summary import (
     DEFAULT_PERSONAL_MEMORY_TOKENS as MEMORY_SUMMARY_PERSONAL_MEMORY_TOKENS,
     DEFAULT_TARGET_TOKENS as MEMORY_SUMMARY_TARGET_TOKENS,
     DEFAULT_WARN_TOKENS as MEMORY_SUMMARY_WARN_TOKENS,
+    PERSONAL_MEMORY_NOTE_LIMIT,
+    PERSONAL_MEMORY_TITLE_LIMIT,
+    estimate_tokens as estimate_summary_tokens,
 )
 
 PATHS = get_runtime_paths()
@@ -50,10 +55,16 @@ LIVE_TOKEN_PORT = 8765
 LIVE_TOKEN_ENDPOINT = "http://{}:{}/token-usage".format(LIVE_TOKEN_HOST, LIVE_TOKEN_PORT)
 LIVE_TOKEN_POLL_SECONDS = 300
 LIVE_TOKEN_TIMEOUT_MS = 20000
-PROJECT_GITHUB_URL = "https://github.com/Ray1Ren/openkeepsake"
+PROJECT_GITHUB_URL = "https://github.com/openrelix/openrelix"
+BRAND_DISPLAY_REPLACEMENTS = (
+    ("scripts/openrelix.py.py", "scripts/openrelix.py"),
+)
 PROJECT_CONTEXT_VISIBLE_COUNT = 4
 PROJECT_CONTEXT_DEFAULT_DAYS = 1
 PROJECT_CONTEXT_MAX_DAYS = 7
+SUMMARY_TERM_DEFAULT_DAYS = 1
+SUMMARY_TERM_RANGE_DAYS = (1, 3, 7)
+MEMORY_USAGE_WINDOW_DAYS = 7
 PROJECT_CONTEXT_TOPIC_VISIBLE_COUNT = 4
 TOKEN_METRIC_KEYS = {"today_token", "seven_day_token"}
 PANEL_PATH_LABEL = render_path(REPORTS_DIR / "panel.html")
@@ -62,6 +73,28 @@ LOCAL_PATH_TRAILING_PUNCTUATION = ".,;!?)]}\"'"
 LOCAL_PATH_TOKEN_RE = re.compile(
     r"(file://[^\s<>\"']+|~/[^\s<>\"']+|/[^\s<>\"']+)"
 )
+
+
+def normalize_brand_display_text(value):
+    if not isinstance(value, str):
+        return value
+    text = value
+    for source, target in BRAND_DISPLAY_REPLACEMENTS:
+        text = text.replace(source, target)
+    return text
+
+
+def normalize_brand_display_payload(value):
+    if isinstance(value, dict):
+        return {
+            normalize_brand_display_text(key): normalize_brand_display_payload(item)
+            for key, item in value.items()
+        }
+    if isinstance(value, list):
+        return [normalize_brand_display_payload(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(normalize_brand_display_payload(item) for item in value)
+    return normalize_brand_display_text(value)
 
 STOPWORDS = {
     "the",
@@ -148,6 +181,162 @@ TERM_ALIASES = {
     "model": "模型",
     "dashboard": "概览",
     "library": "资产库",
+    "openrelix": "OpenRelix",
+    PREVIOUS_PUBLIC_APP_SLUG: "OpenRelix",
+    "douyin": "Douyin",
+    "github": "GitHub",
+    "launchagent": "LaunchAgent",
+    "subreview": "subreview",
+    "ppe": "PPE",
+    "asr": "ASR",
+    "scancamera": "ScanCamera",
+}
+
+SUMMARY_TERM_LABEL_EN = {
+    "全局": "Global",
+    "分层": "Layering",
+    "整理": "Librarian",
+    "技能": "Skill",
+    "方法": "Playbook",
+    "自动化": "Automation",
+    "模板": "Template",
+    "流程": "Workflow",
+    "知识沉淀": "Knowledge",
+    "复盘": "Review",
+    "配置": "Config",
+    "记忆": "Memory",
+    "本地": "Local",
+    "输出整理": "Reporting",
+    "总结": "Summary",
+    "概览": "Overview",
+    "面板": "Panel",
+    "仓库": "Repo",
+    "工作方式": "Operating model",
+    "模型": "Model",
+    "资产库": "Asset library",
+    "个人资产自动化": "Personal asset automation",
+    "今日热词": "Today Hot Terms",
+    "近 3 日热词": "Last 3 Days Hot Terms",
+    "近 7 日热词": "Last 7 Days Hot Terms",
+    "新人必备": "Newcomer essentials",
+    "常用工具": "Common tools",
+    "技术博客": "Technical blog",
+    "看板": "Board",
+    "埋点": "Instrumentation",
+    "百度一下": "Baidu search",
+    "实验": "Experiment",
+    "扫一扫": "Scan",
+    "效能": "Productivity",
+    "AI工具": "AI tools",
+    "AI经验": "AI experience",
+    "工具": "Tools",
+    "经验": "Experience",
+}
+
+CONTEXT_KEYWORD_EN = {
+    "改名": "Rename",
+    "上线梳理": "Release prep",
+    "发布": "Release",
+    "开源": "Open source",
+    "短期记忆": "Short-term memory",
+    "长期记忆": "Long-term memory",
+    "记忆机制": "Memory mechanism",
+    "注入预算": "Injection budget",
+    "使用方式": "Usage",
+    "商标": "Trademark",
+    "中文商标": "Chinese trademark",
+    "性能": "Performance",
+    "适配成本": "Adapter cost",
+    "对齐回滚": "Alignment rollback",
+    "多 CLI": "multi-CLI",
+    "多语言": "i18n",
+    "后台服务": "Background service",
+    "安装配置": "Install config",
+    "锚点": "Anchor",
+    "排版密度": "Layout density",
+    "面板可视化": "Panel visualization",
+    "数据同步": "Data sync",
+    "记忆注入": "Memory injection",
+    "预算": "Budget",
+    "路线图": "Roadmap",
+    "品牌": "Brand",
+    "品牌升级": "Brand upgrade",
+    "首版发布": "First release",
+    "运行机制": "Runtime model",
+    "窗口": "Window",
+    "窗口学习": "Window learning",
+}
+
+FREEFORM_TEXT_EN = {
+    "未知": "Unknown",
+    "通用": "General",
+    "个人资产自动化": "Personal asset automation",
+    "协作沟通": "Collaboration",
+    "Codex 全局工作手册": "Codex global operating manual",
+    "个人资产整理技能": "Personal asset librarian skill",
+    "抖音工作资产整理技能": "Douyin work asset librarian skill",
+    "AI 资产概览链路": "AI asset overview pipeline",
+    "Codex /subreview:run 外部评审循环": "Codex /subreview:run external review loop",
+    "Token 图表 Apple 风格配色优化": "Token chart Apple-style color refinement",
+    "记忆面板四列展开布局": "Memory panel four-column expanded layout",
+    "飞书画板 CLI 能力检查": "Feishu Whiteboard CLI capability check",
+    "资产与复盘面板布局优化": "Asset and review panel layout refinement",
+    "资产面板 artifact 路径跳转": "Asset panel artifact path links",
+    "Codex 独立评审命令落地": "Codex independent review command rollout",
+    "个人资产系统初始化": "Personal asset system bootstrap",
+    "沉淀一套稳定的全局工作方式，约束 Codex 的通用行为和本地资产边界。": (
+        "Captures a stable global operating model for Codex behavior and local asset boundaries."
+    ),
+    "把复盘、方法、模板和流程整理成可持续复用的本地资产。": (
+        "Turns reviews, methods, templates, and workflows into sustainable reusable local assets."
+    ),
+    "把抖音相关工作的经验沉淀为可复用条目，同时避免给仓库增加 git 负担。": (
+        "Captures Douyin work experience as reusable entries without adding git burden to the repo."
+    ),
+    "把本地资产、复盘和 token 数据整理成一份可直接查看的概览和面板。": (
+        "Turns local assets, reviews, and token data into a directly browsable overview and panel."
+    ),
+    "在 Codex CLI 里用 /subreview:run 驱动一个独立 Codex reviewer 评分，并让主 agent 迭代修复直到通过评审。": (
+        "Uses /subreview:run in Codex CLI to drive an independent reviewer and iterate fixes until review passes."
+    ),
+}
+
+FREEFORM_PHRASE_EN = {
+    "个人资产": "personal asset",
+    "资产概览": "asset overview",
+    "概览链路": "overview pipeline",
+    "工作手册": "operating manual",
+    "整理技能": "librarian skill",
+    "工作资产": "work asset",
+    "复盘面板": "review panel",
+    "资产面板": "asset panel",
+    "记忆面板": "memory panel",
+    "四列展开": "four-column expanded",
+    "配色优化": "color refinement",
+    "能力检查": "capability check",
+    "路径跳转": "path links",
+    "命令落地": "command rollout",
+    "系统初始化": "system bootstrap",
+    "独立评审": "independent review",
+    "外部评审": "external review",
+    "飞书画板": "Feishu Whiteboard",
+    "抖音": "Douyin",
+    "图表": "chart",
+    "风格": "style",
+    "配色": "color",
+    "优化": "refinement",
+    "链路": "pipeline",
+    "概览": "overview",
+    "面板": "panel",
+    "资产": "asset",
+    "记忆": "memory",
+    "复盘": "review",
+    "自动化": "automation",
+    "技能": "skill",
+    "方法": "playbook",
+    "模板": "template",
+    "通用": "general",
+    "协作沟通": "collaboration",
 }
 
 DISPLAY_TYPE = {
@@ -162,6 +351,11 @@ DISPLAY_TYPE = {
 DISPLAY_DOMAIN = {
     "general": "跨场景通用",
     "通用": "跨场景通用",
+    "douyin": "Douyin",
+    "openrelix": "OpenRelix",
+    "personal-asset-automation": "个人资产自动化",
+    "open-source-branding": "开源品牌",
+    "lark": "Lark",
     "android": "Android 开发",
     "Android": "Android 开发",
     "ios": "iOS 开发",
@@ -202,6 +396,7 @@ DISPLAY_MEMORY_BUCKET = {
 DISPLAY_MEMORY_TYPE = {
     "semantic": "语义",
     "procedural": "流程",
+    "episodic": "事件记忆",
     "task": "任务",
     "mapping": "映射",
     "preference": "偏好",
@@ -226,6 +421,14 @@ DISPLAY_TYPE_EN = {
 DISPLAY_DOMAIN_EN = {
     "general": "Cross-scenario",
     "通用": "Cross-scenario",
+    "跨场景通用": "Cross-scenario",
+    "douyin": "Douyin",
+    "openrelix": "OpenRelix",
+    "personal-asset-automation": "Personal asset automation",
+    "个人资产自动化": "Personal asset automation",
+    "open-source-branding": "Open-source branding",
+    "开源品牌": "Open-source branding",
+    "lark": "Lark",
     "android": "Android",
     "Android": "Android",
     "ios": "iOS",
@@ -266,11 +469,22 @@ DISPLAY_MEMORY_BUCKET_EN = {
 DISPLAY_MEMORY_TYPE_EN = {
     "semantic": "Semantic",
     "procedural": "Procedure",
+    "episodic": "Episodic",
     "task": "Task",
     "mapping": "Mapping",
     "preference": "Preference",
     "rule": "Rule",
 }
+
+MEMORY_TYPE_GROUP_ORDER = (
+    "procedural",
+    "semantic",
+    "episodic",
+    "rule",
+    "mapping",
+    "preference",
+    "task",
+)
 
 DISPLAY_MEMORY_PRIORITY_EN = {
     "high": "High Priority",
@@ -280,20 +494,19 @@ DISPLAY_MEMORY_PRIORITY_EN = {
 
 PANEL_DEFAULT_LANGUAGE = LANGUAGE
 PANEL_I18N_EN = {
-    "OpenKeepsake 工作台": "OpenKeepsake Workbench",
-    "OpenKeepsake": "OpenKeepsake",
+    "OpenRelix 工作台": "OpenRelix Workbench",
+    "OpenRelix": "OpenRelix",
     "只保留当前有效的复用信号：最近整理、核心指标，以及可继续下钻的窗口、记忆和资产明细。": (
         "Keep the currently useful reuse signals: recent synthesis, core metrics, "
         "and drill-down window, memory, and asset details."
     ),
     "阅读提示": "Reading Guide",
+    "说明": "Help",
     "系统": "System",
     "浅色": "Light",
     "深色": "Dark",
     "面板快照": "Snapshot",
     "刚刚生成": "Generated just now",
-    "Token 实时源": "Live token source",
-    "准备连接": "Ready to connect",
     "实时刷新 Token": "Refresh Token",
     "正在查询 Token": "Checking Token",
     "先展示本地快照，再实时同步最新 Token。": "Showing the local snapshot first, then syncing the latest Token usage.",
@@ -307,6 +520,7 @@ PANEL_I18N_EN = {
     "Token 已刷新，": "Token refreshed, ",
     "更新。": "updated.",
     "数据来源：ccusage 日维度统计": "Source: ccusage daily stats",
+    "来自 ccusage": "From ccusage",
     "暂未获取到 ccusage 的日维度统计": "ccusage daily stats are unavailable",
     "暂无数据。": "No data.",
     "暂无。": "None.",
@@ -389,7 +603,6 @@ PANEL_I18N_EN = {
     "个人资产-短期工作记忆": "Personal Asset - Short-term Work Memory",
     "个人资产-低优先记忆": "Personal Asset - Low-priority Memory",
     "个人资产-低优先级记忆": "Personal Asset - Low-priority Memory",
-    "个人资产-当前记忆登记册": "Personal Asset - Current Memory Registry",
     "每日窗口数": "Daily Windows",
     "资产注册表中的稳定条目": "Stable entries in the asset registry",
     "当前仍在使用的条目": "Entries still in active use",
@@ -455,15 +668,27 @@ PANEL_I18N_EN = {
     "整理日期": "Synthesis Date",
     "结构信号": "Structure Signals",
     "本期摘要词": "Summary Terms",
+    "今日热词": "Today Hot Terms",
+    "近 3 日热词": "Last 3 Days Hot Terms",
+    "近 7 日热词": "Last 7 Days Hot Terms",
+    "热词时间范围": "Hot terms date range",
     "本期小结": "Current Summary",
     "资产类型分布": "Asset Type Distribution",
     "项目 / 上下文分布": "Project / Context Distribution",
     "月度新增": "Monthly Additions",
     "适用层级": "Scope",
+    "运行视图": "Runtime View",
+    "记忆层": "Memory Layer",
+    "资产层": "Asset Layer",
+    "资产记忆": "Asset Memory",
+    "账本概览": "Ledger Overview",
+    "资产账本概览": "Asset Ledger Overview",
+    "这里看的是已经登记到本地账本里的资产、复盘和复用记录，不是注入 Codex context 的记忆摘要。": (
+        "This shows assets, reviews, and reuse records registered in the local ledger, not the memory summary injected into Codex context."
+    ),
     "每日 Token 消耗": "Daily Token Usage",
     "今日 Token 构成": "Today Token Breakdown",
     "当前项目上下文": "Current Project Context",
-    "当前记忆登记册": "Current Memory Registry",
     "来自本地资产系统的 nightly 整理与结构化登记册。": "From the local asset system's nightly synthesis and structured registry.",
     "来自 Codex 原生 memory summary 与 MEMORY.md。": "From Codex native memory_summary and MEMORY.md.",
     "Codex 原生记忆": "Codex Native Memory",
@@ -475,6 +700,7 @@ PANEL_I18N_EN = {
     "复用价值较高的资产": "High-value Reusable Assets",
     "最近复盘": "Recent Reviews",
     "最近复用记录": "Recent Usage Events",
+    "最近形成的脱敏任务复盘": "Recent sanitized task reviews",
     "昨夜窗口概览": "Last Night's Window Overview",
     "当日窗口概览": "Today's Window Overview",
     "每日窗口概览": "Daily Window Overview",
@@ -514,6 +740,7 @@ PANEL_I18N_EN = {
     "最近结论": "Recent Takeaway",
     "需求 / 主题": "Need / Topic",
     "来源窗口": "Source Window",
+    "来源文件": "Source File",
     "关联上下文": "Related Context",
     "首次添加": "First Added",
     "最近更新": "Recently Updated",
@@ -523,6 +750,7 @@ PANEL_I18N_EN = {
     "中优先": "Medium Priority",
     "语义": "Semantic",
     "流程": "Procedure",
+    "事件记忆": "Episodic",
     "规则": "Rule",
     "偏好": "Preference",
     "映射": "Mapping",
@@ -552,6 +780,7 @@ PANEL_I18N_EN = {
     "草稿": "Draft",
     "停用": "Retired",
     "统计什么": "What it measures",
+    "类型说明": "Type guide",
     "数据来源": "Source",
     "怎么算": "How it is calculated",
     "怎么看": "How to read it",
@@ -572,8 +801,55 @@ PANEL_I18N_EN = {
     "标签含义": "Label meaning",
     "和上面的区别": "Difference from above",
     "为什么会看到 Codex 本地环境": "Why Codex local environment appears",
+    "语言切换": "Language switch",
+    "配色切换": "Theme switch",
+    "页面导览": "Page navigation",
+    "高价值": "High value",
+    "中价值": "Medium value",
+    "观察中": "Watching",
     "从资产、标签和复盘内容中提炼": "Extracted from assets, tags, and reviews",
+    "从全量资产登记册、复盘和复用记录中提炼": (
+        "Extracted from the full asset registry, reviews, and usage records"
+    ),
     "方便快速浏览当前阶段的沉淀情况": "A quick read on the current asset state",
+    "已登记到资产注册表的稳定资产总数。": "Total stable assets registered in the asset registry.",
+    "state root 下的 registry/assets.jsonl。": "registry/assets.jsonl under the state root.",
+    "raw 对话、日志、报表，以及还没登记成资产的临时内容。": (
+        "Raw conversations, logs, reports, and temporary content that has not been registered as an asset."
+    ),
+    "状态为 active 的资产数量。": "Number of assets whose status is active.",
+    "活跃表示当前仍建议继续复用，不代表当天一定刚被使用。": (
+        "Active means the asset is still recommended for reuse; it does not mean it was used today."
+    ),
+    "本地保存的脱敏任务复盘数量。": "Number of sanitized task reviews saved locally.",
+    "state root 下的 reviews/ 目录；卡片里的“复盘文件”可以直接打开对应 Markdown。": (
+        "The reviews/ directory under the state root; the Review File link opens the corresponding Markdown."
+    ),
+    "已经被记录下来的资产复用事件总数。": "Total recorded asset reuse events.",
+    "state root 下的 registry/usage_events.jsonl。": "registry/usage_events.jsonl under the state root.",
+    "按复用记录和近期工作命中自动估算的分钟数": (
+        "Minutes estimated from reuse events and recent work matches"
+    ),
+    "按显式复用记录、近期窗口命中和资产类型基准自动估算的节省分钟数。": (
+        "Estimated minutes saved from explicit reuse records, recent window matches, and asset-type baselines."
+    ),
+    "这不是精确测速；它用于排序和趋势观察，原始 usage event 里的 minutes_saved 只作为强证据之一。": (
+        "This is not an exact benchmark; it is for ranking and trend observation, with minutes_saved in raw usage events as one strong signal."
+    ),
+    "scope = repo 的资产数量。": "Number of assets where scope = repo.",
+    "这类资产通常绑定某个仓库、模块或固定工作场景。": (
+        "These assets are usually tied to a repo, module, or fixed work scenario."
+    ),
+    "ccusage 最新一天的总 Token 消耗。": "Total Token usage on the latest ccusage day.",
+    "输入、缓存输入、输出和推理输出都会计入总量。": (
+        "Input, cached input, output, and reasoning output are all included in the total."
+    ),
+    "ccusage 最近 7 天每日总 Token 的累计值。": "Sum of ccusage daily total Tokens over the last 7 days.",
+    "这是滚动 7 日窗口，不是自然周。": "This is a rolling 7-day window, not a calendar week.",
+    "最近一次窗口整理里纳入统计的窗口数。": "Number of windows included in the latest window synthesis.",
+    "优先来自 daily capture；原始明细缺失时会退回最近一次 nightly summary。": (
+        "Uses daily capture first; if raw details are missing, it falls back to the latest nightly summary."
+    ),
     "把 ccusage 的日维度数据再加工成较上一日、7 日均值、峰值日和缓存占输入等快速判断信号。": (
         "Turns ccusage daily data into quick signals like previous-day delta, 7-day average, peak day, and cached/input ratio."
     ),
@@ -584,6 +860,10 @@ PANEL_I18N_EN = {
         "Cached input is a subset of input tokens and should not be added directly to input and output."
     ),
     "来自资产注册表的稳定条目": "Stable entries from the asset registry",
+    "统计来自 assets.jsonl 的全部稳定资产，不限当前仓库；只有已登记的条目会进入这里，raw、log、report 和单次对话不会计入。": (
+        "Counts all stable assets from assets.jsonl, not only the current repo. Only registered entries appear here; "
+        "raw captures, logs, reports, and one-off chats are excluded."
+    ),
     "根据资产路径与最近工作自动归纳": "Inferred from asset paths and recent work",
     "按复用层级分类": "Grouped by reuse scope",
     "可切换最近 1-7 天；项目内按需求 / 主题二次归类": (
@@ -609,8 +889,8 @@ PANEL_I18N_EN = {
     "只有当条目稳定、低风险、适合共享时，再从个人范围提升到仓库或团队范围。": (
         "Promote entries from personal to repo or team scope only when stable, low-risk, and shareable."
     ),
-    "对照“Codex 原生记忆”和“个人资产-当前记忆登记册”看：前者偏模型长期记忆，后者偏夜间整理和来源追踪。": (
-        "Compare Codex Native Memory with the Personal Asset - Current Memory Registry: the former is closer to long-term model memory, "
+    "对照“Codex 原生记忆”和“个人资产记忆”看：前者偏模型长期记忆，后者偏夜间整理和来源追踪。": (
+        "Compare Codex Native Memory with Personal Asset Memory: the former is closer to long-term model memory, "
         "while the latter is nightly synthesis with source tracing."
     ),
     "统计口径": "Counting rule",
@@ -652,6 +932,23 @@ PANEL_I18N_EN = {
     "团队共享：适合多人共同遵守或复用。": "Team: suitable for multiple people to follow or reuse.",
     "从资产标题、类型、领域、备注、复盘文本和复用记录里抽词。": (
         "Extracted from asset titles, types, domains, notes, review text, and usage events."
+    ),
+    "从所选日期范围内的窗口整理、资产标题、领域、备注、复盘文本和复用记录里抽词。": (
+        "Extracted from window synthesis, asset titles, domains, notes, review text, and usage records in the selected date range."
+    ),
+    "时间范围": "Time range",
+    "不是固定最近几天；这里是当前 state root 里已登记内容的全量快照。": (
+        "This is not a fixed recent-day window; it is the full current snapshot of registered content in the state root."
+    ),
+    "默认展示今日热词，可切换近 3 日和近 7 日。": (
+        "Shows today by default and can switch to the last 3 or 7 days."
+    ),
+    "默认今日，可切换近 3 日 / 近 7 日": "Today by default; switch to last 3 / 7 days",
+    "它会随资产、复盘或复用记录新增、修改而变化；每日整理请看“今日摘要 / 每日窗口概览”。": (
+        "It changes as assets, reviews, or usage records are added or updated; use Today Summary / Daily Window Overview for daily synthesis."
+    ),
+    "它会随当天窗口整理、资产、复盘或复用记录新增、修改而变化。": (
+        "It changes as today's window synthesis, assets, reviews, or usage records are added or updated."
     ),
     "字越大代表出现频次越高。这是主题提示，不代表严格的主题建模结果。": (
         "Larger text means higher frequency. This is a topic hint, not strict topic modeling."
@@ -696,14 +993,23 @@ PANEL_I18N_EN = {
     "这些数字来自当前整理结果，用来快速判断今天沉淀了多少内容。": (
         "These numbers come from the selected synthesis and help estimate how much was captured that day."
     ),
-    "最近一次 nightly summary 判定为 durable 的记忆条目。": (
-        "Memory items marked durable by the latest nightly summary."
+    "当前登记册中 bucket = durable 的长期记忆，按近 7 日估算使用频率排序。": (
+        "Long-term memories where bucket = durable in the current registry, sorted by estimated 7-day usage frequency."
+    ),
+    "state root 下的 registry/memory_items.jsonl；同一条记忆跨天重复出现时会合并计算。": (
+        "registry/memory_items.jsonl under the state root; repeated memories across days are merged."
     ),
     "这里展示的是当前主视图对应的整理结果；顶部指标卡统计的是 registry/memory_items.jsonl 的当前数量。": (
         "This shows the synthesis behind the current main view; top metric cards count the current registry/memory_items.jsonl state."
     ),
-    "最近一次 nightly summary 里的 session bucket 条目。": (
-        "Session bucket items from the latest nightly summary."
+    "频率来自近 7 日窗口匹配：来源窗口直接命中权重最高，标题、关键词、说明与历史窗口摘要匹配会按相关度加权，项目上下文只做小幅加分。": (
+        "Frequency comes from matching the last 7 days of windows: direct source windows carry the highest weight; title, keywords, and notes are weighted by relevance to historical summaries; project context adds only a small boost."
+    ),
+    "当前登记册中 bucket = session 的短期工作记忆，按近 7 日估算使用频率排序。": (
+        "Short-term work memories where bucket = session in the current registry, sorted by estimated 7-day usage frequency."
+    ),
+    "更偏当前需求推进，未必适合长期沉淀。": (
+        "More relevant to the current task and not always worth long-term capture."
     ),
     "这类内容对当前任务推进有帮助，但未必适合长期沉淀。": (
         "These help the current task but may not be suitable for long-term capture."
@@ -714,8 +1020,11 @@ PANEL_I18N_EN = {
     "保留但优先级较低，通常不是第一推荐路径。": (
         "Retained with lower priority and usually not the primary recommended path."
     ),
-    "按最近更新排序；同一条记忆跨天重复出现时，会归并展示首次添加和最近更新。": (
-        "Sorted by latest update. Repeated memories across days are merged with first-added and latest-updated dates."
+    "保留但优先级较低，通常不作为主路径提示。": (
+        "Retained with lower priority and usually not the primary path."
+    ),
+    "按近 7 日估算使用频率排序；同一条记忆跨天重复出现时，会归并展示首次添加和最近更新。": (
+        "Sorted by estimated 7-day usage frequency. Repeated memories across days are merged with first-added and latest-updated dates."
     ),
     "基于 registry/memory_items.jsonl 的整理日志，按记忆签名归并出的当前记忆视图。": (
         "Current memory view grouped by memory signature from registry/memory_items.jsonl synthesis logs."
@@ -729,11 +1038,11 @@ PANEL_I18N_EN = {
     "按记忆签名归并后，bucket = low_priority 的个人资产-低优先记忆数量。": (
         "Count of Personal Asset - Low-priority Memory items after grouping by memory signature where bucket = low_priority."
     ),
-    "它和个人资产-当前记忆登记册都来自本地 Codex 工作，但前者更接近模型会读取的长期摘要，后者是夜间整理后的结构化日志。": (
-        "It and the Personal Asset - Current Memory Registry both come from local Codex work, but the former is closer to model-readable long-term summaries while the latter is structured nightly synthesis."
+    "它和个人资产记忆都来自本地 Codex 工作，但前者更接近模型会读取的长期摘要，后者是夜间整理后的结构化日志。": (
+        "It and Personal Asset Memory both come from local Codex work, but the former is closer to model-readable long-term summaries while the latter is structured nightly synthesis."
     ),
-    "个人资产-当前记忆登记册偏近期窗口整理、来源追踪、工作区定位。": (
-        "Personal Asset - Current Memory Registry focuses on recent window synthesis, source tracing, and workspace location."
+    "个人资产记忆偏近期窗口整理、来源追踪、工作区定位。": (
+        "Personal Asset Memory focuses on recent window synthesis, source tracing, and workspace location."
     ),
     "按和个人资产-长期记忆一致的卡片样式展示，便于和 nightly 整理出的记忆对齐比较。": (
         "Uses the same card style as Personal Asset - Long-term Memory, so it can be compared with nightly memory."
@@ -744,6 +1053,9 @@ PANEL_I18N_EN = {
     "最近更新：最近一次被 nightly 整理再次命中的日期。": (
         "Recently updated: the latest date this memory was hit again by nightly synthesis."
     ),
+    "7日频率：近 7 日窗口中直接来源、文本相关和上下文相关的加权结果。": (
+        "7-day frequency: a weighted result from direct sources, text relevance, and context relevance in the last 7 days of windows."
+    ),
     "如果当前页还能定位到来源窗口，会提供页内跳转；否则回退到原始窗口 JSON 或本地工作区链接。": (
         "If the source window can be located on this page, an in-page jump is shown; otherwise it falls back to the raw window JSON or local workspace link."
     ),
@@ -753,6 +1065,66 @@ PANEL_I18N_EN = {
     "看差异时，优先看来源文件和上下文标签，不要只看数量。": (
         "When comparing, prioritize source files and context labels, not just counts."
     ),
+    "直接读取 Codex 原生 memory summary 里的 User preferences。": (
+        "Reads User preferences directly from the Codex native memory summary."
+    ),
+    "直接读取 Codex 原生 memory summary 里的 General Tips。": (
+        "Reads General Tips directly from the Codex native memory summary."
+    ),
+    "更偏通用工作方法和排障路径，和偏好模块分开看。": (
+        "Mostly general working methods and troubleshooting paths; read it separately from preferences."
+    ),
+    "读取 MEMORY.md 里的 Task Group 索引，展示历史任务组和对应来源。": (
+        "Reads the Task Group index in MEMORY.md and shows historical task groups with their sources."
+    ),
+    "它更像长期主题目录，不等同于某一天的 nightly memory。": (
+        "This is closer to a long-term topic directory, not a single day's nightly memory."
+    ),
+    "按 updated_at 倒序，展示最近改动过的资产。": (
+        "Sorted by updated_at descending, showing recently changed assets."
+    ),
+    "按自动估算价值分倒序；分数由显式复用、近期窗口命中、估算节省分钟、资产类型基准和最近维护信号组成。": (
+        "Sorted by estimated value score descending; the score combines explicit reuse, recent window matches, estimated saved minutes, asset-type baselines, and recent maintenance signals."
+    ),
+    "价值分衡量“这个资产是否持续减少重复工作或降低出错成本”；估算节省是分钟级近似，不需要用户手工维护 reuse_count。": (
+        "Value score estimates whether the asset keeps reducing repeated work or error cost; estimated saved time is a minute-level approximation and does not require manually maintaining reuse_count."
+    ),
+    "显式复用记录权重最高；窗口命中是弱证据；没有直接证据的资产只保留类型和维护活跃度带来的潜在价值。": (
+        "Explicit reuse records carry the highest weight; window matches are weaker evidence; assets without direct evidence keep only potential value from type and maintenance activity."
+    ),
+    "按复盘里的日期和任务名倒序展示最近条目。": (
+        "Sorted by review date and task name descending, newest first."
+    ),
+    "按 date、asset_id、task 倒序展示最近事件。": (
+        "Sorted by date, asset_id, and task descending, newest first."
+    ),
+    "它证明某个已有资产在实际任务里起过作用，但不等于自动精确量化收益。": (
+        "It proves an existing asset was useful in real work, but it is not an automatic exact ROI measurement."
+    ),
+    "最近一次窗口整理里的窗口级明细。每张卡对应一个窗口，而不是一个资产。": (
+        "Window-level details from the latest window synthesis. Each card represents one window, not one asset."
+    ),
+    "工作窗口、长期记忆、短期跟进、低优先级记忆。": (
+        "Work windows, long-term memory, short-term follow-ups, and low-priority memory."
+    ),
+    "原生记忆偏长期规则、稳定 workflow、历史 rollout 结论。": (
+        "Native memory leans toward long-term rules, stable workflows, and historical rollout conclusions."
+    ),
+    "用户偏好、通用 tips 和任务组已经拆到独立模块。": (
+        "User preferences, general tips, and task groups are split into separate modules."
+    ),
+    "项目 / 上下文：资产最终归到的 display_context。": (
+        "Project / Context: the final display_context assigned to the asset."
+    ),
+    "适用层级：scope 的展示值。": "Scope: the display value of scope.",
+    "复用记录：这个资产已经被记录过多少次 usage event。": (
+        "Usage events: how many times this asset has been recorded in usage events."
+    ),
+    "cwd / project_label、问题数、结论数。": (
+        "cwd / project_label, question count, and conclusion count."
+    ),
+    "问题摘要、结论摘要、关键词。": "Question summary, conclusion summary, and keywords.",
+    "最近问题和最近结论片段。": "Recent question and recent conclusion snippets.",
 }
 
 
@@ -768,6 +1140,12 @@ def localized(zh_text, en_text="", language=None):
     if not is_english(language):
         return zh_text
     return en_text or PANEL_I18N_EN.get(str(zh_text or ""), str(zh_text or ""))
+
+
+def plural_en(count, singular, plural=None):
+    number = safe_int(count)
+    word = singular if number == 1 else (plural or "{}s".format(singular))
+    return "{} {}".format(number, word)
 
 
 CONTEXT_LABEL_EN = {
@@ -797,6 +1175,48 @@ def localized_context_label(label, language=None):
 def localized_topic_label(label, language=None):
     label = normalize_brand_display_text(label)
     return localized(label, normalize_brand_display_text(CONTEXT_TOPIC_LABEL_EN.get(str(label or ""), str(label or ""))), language)
+
+
+def contains_cjk(text):
+    return bool(re.search(r"[\u4e00-\u9fff]", str(text or "")))
+
+
+def localized_context_keyword(keyword, language=None):
+    text = normalize_brand_display_text(str(keyword or "")).strip()
+    if not text or not is_english(language):
+        return text
+    if text in CONTEXT_KEYWORD_EN:
+        return CONTEXT_KEYWORD_EN[text]
+    for source, target in CONTEXT_KEYWORD_EN.items():
+        text = text.replace(source, target)
+    return text
+
+
+def english_context_preview(text, keywords=None, label="Focus"):
+    normalized = normalize_brand_display_text(str(text or ""))
+    if not contains_cjk(normalized):
+        return normalized
+
+    terms = []
+    for keyword in keywords or []:
+        candidate = localized_context_keyword(keyword, language="en")
+        if candidate and candidate not in terms and not contains_cjk(candidate):
+            terms.append(candidate)
+
+    for source, target in CONTEXT_KEYWORD_EN.items():
+        if source in normalized and target not in terms:
+            terms.append(target)
+
+    for token in re.findall(r"[A-Za-z][A-Za-z0-9+#./-]{1,}", normalized):
+        candidate = normalize_brand_display_text(token)
+        if candidate.lower() in STOPWORDS:
+            continue
+        if candidate not in terms:
+            terms.append(candidate)
+
+    if terms:
+        return "{}: {}.".format(label, ", ".join(terms[:6]))
+    return "{}: captured from the original Chinese window.".format(label)
 
 
 def localized_record_field(item, field, language=None, default=""):
@@ -833,6 +1253,14 @@ ASSET_TYPE_DESCRIPTIONS = {
     "template": "可直接复用的结构化模板，例如文档模板、提示词模板或条目录入模板。",
     "knowledge_card": "较小颗粒的知识卡片，用来记录稳定结论、模块映射或判断规则。",
     "review": "经过脱敏整理、可回看复用的任务复盘。",
+}
+ASSET_TYPE_DESCRIPTIONS_EN = {
+    "skill": "A callable Codex skill package for a specific scenario, usually backed by a discoverable SKILL.",
+    "automation": "A script, command, background job, or pipeline that automates a fixed workflow.",
+    "playbook": "Reusable methods such as operating guides, rules, checklists, and troubleshooting paths.",
+    "template": "Reusable structured templates such as docs, prompts, or entry formats.",
+    "knowledge_card": "A compact knowledge card for stable conclusions, module mappings, or decision rules.",
+    "review": "A sanitized task review that can be revisited and reused.",
 }
 ASSET_TYPE_GUIDE_ORDER = (
     "playbook",
@@ -1216,7 +1644,7 @@ ACRONYM_LABELS = {
     "ui": "UI",
     "ux": "UX",
 }
-BRAND_DISPLAY_NAME = "OpenKeepsake"
+BRAND_DISPLAY_NAME = "OpenRelix"
 LEGACY_BRAND_PHRASES = (
     "AI Personal Assets System",
     "AI personal assets system",
@@ -1235,6 +1663,8 @@ def normalize_brand_display_text(value):
     text = str(value or "")
     if not text:
         return text
+    for source, target in BRAND_DISPLAY_REPLACEMENTS:
+        text = text.replace(source, target)
     for phrase in LEGACY_BRAND_PHRASES:
         text = text.replace(phrase, BRAND_DISPLAY_NAME)
     text = re.sub(r"\bAPA\b", BRAND_DISPLAY_NAME, text)
@@ -1311,6 +1741,13 @@ def safe_int(value):
         return int(value)
     except (TypeError, ValueError):
         return 0
+
+
+def safe_float(value):
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return 0.0
 
 
 def compact_number(value):
@@ -1393,51 +1830,137 @@ def rough_text_token_count(text):
 
 
 def estimate_memory_row_tokens(row):
-    parts = [
-        row.get("display_bucket") or row.get("bucket", ""),
-        row.get("display_memory_type") or row.get("memory_type", ""),
-        row.get("display_priority") or row.get("priority", ""),
+    title = compact_preview_text(
         row.get("display_title") or row.get("title", ""),
+        limit=PERSONAL_MEMORY_TITLE_LIMIT,
+    )
+    value_note = compact_preview_text(
         row.get("display_value_note") or row.get("value_note", ""),
-        row.get("display_context", ""),
-        " ".join(row.get("context_labels", [])),
-    ]
-    source_windows = row.get("source_windows", [])
-    if source_windows:
-        parts.append(" ".join(item.get("cwd_display", "") for item in source_windows[:2]))
-    text_tokens = rough_text_token_count("\n".join(part for part in parts if part))
-    if text_tokens <= 0:
-        return 0
-    return text_tokens + 8
+        limit=PERSONAL_MEMORY_NOTE_LIMIT,
+    )
+    meta = "{}/{}/{}".format(
+        row.get("bucket") or "unknown",
+        row.get("memory_type") or "semantic",
+        row.get("priority") or "medium",
+    )
+    line = "- [{}] {}".format(meta, title)
+    if value_note:
+        line = "{} - {}".format(line, value_note)
+    tokens, _ = estimate_summary_tokens(line)
+    return tokens
 
 
-def build_personal_memory_token_usage(memory_registry, memory_mode, language=None):
+def estimate_memory_summary_fit(context_rows, max_items, token_budget):
+    heading_tokens, _ = estimate_summary_tokens("### Local personal memory registry\n")
+    used_tokens = heading_tokens
+    fit_count = 0
+    for row in context_rows[:max_items]:
+        row_tokens = estimate_memory_row_tokens(row)
+        if row_tokens <= 0:
+            continue
+        if used_tokens + row_tokens > token_budget:
+            continue
+        used_tokens += row_tokens
+        fit_count += 1
+    return fit_count, min(used_tokens, token_budget)
+
+
+def read_personal_memory_summary_usage(summary_path):
+    if not summary_path:
+        return None
+    path = Path(summary_path)
+    if not path.exists():
+        return None
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return None
+    marker = "### Local personal memory registry"
+    if marker not in text:
+        return {"count": 0, "tokens": 0}
+    section = text.split(marker, 1)[1].split("\n### ", 1)[0]
+    lines = [line for line in section.splitlines() if line.startswith("- ")]
+    section_text = "{}\n\n{}\n".format(marker, "\n".join(lines))
+    tokens, _ = estimate_summary_tokens(section_text)
+    return {"count": len(lines), "tokens": tokens}
+
+
+def build_personal_memory_token_usage(
+    memory_registry,
+    memory_mode,
+    language=None,
+    memory_summary_path=None,
+    memory_summary_budget=None,
+):
     language = current_language(language)
-    memory_mode = str(memory_mode or "codex-context")
+    memory_mode = str(memory_mode or "integrated")
+    summary_budget = memory_summary_budget or get_memory_summary_budget(PATHS)
+    summary_target_tokens = summary_budget["target_tokens"]
+    summary_warn_tokens = summary_budget["warn_tokens"]
+    summary_max_tokens = summary_budget["max_tokens"]
+    personal_memory_budget_tokens = summary_budget["personal_memory_tokens"]
     enabled = memory_mode != "off"
     rows = memory_registry or []
     row_count = len(rows)
     context_rows = [row for row in rows if row.get("bucket") in {"durable", "session"}]
-    context_item_limit = min(len(context_rows), MEMORY_SUMMARY_MAX_PERSONAL_MEMORY_ITEMS)
-    estimated_personal_memory_tokens = min(
-        sum(estimate_memory_row_tokens(row) for row in context_rows[:context_item_limit]),
-        MEMORY_SUMMARY_PERSONAL_MEMORY_TOKENS,
+    has_candidate_cap = MEMORY_SUMMARY_MAX_PERSONAL_MEMORY_ITEMS > 0
+    context_item_limit = (
+        min(len(context_rows), MEMORY_SUMMARY_MAX_PERSONAL_MEMORY_ITEMS)
+        if has_candidate_cap
+        else len(context_rows)
     )
-    estimated_tokens = estimated_personal_memory_tokens if memory_mode == "codex-context" else 0
-    max_tokens_display = compact_token_k(MEMORY_SUMMARY_MAX_TOKENS)
-    target_tokens_display = compact_token_k(MEMORY_SUMMARY_TARGET_TOKENS)
-    warn_tokens_display = compact_token_k(MEMORY_SUMMARY_WARN_TOKENS)
-    personal_budget_display = compact_token_k(MEMORY_SUMMARY_PERSONAL_MEMORY_TOKENS)
+    estimated_context_item_count, estimated_personal_memory_tokens = estimate_memory_summary_fit(
+        context_rows,
+        context_item_limit,
+        personal_memory_budget_tokens,
+    )
+    actual_summary_usage = (
+        read_personal_memory_summary_usage(memory_summary_path)
+        if memory_mode == "integrated"
+        else None
+    )
+    count_label_zh = "约"
+    count_label_en = "about"
+    if actual_summary_usage is not None:
+        count_label_zh = "实际"
+        count_label_en = "actual"
+        estimated_context_item_count = actual_summary_usage["count"]
+        estimated_personal_memory_tokens = min(
+            actual_summary_usage["tokens"],
+            personal_memory_budget_tokens,
+        )
+    estimated_tokens = estimated_personal_memory_tokens if memory_mode == "integrated" else 0
+    max_tokens_display = compact_token_k(summary_max_tokens)
+    target_tokens_display = compact_token_k(summary_target_tokens)
+    warn_tokens_display = compact_token_k(summary_warn_tokens)
+    personal_budget_display = compact_token_k(personal_memory_budget_tokens)
     estimated_personal_display = compact_token_k(estimated_personal_memory_tokens)
 
-    if memory_mode == "codex-context":
-        mode_label_zh = "Codex context"
-        mode_label_en = "Codex context"
-        mode_note_zh = "{} 条留本地，最多 {} 条进摘要".format(
-            row_count,
-            context_item_limit,
+    if memory_mode == "integrated":
+        mode_label_zh = "Integrated"
+        mode_label_en = "Integrated"
+        candidate_policy_zh = (
+            "候选上限 {} 条".format(context_item_limit)
+            if has_candidate_cap
+            else "候选不设条数上限"
         )
-        mode_note_en = "{} stay local; at most {} enter the summary".format(row_count, context_item_limit)
+        candidate_policy_en = (
+            "candidate cap {}".format(context_item_limit)
+            if has_candidate_cap
+            else "no item cap"
+        )
+        mode_note_zh = "{} 条留本地，{} {} 条进摘要（{}）".format(
+            row_count,
+            count_label_zh,
+            estimated_context_item_count,
+            candidate_policy_zh,
+        )
+        mode_note_en = "{} stay local; {} {} enter the summary ({})".format(
+            row_count,
+            count_label_en,
+            estimated_context_item_count,
+            candidate_policy_en,
+        )
         caption_zh = "摘要目标 {} / 警戒 {} / 上限 {}".format(
             target_tokens_display,
             warn_tokens_display,
@@ -1450,9 +1973,9 @@ def build_personal_memory_token_usage(memory_registry, memory_mode, language=Non
         )
         status_zh = "受控"
         status_en = "Bounded"
-        value_zh = "≤ {}".format(max_tokens_display)
-        value_en = "≤ {}".format(max_tokens_display)
-        meter_percent = min(100, round(MEMORY_SUMMARY_TARGET_TOKENS / MEMORY_SUMMARY_MAX_TOKENS * 100))
+        value_zh = "≈ {}".format(estimated_personal_display)
+        value_en = "≈ {}".format(estimated_personal_display)
+        meter_percent = min(100, round(estimated_tokens / summary_max_tokens * 100))
     elif memory_mode == "local-only":
         mode_label_zh = "本地记录"
         mode_label_en = "Local-only"
@@ -1480,7 +2003,7 @@ def build_personal_memory_token_usage(memory_registry, memory_mode, language=Non
 
     method_note_zh = (
         "面板展示的是 bounded summary 预算状态，不是完整登记册体积；"
-        "默认 target {}、warn {}、max {}，个人记忆分区预算 {}。"
+        "默认上限 5K；当前 target {}、warn {}、max {} 会随配置的 max 自动派生，个人记忆分区预算 {}。"
     ).format(
         target_tokens_display,
         warn_tokens_display,
@@ -1489,7 +2012,7 @@ def build_personal_memory_token_usage(memory_registry, memory_mode, language=Non
     )
     method_note_en = (
         "This card shows bounded-summary budget status, not the full registry footprint; "
-        "defaults are target {}, warning {}, max {}, with {} for personal memories."
+        "the default max is 5K; current target {}, warning {}, and max {} are derived from the configured max, with {} for personal memories."
     ).format(
         target_tokens_display,
         warn_tokens_display,
@@ -1517,16 +2040,17 @@ def build_personal_memory_token_usage(memory_registry, memory_mode, language=Non
         "status_label_zh": status_zh,
         "status_label_en": status_en,
         "meter_percent": meter_percent,
-        "target_tokens": MEMORY_SUMMARY_TARGET_TOKENS,
-        "warn_tokens": MEMORY_SUMMARY_WARN_TOKENS,
-        "max_tokens": MEMORY_SUMMARY_MAX_TOKENS,
+        "target_tokens": summary_target_tokens,
+        "warn_tokens": summary_warn_tokens,
+        "max_tokens": summary_max_tokens,
         "max_tokens_display": max_tokens_display,
-        "personal_memory_budget_tokens": MEMORY_SUMMARY_PERSONAL_MEMORY_TOKENS,
+        "personal_memory_budget_tokens": personal_memory_budget_tokens,
         "personal_memory_budget_display": personal_budget_display,
         "estimated_personal_memory_tokens": estimated_personal_memory_tokens,
         "estimated_personal_memory_display": estimated_personal_display,
         "context_candidate_count": len(context_rows),
         "context_item_limit": context_item_limit,
+        "estimated_context_item_count": estimated_context_item_count,
         "item_count": row_count,
         "caption": localized(caption_zh, caption_en, language),
         "caption_zh": caption_zh,
@@ -1804,7 +2328,7 @@ def shell_quote(value):
 def make_backfill_command(start_date, end_date=None, learn_window_days=BACKFILL_LEARN_WINDOW_DAYS):
     end_date = end_date or start_date
     parts = [
-        "okeep",
+        "openrelix",
         "backfill",
         "--from",
         start_date,
@@ -1823,7 +2347,7 @@ def make_backfill_dates_command(dates, learn_window_days=BACKFILL_LEARN_WINDOW_D
     if not dates:
         return ""
     parts = [
-        "okeep",
+        "openrelix",
         "backfill",
         "--dates",
         ",".join(sorted(dates)),
@@ -2382,8 +2906,142 @@ def panel_english_text(value):
     text = str(value or "")
     if text in PANEL_I18N_EN:
         return PANEL_I18N_EN[text]
+    if text in FREEFORM_TEXT_EN:
+        return FREEFORM_TEXT_EN[text]
 
     dynamic_patterns = (
+        (
+            r"快照时间 (.+)",
+            lambda match: "Snapshot time {}".format(match.group(1)),
+        ),
+        (
+            r"采集：Codex app-server（预览） · 线程来源：(.+)",
+            lambda match: "Collection: Codex app-server (preview) · thread source: {}".format(match.group(1)),
+        ),
+        (
+            r"采集：Codex app-server（预览）",
+            lambda match: "Collection: Codex app-server (preview)",
+        ),
+        (
+            r"采集：Codex CLI history/session",
+            lambda match: "Collection: Codex CLI history/session",
+        ),
+        (
+            r"采集：整理摘要",
+            lambda match: "Collection: synthesis summary",
+        ),
+        (
+            r"(.+) 的总消耗",
+            lambda match: "Total for {}".format(match.group(1)),
+        ),
+        (
+            r"(.+) · 未整理",
+            lambda match: "{} · Not synthesized".format(match.group(1)),
+        ),
+        (
+            r"(?:当日|每日)窗口概览 · (\d+)",
+            lambda match: "Daily Window Overview · {}".format(match.group(1)),
+        ),
+        (
+            r"昨夜窗口概览 · (\d+)",
+            lambda match: "Last Night's Window Overview · {}".format(match.group(1)),
+        ),
+        (
+            r"最近一次窗口概览 · (\d+)",
+            lambda match: "Latest Window Overview · {}".format(match.group(1)),
+        ),
+        (
+            r"(.+) 的 Token 总消耗为 (.+)，近 7 日累计为 (.+)。",
+            lambda match: "Token usage for {} is {}; the 7-day total is {}.".format(
+                match.group(1),
+                match.group(2),
+                match.group(3),
+            ),
+        ),
+        (
+            r"原始记录分钟数 (\d+)",
+            lambda match: "Recorded minutes {}".format(match.group(1)),
+        ),
+        (
+            r"当前 (\d+) 条",
+            lambda match: "Current {}".format(plural_en(match.group(1), "item")),
+        ),
+        (
+            r"例如 (.+)",
+            lambda match: "Examples: {}".format(match.group(1)),
+        ),
+        (
+            r"占输入 (.+)",
+            lambda match: "{} of input".format(match.group(1)),
+        ),
+        (
+            r"占总量 (.+)",
+            lambda match: "{} of total".format(match.group(1)),
+        ),
+        (
+            r"费用估算：\$(.+)",
+            lambda match: "Estimated cost: ${}".format(match.group(1)),
+        ),
+        (
+            r"(.+) · 上一日 (.+)",
+            lambda match: "{} · previous {}".format(match.group(1), match.group(2)),
+        ),
+        (
+            r"按 (\d+) 个有数据日",
+            lambda match: "Across {} days with data".format(match.group(1)),
+        ),
+        (
+            r"(.+) 最高",
+            lambda match: "Peak on {}".format(match.group(1)),
+        ),
+        (
+            r"缓存 (.+) / 输入 (.+)",
+            lambda match: "Cached {} / input {}".format(match.group(1), match.group(2)),
+        ),
+        (
+            r"近 7 天中 (\d+) 天有记录 · (.+)",
+            lambda match: "{} days with records in the last 7 days · {}".format(
+                match.group(1),
+                match.group(2),
+            ),
+        ),
+        (
+            r"未检测到 (.+)。",
+            lambda match: "{} not found.".format(match.group(1)),
+        ),
+        (
+            r"最近 (\d+) 天",
+            lambda match: "Last {}".format(plural_en(match.group(1), "day")),
+        ),
+        (
+            r"(\d+) 个窗口",
+            lambda match: plural_en(match.group(1), "window"),
+        ),
+        (
+            r"(\d+) 窗口",
+            lambda match: plural_en(match.group(1), "window"),
+        ),
+        (
+            r"(\d+) 个问题",
+            lambda match: plural_en(match.group(1), "question"),
+        ),
+        (
+            r"(\d+) 个结论",
+            lambda match: plural_en(match.group(1), "conclusion"),
+        ),
+        (
+            r"(\d+) 个主题",
+            lambda match: plural_en(match.group(1), "topic"),
+        ),
+        (
+            r"扫描 (\d+) 天 · 有窗口日期 (\d+) 天 · (\d+) 个窗口 · (.+)",
+            lambda match: "Scanned {} · {} · {} · {}".format(
+                plural_en(match.group(1), "day"),
+                plural_en(match.group(2), "source date"),
+                plural_en(match.group(3), "window"),
+                match.group(4),
+            ),
+        ),
         (
             r"可切换最近 1-(\d+) 天；项目内按需求 / 主题二次归类",
             lambda match: (
@@ -2416,12 +3074,37 @@ def panel_english_text(value):
                 match.group(1)
             ),
         ),
+        (
+            r"直接读取 (.+) 的“What's in Memory”主题项。",
+            lambda match: "Reads topic items from the \"What's in Memory\" section of {}.".format(
+                match.group(1)
+            ),
+        ),
+        (
+            r"主题项 (\d+) 条；用户偏好 (\d+) 条；通用 tips (\d+) 条。",
+            lambda match: "{}; {}; {}.".format(
+                plural_en(match.group(1), "topic item"),
+                plural_en(match.group(2), "user preference"),
+                plural_en(match.group(3), "general tip"),
+            ),
+        ),
     )
     for pattern, renderer in dynamic_patterns:
         match = re.fullmatch(pattern, text)
         if match:
             return renderer(match)
     return ""
+
+
+def english_summary_term_label(value):
+    text = normalize_brand_display_text(str(value or ""))
+    if not text:
+        return ""
+    if text in SUMMARY_TERM_LABEL_EN:
+        return SUMMARY_TERM_LABEL_EN[text]
+    if text in PANEL_I18N_EN:
+        return PANEL_I18N_EN[text]
+    return text
 
 
 def panel_display_text(value, language=None, en_text=""):
@@ -2442,10 +3125,93 @@ def panel_language_variant_html(zh_html, en_html):
     )
 
 
+def panel_language_block_html(zh_html, en_html):
+    if not en_html or en_html == zh_html:
+        return zh_html
+    return (
+        '<div data-lang-only="zh">{zh_html}</div>'
+        '<div data-lang-only="en">{en_html}</div>'
+    ).format(
+        zh_html=zh_html,
+        en_html=en_html,
+    )
+
+
 def panel_language_text_html(zh_text, en_text=""):
     zh_text = normalize_brand_display_text(zh_text)
     en_text = normalize_brand_display_text(en_text or panel_english_text(zh_text) or "")
     return panel_language_variant_html(escape(zh_text), escape(en_text))
+
+
+def english_freeform_text(value, fallback_label="", keywords=None):
+    text = normalize_brand_display_text(str(value or "")).strip()
+    if not text:
+        return ""
+    if not contains_cjk(text):
+        return text
+    if text in FREEFORM_TEXT_EN:
+        return FREEFORM_TEXT_EN[text]
+    if text in PANEL_I18N_EN:
+        return PANEL_I18N_EN[text]
+
+    candidate = text
+    replacements = {}
+    replacements.update(PANEL_I18N_EN)
+    replacements.update(SUMMARY_TERM_LABEL_EN)
+    replacements.update(CONTEXT_KEYWORD_EN)
+    replacements.update(FREEFORM_PHRASE_EN)
+    replacements.update(FREEFORM_TEXT_EN)
+    for source, target in sorted(replacements.items(), key=lambda item: len(str(item[0])), reverse=True):
+        source = str(source or "")
+        target = str(target or "")
+        if source and source in candidate:
+            candidate = candidate.replace(source, target)
+    for source, target in (
+        ("、", ", "),
+        ("，", ", "),
+        ("；", "; "),
+        ("：", ": "),
+        ("（", " ("),
+        ("）", ")"),
+        ("“", '"'),
+        ("”", '"'),
+        ("。", "."),
+    ):
+        candidate = candidate.replace(source, target)
+    candidate = re.sub(r"\s+", " ", candidate).strip()
+    candidate = re.sub(r"\s+([,;:.])", r"\1", candidate)
+    if candidate and not contains_cjk(candidate):
+        return candidate
+
+    terms = []
+    for keyword in keywords or []:
+        translated = english_freeform_text(keyword)
+        if translated and not contains_cjk(translated) and translated not in terms:
+            terms.append(translated)
+    for mapping in (FREEFORM_TEXT_EN, FREEFORM_PHRASE_EN, CONTEXT_KEYWORD_EN, SUMMARY_TERM_LABEL_EN, PANEL_I18N_EN):
+        for source, target in mapping.items():
+            if source in text and target and target not in terms and not contains_cjk(target):
+                terms.append(target)
+    for token in re.findall(r"[A-Za-z][A-Za-z0-9+#./:-]{1,}", text):
+        normalized = normalize_brand_display_text(token)
+        if normalized.lower() in STOPWORDS:
+            continue
+        if normalized not in terms:
+            terms.append(normalized)
+    if terms:
+        summary = ", ".join(terms[:6])
+        return "{}: {}".format(fallback_label, summary) if fallback_label else summary
+    return fallback_label or ""
+
+
+def english_record_text(item, field, fallback_label=""):
+    if not isinstance(item, dict):
+        return fallback_label or ""
+    preferred = localized_record_field(item, field, language="en", default="")
+    if preferred and not contains_cjk(preferred):
+        return preferred
+    source = preferred or localized_record_field(item, field, language="zh", default=item.get(field, ""))
+    return english_freeform_text(source, fallback_label=fallback_label, keywords=item.get("tags", []))
 
 
 def panel_i18n_json():
@@ -2466,6 +3232,247 @@ def build_memory_group_key(item, bucket=""):
     primary_text = item.get("title", "") or item.get("value_note", "")
     normalized = normalize_memory_signature_text(primary_text) or "untitled"
     return "{}::{}::{}".format(bucket_value, memory_type, normalized)
+
+
+MEMORY_USAGE_STOP_TERMS = ASSET_VALUE_STOP_TERMS | {
+    "current",
+    "dashboard",
+    "default",
+    "openrelix",
+    "overview",
+    "panel",
+    "project",
+    "today",
+    "tomorrow",
+    "window",
+    "windows",
+    "工作台",
+    "当天",
+    "当前",
+    "默认",
+    "今天",
+    "品牌",
+    "展示页",
+    "工作",
+    "项目",
+    "面板",
+    "用户",
+    "需要",
+    "可以",
+    "已经",
+    "应该",
+    "一次",
+}
+
+
+def cjk_usage_ngrams(text, min_size=3, max_size=4, limit=18):
+    terms = []
+    for run in re.findall(r"[\u4e00-\u9fff]{%d,}" % min_size, str(text or "")):
+        max_n = min(max_size, len(run))
+        for size in range(max_n, min_size - 1, -1):
+            for index in range(0, len(run) - size + 1):
+                term = run[index : index + size]
+                if term not in MEMORY_USAGE_STOP_TERMS and term not in terms:
+                    terms.append(term)
+                    if len(terms) >= limit:
+                        return terms
+    return terms
+
+
+def memory_usage_search_terms(item):
+    raw_terms = [
+        item.get("display_title", ""),
+        item.get("title", ""),
+        item.get("title_zh", ""),
+        item.get("title_en", ""),
+        item.get("display_value_note", ""),
+        item.get("value_note", ""),
+        item.get("value_note_zh", ""),
+        item.get("value_note_en", ""),
+    ]
+    raw_terms.extend(item.get("keywords", []) or [])
+
+    terms = []
+    for raw_term in raw_terms:
+        raw_text = str(raw_term or "")
+        for term in cjk_usage_ngrams(raw_text):
+            if term not in terms:
+                terms.append(term)
+        normalized = normalize_value_match_text(raw_text)
+        compact = normalized.replace(" ", "")
+        if 6 <= len(compact) <= 48 and compact not in MEMORY_USAGE_STOP_TERMS:
+            terms.append(compact)
+        for part in normalized.split():
+            if part in MEMORY_USAGE_STOP_TERMS:
+                continue
+            has_cjk = bool(re.search(r"[\u4e00-\u9fff]", part))
+            min_length = 2 if has_cjk else 4
+            if len(part) >= min_length and len(part) <= 48:
+                terms.append(part)
+
+    deduped = []
+    for term in terms:
+        if term and term not in deduped:
+            deduped.append(term)
+    return deduped[:32]
+
+
+def memory_usage_window_text(window):
+    parts = [
+        window.get("project_label", ""),
+        window.get("cwd_display", ""),
+        window.get("cwd", ""),
+        context_window_text(window),
+    ]
+    return " ".join(part for part in parts if part)
+
+
+def memory_context_matches_window(memory_item, window):
+    labels = list(memory_item.get("context_labels", []) or [])
+    if memory_item.get("display_context"):
+        labels.append(memory_item.get("display_context", ""))
+    project_label = normalize_value_match_text(window.get("project_label", ""))
+    cwd_text = normalize_value_match_text(window.get("cwd_display", "") or window.get("cwd", ""))
+    for label in labels:
+        normalized = normalize_value_match_text(label)
+        if normalized and (normalized in project_label or normalized in cwd_text):
+            return True
+    return False
+
+
+def memory_usage_recency_weight(anchor_date, window_date):
+    anchor = parse_nightly_summary_date({"date": anchor_date})
+    current = parse_nightly_summary_date({"date": window_date})
+    if anchor is None or current is None:
+        return 1.0
+    age_days = max((anchor - current).days, 0)
+    return max(0.55, 1.0 - min(age_days, MEMORY_USAGE_WINDOW_DAYS - 1) * 0.07)
+
+
+def filter_memory_usage_occurrence_dates(anchor_date, occurrence_dates):
+    anchor = parse_nightly_summary_date({"date": anchor_date})
+    if anchor is None:
+        return []
+
+    recent_dates = []
+    for raw_date in occurrence_dates or []:
+        current = parse_nightly_summary_date({"date": str(raw_date or "")[:10]})
+        if current is None:
+            continue
+        age_days = (anchor - current).days
+        if 0 <= age_days < MEMORY_USAGE_WINDOW_DAYS:
+            recent_dates.append(current.isoformat())
+    return recent_dates
+
+
+def estimate_memory_window_likelihood(memory_item, window, terms, direct_window_ids):
+    window_id = window.get("window_id", "")
+    direct = bool(window_id and window_id in direct_window_ids)
+    compact_text = compact_value_match_text(memory_usage_window_text(window))
+    matched_terms = [term for term in terms if term and term in compact_text]
+    strong_matches = [
+        term
+        for term in matched_terms
+        if len(term) >= 6 or bool(re.search(r"[\u4e00-\u9fff]{3,}", term))
+    ]
+    context_match = memory_context_matches_window(memory_item, window)
+
+    likelihood = 1.0 if direct else 0.0
+    if len(matched_terms) >= 4:
+        likelihood = max(likelihood, 0.85)
+    elif len(matched_terms) >= 3:
+        likelihood = max(likelihood, 0.72)
+    elif len(matched_terms) >= 2:
+        likelihood = max(likelihood, 0.58)
+    elif strong_matches:
+        likelihood = max(likelihood, 0.42)
+
+    if context_match and matched_terms:
+        likelihood = min(1.0, likelihood + 0.1)
+
+    return {
+        "window_id": window_id,
+        "direct": direct,
+        "likelihood": likelihood,
+        "matched_terms": matched_terms[:5],
+        "context_match": context_match,
+    }
+
+
+def build_memory_usage_frequency(memory_item, usage_window_overview, recent_occurrence_dates=None):
+    windows = (usage_window_overview or {}).get("windows", [])
+    anchor_date = (usage_window_overview or {}).get("date", "") or current_local_datetime().date().isoformat()
+    source_windows = memory_item.get("source_windows", []) or []
+    direct_window_ids = {
+        ref.get("window_id", "")
+        for ref in source_windows
+        if ref.get("window_id", "")
+    }
+    terms = memory_usage_search_terms(memory_item)
+
+    score = 0.0
+    direct_matches = 0
+    estimated_matches = 0
+    context_hints = 0
+    matched_window_ids = []
+
+    for window in windows:
+        result = estimate_memory_window_likelihood(memory_item, window, terms, direct_window_ids)
+        likelihood = result["likelihood"]
+        if likelihood <= 0:
+            continue
+        weighted = likelihood * memory_usage_recency_weight(anchor_date, window.get("date", ""))
+        score += weighted
+        if result["direct"]:
+            direct_matches += 1
+        elif likelihood >= 0.42:
+            estimated_matches += 1
+        else:
+            context_hints += 1
+        if result["window_id"]:
+            matched_window_ids.append(result["window_id"])
+
+    recent_occurrence_dates = filter_memory_usage_occurrence_dates(
+        anchor_date,
+        recent_occurrence_dates or [],
+    )
+    occurrence_floor = len(set(recent_occurrence_dates)) * 0.45
+    score = max(score, occurrence_floor)
+    score = round(score, 2)
+
+    if score >= 10:
+        display_score = str(int(round(score)))
+    else:
+        display_score = "{:.1f}".format(score).rstrip("0").rstrip(".")
+    if not display_score:
+        display_score = "0"
+
+    return {
+        "usage_frequency": score,
+        "usage_frequency_display": display_score,
+        "usage_frequency_window_days": MEMORY_USAGE_WINDOW_DAYS,
+        "usage_frequency_direct_window_count": direct_matches,
+        "usage_frequency_estimated_window_count": estimated_matches,
+        "usage_frequency_context_hint_count": context_hints,
+        "usage_frequency_matched_window_count": len(set(matched_window_ids)),
+        "usage_frequency_terms": terms[:12],
+        "usage_frequency_sort_key": score,
+    }
+
+
+def memory_usage_sort_key(item):
+    return (
+        safe_float(item.get("usage_frequency_sort_key", item.get("usage_frequency", 0))),
+        safe_int(item.get("usage_frequency_matched_window_count", 0)),
+        safe_int(item.get("occurrence_count", 0)),
+        memory_sort_key(item.get("updated_at", "")),
+        memory_sort_key(item.get("created_at", "")),
+        item.get("title", ""),
+    )
+
+
+def sort_memory_rows_by_usage(rows):
+    return sorted(rows, key=memory_usage_sort_key, reverse=True)
 
 
 def memory_sort_key(value):
@@ -2507,74 +3514,302 @@ def extract_terms_from_text(text):
     return terms
 
 
-def build_summary_terms(assets, reviews, usage_events):
-    counter = Counter()
+SUMMARY_TERM_NOISY_TOKENS = {
+    "users",
+    "entry",
+    "entries",
+    "used",
+    "safe",
+    "simple",
+    "active",
+    "personal",
+    "general",
+    "scope",
+    "summary",
+    "value",
+    "note",
+}
 
-    for asset in assets:
-        sources = [
-            asset.get("display_title", ""),
-            asset.get("title", ""),
-            asset.get("type", ""),
-            asset.get("domain", ""),
-            asset.get("scope", ""),
-            asset.get("display_value_note", ""),
-            asset.get("value_note", ""),
-            asset.get("display_notes", ""),
-            asset.get("notes", ""),
-            " ".join(asset.get("tags", [])),
-        ]
-        for source in sources:
-            for term in extract_terms_from_text(source):
-                counter[term] += 1
 
-    for review in reviews:
-        sources = [
-            review.get("task", ""),
-            review.get("domain", ""),
-            review.get("repo", ""),
-            review.get("text", ""),
-        ]
-        for source in sources:
-            for term in extract_terms_from_text(source):
-                counter[term] += 1
+def add_summary_text_terms(counter, text, weight=1):
+    for term in extract_terms_from_text(str(text or "")):
+        counter[term] += weight
 
-    for event in usage_events:
-        sources = [
-            event.get("display_task", ""),
-            event.get("task", ""),
-            event.get("display_note", ""),
-            event.get("note", ""),
-            event.get("asset_id", ""),
-        ]
-        for source in sources:
-            for term in extract_terms_from_text(source):
-                counter[term] += 1
 
+def add_summary_keyword_term(counter, keyword, weight=2):
+    text = normalize_brand_display_text(str(keyword or "")).strip()
+    if not text:
+        return
+    normalized = normalize_term(text)
+    if normalized:
+        counter[normalized] += weight
+        return
+    add_summary_text_terms(counter, text, weight=weight)
+
+
+def prune_summary_term_counter(counter):
     noisy = {
-        "users",
-        "entry",
-        "entries",
-        "used",
-        "safe",
-        "simple",
-        "active",
-        "personal",
-        "general",
-        "scope",
-        "summary",
-        "value",
-        "note",
+        token.lower()
+        for token in SUMMARY_TERM_NOISY_TOKENS
     }
     for token in list(counter.keys()):
         if token.lower() in noisy:
             del counter[token]
 
+
+def summary_counter_rows(counter, limit=18):
+    prune_summary_term_counter(counter)
     rows = [
         {"label": key, "value": value}
         for key, value in sorted(counter.items(), key=lambda item: (-item[1], item[0]))
         if value > 0
     ]
-    return rows[:18]
+    return rows[:limit]
+
+
+def add_asset_summary_terms(counter, asset):
+    sources = [
+        asset.get("display_title", ""),
+        asset.get("title", ""),
+        asset.get("type", ""),
+        asset.get("domain", ""),
+        asset.get("scope", ""),
+        asset.get("display_value_note", ""),
+        asset.get("value_note", ""),
+        asset.get("display_notes", ""),
+        asset.get("notes", ""),
+        " ".join(asset.get("tags", [])),
+    ]
+    for source in sources:
+        add_summary_text_terms(counter, source)
+
+
+def add_review_summary_terms(counter, review):
+    sources = [
+        review.get("task", ""),
+        review.get("domain", ""),
+        review.get("repo", ""),
+        review.get("text", ""),
+    ]
+    for source in sources:
+        add_summary_text_terms(counter, source)
+
+
+def add_usage_event_summary_terms(counter, event):
+    sources = [
+        event.get("display_task", ""),
+        event.get("task", ""),
+        event.get("display_note", ""),
+        event.get("note", ""),
+        event.get("asset_id", ""),
+    ]
+    for source in sources:
+        add_summary_text_terms(counter, source)
+
+
+def add_window_summary_terms(counter, window):
+    sources = [
+        window.get("project_label", ""),
+        window.get("cwd_display", ""),
+        window.get("question_summary", ""),
+        window.get("main_takeaway", ""),
+        " ".join(row.get("text", "") for row in window.get("recent_prompts", [])),
+        " ".join(row.get("text", "") for row in window.get("recent_conclusions", [])),
+    ]
+    for keyword in window.get("keywords", []) or []:
+        add_summary_keyword_term(counter, keyword, weight=2)
+    for source in sources:
+        add_summary_text_terms(counter, source)
+
+
+def add_nightly_summary_terms(counter, nightly):
+    if not nightly:
+        return
+    for keyword in nightly.get("keywords", []) or []:
+        add_summary_keyword_term(counter, keyword, weight=3)
+    sources = [
+        nightly.get("day_summary", ""),
+        nightly.get("summary", ""),
+    ]
+    for source in sources:
+        add_summary_text_terms(counter, source)
+    for window in nightly.get("window_summaries", []) or []:
+        add_window_summary_terms(counter, window)
+    for key in ("durable_memories", "session_memories", "low_priority_memories"):
+        for item in nightly.get(key, []) or []:
+            for keyword in item.get("keywords", []) or []:
+                add_summary_keyword_term(counter, keyword, weight=2)
+            for source in (
+                item.get("title", ""),
+                item.get("value_note", ""),
+                item.get("source_task", ""),
+            ):
+                add_summary_text_terms(counter, source)
+
+
+def build_summary_terms(
+    assets,
+    reviews,
+    usage_events,
+    nightly_payloads=None,
+    window_overview=None,
+):
+    counter = Counter()
+
+    for asset in assets:
+        add_asset_summary_terms(counter, asset)
+    for review in reviews:
+        add_review_summary_terms(counter, review)
+    for event in usage_events:
+        add_usage_event_summary_terms(counter, event)
+    for nightly in nightly_payloads or []:
+        add_nightly_summary_terms(counter, nightly)
+    for window in (window_overview or {}).get("windows", []) or []:
+        add_window_summary_terms(counter, window)
+
+    return summary_counter_rows(counter)
+
+
+def parse_record_date(value):
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    parsed = parse_nightly_summary_date({"date": text[:10]})
+    return parsed.isoformat() if parsed else ""
+
+
+def record_date_values(record, keys):
+    dates = []
+    for key in keys:
+        date_str = parse_record_date(record.get(key, ""))
+        if date_str and date_str not in dates:
+            dates.append(date_str)
+    return dates
+
+
+def filter_records_by_dates(records, date_set, keys):
+    return [
+        record
+        for record in records
+        if any(date_str in date_set for date_str in record_date_values(record, keys))
+    ]
+
+
+def nightly_payloads_for_dates(candidates, date_values):
+    payloads = []
+    seen_dates = set()
+    for date_str in date_values:
+        if not date_str or date_str in seen_dates:
+            continue
+        payload = select_best_nightly_summary_for_date(candidates or [], date_str)
+        if payload:
+            payloads.append(payload)
+            seen_dates.add(date_str)
+    return payloads
+
+
+def summary_term_range_label(days, language=None):
+    days = safe_int(days) or SUMMARY_TERM_DEFAULT_DAYS
+    if days == 1:
+        return localized("今日", "Today", language)
+    return localized("近 {} 日".format(days), "Last {}".format(plural_en(days, "day")), language)
+
+
+def summary_term_range_label_html(days):
+    days = safe_int(days) or SUMMARY_TERM_DEFAULT_DAYS
+    if days == 1:
+        return panel_language_text_html("今日", "Today")
+    return panel_language_text_html(
+        "近 {} 日".format(days),
+        "Last {}".format(plural_en(days, "day")),
+    )
+
+
+def summary_term_title(days, language=None):
+    days = safe_int(days) or SUMMARY_TERM_DEFAULT_DAYS
+    if days == 1:
+        return localized("今日热词", "Today Hot Terms", language)
+    return localized(
+        "近 {} 日热词".format(days),
+        "Last {} Hot Terms".format(plural_en(days, "day")),
+        language,
+    )
+
+
+def build_summary_term_views(
+    assets,
+    reviews,
+    usage_events,
+    nightly_candidates,
+    anchor_date,
+    latest_nightly=None,
+    language=None,
+):
+    language = current_language(language)
+    views = []
+    for days in SUMMARY_TERM_RANGE_DAYS:
+        date_values = date_strings_ending_at(anchor_date, days)
+        date_set = set(date_values)
+        range_assets = filter_records_by_dates(assets, date_set, ("updated_at", "created_at", "date"))
+        range_reviews = filter_records_by_dates(reviews, date_set, ("date",))
+        range_usage_events = filter_records_by_dates(usage_events, date_set, ("date", "created_at", "updated_at"))
+        nightly_payloads = nightly_payloads_for_dates(nightly_candidates, date_values)
+        window_overview = build_context_window_overview_for_days(
+            anchor_date,
+            days,
+            latest_nightly=latest_nightly,
+            language=language,
+        )
+        rows = build_summary_terms(
+            range_assets,
+            range_reviews,
+            range_usage_events,
+            nightly_payloads=nightly_payloads,
+            window_overview=window_overview,
+        )
+        source_dates = sorted(
+            set(window_overview.get("source_dates", []))
+            | {
+                parse_nightly_summary_date(payload).isoformat()
+                for payload in nightly_payloads
+                if parse_nightly_summary_date(payload) is not None
+            }
+            | {
+                date_str
+                for record in range_assets
+                + range_reviews
+                + range_usage_events
+                for date_str in record_date_values(record, ("date", "created_at", "updated_at"))
+            },
+            reverse=True,
+        )
+        views.append(
+            {
+                "days": days,
+                "label": summary_term_range_label(days, language=language),
+                "label_zh": summary_term_range_label(days, language="zh"),
+                "label_en": summary_term_range_label(days, language="en"),
+                "title": summary_term_title(days, language=language),
+                "title_zh": summary_term_title(days, language="zh"),
+                "title_en": summary_term_title(days, language="en"),
+                "terms": rows,
+                "source_dates": source_dates,
+                "scanned_dates": date_values,
+                "window_count": window_overview.get("window_count", 0),
+                "asset_count": len(range_assets),
+                "review_count": len(range_reviews),
+                "usage_event_count": len(range_usage_events),
+                "nightly_count": len(nightly_payloads),
+            }
+        )
+    return views
+
+
+def default_summary_term_view(summary_term_views):
+    for view in summary_term_views or []:
+        if safe_int(view.get("days", 0)) == SUMMARY_TERM_DEFAULT_DAYS:
+            return view
+    return (summary_term_views or [{}])[0] if summary_term_views else {}
 
 
 def compact_preview_text(text, limit=220):
@@ -2703,13 +3938,25 @@ def render_asset_title_link(asset):
         or asset.get("id", "")
         or "未命名资产"
     )
+    title_en = (
+        english_record_text(asset, "title", fallback_label="Asset")
+        or humanize_identifier(asset.get("id", ""))
+        or "Untitled asset"
+    )
     resolved = resolve_asset_primary_artifact_path(asset)
     if not resolved:
-        return escape(title)
-    return build_local_path_anchor(
-        resolved,
-        title,
-        class_name="path-link asset-title-link",
+        return panel_language_text_html(title, title_en)
+    return panel_language_variant_html(
+        build_local_path_anchor(
+            resolved,
+            title,
+            class_name="path-link asset-title-link",
+        ),
+        build_local_path_anchor(
+            resolved,
+            title_en,
+            class_name="path-link asset-title-link",
+        ),
     )
 
 
@@ -2766,6 +4013,19 @@ def latest_window_activity(window):
     parsed = [parse_iso_datetime(value) for value in candidates if value]
     parsed = [value for value in parsed if value]
     return max(parsed) if parsed else None
+
+
+def localize_window_preview_text(text, language=None, keywords=None, label="Focus"):
+    text = normalize_brand_display_text(str(text or ""))
+    if is_english(language):
+        return english_context_preview(text, keywords or [], label=label)
+    return text
+
+
+def assign_window_display_indices(items):
+    total = len(items or [])
+    for offset, item in enumerate(items or []):
+        item["display_index"] = total - offset
 
 
 def make_window_preview_items(rows, time_key, limit, fallback):
@@ -2829,7 +4089,7 @@ def detect_special_context_from_path(path):
     if path_is_within(path, PATHS.codex_home):
         return "Codex 本地环境"
     if PATHS.state_root != ROOT and path_is_within(path, PATHS.state_root):
-        return "OpenKeepsake"
+        return "OpenRelix"
     return ""
 
 
@@ -3069,9 +4329,11 @@ def is_noisy_context_topic_candidate(text):
 def fallback_context_topic_label(item, language=None):
     keywords = useful_context_keywords(item.get("keywords", []))
     if keywords:
+        display_keywords = [localized_context_keyword(keyword, language=language) for keyword in keywords[:2]]
+        display_keywords = [keyword for keyword in display_keywords if keyword]
         return localized(
             "其他需求：{}".format(" / ".join(keywords[:2])),
-            "Other needs: {}".format(" / ".join(keywords[:2])),
+            "Other needs: {}".format(" / ".join(display_keywords or keywords[:2])),
             language,
         )
 
@@ -3155,6 +4417,7 @@ def build_project_contexts(window_overview, language=None):
             label = infer_context_label_from_text(" ".join(text_sources), known_project_names)
         if not label:
             label = localized_context_label("个人工作区", language)
+        label = localized_context_label(label, language)
 
         key = label.lower()
         group = groups.setdefault(
@@ -3184,14 +4447,27 @@ def build_project_contexts(window_overview, language=None):
             group["cwd_samples"].append(cwd)
 
         for keyword in item.get("keywords", []):
-            if keyword and keyword not in group["keywords"]:
-                group["keywords"].append(keyword)
+            display_keyword = localized_context_keyword(keyword, language=language)
+            if display_keyword and display_keyword not in group["keywords"]:
+                group["keywords"].append(display_keyword)
 
         question_preview = compact_preview_text(item.get("question_summary", ""), limit=140)
+        if is_english(language):
+            question_preview = english_context_preview(
+                question_preview,
+                item.get("keywords", []),
+                label="Focus",
+            )
         if question_preview and question_preview not in group["question_samples"]:
             group["question_samples"].append(question_preview)
 
         takeaway_preview = compact_preview_text(item.get("main_takeaway", ""), limit=160)
+        if is_english(language):
+            takeaway_preview = english_context_preview(
+                takeaway_preview,
+                item.get("keywords", []),
+                label="Takeaway",
+            )
         if takeaway_preview and takeaway_preview not in group["takeaway_samples"]:
             group["takeaway_samples"].append(takeaway_preview)
 
@@ -3220,8 +4496,9 @@ def build_project_contexts(window_overview, language=None):
         topic["question_count"] += item.get("question_count", 0)
         topic["conclusion_count"] += item.get("conclusion_count", 0)
         for keyword in item.get("keywords", []):
-            if keyword and keyword not in topic["keywords"]:
-                topic["keywords"].append(keyword)
+            display_keyword = localized_context_keyword(keyword, language=language)
+            if display_keyword and display_keyword not in topic["keywords"]:
+                topic["keywords"].append(display_keyword)
         if question_preview and question_preview not in topic["question_samples"]:
             topic["question_samples"].append(question_preview)
         if takeaway_preview and takeaway_preview not in topic["takeaway_samples"]:
@@ -3423,7 +4700,7 @@ def build_memory_source_window_ref(date_str, window_id, window_lookup, known_pro
     }
 
 
-def build_memory_registry(memory_items, window_overview, language=None):
+def build_memory_registry(memory_items, window_overview, usage_window_overview=None, language=None):
     language = current_language(language)
     window_lookup = build_window_lookup(window_overview)
     known_project_names = collect_known_project_names(window_overview)
@@ -3452,11 +4729,14 @@ def build_memory_registry(memory_items, window_overview, language=None):
                 "_latest_source_window_ids": [],
                 "_all_source_windows": {},
                 "_context_labels": [],
+                "_occurrence_dates": [],
             },
         )
 
         date_str = item.get("date", "") or item.get("updated_at", "") or item.get("created_at", "")
         group["occurrence_count"] += 1
+        if date_str:
+            group["_occurrence_dates"].append(date_str)
 
         if not group["created_at"] or memory_sort_key(date_str) < memory_sort_key(group["created_at"]):
             group["created_at"] = date_str
@@ -3581,11 +4861,24 @@ def build_memory_registry(memory_items, window_overview, language=None):
             "source_windows": source_windows[:3],
             "source_window_count": len(all_source_windows),
         }
+        usage_row = dict(row)
+        usage_row["source_windows"] = all_source_windows
+        row.update(
+            build_memory_usage_frequency(
+                usage_row,
+                usage_window_overview,
+                recent_occurrence_dates=group.get("_occurrence_dates", []),
+            )
+        )
         rows.append(row)
         by_key[row["memory_key"]] = row
 
     rows.sort(
         key=lambda item: (
+            item.get("bucket", "") in {"durable", "session"},
+            item.get("usage_frequency_sort_key", 0),
+            item.get("usage_frequency_matched_window_count", 0),
+            item.get("occurrence_count", 0),
             memory_sort_key(item.get("updated_at", "")),
             memory_sort_key(item.get("created_at", "")),
             item.get("title", ""),
@@ -3709,7 +5002,7 @@ def classify_codex_native_memory_type(title, desc="", learnings=""):
 
 
 CODEX_NATIVE_TITLE_ZH = {
-    "local codex personal asset system genericization and launchagent runtime": "本地 OpenKeepsake 系统、通用化与 LaunchAgent 运行时",
+    "local codex personal asset system genericization and launchagent runtime": "本地 OpenRelix 系统、通用化与 LaunchAgent 运行时",
     "codex local configuration mcp setup token usage and plugin marketplace inspection": "Codex 本地配置、MCP、Token 使用与插件市场排查",
     "subreview run live contract and independent codex review loop": "/subreview:run 现场契约与 Codex 独立评审循环",
 }
@@ -3723,7 +5016,7 @@ CODEX_NATIVE_TASK_BODY_ZH = {
 }
 CODEX_NATIVE_BULLET_ZH = {
     "when runtime behavior depends on the current device state or ui default to live inspection early": "当运行时行为依赖当前设备状态或 UI 时，优先尽早做现场检查。",
-    "separate repo code tasks from user level codex ai personal assets tasks early the correct search surface is different": "先区分 repo 代码任务和用户级 Codex / OpenKeepsake 任务，两者搜索面不同。",
+    "separate repo code tasks from user level codex ai personal assets tasks early the correct search surface is different": "先区分 repo 代码任务和用户级 Codex / OpenRelix 任务，两者搜索面不同。",
 }
 
 
@@ -4502,7 +5795,14 @@ def markdown_inline_text(value, limit=1000):
     return escape(text, quote=False)
 
 
-def enrich_nightly_memory_items(items, bucket, memory_registry, window_overview, default_date=""):
+def enrich_nightly_memory_items(
+    items,
+    bucket,
+    memory_registry,
+    window_overview,
+    default_date="",
+    usage_window_overview=None,
+):
     window_lookup = build_window_lookup(window_overview)
     known_project_names = collect_known_project_names(window_overview)
     registry_by_key = (memory_registry or {}).get("by_key", {})
@@ -4557,6 +5857,18 @@ def enrich_nightly_memory_items(items, bucket, memory_registry, window_overview,
             current["cwd_preview"] = registry_row.get("cwd_preview", "")
             current["source_windows"] = registry_row.get("source_windows", [])
             current["source_window_count"] = registry_row.get("source_window_count", 0)
+            for key in (
+                "usage_frequency",
+                "usage_frequency_display",
+                "usage_frequency_window_days",
+                "usage_frequency_direct_window_count",
+                "usage_frequency_estimated_window_count",
+                "usage_frequency_context_hint_count",
+                "usage_frequency_matched_window_count",
+                "usage_frequency_terms",
+                "usage_frequency_sort_key",
+            ):
+                current[key] = registry_row.get(key, 0 if key.endswith("_count") else registry_row.get(key, ""))
             rows.append(current)
             continue
 
@@ -4602,9 +5914,98 @@ def enrich_nightly_memory_items(items, bucket, memory_registry, window_overview,
         ) or current["display_context"]
         current["source_windows"] = source_windows[:3]
         current["source_window_count"] = len(source_windows)
+        usage_current = dict(current)
+        usage_current["source_windows"] = source_windows
+        current.update(
+            build_memory_usage_frequency(
+                usage_current,
+                usage_window_overview,
+                recent_occurrence_dates=[default_date] if default_date else [],
+            )
+        )
         rows.append(current)
 
-    return rows
+    return sort_memory_rows_by_usage(rows)
+
+
+def build_memory_bucket_view(
+    bucket,
+    memory_registry,
+    memory_view_nightly,
+    window_overview,
+    memory_view_date,
+    usage_window_overview=None,
+):
+    registry_rows = [
+        row
+        for row in (memory_registry or {}).get("rows", [])
+        if row.get("bucket") == bucket
+    ]
+    if registry_rows:
+        return sort_memory_rows_by_usage(registry_rows)
+
+    summary_key = {
+        "durable": "durable_memories",
+        "session": "session_memories",
+        "low_priority": "low_priority_memories",
+    }.get(bucket, "{}_memories".format(bucket))
+    return enrich_nightly_memory_items(
+        (memory_view_nightly or {}).get(summary_key, []),
+        bucket,
+        memory_registry,
+        window_overview,
+        default_date=memory_view_date,
+        usage_window_overview=usage_window_overview,
+    )
+
+
+def normalize_window_activity_source(raw_window=None, daily_capture=None):
+    raw_window = raw_window or {}
+    daily_capture = daily_capture or {}
+    source = str(raw_window.get("source") or "").strip()
+    collection_source = str(daily_capture.get("collection_source") or "").strip()
+    if raw_window.get("app_server") or source.startswith("codex_app_server") or collection_source == "app-server":
+        return "app-server"
+    if collection_source == "history_fallback":
+        return "history_fallback"
+    if source in {"cli", "history"} or collection_source == "history":
+        return "history"
+    if collection_source:
+        return collection_source
+    return source or "history"
+
+
+def window_activity_source_label(activity_source, language=None, thread_source=""):
+    thread_source = str(thread_source or "").strip()
+    if activity_source == "app-server" and thread_source:
+        return localized(
+            "采集：Codex app-server（预览） · 线程来源：{}".format(thread_source),
+            "Collection: Codex app-server (preview) · thread source: {}".format(thread_source),
+            language,
+        )
+    labels = {
+        "app-server": (
+            "采集：Codex app-server（预览）",
+            "Collection: Codex app-server (preview)",
+        ),
+        "history_fallback": (
+            "采集：Codex app-server 不可用，已回退 CLI history/session",
+            "Collection: Codex app-server unavailable; fell back to CLI history/session",
+        ),
+        "history": (
+            "采集：Codex CLI history/session",
+            "Collection: Codex CLI history/session",
+        ),
+        "nightly_summary": (
+            "采集：整理摘要",
+            "Collection: synthesis summary",
+        ),
+    }
+    zh_text, en_text = labels.get(
+        activity_source,
+        ("采集：Codex 活动记录", "Collection: Codex activity records"),
+    )
+    return localized(zh_text, en_text, language)
 
 
 def build_window_items_from_daily_capture(daily_capture, latest_nightly=None, language=None):
@@ -4645,6 +6046,8 @@ def build_window_items_from_daily_capture(daily_capture, latest_nightly=None, la
         if not project_label:
             project_label = localized_context_label("个人工作区", language)
         project_label = normalize_brand_display_text(project_label)
+        activity_source = normalize_window_activity_source(raw_window, daily_capture)
+        thread_source = (raw_window.get("app_server") or {}).get("thread_source", "")
         items.append(
             {
                 "date": (daily_capture or {}).get("date", ""),
@@ -4653,6 +6056,13 @@ def build_window_items_from_daily_capture(daily_capture, latest_nightly=None, la
                 "cwd": cwd,
                 "cwd_display": compact_cwd_display(cwd),
                 "project_label": project_label,
+                "activity_source": activity_source,
+                "thread_source": thread_source,
+                "activity_source_label": window_activity_source_label(
+                    activity_source,
+                    language,
+                    thread_source=thread_source,
+                ),
                 "question_count": raw_window.get("prompt_count", 0),
                 "conclusion_count": raw_window.get("conclusion_count", 0),
                 "question_summary": question_summary or localized("暂无问题摘要。", "No question summary.", language),
@@ -4703,6 +6113,8 @@ def build_window_overview(latest_nightly, language=None, target_date=""):
                     "project_label": normalize_brand_display_text(
                         infer_repo_name_from_path(cwd) or localized_context_label("个人工作区", language)
                     ),
+                    "activity_source": "nightly_summary",
+                    "activity_source_label": window_activity_source_label("nightly_summary", language),
                     "question_count": item.get("question_count", 0),
                     "conclusion_count": item.get("conclusion_count", 0),
                     "question_summary": normalize_brand_display_text(item.get("question_summary", "")),
@@ -4725,8 +6137,7 @@ def build_window_overview(latest_nightly, language=None, target_date=""):
             ),
             reverse=True,
         )
-        for index, item in enumerate(fallback_items, start=1):
-            item["display_index"] = index
+        assign_window_display_indices(fallback_items)
         return {
             "date": target_date or "",
             "window_count": len(fallback_items),
@@ -4750,8 +6161,7 @@ def build_window_overview(latest_nightly, language=None, target_date=""):
         reverse=True,
     )
 
-    for index, item in enumerate(items, start=1):
-        item["display_index"] = index
+    assign_window_display_indices(items)
 
     return {
         "date": daily_capture.get("date", target_date or ""),
@@ -4808,8 +6218,7 @@ def build_context_window_overview_for_days(anchor_date, days, latest_nightly=Non
         ),
         reverse=True,
     )
-    for index, item in enumerate(windows, start=1):
-        item["display_index"] = index
+    assign_window_display_indices(windows)
 
     return {
         "date": anchor_date,
@@ -5044,9 +6453,9 @@ def estimate_asset_reuse_value(asset, tracked_events, window_overview, language=
     if asset_type in ASSET_VALUE_BASE_SCORE:
         signals.append(
             localized(
-                "{} 类型有固定复用基准".format(asset.get("display_type") or display_label("type", asset_type)),
+                "{} 类型有固定复用基准".format(display_label("type", asset_type, language="zh")),
                 "{} carries a reusable baseline".format(
-                    asset.get("display_type") or display_label("type", asset_type, language=language)
+                    display_label("type", asset_type, language="en")
                 ),
                 language,
             )
@@ -5179,11 +6588,33 @@ def enrich_assets(assets, usage_by_asset, known_project_names, window_overview=N
             language="en",
             default=asset.get("notes", "") or item["display_notes"],
         )
+        for key, field, fallback_label in (
+            ("display_title_en", "title", "Asset"),
+            ("display_value_note_en", "value_note", "Value note"),
+            ("display_source_task_en", "source_task", "Task"),
+            ("display_notes_en", "notes", "Notes"),
+        ):
+            if contains_cjk(item.get(key, "")):
+                item[key] = english_record_text(asset, field, fallback_label=fallback_label)
         item["display_type"] = display_label("type", asset.get("type", ""), language=language)
         item["display_domain"] = display_label("domain", asset.get("domain", ""), language=language)
         item["display_scope"] = display_label("scope", asset.get("scope", ""), language=language)
         item["display_status"] = display_label("status", asset.get("status", ""), language=language)
+        item["display_type_en"] = display_label("type", asset.get("type", ""), language="en")
+        item["display_domain_en"] = display_label("domain", asset.get("domain", ""), language="en")
+        item["display_scope_en"] = display_label("scope", asset.get("scope", ""), language="en")
+        item["display_status_en"] = display_label("status", asset.get("status", ""), language="en")
         item["display_context"] = resolve_asset_context(asset, known_project_names)
+        item["display_context_en"] = (
+            panel_english_text(item["display_context"])
+            or localized_context_label(item["display_context"], language="en")
+            or item["display_domain_en"]
+        )
+        if contains_cjk(item["display_context_en"]):
+            item["display_context_en"] = english_freeform_text(
+                item["display_context"],
+                fallback_label=item["display_domain_en"] or "Context",
+            )
         item["manual_reuse_count"] = safe_int(asset.get("reuse_count", 0))
         item["tracked_usage_events"] = len(tracked_events)
         item["tracked_minutes_saved"] = sum(
@@ -5192,14 +6623,27 @@ def enrich_assets(assets, usage_by_asset, known_project_names, window_overview=N
         item["minutes_saved_total"] = safe_int(asset.get("minutes_saved_total", 0))
         item["artifact_paths"] = asset.get("artifact_paths", [])
         item["tags"] = asset.get("tags", [])
-        item.update(
-            estimate_asset_reuse_value(
-                item,
-                tracked_events,
-                window_overview,
-                language=language,
-            )
+        value_view = estimate_asset_reuse_value(
+            item,
+            tracked_events,
+            window_overview,
+            language=language,
         )
+        value_view_en = estimate_asset_reuse_value(
+            item,
+            tracked_events,
+            window_overview,
+            language="en",
+        )
+        item.update(value_view)
+        for key in (
+            "estimated_value_level",
+            "estimated_minutes_saved_display",
+            "value_evidence_label",
+            "value_reason",
+        ):
+            item["{}_en".format(key)] = value_view_en.get(key, value_view.get(key, ""))
+        item["value_signals_en"] = value_view_en.get("value_signals", value_view.get("value_signals", []))
         enriched.append(item)
     return enriched
 
@@ -5232,6 +6676,10 @@ def enrich_usage_events(events, language=None):
             language="en",
             default=event.get("note", "") or item["display_note"],
         )
+        if contains_cjk(item.get("display_task_en", "")):
+            item["display_task_en"] = english_record_text(event, "task", fallback_label="Usage task")
+        if contains_cjk(item.get("display_note_en", "")):
+            item["display_note_en"] = english_record_text(event, "note", fallback_label="Usage note")
         enriched.append(item)
     return enriched
 
@@ -5258,8 +6706,12 @@ def build_asset_type_guide(assets):
         guide_rows.append(
             {
                 "label": display_label("type", asset_type),
+                "label_en": display_label("type", asset_type, language="en"),
                 "description": ASSET_TYPE_DESCRIPTIONS.get(
                     asset_type, "已登记到资产注册表中的稳定资产类型。"
+                ),
+                "description_en": ASSET_TYPE_DESCRIPTIONS_EN.get(
+                    asset_type, "Stable asset type registered in the asset registry."
                 ),
                 "count": len(assets_by_type[asset_type]),
                 "examples": [
@@ -5267,35 +6719,58 @@ def build_asset_type_guide(assets):
                     for asset in assets_by_type[asset_type]
                     if asset.get("display_title") or asset.get("title", "")
                 ][:2],
+                "examples_en": [
+                    asset.get("display_title_en") or asset.get("title", "")
+                    for asset in assets_by_type[asset_type]
+                    if asset.get("display_title_en") or asset.get("title", "")
+                ][:2],
             }
         )
     return guide_rows
 
 
 def make_asset_detail_item(asset):
-    title = (
-        localized_record_field(asset, "title", default="")
-        or asset.get("title")
-        or asset.get("id")
-        or "未命名资产"
-    )
+    title = asset.get("display_title") or asset.get("title") or asset.get("id") or "未命名资产"
+    title_en = asset.get("display_title_en") or asset.get("title_en") or ""
+    if not title_en or contains_cjk(title_en):
+        title_en = english_record_text(asset, "title", fallback_label="Asset")
     meta_parts = []
-    for value in (
-        asset.get("display_type") or display_label("type", asset.get("type", "")),
-        asset.get("display_scope") or display_label("scope", asset.get("scope", "")),
-        asset.get("display_context") or asset.get("display_domain") or asset.get("domain", ""),
+    meta_parts_en = []
+    for value, en_value in (
+        (
+            asset.get("display_type") or display_label("type", asset.get("type", "")),
+            asset.get("display_type_en") or display_label("type", asset.get("type", ""), language="en"),
+        ),
+        (
+            asset.get("display_scope") or display_label("scope", asset.get("scope", "")),
+            asset.get("display_scope_en") or display_label("scope", asset.get("scope", ""), language="en"),
+        ),
+        (
+            asset.get("display_context") or asset.get("display_domain") or asset.get("domain", ""),
+            asset.get("display_context_en")
+            or asset.get("display_domain_en")
+            or display_label("domain", asset.get("domain", ""), language="en"),
+        ),
     ):
         if value and value not in meta_parts:
             meta_parts.append(value)
+        if en_value and en_value not in meta_parts_en:
+            meta_parts_en.append(en_value)
     return {
         "title": title,
+        "title_en": title_en,
         "meta": " / ".join(meta_parts),
+        "meta_en": english_freeform_text(
+            " / ".join(meta_parts_en),
+            fallback_label="Details",
+        ),
     }
 
 
-def build_asset_mix_rows(assets, key_fn, label_fn=None):
+def build_asset_mix_rows(assets, key_fn, label_fn=None, label_en_fn=None):
     grouped_assets = defaultdict(list)
     label_fn = label_fn or (lambda value: value)
+    label_en_fn = label_en_fn or (lambda value: panel_english_text(label_fn(value)) or label_fn(value))
 
     for asset in assets:
         key = key_fn(asset) or "unknown"
@@ -5304,6 +6779,7 @@ def build_asset_mix_rows(assets, key_fn, label_fn=None):
     rows = []
     for key, group_assets in grouped_assets.items():
         label = label_fn(key) or str(key or "unknown")
+        label_en = label_en_fn(key) or panel_english_text(label) or label
         detail_assets = sorted(
             group_assets,
             key=lambda item: (item.get("title", ""), item.get("id", "")),
@@ -5311,8 +6787,11 @@ def build_asset_mix_rows(assets, key_fn, label_fn=None):
         rows.append(
             {
                 "label": label,
+                "label_en": label_en,
                 "value": len(group_assets),
                 "details": [make_asset_detail_item(asset) for asset in detail_assets],
+                "details_heading": "对应项目 / 条目",
+                "details_heading_en": "Related projects / items",
             }
         )
 
@@ -5336,6 +6815,58 @@ def make_table(counter, headers, empty_label="none"):
     for row in rows:
         lines.append("| {} | {} |".format(row["label"], row["value"]))
     return "\n".join(lines)
+
+
+def summary_term_view_for_days(data, days):
+    for view in data.get("summary_term_views", []) or []:
+        if safe_int(view.get("days", 0)) == safe_int(days):
+            return view
+    if safe_int(days) == SUMMARY_TERM_DEFAULT_DAYS:
+        return {"terms": data.get("summary_terms", [])}
+    return {}
+
+
+def format_summary_term_labels(rows, separator, empty_label):
+    labels = [str(row.get("label", "")).strip() for row in rows or [] if str(row.get("label", "")).strip()]
+    return separator.join(labels) if labels else empty_label
+
+
+def build_summary_term_markdown_lines(data, language=None):
+    language = current_language(language or data.get("language"))
+    if is_english(language):
+        lines = [
+            "## Today Hot Terms",
+            "",
+            "Note: the default panel view is today; the panel can switch to the last 3 or 7 days. Terms come from the selected date range's window synthesis, assets, reviews, and usage records.",
+            "",
+        ]
+        for days in SUMMARY_TERM_RANGE_DAYS:
+            view = summary_term_view_for_days(data, days)
+            label = "Today" if days == 1 else "Last {}".format(plural_en(days, "day"))
+            lines.append(
+                "- {}: {}".format(
+                    label,
+                    format_summary_term_labels(view.get("terms", []), ", ", "None"),
+                )
+            )
+        return lines
+
+    lines = [
+        "## 今日热词",
+        "",
+        "说明：默认展示今日；面板可切换近 3 日和近 7 日。热词来自对应日期范围内的窗口整理、资产、复盘和复用记录。",
+        "",
+    ]
+    for days in SUMMARY_TERM_RANGE_DAYS:
+        view = summary_term_view_for_days(data, days)
+        label = "今日" if days == 1 else "近 {} 日".format(days)
+        lines.append(
+            "- {}：{}".format(
+                label,
+                format_summary_term_labels(view.get("terms", []), "、", "暂无"),
+            )
+        )
+    return lines
 
 
 def sort_top_assets(enriched_assets):
@@ -5368,17 +6899,34 @@ def build_data(assets, usage_events, reviews, language=None):
         language=language,
         target_date=today.isoformat() if today_capture else "",
     )
-    memory_registry = build_memory_registry(memory_items, window_overview, language=language)
+    memory_usage_anchor_date = (
+        (window_overview or {}).get("date")
+        or (window_anchor_nightly or {}).get("date")
+        or today.isoformat()
+    )
+    memory_usage_window_overview = build_context_window_overview_for_days(
+        memory_usage_anchor_date,
+        MEMORY_USAGE_WINDOW_DAYS,
+        latest_nightly=window_anchor_nightly,
+        language=language,
+    )
+    memory_registry = build_memory_registry(
+        memory_items,
+        window_overview,
+        usage_window_overview=memory_usage_window_overview,
+        language=language,
+    )
     memory_mode = get_memory_mode(PATHS)
+    codex_memory_dir = PATHS.codex_home / "memories"
+    codex_memory_summary_path = codex_memory_dir / "memory_summary.md"
+    codex_memory_index_path = codex_memory_dir / "MEMORY.md"
     personal_memory_token_usage = build_personal_memory_token_usage(
         memory_registry["rows"],
         memory_mode,
         language=language,
+        memory_summary_path=codex_memory_summary_path,
     )
     known_project_names = collect_known_project_names(window_overview)
-    codex_memory_dir = PATHS.codex_home / "memories"
-    codex_memory_summary_path = codex_memory_dir / "memory_summary.md"
-    codex_memory_index_path = codex_memory_dir / "MEMORY.md"
     codex_memory_summary_path_label = render_path(codex_memory_summary_path)
     codex_memory_index_path_label = render_path(codex_memory_index_path)
     codex_native_memory = parse_codex_native_memory_summary(
@@ -5447,18 +6995,33 @@ def build_data(assets, usage_events, reviews, language=None):
         or (window_anchor_nightly or {}).get("date")
         or current_local_datetime().date().isoformat()
     )
-    project_context_views = build_project_context_views(
+    project_context_views_zh = build_project_context_views(
         project_context_anchor_date,
         latest_nightly=window_anchor_nightly,
-        language=language,
+        language="zh",
     )
+    project_context_views_en = build_project_context_views(
+        project_context_anchor_date,
+        latest_nightly=window_anchor_nightly,
+        language="en",
+    )
+    project_context_views = project_context_views_en if is_english(language) else project_context_views_zh
     selected_project_context_view = (
         project_context_views.get(str(PROJECT_CONTEXT_DEFAULT_DAYS))
         or next(iter(project_context_views.values()), {})
     )
     project_contexts = selected_project_context_view.get("project_contexts", [])
     asset_type_guide = build_asset_type_guide(enriched_assets)
-    summary_terms = build_summary_terms(enriched_assets, reviews, localized_usage_events)
+    summary_term_views = build_summary_term_views(
+        enriched_assets,
+        reviews,
+        localized_usage_events,
+        nightly_candidates,
+        today.isoformat(),
+        latest_nightly=window_anchor_nightly,
+        language=language,
+    )
+    summary_terms = default_summary_term_view(summary_term_views).get("terms", [])
     token_usage = build_token_usage_view(resolve_ccusage_daily(), language=language)
     daily_summary_views = build_daily_summary_views(nightly_candidates, language=language)
     backfill = build_backfill_view(nightly_candidates)
@@ -5766,26 +7329,29 @@ def build_data(assets, usage_events, reviews, language=None):
     memory_view_nightly = select_memory_view_nightly(primary_nightly, active_nightly)
     memory_view_date = (memory_view_nightly or {}).get("date") or (primary_nightly or {}).get("date", "")
     nightly_memory_views = {
-        "durable": enrich_nightly_memory_items(
-            (memory_view_nightly or {}).get("durable_memories", []),
+        "durable": build_memory_bucket_view(
             "durable",
             memory_registry,
+            memory_view_nightly,
             window_overview,
-            default_date=memory_view_date,
+            memory_view_date,
+            usage_window_overview=memory_usage_window_overview,
         ),
-        "session": enrich_nightly_memory_items(
-            (memory_view_nightly or {}).get("session_memories", []),
+        "session": build_memory_bucket_view(
             "session",
             memory_registry,
+            memory_view_nightly,
             window_overview,
-            default_date=memory_view_date,
+            memory_view_date,
+            usage_window_overview=memory_usage_window_overview,
         ),
-        "low_priority": enrich_nightly_memory_items(
-            (memory_view_nightly or {}).get("low_priority_memories", []),
+        "low_priority": build_memory_bucket_view(
             "low_priority",
             memory_registry,
+            memory_view_nightly,
             window_overview,
-            default_date=memory_view_date,
+            memory_view_date,
+            usage_window_overview=memory_usage_window_overview,
         ),
     }
 
@@ -5808,15 +7374,19 @@ def build_data(assets, usage_events, reviews, language=None):
                 enriched_assets,
                 lambda asset: asset.get("type", "unknown"),
                 lambda value: display_label("type", value, language=language),
+                lambda value: display_label("type", value, language="en"),
             ),
             "domain": build_asset_mix_rows(
                 enriched_assets,
                 lambda asset: asset.get("domain", "unknown"),
                 lambda value: display_label("domain", value, language=language),
+                lambda value: display_label("domain", value, language="en"),
             ),
             "context": build_asset_mix_rows(
                 enriched_assets,
                 lambda asset: asset.get("display_context", "未分类上下文"),
+                lambda value: value,
+                lambda value: panel_english_text(value) or localized_context_label(value, language="en"),
             ),
             "month": build_asset_mix_rows(
                 enriched_assets,
@@ -5830,10 +7400,12 @@ def build_data(assets, usage_events, reviews, language=None):
                 enriched_assets,
                 lambda asset: asset.get("scope", "unknown"),
                 lambda value: display_label("scope", value, language=language),
+                lambda value: display_label("scope", value, language="en"),
             ),
             "status": [
                 {
                     "label": display_label("status", row["label"], language=language),
+                    "label_en": display_label("status", row["label"], language="en"),
                     "value": row["value"],
                 }
                 for row in counter_to_rows(summary["status_counter"])
@@ -5852,6 +7424,8 @@ def build_data(assets, usage_events, reviews, language=None):
             "usage_events": localized_usage_events,
         },
         "summary_terms": summary_terms,
+        "summary_term_default_days": SUMMARY_TERM_DEFAULT_DAYS,
+        "summary_term_views": summary_term_views,
         "highlights": highlights,
         "token_highlight": token_highlight,
         "token_usage": token_usage,
@@ -5861,6 +7435,12 @@ def build_data(assets, usage_events, reviews, language=None):
         "backfill": backfill,
         "window_overview_views": window_overview_views,
         "window_overview_default_date": window_overview_default_date,
+        "memory_usage_window_days": MEMORY_USAGE_WINDOW_DAYS,
+        "memory_usage_window": {
+            "date": memory_usage_window_overview.get("date", ""),
+            "window_count": memory_usage_window_overview.get("window_count", 0),
+            "source_dates": memory_usage_window_overview.get("source_dates", []),
+        },
         "asset_type_scope_note": localized(
             "统计来自 assets.jsonl 的全部稳定资产，不限当前仓库；只有已登记的条目会进入这里，raw、log、report 和单次对话不会计入。",
             "Counts all stable assets from assets.jsonl, not only the current repo. Only registered entries appear here; raw captures, logs, reports, and one-off chats are excluded.",
@@ -5876,6 +7456,8 @@ def build_data(assets, usage_events, reviews, language=None):
         "window_overview_title": window_overview_title,
         "project_contexts": project_contexts,
         "project_context_views": project_context_views,
+        "project_context_views_zh": project_context_views_zh,
+        "project_context_views_en": project_context_views_en,
         "project_context_default_days": PROJECT_CONTEXT_DEFAULT_DAYS,
         "window_overview": window_overview,
         "memory_items": memory_items,
@@ -5914,8 +7496,8 @@ def build_data(assets, usage_events, reviews, language=None):
                 language,
             ),
             localized(
-                "对照“Codex 原生记忆”和“个人资产-当前记忆登记册”看：前者偏模型长期记忆，后者偏夜间整理和来源追踪。",
-                "Compare Codex Native Memory with the Personal Asset - Current Memory Registry: the former is closer to long-term model memory, while the latter is nightly synthesis with source tracing.",
+                "对照“Codex 原生记忆”和“个人资产记忆”看：前者偏模型长期记忆，后者偏夜间整理和来源追踪。",
+                "Compare Codex Native Memory with Personal Asset Memory: the former is closer to long-term model memory, while the latter is nightly synthesis with source tracing.",
                 language,
             ),
         ],
@@ -5929,7 +7511,7 @@ def build_markdown(data):
     active_nightly_note = data.get("active_nightly_note", "")
     if is_english(language):
         lines = [
-            "# OpenKeepsake Overview",
+            "# OpenRelix Overview",
             "",
             "Generated at: `{}`".format(data["generated_at"]),
             "",
@@ -5946,13 +7528,8 @@ def build_markdown(data):
             "- Today Token: `{}`".format(token_usage["today_total_tokens_display"]),
             "- 7-day Token: `{}`".format(token_usage["seven_day_total_tokens_display"]),
             "",
-            "## Summary Terms",
-            "",
-            ", ".join(row["label"] for row in data["summary_terms"]) if data["summary_terms"] else "None",
-            "",
-            "## Daily Token Usage",
-            "",
         ]
+        lines.extend(build_summary_term_markdown_lines(data, language=language) + ["", "## Daily Token Usage", ""])
 
         if token_usage["available"]:
             lines.extend(["| Date | Total Token |", "| --- | --- |"])
@@ -6035,29 +7612,6 @@ def build_markdown(data):
                 )
         else:
             lines.append("| None | 0 | 0 | 0 | No displayable summary. |")
-
-        lines.extend(
-            [
-                "",
-                "## Current Memory Registry",
-                "",
-                "| Title | Bucket | First Added | Recently Updated | Related Context |",
-                "| --- | --- | --- | --- | --- |",
-            ]
-        )
-        if data.get("memory_registry"):
-            for item in data.get("memory_registry", [])[:12]:
-                lines.append(
-                    "| {} | {} | {} | {} | {} |".format(
-                        item.get("display_title") or item.get("title", ""),
-                        item.get("display_bucket", item.get("bucket", "")),
-                        item.get("created_at_display", ""),
-                        item.get("updated_at_display", ""),
-                        " / ".join(item.get("context_labels", [])[:2]) or item.get("display_context", ""),
-                    )
-                )
-        else:
-            lines.append("| None | None | None | None | None |")
 
         native_note = (data.get("codex_native_memory_comparison") or {}).get("note", "")
         codex_memory_summary_label = data.get("codex_memory_summary_path_label") or render_path(
@@ -6148,7 +7702,7 @@ def build_markdown(data):
         return "\n".join(lines) + "\n"
 
     lines = [
-        "# OpenKeepsake 工作台",
+        "# OpenRelix 工作台",
         "",
         "生成时间：`{}`".format(data["generated_at"]),
         "",
@@ -6165,13 +7719,8 @@ def build_markdown(data):
         "- 今日 Token：`{}`".format(token_usage["today_total_tokens_display"]),
         "- 近 7 日 Token：`{}`".format(token_usage["seven_day_total_tokens_display"]),
         "",
-        "## 本期摘要词",
-        "",
-        "、".join(row["label"] for row in data["summary_terms"]) if data["summary_terms"] else "暂无",
-        "",
-        "## 每日 Token 消耗",
-        "",
     ]
+    lines.extend(build_summary_term_markdown_lines(data, language=language) + ["", "## 每日 Token 消耗", ""])
 
     if token_usage["available"]:
         lines.extend(["| 日期 | 总 Token |", "| --- | --- |"])
@@ -6275,30 +7824,6 @@ def build_markdown(data):
             )
     else:
         lines.append("| 暂无 | 0 | 0 | 0 | 暂无可展示摘要。 |")
-
-    lines.extend(
-        [
-            "",
-            "## 个人资产-当前记忆登记册",
-            "",
-            "| 标题 | 分桶 | 首次添加 | 最近更新 | 关联上下文 |",
-            "| --- | --- | --- | --- | --- |",
-        ]
-    )
-
-    if data.get("memory_registry"):
-        for item in data.get("memory_registry", [])[:12]:
-            lines.append(
-                "| {} | {} | {} | {} | {} |".format(
-                    item.get("display_title") or item.get("title", ""),
-                    item.get("display_bucket", item.get("bucket", "")),
-                    item.get("created_at_display", ""),
-                    item.get("updated_at_display", ""),
-                    " / ".join(item.get("context_labels", [])[:2]) or item.get("display_context", ""),
-                )
-            )
-    else:
-        lines.append("| 暂无 | 暂无 | 暂无 | 暂无 | 暂无 |")
 
     native_note = (data.get("codex_native_memory_comparison") or {}).get("note", "")
     codex_memory_summary_label = data.get("codex_memory_summary_path_label") or render_path(
@@ -6454,25 +7979,37 @@ def build_csv(data, output_path):
             )
 
 
-def make_bar_detail_popover(details, heading="对应项目 / 条目"):
+def make_bar_detail_popover(details, heading="对应项目 / 条目", heading_en=""):
     if not details:
         return "", ""
 
     items = []
     aria_titles = []
+    aria_titles_en = []
     for detail in details:
         if isinstance(detail, dict):
             title = str(detail.get("title", "") or "").strip()
             meta = str(detail.get("meta", "") or "").strip()
+            title_en = str(detail.get("title_en", "") or "").strip()
+            meta_en = str(detail.get("meta_en", "") or "").strip()
         else:
             title = str(detail or "").strip()
             meta = ""
+            title_en = ""
+            meta_en = ""
         if not title:
             continue
+        if not title_en or contains_cjk(title_en):
+            title_en = english_freeform_text(title, fallback_label="Item")
+        if meta and (not meta_en or contains_cjk(meta_en)):
+            meta_en = english_freeform_text(meta, fallback_label="Details")
         aria_titles.append(title)
+        aria_titles_en.append(title_en)
         meta_html = ""
         if meta:
-            meta_html = '<span class="bar-detail-meta">{}</span>'.format(escape(meta))
+            meta_html = '<span class="bar-detail-meta">{}</span>'.format(
+                panel_language_text_html(meta, meta_en)
+            )
         items.append(
             """
               <span class="bar-detail-item">
@@ -6480,7 +8017,7 @@ def make_bar_detail_popover(details, heading="对应项目 / 条目"):
                 {meta_html}
               </span>
             """.format(
-                title=escape(title),
+                title=panel_language_text_html(title, title_en),
                 meta_html=meta_html,
             )
         )
@@ -6488,9 +8025,12 @@ def make_bar_detail_popover(details, heading="对应项目 / 条目"):
     if not items:
         return "", ""
 
-    aria_label = "{}：{}".format(heading, "、".join(aria_titles[:8]))
+    heading_en = heading_en or panel_english_text(heading) or english_freeform_text(heading, fallback_label="Details")
+    aria_source_heading = heading_en if heading_en else heading
+    aria_source_titles = [item for item in aria_titles_en if item] or aria_titles
+    aria_label = "{}: {}".format(aria_source_heading, ", ".join(aria_source_titles[:8]))
     if len(aria_titles) > 8:
-        aria_label = "{}，另有 {} 条".format(aria_label, len(aria_titles) - 8)
+        aria_label = "{}, {} more".format(aria_label, len(aria_titles) - 8)
     return (
         """
         <span class="bar-detail-popover" role="tooltip">
@@ -6500,15 +8040,15 @@ def make_bar_detail_popover(details, heading="对应项目 / 条目"):
           </span>
         </span>
         """.format(
-            heading=escape(heading),
+            heading=panel_language_text_html(heading, heading_en),
             items="".join(items),
         ),
         aria_label,
     )
 
 
-def make_bar_value(value, details=None, heading="对应项目 / 条目"):
-    popover_html, aria_label = make_bar_detail_popover(details, heading=heading)
+def make_bar_value(value, details=None, heading="对应项目 / 条目", heading_en=""):
+    popover_html, aria_label = make_bar_detail_popover(details, heading=heading, heading_en=heading_en)
     if not popover_html:
         return "<strong>{}</strong>".format(escape(str(value)))
 
@@ -6544,6 +8084,13 @@ def make_bar_rows(rows, accent_class):
         width = int((row["value"] / max_value) * 100)
         value = row.get("display", compact_number(row["value"]))
         tone = safe_css_class(row.get("tone"), accent_class)
+        label_text = str(row["label"])
+        label_en = row.get("label_en") or panel_english_text(label_text) or english_freeform_text(
+            label_text,
+            fallback_label="Label",
+        )
+        if contains_cjk(label_en):
+            label_en = english_freeform_text(label_text, fallback_label="Label")
         items.append(
             """
             <div class="bar-row">
@@ -6556,11 +8103,15 @@ def make_bar_rows(rows, accent_class):
               </div>
             </div>
             """.format(
-                label=escape(str(row["label"])),
+                label=panel_language_text_html(
+                    label_text,
+                    label_en,
+                ),
                 value_html=make_bar_value(
                     value,
                     row.get("details"),
                     heading=row.get("details_heading", "对应项目 / 条目"),
+                    heading_en=row.get("details_heading_en", ""),
                 ),
                 accent=escape(tone, quote=True),
                 width=width,
@@ -6573,6 +8124,13 @@ def make_help_popover(title, sections, compact=False, language=None):
     if not sections:
         return ""
     language = current_language(language)
+
+    def render_help_text(value):
+        if isinstance(value, dict):
+            zh_text = value.get("zh", "") or value.get("text", "") or value.get("body", "")
+            en_text = value.get("en", "") or value.get("text_en", "") or value.get("body_en", "")
+            return panel_language_text_html(zh_text, en_text)
+        return escape(panel_display_text(value, language))
 
     section_html = []
     for section in sections:
@@ -6588,15 +8146,13 @@ def make_help_popover(title, sections, compact=False, language=None):
             </ul>
             """.format(
                 items="".join(
-                    "<li>{}</li>".format(escape(panel_display_text(item, language)))
+                    "<li>{}</li>".format(render_help_text(item))
                     for item in body
-                    if str(item).strip()
+                    if (str(item).strip() if not isinstance(item, dict) else any(str(v).strip() for v in item.values()))
                 )
             )
         else:
-            body_html = '<p class="module-help-copy">{}</p>'.format(
-                escape(panel_display_text(body, language))
-            )
+            body_html = '<p class="module-help-copy">{}</p>'.format(render_help_text(body))
 
         label_html = ""
         if label:
@@ -6702,13 +8258,28 @@ def build_asset_type_help_sections(scope_note, rows):
 
     type_rows = []
     for row in rows:
+        examples = row.get("examples", []) or []
+        examples_en = row.get("examples_en", []) or []
+        examples_en = [
+            english_freeform_text(example, fallback_label="Asset") if contains_cjk(example) else example
+            for example in examples_en
+        ]
         parts = [
             "{}：{}".format(row.get("label", ""), row.get("description", "")),
             "当前 {} 条".format(row.get("count", 0)),
         ]
-        if row.get("examples"):
-            parts.append("例如 {}".format("、".join(row["examples"])))
-        type_rows.append("；".join(parts))
+        parts_en = [
+            "{}: {}".format(
+                row.get("label_en", "") or panel_english_text(row.get("label", "")),
+                row.get("description_en", "") or panel_english_text(row.get("description", "")),
+            ),
+            "Current {}".format(plural_en(row.get("count", 0), "item")),
+        ]
+        if examples:
+            parts.append("例如 {}".format("、".join(examples)))
+        if examples_en:
+            parts_en.append("Examples: {}".format(", ".join(examples_en)))
+        type_rows.append({"zh": "；".join(parts), "en": "; ".join(parts_en)})
 
     if type_rows:
         sections.append({"label": "类型说明", "body": type_rows})
@@ -6774,7 +8345,7 @@ def build_report_redirect_html(title, target_path):
     <p>仓库里的这个入口只保留兼容跳转，不再直接承载实时数据。</p>
     <p>页面会自动跳到当前状态目录中的最新报表；如果浏览器没有自动跳转，可以手动打开下面这个路径。</p>
     <p><a href="{target_uri}">{target_label}</a></p>
-    <p>项目页：<a href="{project_github_url}" target="_blank" rel="noopener noreferrer">Ray1Ren/openkeepsake</a>，欢迎点星支持。</p>
+    <p>项目页：<a href="{project_github_url}" target="_blank" rel="noopener noreferrer">openrelix/openrelix</a>，欢迎点星支持。</p>
   </main>
   <script>
     window.location.replace({target_uri_json});
@@ -6811,7 +8382,7 @@ def write_repo_panel_entrypoint():
 
     repo_reports_dir.mkdir(parents=True, exist_ok=True)
     (repo_reports_dir / "panel.html").write_text(
-        build_report_redirect_html("OpenKeepsake 工作台", REPORTS_DIR / "panel.html"),
+        build_report_redirect_html("OpenRelix 工作台", REPORTS_DIR / "panel.html"),
         encoding="utf-8",
     )
 
@@ -6987,6 +8558,14 @@ def make_asset_rows(rows, group_id="asset-rows"):
                 escape(group_id),
                 hidden_attr,
             )
+        impact = row.get("display_value_note") or row.get("value_note", "")
+        impact_en = row.get("display_value_note_en") or row.get("value_note_en", "")
+        if impact and (not impact_en or contains_cjk(impact_en)):
+            impact_en = english_freeform_text(impact, fallback_label="Value note")
+        context = row.get("display_context", row.get("display_domain", row.get("domain", "")))
+        context_en = row.get("display_context_en") or row.get("display_domain_en", "")
+        if context and (not context_en or contains_cjk(context_en)):
+            context_en = english_freeform_text(context, fallback_label="Context")
         return """
             <tr{row_class_attr}>
               <td>
@@ -7001,10 +8580,16 @@ def make_asset_rows(rows, group_id="asset-rows"):
             </tr>
             """.format(
                 title=render_asset_title_link(row),
-                impact=escape(row.get("display_value_note") or row.get("value_note", "")),
-                type=escape(row.get("display_type", row.get("type", ""))),
-                context=escape(row.get("display_context", row.get("display_domain", row.get("domain", "")))),
-                scope=escape(row.get("display_scope", row.get("scope", ""))),
+                impact=panel_language_text_html(impact, impact_en),
+                type=panel_language_text_html(
+                    row.get("display_type", row.get("type", "")),
+                    row.get("display_type_en", ""),
+                ),
+                context=panel_language_text_html(context, context_en),
+                scope=panel_language_text_html(
+                    row.get("display_scope", row.get("scope", "")),
+                    row.get("display_scope_en", ""),
+                ),
                 updated_at=escape(row.get("updated_at", "")),
                 tracked_usage_events=escape(str(row.get("tracked_usage_events", 0))),
                 row_class_attr=row_class_attr,
@@ -7034,9 +8619,21 @@ def make_top_asset_rows(rows, group_id="top-asset-rows"):
                 hidden_attr,
             )
         signals = row.get("value_signals", []) or []
-        signal_html = escape("；".join(signals[:3]) or row.get("value_reason", ""))
+        signals_en = row.get("value_signals_en", []) or []
+        signal_text = "；".join(signals[:3]) or row.get("value_reason", "")
+        signal_text_en = "; ".join(signals_en[:3]) or row.get("value_reason_en", "")
+        if signal_text and (not signal_text_en or contains_cjk(signal_text_en)):
+            signal_text_en = english_freeform_text(signal_text, fallback_label="Signals")
         context = row.get("display_context", row.get("display_domain", row.get("domain", "")))
-        reason_parts = [part for part in (context, row.get("display_value_note") or row.get("value_reason", "")) if part]
+        context_en = row.get("display_context_en") or row.get("display_domain_en", "")
+        if context and (not context_en or contains_cjk(context_en)):
+            context_en = english_freeform_text(context, fallback_label="Context")
+        note = row.get("display_value_note") or row.get("value_reason", "")
+        note_en = row.get("display_value_note_en") or row.get("value_reason_en", "")
+        if note and (not note_en or contains_cjk(note_en)):
+            note_en = english_freeform_text(note, fallback_label="Value note")
+        reason_parts = [part for part in (context, note) if part]
+        reason_parts_en = [part for part in (context_en, note_en) if part]
         return """
             <tr{row_class_attr}>
               <td>
@@ -7055,12 +8652,21 @@ def make_top_asset_rows(rows, group_id="top-asset-rows"):
             </tr>
             """.format(
                 title=render_asset_title_link(row),
-                reason=escape(" · ".join(reason_parts)),
+                reason=panel_language_text_html(" · ".join(reason_parts), " · ".join(reason_parts_en)),
                 score=escape(str(row.get("estimated_value_score", 0))),
-                level=escape(row.get("estimated_value_level", "")),
-                estimated_minutes=escape(row.get("estimated_minutes_saved_display", "")),
-                evidence=escape(row.get("value_evidence_label", "")),
-                signals=signal_html,
+                level=panel_language_text_html(
+                    row.get("estimated_value_level", ""),
+                    row.get("estimated_value_level_en", ""),
+                ),
+                estimated_minutes=panel_language_text_html(
+                    row.get("estimated_minutes_saved_display", ""),
+                    row.get("estimated_minutes_saved_display_en", ""),
+                ),
+                evidence=panel_language_text_html(
+                    row.get("value_evidence_label", ""),
+                    row.get("value_evidence_label_en", ""),
+                ),
+                signals=panel_language_text_html(signal_text, signal_text_en),
                 row_class_attr=row_class_attr,
             )
 
@@ -7096,20 +8702,27 @@ def make_review_cards(reviews):
         repo_block = (
             """
               <div>
-                <span>项目 / 上下文</span>
+                <span>{repo_label}</span>
                 <p>{repo}</p>
               </div>
-            """.format(repo=repo_html)
+            """.format(
+                repo_label=panel_language_text_html("项目 / 上下文"),
+                repo=repo_html,
+            )
             if review.get("repo")
             else ""
         )
+        domain = review.get("domain", "") or "未知"
+        domain_en = english_freeform_text(domain, fallback_label="Unknown")
+        task = review.get("task", "") or "未命名复盘"
+        task_en = english_freeform_text(task, fallback_label="Task review")
         return """
             <article class="review-card">
               <div class="review-meta">{date} · {domain}</div>
               <h3>{task}</h3>
               <div class="review-card-links">
                 <div>
-                  <span>复盘文件</span>
+                  <span>{file_label}</span>
                   {file}
                 </div>
                 {repo}
@@ -7117,8 +8730,9 @@ def make_review_cards(reviews):
             </article>
             """.format(
                 date=escape(review.get("date", "")),
-                domain=escape(review.get("domain", "") or "未知"),
-                task=escape(review.get("task", "")),
+                domain=panel_language_text_html(domain, domain_en),
+                task=panel_language_text_html(task, task_en),
+                file_label=panel_language_text_html("复盘文件"),
                 file=file_html,
                 repo=repo_block,
             )
@@ -7133,6 +8747,8 @@ def make_review_cards(reviews):
         "篇复盘",
         "review-grid review-panel-grid content-more-grid",
         expanded_label="收起更多复盘",
+        item_label_en="reviews",
+        expanded_label_en="Collapse more reviews",
     )
 
 
@@ -7149,7 +8765,9 @@ def make_project_context_cards(items, language=None):
                 escape(localized("暂无关键词", "No keywords", language))
             )
         return "".join(
-            '<span class="context-chip">{}</span>'.format(escape(keyword))
+            '<span class="context-chip">{}</span>'.format(
+                escape(localized_context_keyword(keyword, language=language))
+            )
             for keyword in keywords[:4]
         )
 
@@ -7181,15 +8799,15 @@ def make_project_context_cards(items, language=None):
             </article>
             """.format(
             recent_activity=escape(localized("最近活动", "Recent activity", language)),
-            latest_activity=escape(topic.get("latest_activity_display", localized("时间未知", "Unknown time", language))),
-            label=escape(topic.get("label", "")),
-            window_count_label=escape(
-                localized(
-                    "{} 窗口".format(topic.get("window_count", 0)),
-                    "{} windows".format(topic.get("window_count", 0)),
-                    language,
-                )
-            ),
+                latest_activity=escape(topic.get("latest_activity_display", localized("时间未知", "Unknown time", language))),
+                label=escape(topic.get("label", "")),
+                window_count_label=escape(
+                    localized(
+                        "{} 窗口".format(topic.get("window_count", 0)),
+                        plural_en(topic.get("window_count", 0), "window"),
+                        language,
+                    )
+                ),
             question=escape(topic.get("question_preview", localized("暂无代表问题。", "No representative question.", language))),
             takeaway=escape(topic.get("takeaway_preview", localized("暂无代表结论。", "No representative conclusion.", language))),
             keyword_chips=keyword_chips,
@@ -7251,9 +8869,9 @@ def make_project_context_cards(items, language=None):
                 recent_activity=escape(localized("最近活动", "Recent activity", language)),
                 latest_activity=escape(item.get("latest_activity_display", localized("时间未知", "Unknown time", language))),
                 label=escape(item.get("label", "")),
-                window_count_label=escape(localized("{} 个窗口".format(item.get("window_count", 0)), "{} windows".format(item.get("window_count", 0)), language)),
-                question_count_label=escape(localized("{} 个问题".format(item.get("question_count", 0)), "{} questions".format(item.get("question_count", 0)), language)),
-                conclusion_count_label=escape(localized("{} 个结论".format(item.get("conclusion_count", 0)), "{} conclusions".format(item.get("conclusion_count", 0)), language)),
+                window_count_label=escape(localized("{} 个窗口".format(item.get("window_count", 0)), plural_en(item.get("window_count", 0), "window"), language)),
+                question_count_label=escape(localized("{} 个问题".format(item.get("question_count", 0)), plural_en(item.get("question_count", 0), "question"), language)),
+                conclusion_count_label=escape(localized("{} 个结论".format(item.get("conclusion_count", 0)), plural_en(item.get("conclusion_count", 0), "conclusion"), language)),
                 facts="".join(
                     (
                         render_fact(localized("最近工作区", "Recent Workspace", language), item.get("cwd_preview", localized("暂无工作目录", "No working directory", language))),
@@ -7300,12 +8918,12 @@ def make_project_context_body(project_context_views, default_days=PROJECT_CONTEX
         <button class="context-range-button{active}" type="button" data-context-days="{days}" aria-pressed="{pressed}">
           {label}
         </button>
-        """.format(
-            days=escape(str(days)),
-            label=escape(localized("最近 {} 天".format(days), "Last {} days".format(days), language)),
-            active=" is-active" if days == default_days else "",
-            pressed="true" if days == default_days else "false",
-        )
+            """.format(
+                days=escape(str(days)),
+                label=escape(localized("最近 {} 天".format(days), "Last {}".format(plural_en(days, "day")), language)),
+                active=" is-active" if days == default_days else "",
+                pressed="true" if days == default_days else "false",
+            )
         for days in ordered_days
     )
 
@@ -7313,11 +8931,12 @@ def make_project_context_body(project_context_views, default_days=PROJECT_CONTEX
     for days in ordered_days:
         view = project_context_views.get(str(days), {})
         source_dates = view.get("source_dates", [])
-        source_label = "、".join(source_dates[:3])
+        source_joiner = ", " if is_english(language) else "、"
+        source_label = source_joiner.join(source_dates[:3])
         if len(source_dates) > 3:
             source_label = localized(
                 "{} 等 {} 天".format(source_label, len(source_dates)),
-                "{}, and {} days".format(source_label, len(source_dates)),
+                "{}, and {}".format(source_label, plural_en(len(source_dates), "source date")),
                 language,
             )
         if not source_label:
@@ -7329,10 +8948,10 @@ def make_project_context_body(project_context_views, default_days=PROJECT_CONTEX
                 view.get("window_count", 0),
                 source_label,
             ),
-            "Scanned {} days · source dates {} · {} windows · {}".format(
-                view.get("scanned_date_count", days),
-                view.get("source_date_count", 0),
-                view.get("window_count", 0),
+            "Scanned {} · {} · {} · {}".format(
+                plural_en(view.get("scanned_date_count", days), "day"),
+                plural_en(view.get("source_date_count", 0), "source date"),
+                plural_en(view.get("window_count", 0), "window"),
                 source_label,
             ),
             language,
@@ -7380,6 +8999,10 @@ def make_usage_rows(events, group_id="usage-rows"):
                 escape(group_id),
                 hidden_attr,
             )
+        task = event.get("display_task") or event.get("task", "")
+        task_en = event.get("display_task_en") or ""
+        if task and (not task_en or contains_cjk(task_en)):
+            task_en = english_freeform_text(task, fallback_label="Usage task")
         return """
             <tr{row_class_attr}>
               <td>{date}</td>
@@ -7390,7 +9013,7 @@ def make_usage_rows(events, group_id="usage-rows"):
             """.format(
                 date=escape(event.get("date", "")),
                 asset_id=escape(event.get("asset_id", "")),
-                task=escape(event.get("display_task") or event.get("task", "")),
+                task=panel_language_text_html(task, task_en),
                 minutes_saved=escape(str(event.get("minutes_saved", 0))),
                 row_class_attr=row_class_attr,
             )
@@ -7414,6 +9037,8 @@ def make_term_cloud(rows):
     chips = []
     for row in rows:
         scale = 0.9 + (row["value"] / max_value) * 0.8
+        label = normalize_brand_display_text(str(row["label"]))
+        label_html = panel_language_text_html(label, english_summary_term_label(label))
         chips.append(
             """
             <span class="term-chip" style="font-size:{size}rem">
@@ -7422,11 +9047,99 @@ def make_term_cloud(rows):
             </span>
             """.format(
                 size="{:.2f}".format(scale),
-                label=escape(str(row["label"])),
+                label=label_html,
                 value=escape(str(row["value"])),
             )
         )
     return "".join(chips)
+
+
+def make_summary_term_view_meta(view):
+    registered_count = (
+        safe_int(view.get("asset_count", 0))
+        + safe_int(view.get("review_count", 0))
+        + safe_int(view.get("usage_event_count", 0))
+    )
+    source_dates = view.get("source_dates", []) or []
+    if source_dates:
+        source_zh = "、".join(source_dates[:3])
+        source_en = ", ".join(source_dates[:3])
+        if len(source_dates) > 3:
+            source_zh = "{} 等 {} 天".format(source_zh, len(source_dates))
+            source_en = "{}, and {}".format(source_en, plural_en(len(source_dates), "source date"))
+    else:
+        source_zh = "暂无来源日期"
+        source_en = "No source dates"
+    meta_zh = "{} 个窗口 · {} 个整理 · {} 条登记记录 · {}".format(
+        view.get("window_count", 0),
+        view.get("nightly_count", 0),
+        registered_count,
+        source_zh,
+    )
+    meta_en = "{} · {} · {} · {}".format(
+        plural_en(view.get("window_count", 0), "window"),
+        plural_en(view.get("nightly_count", 0), "synthesis", "syntheses"),
+        plural_en(registered_count, "registered record"),
+        source_en,
+    )
+    return panel_language_text_html(meta_zh, meta_en)
+
+
+def make_summary_term_cloud_views(summary_term_views, default_days=SUMMARY_TERM_DEFAULT_DAYS, language=None):
+    views = summary_term_views or []
+    if not views:
+        return '<div class="term-cloud">{}</div>'.format(make_term_cloud([]))
+
+    default_days = safe_int(default_days) or SUMMARY_TERM_DEFAULT_DAYS
+    if all(safe_int(view.get("days", 0)) != default_days for view in views):
+        default_days = safe_int(views[0].get("days", SUMMARY_TERM_DEFAULT_DAYS))
+
+    controls = []
+    view_html = []
+    for view in views:
+        days = safe_int(view.get("days", 0))
+        is_active = days == default_days
+        controls.append(
+            """
+            <button class="term-range-button{active}" type="button" data-term-days="{days}" aria-pressed="{pressed}">
+              {label}
+            </button>
+            """.format(
+                active=" is-active" if is_active else "",
+                days=escape(str(days)),
+                pressed="true" if is_active else "false",
+                label=summary_term_range_label_html(days),
+            )
+        )
+        view_html.append(
+            """
+            <div class="term-cloud-view{active}" data-term-view="{days}"{hidden}>
+              <div class="term-cloud-meta">{meta}</div>
+              <div class="term-cloud">
+                {cloud}
+              </div>
+            </div>
+            """.format(
+                active=" is-active" if is_active else "",
+                days=escape(str(days)),
+                hidden="" if is_active else " hidden",
+                meta=make_summary_term_view_meta(view),
+                cloud=make_term_cloud(view.get("terms", [])),
+            )
+        )
+
+    return """
+      <div class="term-range-control" role="group" aria-label="{aria_label}">
+        {controls}
+      </div>
+      <div class="term-cloud-views">
+        {views}
+      </div>
+    """.format(
+        aria_label=escape(panel_display_text("热词时间范围", language)),
+        controls="".join(controls),
+        views="".join(view_html),
+    )
 
 
 def make_highlight_list(items, token_highlight=""):
@@ -7465,33 +9178,52 @@ def make_theme_switch():
 
 
 def make_side_nav():
-    items = [
-        ("overview-top", "总览", "Overview", "总览", "Overview"),
-        ("nightly-summary", "整理摘要", "Synthesis", "整理摘要", "Synthesis"),
-        ("token-section", "Token", "Token", "Token", "Token"),
-        ("project-context-section", "项目上下文", "Context", "项目上下文", "Context"),
-        ("memory-section", "个人资产", "Personal Assets", "个人资产记忆", "Personal Asset Memory"),
-        ("codex-native-section", "Codex 原生", "Codex Native", "Codex 原生记忆", "Codex Native Memory"),
-        ("asset-overview-section", "资产概览", "Asset Mix", "资产概览", "Asset Mix"),
-        ("assets-section", "资产明细", "Assets", "资产明细", "Assets"),
-        ("top-assets-section", "复用价值", "Reuse Value", "复用价值", "Reuse Value"),
-        ("reviews-section", "复盘记录", "Reviews", "复盘记录", "Reviews"),
-        ("window-overview-section", "窗口明细", "Windows", "窗口明细", "Windows"),
+    entries = [
+        ("group", "运行视图", "Runtime View"),
+        ("link", "overview-top", "总览", "Overview", "总览", "Overview"),
+        ("link", "nightly-summary", "整理摘要", "Synthesis", "整理摘要", "Synthesis"),
+        ("link", "token-section", "Token", "Token", "Token", "Token"),
+        ("link", "project-context-section", "项目上下文", "Context", "项目上下文", "Context"),
+        ("group", "记忆层", "Memory Layer"),
+        ("link", "memory-section", "个人资产记忆", "Personal Asset Memory", "个人资产记忆", "Personal Asset Memory"),
+        ("child", "personal-memory-durable-section", "长期记忆", "Long-term Memory", "个人资产-长期记忆", "Personal Asset - Long-term Memory"),
+        ("child", "personal-memory-session-section", "短期工作记忆", "Short-term Work Memory", "个人资产-短期工作记忆", "Personal Asset - Short-term Work Memory"),
+        ("child", "personal-memory-low-priority-section", "低优先级记忆", "Low-priority Memory", "个人资产-低优先级记忆", "Personal Asset - Low-priority Memory"),
+        ("link", "codex-native-section", "Codex 原生记忆", "Codex Native Memory", "Codex 原生记忆", "Codex Native Memory"),
+        ("child", "codex-native-topic-section", "主题项", "Topics", "Codex 原生记忆-主题项", "Codex Native Memory - Topics"),
+        ("child", "codex-native-preference-section", "用户偏好", "User Preferences", "Codex 原生记忆-用户偏好", "Codex Native Memory - User Preferences"),
+        ("child", "codex-native-tip-section", "通用 tips", "General Tips", "Codex 原生记忆-通用 tips", "Codex Native Memory - General Tips"),
+        ("child", "codex-native-task-group-section", "任务组", "Task Groups", "Codex 原生记忆-任务组", "Codex Native Memory - Task Groups"),
+        ("group", "资产层", "Asset Layer"),
+        ("link", "asset-overview-section", "账本概览", "Ledger Overview", "资产注册表概览", "Asset Registry Overview"),
+        ("link", "assets-section", "资产明细", "Assets", "资产明细", "Assets"),
+        ("link", "top-assets-section", "复用价值", "Reuse Value", "复用价值", "Reuse Value"),
+        ("link", "reviews-section", "复盘记录", "Reviews", "复盘记录", "Reviews"),
+        ("link", "window-overview-section", "窗口明细", "Windows", "窗口明细", "Windows"),
     ]
     links = []
-    for index, (target_id, zh_label, en_label, zh_title, en_title) in enumerate(items, start=1):
+    link_index = 0
+    for entry in entries:
+        if entry[0] == "group":
+            _, zh_label, en_label = entry
+            links.append(
+                """
+                  <div class="side-nav-group">{label}</div>
+                """.format(label=panel_language_text_html(zh_label, en_label))
+            )
+            continue
+        entry_kind, target_id, zh_label, en_label, zh_title, en_title = entry
+        link_index += 1
         links.append(
             """
               <a class="side-nav-link{active_class}" href="#{target_id}" data-nav-target="{target_id}" title="{title_attr}"{current_attr}>
-                <span class="side-nav-index">{index}</span>
                 <span class="side-nav-label">{label}</span>
               </a>
             """.format(
-                active_class=" is-active" if index == 1 else "",
+                active_class=(" is-active" if link_index == 1 else "") + (" is-child" if entry_kind == "child" else ""),
                 target_id=escape(target_id, quote=True),
                 title_attr=escape("{} / {}".format(zh_title, en_title), quote=True),
-                current_attr=' aria-current="true"' if index == 1 else "",
-                index=escape("{:02d}".format(index)),
+                current_attr=' aria-current="true"' if link_index == 1 else "",
                 label=panel_language_text_html(zh_label, en_label),
             )
         )
@@ -7641,7 +9373,7 @@ def make_memory_family_header(title_zh, title_en, note_zh, note_en, extra_html="
     )
 
 
-def make_memory_cards(items):
+def make_memory_cards(items, include_bucket_meta=True):
     if not items:
         return '<p class="empty">暂无。</p>'
 
@@ -7657,6 +9389,22 @@ def make_memory_cards(items):
             return english_for_ui_text(text)
         return text
 
+    def has_known_date_display(value):
+        text = str(value or "").strip()
+        if not text:
+            return False
+        lowered = text.lower()
+        unknown_markers = {
+            "时间未知",
+            "更新时间未知",
+            "unknown time",
+            "unknown date",
+            "time unknown",
+            "update time unknown",
+            "generation time unknown",
+        }
+        return text not in unknown_markers and lowered not in unknown_markers and "未知" not in text
+
     def render_fact(title, body_html, en_title=""):
         return """
             <div class="memory-card-fact">
@@ -7666,6 +9414,21 @@ def make_memory_cards(items):
             """.format(
             title=panel_language_text_html(title, en_title or english_for_ui_text(title)),
             body=body_html,
+        )
+
+    def render_submeta_lines(zh_lines, en_lines):
+        def render_lines(lines):
+            return "".join(
+                '<span class="memory-card-submeta-line">{}</span>'.format(
+                    escape(ui_text(line))
+                )
+                for line in lines
+                if line
+            )
+
+        return panel_language_variant_html(
+            render_lines(zh_lines),
+            render_lines(en_lines),
         )
 
     def render_context_chips(labels):
@@ -7781,27 +9544,42 @@ def make_memory_cards(items):
         context_labels = item.get("context_labels", [])
         if not context_labels and item.get("display_context"):
             context_labels = [item.get("display_context")]
-        meta_parts = [
-            ui_text(item.get("display_bucket") or display_memory_bucket(item.get("bucket", ""))),
-            ui_text(item.get("display_memory_type") or display_memory_type(item.get("memory_type", ""))),
-            ui_text(item.get("display_priority") or display_memory_priority(item.get("priority", ""))),
-        ]
+        meta_parts = []
+        if include_bucket_meta:
+            meta_parts.append(
+                ui_text(item.get("display_bucket") or display_memory_bucket(item.get("bucket", "")))
+            )
+        meta_parts.extend(
+            [
+                ui_text(item.get("display_memory_type") or display_memory_type(item.get("memory_type", ""))),
+                ui_text(item.get("display_priority") or display_memory_priority(item.get("priority", ""))),
+            ]
+        )
         meta_parts = [part for part in meta_parts if part]
         meta_parts_en = [english_for_ui_text(part) for part in meta_parts]
         created_display = item.get("created_at_display") or display_memory_date(item.get("created_at", ""))
         updated_display = item.get("updated_at_display") or display_memory_date(item.get("updated_at", ""))
-        submeta_parts_zh = [
-            "首次添加 {}".format(
-                format_date_for_language(created_display, "zh")
-            ),
-            "最近更新 {}".format(
-                format_date_for_language(updated_display, "zh")
-            ),
-        ]
-        submeta_parts_en = [
-            "First added {}".format(format_date_for_language(created_display, "en")),
-            "Updated {}".format(format_date_for_language(updated_display, "en")),
-        ]
+        submeta_parts_zh = []
+        submeta_parts_en = []
+        if has_known_date_display(created_display):
+            submeta_parts_zh.append(
+                "首次添加 {}".format(format_date_for_language(created_display, "zh"))
+            )
+            submeta_parts_en.append(
+                "First added {}".format(format_date_for_language(created_display, "en"))
+            )
+        if has_known_date_display(updated_display):
+            submeta_parts_zh.append(
+                "最近更新 {}".format(format_date_for_language(updated_display, "zh"))
+            )
+            submeta_parts_en.append(
+                "Updated {}".format(format_date_for_language(updated_display, "en"))
+            )
+        if item.get("usage_frequency_display"):
+            window_days = item.get("usage_frequency_window_days", MEMORY_USAGE_WINDOW_DAYS)
+            frequency_value = item.get("usage_frequency_display", "0")
+            submeta_parts_zh.append("{}日频率 {}".format(window_days, frequency_value))
+            submeta_parts_en.append("{}-day frequency {}".format(window_days, frequency_value))
         if item.get("occurrence_count", 0) > 1:
             occurrence_label = ui_text(item.get("occurrence_label", "整理命中"))
             occurrence_label_en = english_for_ui_text(occurrence_label)
@@ -7818,10 +9596,12 @@ def make_memory_cards(items):
                 ui_text(item.get("submeta_en", "")),
             )
         else:
-            submeta_html = panel_language_variant_html(
-                escape(ui_text(" · ".join(submeta_parts_zh))),
-                escape(ui_text(" · ".join(submeta_parts_en))),
-            )
+            submeta_html = render_submeta_lines(submeta_parts_zh, submeta_parts_en)
+        submeta_block = (
+            '<div class="review-submeta memory-card-submeta">{}</div>'.format(submeta_html)
+            if submeta_html
+            else ""
+        )
 
         source_fact_label = ui_text(item.get("source_fact_label", "来源窗口"))
         source_fact_label_en = english_for_ui_text(source_fact_label)
@@ -7856,7 +9636,7 @@ def make_memory_cards(items):
         return """
             <article class="{card_class}">
               <div class="review-meta">{meta}</div>
-              <div class="review-submeta">{submeta}</div>
+              {submeta_block}
               <h3>{title}</h3>
               <p>{value_note}</p>
               <div class="memory-card-facts">
@@ -7869,7 +9649,7 @@ def make_memory_cards(items):
                 escape(" · ".join(meta_parts)),
                 escape(" · ".join(meta_parts_en)) if meta_parts_en != meta_parts else "",
             ),
-            submeta=submeta_html,
+            submeta_block=submeta_block,
             title=title_html or panel_language_text_html("未命名记忆"),
             value_note=value_note_html,
             facts=facts,
@@ -7887,6 +9667,62 @@ def make_memory_cards(items):
         item_label_en="items",
         expanded_label_en="Collapse extra items",
     )
+
+
+def make_memory_type_grouped_cards(items, include_bucket_meta=False):
+    if not items:
+        return '<p class="empty">暂无。</p>'
+
+    grouped = defaultdict(list)
+    for item in items:
+        memory_type = str(item.get("memory_type") or "").strip()
+        if not memory_type:
+            memory_type = str(item.get("display_memory_type") or "").strip() or "uncategorized"
+        grouped[memory_type].append(item)
+
+    order_index = {value: index for index, value in enumerate(MEMORY_TYPE_GROUP_ORDER)}
+
+    def group_sort_key(item):
+        memory_type, rows = item
+        best_usage = max(
+            (safe_float(row.get("usage_frequency_sort_key", row.get("usage_frequency", 0))) for row in rows),
+            default=0.0,
+        )
+        return (
+            order_index.get(memory_type, len(order_index)),
+            -best_usage,
+            display_memory_type(memory_type),
+        )
+
+    sections = []
+    for memory_type, rows in sorted(grouped.items(), key=group_sort_key):
+        sorted_rows = sort_memory_rows_by_usage(rows)
+        title_html = panel_language_text_html(
+            display_memory_type(memory_type),
+            display_memory_type(memory_type, language="en"),
+        )
+        count_html = panel_language_text_html(
+            "{} 条".format(len(sorted_rows)),
+            "{} {}".format(len(sorted_rows), "item" if len(sorted_rows) == 1 else "items"),
+        )
+        sections.append(
+            """
+            <section class="memory-type-group">
+              <div class="memory-type-head">
+                <h3>{title}</h3>
+                <span>{count}</span>
+              </div>
+              <div class="review-grid memory-grid">
+                {cards}
+              </div>
+            </section>
+            """.format(
+                title=title_html,
+                count=count_html,
+                cards=make_memory_cards(sorted_rows, include_bucket_meta=include_bucket_meta),
+            )
+        )
+    return "".join(sections)
 
 
 def native_meta_to_chinese(meta_text):
@@ -8540,11 +10376,13 @@ def make_window_summary_cards(window_overview, language=None):
                 escape(localized("暂无关键词", "No keywords", language))
             )
         return "".join(
-            '<span class="window-keyword">{}</span>'.format(escape(normalize_brand_display_text(keyword)))
+            '<span class="window-keyword">{}</span>'.format(
+                escape(localized_context_keyword(keyword, language=language))
+            )
             for keyword in keywords[:6]
         )
 
-    def render_preview_items(items):
+    def render_preview_items(items, label, keywords=None):
         rows = []
         for item in items:
             time_html = ""
@@ -8552,6 +10390,12 @@ def make_window_summary_cards(window_overview, language=None):
                 time_html = '<span class="window-detail-time">{}</span>'.format(
                     escape(item["time"])
                 )
+            text = localize_window_preview_text(
+                compact_preview_text(item.get("text", "")),
+                language=language,
+                keywords=keywords,
+                label=label,
+            )
             rows.append(
                 """
                 <li class="window-detail-item">
@@ -8560,7 +10404,7 @@ def make_window_summary_cards(window_overview, language=None):
                 </li>
                 """.format(
                     time_html=time_html,
-                    text=escape(normalize_brand_display_text(item.get("text", ""))),
+                    text=escape(text),
                 )
             )
         return "".join(rows)
@@ -8571,6 +10415,30 @@ def make_window_summary_cards(window_overview, language=None):
         window_id = item.get("window_id", "")
         anchor_id = build_window_anchor_id(window_id)
         cwd_display = item.get("cwd_display", cwd_raw)
+        activity_source_label = window_activity_source_label(
+            item.get("activity_source", "history"),
+            language,
+            thread_source=item.get("thread_source", ""),
+        )
+        project_label = normalize_brand_display_text(
+            item.get("project_label", localized_context_label("个人工作区", language))
+        )
+        if is_english(language):
+            project_label = localized_context_label(project_label, language)
+            if contains_cjk(project_label):
+                project_label = english_freeform_text(project_label, fallback_label="Project")
+        question_summary = localize_window_preview_text(
+            item.get("question_summary", ""),
+            language=language,
+            keywords=item.get("keywords", []),
+            label="Focus",
+        )
+        main_takeaway = localize_window_preview_text(
+            item.get("main_takeaway", ""),
+            language=language,
+            keywords=item.get("keywords", []),
+            label="Takeaway",
+        )
         raw_window = load_window_record(window_date, window_id)
         raw_window_html = escape(localized("暂无", "None", language))
         session_file_html = escape(localized("暂无", "None", language))
@@ -8584,11 +10452,6 @@ def make_window_summary_cards(window_overview, language=None):
                 raw_window.get("session_file", ""),
                 label=localized("会话 JSONL", "Session JSONL", language),
             )
-        cwd_summary_html = render_local_path_link(
-            cwd_raw,
-            label=cwd_display,
-            class_name="path-link path-link-subtle",
-        )
         cwd_detail_label = cwd_raw or cwd_display
         cwd_detail_html = render_local_path_link(cwd_raw, label=cwd_detail_label)
         cards.append(
@@ -8598,7 +10461,7 @@ def make_window_summary_cards(window_overview, language=None):
                 <div class="window-card-head">
                   <div class="window-card-copy">
                     <div class="window-card-label">{project_label} · {window_label} {display_index}</div>
-                    <p class="window-card-path">{cwd_summary_html}</p>
+                    <p class="window-card-path">{activity_source_label}</p>
                   </div>
                   <div class="window-card-stats">
                     <div class="window-stat">
@@ -8637,6 +10500,7 @@ def make_window_summary_cards(window_overview, language=None):
                     <ul class="window-detail-list">
                       <li class="window-detail-item"><span>{raw_window_id_label} {window_id_full}</span></li>
                       <li class="window-detail-item"><span>{project_workspace_label} {project_label}</span></li>
+                      <li class="window-detail-item"><span>{activity_source_detail_label} {activity_source_label}</span></li>
                       <li class="window-detail-item"><span>{cwd_label} {cwd_detail_html}</span></li>
                       <li class="window-detail-item"><span>{started_at_label} {started_at}</span></li>
                       <li class="window-detail-item"><span>{recent_activity} {latest_activity}</span></li>
@@ -8672,12 +10536,8 @@ def make_window_summary_cards(window_overview, language=None):
                 display_index=escape(str(item.get("display_index", ""))),
                 window_label=escape(localized("窗口", "Window", language)),
                 window_id_full=escape(item.get("window_id", "")),
-                project_label=escape(
-                    normalize_brand_display_text(
-                        item.get("project_label", localized_context_label("个人工作区", language))
-                    )
-                ),
-                cwd_summary_html=cwd_summary_html,
+                project_label=escape(project_label),
+                activity_source_label=escape(activity_source_label),
                 cwd_detail_html=cwd_detail_html,
                 question_count=escape(str(item.get("question_count", 0))),
                 conclusion_count=escape(str(item.get("conclusion_count", 0))),
@@ -8688,11 +10548,19 @@ def make_window_summary_cards(window_overview, language=None):
                 started_at=escape(item.get("started_at_display", localized("时间未知", "Unknown time", language))),
                 raw_window_html=raw_window_html,
                 session_file_html=session_file_html,
-                question_summary=escape(normalize_brand_display_text(item.get("question_summary", ""))),
-                main_takeaway=escape(normalize_brand_display_text(item.get("main_takeaway", ""))),
+                question_summary=escape(question_summary),
+                main_takeaway=escape(main_takeaway),
                 keyword_chips=render_keyword_chips(item.get("keywords", [])),
-                recent_prompts=render_preview_items(item.get("recent_prompts", [])),
-                recent_conclusions=render_preview_items(item.get("recent_conclusions", [])),
+                recent_prompts=render_preview_items(
+                    item.get("recent_prompts", []),
+                    "Question",
+                    keywords=item.get("keywords", []),
+                ),
+                recent_conclusions=render_preview_items(
+                    item.get("recent_conclusions", []),
+                    "Conclusion",
+                    keywords=item.get("keywords", []),
+                ),
                 open_details=escape(localized("点开看详情", "Open details", language)),
                 collapse_details=escape(localized("收起详情", "Collapse details", language)),
                 question_summary_label=escape(localized("问题摘要", "Question Summary", language)),
@@ -8700,6 +10568,7 @@ def make_window_summary_cards(window_overview, language=None):
                 window_info_label=escape(localized("窗口信息", "Window Info", language)),
                 raw_window_id_label=escape(localized("原始窗口 ID", "Raw Window ID", language)),
                 project_workspace_label=escape(localized("项目 / 工作区", "Project / Workspace", language)),
+                activity_source_detail_label=escape(localized("活动来源", "Activity Source", language)),
                 cwd_label=escape(localized("当前目录", "Current Directory", language)),
                 started_at_label=escape(localized("启动时间", "Started At", language)),
                 raw_window_label=escape(localized("原始窗口", "Raw Window", language)),
@@ -8723,13 +10592,17 @@ def build_window_overview_heading_note(window_overview, title, language=None):
         if window_overview.get("source_kind") == "nightly_summary":
             note = localized(
                 "共 {} 个窗口，原始明细缺失，当前仅展示整理摘要".format(window_count),
-                "{} windows; raw details are missing, so only synthesis summaries are shown".format(window_count),
+                "{}; raw details are missing, so only synthesis summaries are shown".format(
+                    plural_en(window_count, "window")
+                ),
                 language,
             )
         else:
             note = localized(
                 "共 {} 个窗口，按最新活动排序，可点开看详情".format(window_count),
-                "{} windows sorted by latest activity. Open a card for details".format(window_count),
+                "{} sorted by latest activity. Open a card for details".format(
+                    plural_en(window_count, "window")
+                ),
                 language,
             )
     return heading, note
@@ -8986,6 +10859,8 @@ def build_html(data):
     active_nightly_note = data.get("active_nightly_note", "")
     nightly_window_title = data.get("window_overview_title", derive_nightly_window_title(data["nightly_title"]))
     project_context_views = data.get("project_context_views") or {}
+    project_context_views_zh = data.get("project_context_views_zh") or project_context_views
+    project_context_views_en = data.get("project_context_views_en") or project_context_views
     project_context_default_days = data.get("project_context_default_days", PROJECT_CONTEXT_DEFAULT_DAYS)
     project_context_note = "可切换最近 1-{} 天；项目内按需求 / 主题二次归类".format(
         PROJECT_CONTEXT_MAX_DAYS
@@ -9019,7 +10894,7 @@ def build_html(data):
     <section class="{section_class}">
       <section class="panel">
         {term_cloud_header}
-        <div class="term-cloud">
+        <div class="term-cloud-area">
           {term_cloud}
         </div>
       </section>
@@ -9055,6 +10930,22 @@ def build_html(data):
             metric_meta = '<div class="metric-meta" data-role="meta">{}</div>'.format(
                 escape(metric["meta"])
             )
+        metric_footer = metric_meta
+        if metric.get("key") == "today_token":
+            if not metric_footer:
+                metric_footer = '<div class="metric-meta" data-role="meta"></div>'
+            metric_footer = """
+              <div class="metric-footer token-refresh-footer">
+                {metric_meta}
+                <button class="action-button" type="button" id="token-refresh-button">
+                  <span class="button-spinner" aria-hidden="true"></span>
+                  <span id="token-refresh-label">实时刷新 Token</span>
+                </button>
+              </div>
+              <div class="token-refresh-card-status" id="token-refresh-status">
+                <span id="token-refresh-status-text">先展示本地快照，再实时同步最新 Token。</span>
+              </div>
+            """.format(metric_meta=metric_footer)
         metric_help = make_help_popover(
             metric.get("label", ""),
             build_metric_help_sections(metric),
@@ -9068,7 +10959,7 @@ def build_html(data):
               </div>
               <div class="metric-value" data-role="value">{value}</div>
               <div class="metric-caption" data-role="caption">{caption}</div>
-              {metric_meta}
+              {metric_footer}
             </article>
             """.format(
                 card_classes=card_classes,
@@ -9077,7 +10968,7 @@ def build_html(data):
                 metric_help=metric_help,
                 value=escape(str(metric["value"])),
                 caption=escape(metric["caption"]),
-                metric_meta=metric_meta,
+                metric_footer=metric_footer,
             )
         if metric.get("key") in TOKEN_METRIC_KEYS:
             token_metric_cards.append(card_html)
@@ -9147,15 +11038,22 @@ def build_html(data):
         ],
     )
     term_cloud_help = make_help_popover(
-        "本期摘要词",
+        "今日热词",
         [
             {
                 "label": "来源",
-                "body": "从资产标题、类型、领域、备注、复盘文本和复用记录里抽词。",
+                "body": "从所选日期范围内的窗口整理、资产标题、领域、备注、复盘文本和复用记录里抽词。",
+            },
+            {
+                "label": "时间范围",
+                "body": "默认展示今日热词，可切换近 3 日和近 7 日。",
             },
             {
                 "label": "怎么看",
-                "body": "字越大代表出现频次越高。这是主题提示，不代表严格的主题建模结果。",
+                "body": [
+                    "字越大代表出现频次越高。这是主题提示，不代表严格的主题建模结果。",
+                    "它会随当天窗口整理、资产、复盘或复用记录新增、修改而变化。",
+                ],
             },
         ],
     )
@@ -9173,11 +11071,15 @@ def build_html(data):
         ],
     )
     term_cloud_header_html = make_panel_header(
-        "本期摘要词",
-        "从资产、标签和复盘内容中提炼",
+        "今日热词",
+        "默认今日，可切换近 3 日 / 近 7 日",
         term_cloud_help,
     )
-    term_cloud_html = make_term_cloud(data["summary_terms"])
+    term_cloud_html = make_summary_term_cloud_views(
+        data.get("summary_term_views", []),
+        data.get("summary_term_default_days", SUMMARY_TERM_DEFAULT_DAYS),
+        language=language,
+    )
     highlights_header_html = make_panel_header(
         "本期小结",
         "方便快速浏览当前阶段的沉淀情况",
@@ -9280,11 +11182,11 @@ def build_html(data):
         [
             {
                 "label": "统计什么",
-                "body": "最近一次 nightly summary 判定为 durable 的记忆条目。",
+                "body": "当前登记册中 bucket = durable 的长期记忆，按近 7 日估算使用频率排序。",
             },
             {
-                "label": "注意",
-                "body": "这里展示的是当前主视图对应的整理结果；顶部指标卡统计的是 registry/memory_items.jsonl 的当前数量。",
+                "label": "怎么算",
+                "body": "频率来自近 7 日窗口匹配：来源窗口直接命中权重最高，标题、关键词、说明与历史窗口摘要匹配会按相关度加权，项目上下文只做小幅加分。",
             },
         ],
     )
@@ -9293,7 +11195,7 @@ def build_html(data):
         [
             {
                 "label": "统计什么",
-                "body": "最近一次 nightly summary 里的 session bucket 条目。",
+                "body": "当前登记册中 bucket = session 的短期工作记忆，按近 7 日估算使用频率排序。",
             },
             {
                 "label": "含义",
@@ -9311,28 +11213,6 @@ def build_html(data):
             {
                 "label": "含义",
                 "body": "保留但优先级较低，通常不是第一推荐路径。",
-            },
-        ],
-    )
-    memory_registry_note = "按最近更新排序；同一条记忆跨天重复出现时，会归并展示首次添加和最近更新。"
-    if memory_registry:
-        memory_registry_note = "共 {} 条个人资产记忆；支持跳到来源窗口或打开本地工作区。".format(
-            len(memory_registry)
-        )
-    memory_registry_help = make_help_popover(
-        "个人资产-当前记忆登记册",
-        [
-            {
-                "label": "统计什么",
-                "body": "基于 registry/memory_items.jsonl 的整理日志，按记忆签名归并出的当前记忆视图。",
-            },
-            {
-                "label": "怎么看",
-                "body": [
-                    "首次添加：这条记忆第一次进入整理日志的日期。",
-                    "最近更新：最近一次被 nightly 整理再次命中的日期。",
-                    "如果当前页还能定位到来源窗口，会提供页内跳转；否则回退到原始窗口 JSON 或本地工作区链接。",
-                ],
             },
         ],
     )
@@ -9360,13 +11240,13 @@ def build_html(data):
             },
             {
                 "label": "关系",
-                "body": "它和个人资产-当前记忆登记册都来自本地 Codex 工作，但前者更接近模型会读取的长期摘要，后者是夜间整理后的结构化日志。",
+                "body": "它和个人资产记忆都来自本地 Codex 工作，但前者更接近模型会读取的长期摘要，后者是夜间整理后的结构化日志。",
             },
             {
                 "label": "区别",
                 "body": [
                     "原生记忆偏长期规则、稳定 workflow、历史 rollout 结论。",
-                    "个人资产-当前记忆登记册偏近期窗口整理、来源追踪、工作区定位。",
+                    "个人资产记忆偏近期窗口整理、来源追踪、工作区定位。",
                     "用户偏好、通用 tips 和任务组已经拆到独立模块。",
                 ],
             },
@@ -9544,7 +11424,7 @@ def build_html(data):
     )
     github_link_html = (
         '<a href="{url}" target="_blank" rel="noopener noreferrer">'
-        'Ray1Ren/openkeepsake</a>'
+        'openrelix/openrelix</a>'
     ).format(url=escape(PROJECT_GITHUB_URL, quote=True))
     github_button = """
         <a class="hero-github-link" href="{url}" target="_blank" rel="noopener noreferrer">
@@ -9557,12 +11437,12 @@ def build_html(data):
     panel_footer_notice = panel_language_variant_html(
         (
             "MIT License. Copyright (c) 2026 {author}. "
-            "本面板由 OpenKeepsake 在本地生成，与 OpenAI 无官方关联。"
+            "本面板由 OpenRelix 在本地生成，与 OpenAI 无官方关联。"
             "项目页：{github}，欢迎点星支持。"
         ).format(author=author_link_html, github=github_link_html),
         (
             "MIT License. Copyright (c) 2026 {author}. "
-            "This panel is generated locally by OpenKeepsake. "
+            "This panel is generated locally by OpenRelix. "
             "Unofficial and not affiliated with OpenAI. "
             "Project: {github}. Stars are welcome."
         ).format(author=author_link_html, github=github_link_html),
@@ -9739,12 +11619,25 @@ def build_html(data):
       gap: 4px;
     }}
 
+    .side-nav-group {{
+      margin: 12px 8px 3px;
+      color: var(--subtle);
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0;
+      line-height: 1.2;
+    }}
+
+    .side-nav-group:first-child {{
+      margin-top: 0;
+    }}
+
     .side-nav-link {{
+      position: relative;
       display: grid;
-      grid-template-columns: 24px minmax(0, 1fr);
+      grid-template-columns: minmax(0, 1fr);
       align-items: center;
-      gap: 8px;
-      padding: 9px 10px;
+      padding: 9px 10px 9px 14px;
       border-radius: 12px;
       color: var(--muted);
       font-size: 13px;
@@ -9752,6 +11645,17 @@ def build_html(data):
       line-height: 1.25;
       text-decoration: none;
       transition: background 160ms ease, color 160ms ease;
+    }}
+
+    .side-nav-link::before {{
+      content: "";
+      position: absolute;
+      left: 7px;
+      top: 9px;
+      bottom: 9px;
+      width: 3px;
+      border-radius: 999px;
+      background: transparent;
     }}
 
     .side-nav-label {{
@@ -9765,19 +11669,29 @@ def build_html(data):
       color: var(--teal);
     }}
 
+    .side-nav-link.is-child {{
+      margin-left: 12px;
+      padding: 7px 9px 7px 14px;
+      border-radius: 10px;
+      color: var(--subtle);
+      font-size: 12px;
+      font-weight: 680;
+    }}
+
+    .side-nav-link.is-child::before {{
+      left: 6px;
+      top: 8px;
+      bottom: 8px;
+      width: 2px;
+    }}
+
     .side-nav-link.is-active {{
       background: var(--accent-soft-strong);
       color: var(--teal);
     }}
 
-    .side-nav-index {{
-      color: var(--muted);
-      font-size: 11px;
-      font-variant-numeric: tabular-nums;
-    }}
-
-    .side-nav-link.is-active .side-nav-index {{
-      color: var(--teal);
+    .side-nav-link.is-active::before {{
+      background: var(--teal);
     }}
 
     .page [id] {{
@@ -9813,7 +11727,7 @@ def build_html(data):
       border: 1px solid var(--line);
       border-radius: 26px;
       box-shadow: var(--shadow);
-      padding: 24px 28px;
+      padding: 22px 24px;
       position: relative;
       overflow: visible;
       backdrop-filter: blur(18px);
@@ -9833,7 +11747,7 @@ def build_html(data):
       display: flex;
       justify-content: space-between;
       align-items: flex-start;
-      gap: 20px;
+      gap: 16px;
     }}
 
     .hero-title-block {{
@@ -9930,14 +11844,14 @@ def build_html(data):
       display: flex;
       align-items: flex-end;
       flex-wrap: wrap;
-      gap: 12px;
-      margin-bottom: 12px;
+      gap: 10px;
+      margin-bottom: 10px;
       min-width: 0;
     }}
 
     h1 {{
-      font-size: 44px;
-      line-height: 1.05;
+      font-size: 36px;
+      line-height: 1.12;
     }}
 
     .hero-brand-line {{
@@ -9951,16 +11865,16 @@ def build_html(data):
       border-radius: 999px;
       background: var(--control-strong);
       color: var(--teal);
-      font-size: 13px;
+      font-size: 12px;
       font-weight: 700;
       line-height: 1.2;
       overflow-wrap: anywhere;
     }}
 
     .hero-copy {{
-      max-width: 700px;
+      max-width: 760px;
       color: var(--muted);
-      font-size: 15px;
+      font-size: 14px;
       line-height: 1.55;
       overflow-wrap: anywhere;
     }}
@@ -9984,47 +11898,6 @@ def build_html(data):
       padding: 8px 12px;
       max-width: 100%;
       overflow-wrap: anywhere;
-    }}
-
-    .chip.live-chip {{
-      background: var(--accent-soft);
-    }}
-
-    .chip.live-chip.offline {{
-      background: var(--danger-soft);
-    }}
-
-    .chip-label {{
-      color: var(--muted);
-    }}
-
-    .status-dot {{
-      width: 8px;
-      height: 8px;
-      border-radius: 999px;
-      background: var(--teal);
-      flex: 0 0 auto;
-      box-shadow: 0 0 0 0 rgba(0, 113, 227, 0.28);
-      animation: pulse 2s infinite;
-    }}
-
-    .status-dot.warn {{
-      background: var(--amber);
-      box-shadow: 0 0 0 0 rgba(191, 107, 0, 0.22);
-    }}
-
-    .status-dot.offline {{
-      background: var(--rose);
-      animation: none;
-      box-shadow: none;
-    }}
-
-    .action-row {{
-      display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      gap: 12px;
-      margin-top: 14px;
     }}
 
     .action-button {{
@@ -10072,19 +11945,6 @@ def build_html(data):
     .action-button.is-loading .button-spinner {{
       display: inline-flex;
     }}
-
-    .action-status {{
-      display: flex;
-      align-items: center;
-      flex: 1 1 240px;
-      gap: 0;
-      margin-top: 0;
-      min-height: 18px;
-      min-width: 0;
-      color: var(--muted);
-      font-size: 13px;
-    }}
-
     #token-refresh-status-text {{
       min-width: 0;
       overflow-wrap: anywhere;
@@ -10109,6 +11969,11 @@ def build_html(data):
     }}
 
     .memory-family {{
+      display: grid;
+      gap: 18px;
+    }}
+
+    .asset-ledger-section {{
       display: grid;
       gap: 18px;
     }}
@@ -10361,7 +12226,7 @@ def build_html(data):
     .panel:has(.module-help-trigger:focus-visible),
     .panel:has(.bar-value.has-details:hover),
     .panel:has(.bar-value.has-details:focus) {{
-      z-index: 24;
+      z-index: 70;
     }}
 
     .nightly-panel {{
@@ -10484,9 +12349,9 @@ def build_html(data):
       max-width: none;
       flex: 0 0 auto;
       color: var(--ink);
-      font-size: 48px;
+      font-size: 38px;
       font-weight: 760;
-      line-height: 1.08;
+      line-height: 1.12;
     }}
 
     .nightly-title-main {{
@@ -10591,9 +12456,9 @@ def build_html(data):
       max-width: 760px;
       color: var(--ink);
       font-family: inherit;
-      font-size: 28px;
+      font-size: 22px;
       font-weight: 760;
-      line-height: 1.42;
+      line-height: 1.45;
       overflow-wrap: anywhere;
       word-break: break-word;
     }}
@@ -10825,6 +12690,11 @@ def build_html(data):
       z-index: 6;
     }}
 
+    .module-help:hover,
+    .module-help:focus-within {{
+      z-index: 80;
+    }}
+
     .module-help-trigger {{
       appearance: none;
       display: inline-flex;
@@ -10906,6 +12776,16 @@ def build_html(data):
       border-top: 1px solid var(--line-strong);
       background: var(--elevated);
       transform: rotate(45deg);
+    }}
+
+    .metric-card .module-help-card {{
+      right: auto;
+      left: 0;
+    }}
+
+    .metric-card .module-help-card::before {{
+      right: auto;
+      left: 10px;
     }}
 
     .module-help-title {{
@@ -11043,6 +12923,41 @@ def build_html(data):
       color: var(--teal);
       font-size: 12px;
       margin-top: auto;
+    }}
+
+    .metric-footer {{
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 12px;
+      margin-top: auto;
+      min-width: 0;
+    }}
+
+    .metric-footer .metric-meta {{
+      margin-top: 0;
+      min-width: 0;
+      overflow-wrap: anywhere;
+    }}
+
+    .token-refresh-footer {{
+      padding-top: 10px;
+    }}
+
+    .token-refresh-footer .action-button {{
+      flex: 0 0 auto;
+      padding: 8px 13px;
+      font-size: 13px;
+      box-shadow: 0 10px 20px rgba(0, 113, 227, 0.16);
+    }}
+
+    .token-refresh-card-status {{
+      min-height: 18px;
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.4;
+      overflow-wrap: anywhere;
     }}
 
     .live-metric-card.is-loading .metric-value,
@@ -11414,6 +13329,40 @@ def build_html(data):
       grid-template-columns: repeat(4, minmax(0, 1fr));
     }}
 
+    .memory-type-group {{
+      grid-column: 1 / -1;
+      display: grid;
+      gap: 12px;
+      min-width: 0;
+    }}
+
+    .memory-type-group + .memory-type-group {{
+      margin-top: 4px;
+      padding-top: 14px;
+      border-top: 1px solid var(--line);
+    }}
+
+    .memory-type-head {{
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 12px;
+      min-width: 0;
+    }}
+
+    .memory-type-head h3 {{
+      margin: 0;
+      font-size: 16px;
+      line-height: 1.35;
+    }}
+
+    .memory-type-head span {{
+      flex: 0 0 auto;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.4;
+    }}
+
     .two-up .memory-grid,
     .two-up .memory-grid.content-more-grid {{
       grid-template-columns: 1fr;
@@ -11495,6 +13444,27 @@ def build_html(data):
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
+    }}
+
+    .memory-card-submeta {{
+      display: block;
+      white-space: normal;
+      overflow: visible;
+      text-overflow: clip;
+      line-height: 1.45;
+    }}
+
+    .memory-card-submeta [data-lang-only] {{
+      display: grid;
+      gap: 2px;
+    }}
+
+    .memory-card-submeta-line {{
+      display: block;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }}
 
     .memory-card-facts {{
@@ -11837,12 +13807,16 @@ def build_html(data):
 
     .context-card-tags {{
       display: flex;
-      align-items: flex-start;
+      align-items: center;
       gap: 10px;
       margin-top: 16px;
       padding-top: 14px;
       border-top: 1px solid var(--line);
       flex-wrap: wrap;
+    }}
+
+    .context-card-tags .context-card-kicker {{
+      line-height: 1;
     }}
 
     .context-card-kicker {{
@@ -12167,6 +14141,46 @@ def build_html(data):
       color: var(--muted);
     }}
 
+    .term-cloud-area {{
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }}
+
+    .term-range-control {{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }}
+
+    .term-range-button {{
+      border: 1px solid var(--line-strong);
+      border-radius: 999px;
+      background: var(--control);
+      color: var(--muted);
+      padding: 8px 12px;
+      font: inherit;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+    }}
+
+    .term-range-button.is-active {{
+      background: var(--accent-soft-strong);
+      border-color: rgba(0, 113, 227, 0.28);
+      color: var(--teal);
+    }}
+
+    .term-cloud-view[hidden] {{
+      display: none;
+    }}
+
+    .term-cloud-meta {{
+      margin: 0 0 12px;
+      color: var(--muted);
+      font-size: 13px;
+    }}
+
     .term-cloud {{
       display: flex;
       flex-wrap: wrap;
@@ -12240,60 +14254,78 @@ def build_html(data):
       }}
     }}
 
-    @media (max-width: 1680px) {{
+    @media (max-width: 1784px) {{
+      .app-shell {{
+        width: min(1280px, calc(100% - 304px));
+        margin-left: 264px;
+        margin-right: 24px;
+      }}
+
       .side-nav {{
-        left: 14px;
-        width: 56px;
-        padding: 10px 8px;
+        top: 24px;
+        left: 12px;
+        width: 212px;
+        max-height: calc(100vh - 48px);
+        padding: 12px;
+        border-radius: 18px;
       }}
 
       .side-nav-title {{
         display: block;
-        margin: 0 0 8px;
-        text-align: center;
+        margin: 0 4px 8px;
+        text-align: left;
         font-size: 11px;
       }}
 
       .side-nav-link {{
-        position: relative;
-        grid-template-columns: 1fr;
-        justify-items: center;
-      gap: 0;
-      padding: 10px 6px;
+        grid-template-columns: minmax(0, 1fr);
+        justify-items: start;
+        padding: 9px 9px 9px 13px;
+        border-radius: 11px;
+        font-size: 12px;
+      }}
+
+      .side-nav-group {{
+        margin: 10px 8px 3px;
+        font-size: 10px;
       }}
 
       .side-nav-label {{
-        position: absolute;
-        left: calc(100% + 10px);
-        top: 50%;
-        max-width: 180px;
-        padding: 8px 10px;
-        border: 1px solid var(--line);
-        border-radius: 10px;
-        background: var(--elevated);
-        box-shadow: var(--shadow-soft);
-        color: var(--ink);
-        opacity: 0;
-        pointer-events: none;
-        transform: translateY(-50%);
-        transition: opacity 120ms ease;
+        position: static;
+        max-width: none;
+        padding: 0;
+        border: 0;
+        border-radius: 0;
+        background: transparent;
+        box-shadow: none;
+        color: inherit;
+        opacity: 1;
+        pointer-events: auto;
+        transform: none;
       }}
 
-      .side-nav-link:hover .side-nav-label,
-      .side-nav-link:focus-visible .side-nav-label {{
-        opacity: 1;
+      .side-nav-link.is-child {{
+        margin-left: 10px;
+        padding: 7px 9px 7px 13px;
+        font-size: 11px;
       }}
     }}
 
-    @media (max-width: 1380px) {{
+    @media (max-width: 1120px) {{
+      .app-shell {{
+        width: min(1280px, calc(100% - 28px));
+        margin: 0 auto;
+        padding-top: 14px;
+      }}
+
       .side-nav {{
         position: sticky;
         top: 0;
         left: auto;
         right: auto;
-        width: 100%;
+        width: min(1280px, calc(100% - 28px));
         max-height: none;
-        margin: 14px auto -18px;
+        margin: 14px auto -6px;
         padding: 10px;
         border-radius: 18px;
         overflow-x: auto;
@@ -12305,12 +14337,24 @@ def build_html(data):
         white-space: nowrap;
       }}
 
+      .side-nav-group {{
+        display: none;
+      }}
+
       .side-nav-link {{
         flex: 0 0 auto;
-        grid-template-columns: auto auto;
+        grid-template-columns: auto;
         justify-items: start;
-        gap: 8px;
         padding: 9px 10px;
+      }}
+
+      .side-nav-link.is-child {{
+        margin-left: 0;
+        font-size: 12px;
+      }}
+
+      .side-nav-link::before {{
+        display: none;
       }}
 
       .side-nav-label {{
@@ -12384,11 +14428,11 @@ def build_html(data):
       }}
 
       .hero {{
-        padding: 22px 18px;
+        padding: 20px 18px;
       }}
 
       h1 {{
-        font-size: 34px;
+        font-size: 30px;
       }}
 
       .hero-topline {{
@@ -12398,16 +14442,6 @@ def build_html(data):
       .hero-actions {{
         width: 100%;
         justify-content: flex-start;
-      }}
-
-      .action-row {{
-        align-items: flex-start;
-        flex-direction: column;
-      }}
-
-      .action-status {{
-        width: 100%;
-        flex: 0 1 auto;
       }}
 
       .panel {{
@@ -12487,11 +14521,11 @@ def build_html(data):
 
       .nightly-title-block h2 {{
         max-width: none;
-        font-size: 32px;
+        font-size: 28px;
       }}
 
       .nightly-lead {{
-        font-size: 22px;
+        font-size: 18px;
         line-height: 1.45;
       }}
 
@@ -12596,20 +14630,6 @@ def build_html(data):
       </div>
       <div class="hero-meta">
         <span class="chip">{snapshot_label}{generated_at} · <span id="snapshot-generated-age">刚刚生成</span></span>
-        <span class="chip live-chip" id="token-live-chip">
-          <span class="status-dot" id="token-live-dot"></span>
-          <span class="chip-label">Token 实时源</span>
-          <span id="token-live-age">准备连接</span>
-        </span>
-      </div>
-      <div class="action-row">
-        <button class="action-button" type="button" id="token-refresh-button">
-          <span class="button-spinner" aria-hidden="true"></span>
-          <span id="token-refresh-label">实时刷新 Token</span>
-        </button>
-        <div class="action-status" id="token-refresh-status">
-          <span id="token-refresh-status-text">先展示本地快照，再实时同步最新 Token。</span>
-        </div>
       </div>
     </section>
 
@@ -12635,14 +14655,14 @@ def build_html(data):
     <section class="memory-family" id="memory-section">
       {personal_asset_memory_family_header}
       <section class="grid memory-stack">
-        <section class="panel">
+        <section class="panel" id="personal-memory-durable-section">
           {durable_memory_header}
           <div class="review-grid memory-grid">
             {durable_memory_cards}
           </div>
         </section>
 
-        <section class="panel">
+        <section class="panel" id="personal-memory-session-section">
           {session_memory_header}
           <div class="review-grid memory-grid">
             {session_memory_cards}
@@ -12650,45 +14670,39 @@ def build_html(data):
         </section>
       </section>
 
-      <section class="panel">
+      <section class="panel" id="personal-memory-low-priority-section">
         {low_priority_memory_header}
         <div class="review-grid memory-grid">
           {low_priority_memory_cards}
         </div>
       </section>
 
-      <section class="panel">
-        {memory_registry_header}
-        <div class="review-grid memory-grid">
-          {memory_registry_cards}
-        </div>
-      </section>
     </section>
 
     <section class="memory-family" id="codex-native-section">
       {codex_native_memory_family_header}
-      <section class="panel">
+      <section class="panel" id="codex-native-topic-section">
         {codex_native_topic_header}
         <div class="review-grid memory-grid">
           {codex_native_topic_cards}
         </div>
       </section>
 
-      <section class="panel">
+      <section class="panel" id="codex-native-preference-section">
         {codex_native_preference_header}
         <div class="review-grid memory-grid">
           {codex_native_preference_cards}
         </div>
       </section>
 
-      <section class="panel">
+      <section class="panel" id="codex-native-tip-section">
         {codex_native_tip_header}
         <div class="review-grid memory-grid">
           {codex_native_tip_cards}
         </div>
       </section>
 
-      <section class="panel">
+      <section class="panel" id="codex-native-task-group-section">
         {codex_native_task_group_header}
         <div class="review-grid memory-grid">
           {codex_native_task_group_cards}
@@ -12696,8 +14710,17 @@ def build_html(data):
       </section>
     </section>
 
-    <section class="grid metrics-grid asset-metrics-grid" id="asset-overview-section">
-      {asset_metric_cards}
+    <section class="asset-ledger-section" id="asset-overview-section">
+      <div class="memory-family-head asset-ledger-head">
+        <div class="memory-family-title-copy">
+          <p class="section-kicker">{asset_ledger_kicker}</p>
+          <h2>{asset_ledger_title}</h2>
+          <p class="memory-family-note">{asset_ledger_note}</p>
+        </div>
+      </div>
+      <section class="grid metrics-grid asset-metrics-grid">
+        {asset_metric_cards}
+      </section>
     </section>
 
     <section class="grid two-up">
@@ -12797,7 +14820,7 @@ def build_html(data):
       const defaultLanguage = "{default_language}";
       const supportedLanguages = ["zh", "en"];
       const supportedThemes = ["system", "light", "dark"];
-      const themeStorageKey = "openkeepsake-panel-theme";
+      const themeStorageKey = "openrelix-panel-theme";
       const systemDarkQuery = window.matchMedia ? window.matchMedia("(prefers-color-scheme: dark)") : null;
       let currentLanguage = defaultLanguage;
       let currentThemeChoice = "system";
@@ -12837,12 +14860,8 @@ def build_html(data):
         backfillRangeCommand: document.getElementById("nightly-backfill-range-command"),
         backfillStatus: document.getElementById("nightly-backfill-status"),
         backfillCopyButtons: Array.from(document.querySelectorAll("[data-backfill-copy]")),
-        tokenLiveChip: document.getElementById("token-live-chip"),
-        tokenLiveDot: document.getElementById("token-live-dot"),
-        tokenLiveAge: document.getElementById("token-live-age"),
         refreshButton: document.getElementById("token-refresh-button"),
         refreshLabel: document.getElementById("token-refresh-label"),
-        refreshStatusDot: document.getElementById("token-refresh-status-dot"),
         refreshStatusText: document.getElementById("token-refresh-status-text"),
         tokenHighlight: document.getElementById("token-highlight"),
         tokenOverviewPanel: document.getElementById("token-overview-panel"),
@@ -12866,9 +14885,140 @@ def build_html(data):
           .replace(/"/g, "&quot;");
       }}
 
+      function pluralEn(count, singular, plural) {{
+        const number = Number(count) || 0;
+        const word = number === 1 ? singular : (plural || singular + "s");
+        return number + " " + word;
+      }}
+
+      function dynamicTranslation(key) {{
+        const text = String(key || "");
+        let match = text.match(/^快照时间 (.+)$/);
+        if (match) {{
+          return "Snapshot time " + match[1];
+        }}
+        match = text.match(/^(.+) 的总消耗$/);
+        if (match) {{
+          return "Total for " + match[1];
+        }}
+        match = text.match(/^原始记录分钟数 (\\d+)$/);
+        if (match) {{
+          return "Recorded minutes " + match[1];
+        }}
+        match = text.match(/^占输入 (.+)$/);
+        if (match) {{
+          return match[1] + " of input";
+        }}
+        match = text.match(/^占总量 (.+)$/);
+        if (match) {{
+          return match[1] + " of total";
+        }}
+        match = text.match(/^费用估算：\\$(.+)$/);
+        if (match) {{
+          return "Estimated cost: $" + match[1];
+        }}
+        match = text.match(/^(.+) · 未整理$/);
+        if (match) {{
+          return match[1] + " · Not synthesized";
+        }}
+        match = text.match(/^(?:当日|每日)窗口概览 · (\\d+)$/);
+        if (match) {{
+          return "Daily Window Overview · " + match[1];
+        }}
+        match = text.match(/^昨夜窗口概览 · (\\d+)$/);
+        if (match) {{
+          return "Last Night's Window Overview · " + match[1];
+        }}
+        match = text.match(/^最近一次窗口概览 · (\\d+)$/);
+        if (match) {{
+          return "Latest Window Overview · " + match[1];
+        }}
+        match = text.match(/^未检测到 (.+)。$/);
+        if (match) {{
+          return match[1] + " not found.";
+        }}
+        match = text.match(/^最近 (\\d+) 天$/);
+        if (match) {{
+          return "Last " + pluralEn(match[1], "day");
+        }}
+        match = text.match(/^(\\d+) 个窗口$/);
+        if (match) {{
+          return pluralEn(match[1], "window");
+        }}
+        match = text.match(/^(\\d+) 窗口$/);
+        if (match) {{
+          return pluralEn(match[1], "window");
+        }}
+        match = text.match(/^(\\d+) 个问题$/);
+        if (match) {{
+          return pluralEn(match[1], "question");
+        }}
+        match = text.match(/^(\\d+) 个结论$/);
+        if (match) {{
+          return pluralEn(match[1], "conclusion");
+        }}
+        match = text.match(/^(\\d+) 个主题$/);
+        if (match) {{
+          return pluralEn(match[1], "topic");
+        }}
+        match = text.match(/^扫描 (\\d+) 天 · 有窗口日期 (\\d+) 天 · (\\d+) 个窗口 · (.+)$/);
+        if (match) {{
+          return "Scanned " + pluralEn(match[1], "day") +
+            " · " + pluralEn(match[2], "source date") +
+            " · " + pluralEn(match[3], "window") +
+            " · " + match[4];
+        }}
+        match = text.match(/^直接读取 (.+) 的“What's in Memory”主题项。$/);
+        if (match) {{
+          return 'Reads topic items from the "What\\'s in Memory" section of ' + match[1] + ".";
+        }}
+        match = text.match(/^主题项 (\\d+) 条；用户偏好 (\\d+) 条；通用 tips (\\d+) 条。$/);
+        if (match) {{
+          return pluralEn(match[1], "topic item") + "; " +
+            pluralEn(match[2], "user preference") + "; " +
+            pluralEn(match[3], "general tip") + ".";
+        }}
+        return "";
+      }}
+
       function t(value) {{
         const key = String(value || "");
-        return currentLanguage === "en" && translations[key] ? translations[key] : key;
+        if (currentLanguage === "en") {{
+          return translations[key] || dynamicTranslation(key) || key;
+        }}
+        return key;
+      }}
+
+      function translateAttributeValue(value) {{
+        const key = String(value || "");
+        if (!key || currentLanguage !== "en") {{
+          return key;
+        }}
+        const direct = translations[key] || dynamicTranslation(key);
+        if (direct) {{
+          return direct;
+        }}
+        const helpMatch = key.match(/^(.+)\\s+说明$/);
+        if (helpMatch) {{
+          return t(helpMatch[1]) + " " + t("说明");
+        }}
+        return key;
+      }}
+
+      function translateStaticAttributes() {{
+        document.querySelectorAll("[aria-label], [title]").forEach(function (element) {{
+          ["aria-label", "title"].forEach(function (attr) {{
+            if (!element.hasAttribute(attr)) {{
+              return;
+            }}
+            const storeAttr = "data-i18n-original-" + attr;
+            if (!element.hasAttribute(storeAttr)) {{
+              element.setAttribute(storeAttr, element.getAttribute(attr) || "");
+            }}
+            const originalValue = element.getAttribute(storeAttr) || "";
+            element.setAttribute(attr, translateAttributeValue(originalValue));
+          }});
+        }});
       }}
 
       function tokenTotalDisplay(tokenUsage, rawKey, displayKey) {{
@@ -12930,7 +15080,8 @@ def build_html(data):
           const rawValue = node.nodeValue || "";
           const trimmedValue = rawValue.trim();
           const key = node.__i18nKey || trimmedValue;
-          if (!key || !translations[key]) {{
+          const translatedValue = translations[key] || dynamicTranslation(key) || "";
+          if (!key || (!translatedValue && !node.__i18nKey)) {{
             continue;
           }}
           if (!node.__i18nKey) {{
@@ -12941,7 +15092,9 @@ def build_html(data):
           nodes.push(node);
         }}
         nodes.forEach(function (node) {{
-          const nextValue = currentLanguage === "en" ? translations[node.__i18nKey] : node.__i18nKey;
+          const nextValue = currentLanguage === "en"
+            ? (translations[node.__i18nKey] || dynamicTranslation(node.__i18nKey) || node.__i18nKey)
+            : node.__i18nKey;
           node.nodeValue = (node.__i18nPrefix || "") + nextValue + (node.__i18nSuffix || "");
         }});
       }}
@@ -13056,7 +15209,7 @@ def build_html(data):
           return "";
         }}
         const days = backfill.learn_window_days || 7;
-        return "okeep backfill --from " + dateValue + " --to " + dateValue + " --stage final --learn-window-days " + days;
+        return "openrelix backfill --from " + dateValue + " --to " + dateValue + " --stage final --learn-window-days " + days;
       }}
 
       function renderBackfillPanel(dateValue, hasSummary) {{
@@ -13186,7 +15339,7 @@ def build_html(data):
         currentLanguage = supportedLanguages.includes(language) ? language : defaultLanguage;
         document.documentElement.lang = currentLanguage === "en" ? "en" : "zh-CN";
         document.body.setAttribute("data-language", currentLanguage);
-        document.title = t("OpenKeepsake 工作台");
+        document.title = t("OpenRelix 工作台");
         document.querySelectorAll("[data-language-option]").forEach(function (button) {{
           const isActive = button.getAttribute("data-language-option") === currentLanguage;
           button.classList.toggle("is-active", isActive);
@@ -13204,6 +15357,7 @@ def build_html(data):
           renderWindowOverview(state.selectedWindowOverviewDate);
         }}
         translateStaticText();
+        translateStaticAttributes();
       }}
 
       function readStoredTheme() {{
@@ -13395,12 +15549,32 @@ def build_html(data):
           button.addEventListener("click", function () {{
             const selectedDays = button.getAttribute("data-context-days");
             buttons.forEach(function (candidate) {{
-              const isActive = candidate === button;
+              const isActive = candidate.getAttribute("data-context-days") === selectedDays;
               candidate.classList.toggle("is-active", isActive);
               candidate.setAttribute("aria-pressed", isActive ? "true" : "false");
             }});
             views.forEach(function (view) {{
               const isActive = view.getAttribute("data-context-view") === selectedDays;
+              view.hidden = !isActive;
+              view.classList.toggle("is-active", isActive);
+            }});
+          }});
+        }});
+      }}
+
+      function wireSummaryTermRangeButtons() {{
+        const buttons = Array.from(document.querySelectorAll(".term-range-button"));
+        const views = Array.from(document.querySelectorAll("[data-term-view]"));
+        buttons.forEach(function (button) {{
+          button.addEventListener("click", function () {{
+            const selectedDays = button.getAttribute("data-term-days");
+            buttons.forEach(function (candidate) {{
+              const isActive = candidate.getAttribute("data-term-days") === selectedDays;
+              candidate.classList.toggle("is-active", isActive);
+              candidate.setAttribute("aria-pressed", isActive ? "true" : "false");
+            }});
+            views.forEach(function (view) {{
+              const isActive = view.getAttribute("data-term-view") === selectedDays;
               view.hidden = !isActive;
               view.classList.toggle("is-active", isActive);
             }});
@@ -13519,18 +15693,6 @@ def build_html(data):
       function setStatus(kind, text, messageKey) {{
         state.refreshStatusKind = kind;
         state.refreshStatusMessageKey = messageKey || "";
-        const isOffline = kind === "offline";
-        const isWarn = kind === "warn";
-        [elements.refreshStatusDot, elements.tokenLiveDot].forEach(function (dot) {{
-          if (!dot) {{
-            return;
-          }}
-          dot.classList.toggle("offline", isOffline);
-          dot.classList.toggle("warn", isWarn);
-        }});
-        if (elements.tokenLiveChip) {{
-          elements.tokenLiveChip.classList.toggle("offline", isOffline);
-        }}
         if (elements.refreshStatusText) {{
           elements.refreshStatusText.textContent = messageKey ? tokenRefreshStatusText(messageKey) : text;
         }}
@@ -13893,19 +16055,6 @@ def build_html(data):
         renderTokenSummaryCards(preparedTokenUsage.summary_cards || []);
         renderBarRows(elements.dailyTokenRows, (preparedTokenUsage.daily_rows || []).slice().reverse(), "token-daily-mid");
         renderBarRows(elements.todayTokenRows, preparedTokenUsage.today_breakdown || [], "token-input");
-        if (elements.tokenLiveAge) {{
-          if (state.tokenSourceKind === "live") {{
-            elements.tokenLiveAge.textContent = relativeUpdate;
-          }} else if (state.tokenSourceKind === "stale") {{
-            elements.tokenLiveAge.textContent = currentLanguage === "en"
-              ? "Cached " + relativeUpdate
-              : "缓存 " + relativeUpdate;
-          }} else {{
-            elements.tokenLiveAge.textContent = currentLanguage === "en"
-              ? "Snapshot " + relativeUpdate
-              : "快照 " + relativeUpdate;
-          }}
-        }}
         if (elements.tokenHighlight) {{
           if (tokenUsage.available) {{
             if (currentLanguage === "en") {{
@@ -13989,6 +16138,7 @@ def build_html(data):
 
       wireContentMoreButtons();
       wireProjectContextRangeButtons();
+      wireSummaryTermRangeButtons();
       wireThemeButtons();
       wireLanguageButtons();
       wireNightlyDateInput();
@@ -14022,13 +16172,13 @@ def build_html(data):
 """.format(
         default_language=language,
         html_language="en" if language == "en" else "zh-CN",
-        document_title=escape(localized("OpenKeepsake 工作台", "OpenKeepsake Workbench", language)),
+        document_title=escape(localized("OpenRelix 工作台", "OpenRelix Workbench", language)),
         generated_at=escape(data["generated_at"]),
-        hero_eyebrow=panel_language_text_html("OpenKeepsake"),
-        hero_title=panel_language_text_html("OpenKeepsake 工作台"),
+        hero_eyebrow=panel_language_text_html("OpenRelix"),
+        hero_title=panel_language_text_html("OpenRelix 工作台"),
         hero_brand_line=panel_language_variant_html(
-            escape("本地优先的 AI 记忆工作台"),
-            escape("Local-first memory workbench for AI agents"),
+            escape("你的专属AI记忆珍藏"),
+            escape("Your personal AI memory keepsake"),
         ),
         hero_copy=panel_language_text_html(
             "只保留当前有效的复用信号：最近整理、核心指标，以及可继续下钻的窗口、记忆和资产明细。"
@@ -14050,6 +16200,12 @@ def build_html(data):
         window_days=token_usage.get("window_days", CCUSAGE_WINDOW_DAYS),
         token_metric_cards="".join(token_metric_cards),
         asset_metric_cards="".join(asset_metric_cards),
+        asset_ledger_kicker=panel_language_text_html("资产层", "Asset Layer"),
+        asset_ledger_title=panel_language_text_html("资产账本概览", "Asset Ledger Overview"),
+        asset_ledger_note=panel_language_text_html(
+            "这里看的是已经登记到本地账本里的资产、复盘和复用记录，不是注入 Codex context 的记忆摘要。",
+            "This shows assets, reviews, and reuse records registered in the local ledger, not the memory summary injected into Codex context.",
+        ),
         token_overview_panel=make_token_overview_panel(token_usage, token_overview_help),
         type_panel=make_bar_group(
             "资产类型分布",
@@ -14104,12 +16260,23 @@ def build_html(data):
         nightly_summary_panel=nightly_summary_panel,
         project_context_header=make_panel_header(
             "当前项目上下文",
-            project_context_note,
-            project_context_help,
+            help_html=project_context_help,
+            note_content_html=panel_language_text_html(
+                project_context_note,
+                panel_english_text(project_context_note),
+            ),
         ),
-        project_context_body=make_project_context_body(
-            project_context_views,
-            project_context_default_days,
+        project_context_body=panel_language_block_html(
+            make_project_context_body(
+                project_context_views_zh,
+                project_context_default_days,
+                language="zh",
+            ),
+            make_project_context_body(
+                project_context_views_en,
+                project_context_default_days,
+                language="en",
+            ),
         ),
         personal_asset_memory_family_header=make_memory_family_header(
             "个人资产记忆",
@@ -14146,11 +16313,6 @@ def build_html(data):
             "保留但优先级较低",
             low_priority_memory_help,
         ),
-        memory_registry_header=make_panel_header(
-            "个人资产-当前记忆登记册",
-            memory_registry_note,
-            memory_registry_help,
-        ),
         recent_assets_header=make_panel_header(
             "最近更新的资产",
             "最近一次变更的资产条目",
@@ -14180,10 +16342,17 @@ def build_html(data):
             extra_meta_html=window_overview_date_control,
         ),
         nightly_window_cards=make_window_summary_cards(window_overview),
-        durable_memory_cards=make_memory_cards(data.get("nightly_memory_views", {}).get("durable", [])),
-        session_memory_cards=make_memory_cards(data.get("nightly_memory_views", {}).get("session", [])),
-        low_priority_memory_cards=make_memory_cards(
-            data.get("nightly_memory_views", {}).get("low_priority", [])
+        durable_memory_cards=make_memory_type_grouped_cards(
+            data.get("nightly_memory_views", {}).get("durable", []),
+            include_bucket_meta=False,
+        ),
+        session_memory_cards=make_memory_type_grouped_cards(
+            data.get("nightly_memory_views", {}).get("session", []),
+            include_bucket_meta=False,
+        ),
+        low_priority_memory_cards=make_memory_type_grouped_cards(
+            data.get("nightly_memory_views", {}).get("low_priority", []),
+            include_bucket_meta=False,
         ),
         memory_registry_cards=make_memory_cards(memory_registry),
         codex_native_topic_header=make_panel_header(
@@ -14241,9 +16410,13 @@ def main():
     overview_md = REPORTS_DIR / "overview.md"
     overview_csv = REPORTS_DIR / "overview.csv"
     panel_html = REPORTS_DIR / "panel.html"
-    overview_json_content = json.dumps(data, ensure_ascii=False, indent=2)
-    overview_md_content = build_markdown(data)
-    panel_html_content = build_html(data)
+    overview_json_content = json.dumps(
+        normalize_brand_display_payload(data),
+        ensure_ascii=False,
+        indent=2,
+    )
+    overview_md_content = normalize_brand_display_text(build_markdown(data))
+    panel_html_content = normalize_brand_display_text(build_html(data))
 
     atomic_write_text(overview_json, overview_json_content + "\n")
     atomic_write_text(overview_md, overview_md_content)

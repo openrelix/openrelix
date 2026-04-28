@@ -7,16 +7,21 @@ import sys
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Union
 
 
-APP_SLUG = "openkeepsake"
-LEGACY_APP_SLUGS = ("ai-personal-assets", "codex-personal-assets")
+APP_SLUG = "openrelix"
+PREVIOUS_PUBLIC_APP_SLUG = "open" + "keepsake"
+LEGACY_APP_SLUGS = (PREVIOUS_PUBLIC_APP_SLUG, "ai-personal-assets", "codex-personal-assets")
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_LANGUAGE = "zh"
 SUPPORTED_LANGUAGES = ("zh", "en")
-DEFAULT_MEMORY_MODE = "codex-context"
-SUPPORTED_MEMORY_MODES = ("local-only", "codex-context", "off")
+DEFAULT_MEMORY_MODE = "integrated"
+SUPPORTED_MEMORY_MODES = ("integrated", "local-only", "off")
+SUPPORTED_ACTIVITY_SOURCES = ("history", "app-server", "auto")
+DEFAULT_MEMORY_SUMMARY_MAX_TOKENS = 5000
+MIN_MEMORY_SUMMARY_MAX_TOKENS = 2000
+MAX_MEMORY_SUMMARY_MAX_TOKENS = 20000
 LANGUAGE_ALIASES = {
     "zh": "zh",
     "zh-cn": "zh",
@@ -37,17 +42,36 @@ MEMORY_MODE_ALIASES = {
     "record-memory-only": "local-only",
     "personal": "local-only",
     "personal-only": "local-only",
-    "codex": "codex-context",
-    "codex-context": "codex-context",
-    "use-codex-context": "codex-context",
-    "native": "codex-context",
-    "native-context": "codex-context",
+    "integrated": "integrated",
+    "full": "integrated",
+    "host-context": "integrated",
+    "codex": "integrated",
+    "codex-context": "integrated",
+    "use-codex-context": "integrated",
+    "native": "integrated",
+    "native-context": "integrated",
     "off": "off",
     "none": "off",
     "disabled": "off",
     "disable": "off",
     "false": "off",
     "0": "off",
+}
+ACTIVITY_SOURCE_ALIASES = {
+    "history": "history",
+    "cli": "history",
+    "codex-cli": "history",
+    "codex_cli": "history",
+    "app": "app-server",
+    "app-server": "app-server",
+    "app_server": "app-server",
+    "codex-app": "app-server",
+    "codex_app": "app-server",
+    "codex-app-server": "app-server",
+    "codex_app_server": "app-server",
+    "auto": "auto",
+    "read-codex-app": "auto",
+    "read_codex_app": "auto",
 }
 LEGACY_REPO_STATE_ENV = "AI_ASSET_USE_REPO_STATE"
 LEGACY_STATE_DIR_NAMES = (
@@ -120,6 +144,83 @@ def normalize_memory_mode(value: Optional[str], *, strict: bool = False) -> str:
             )
         )
     return DEFAULT_MEMORY_MODE
+
+
+def normalize_memory_summary_max_tokens(value: Optional[Union[int, str]], *, strict: bool = False) -> int:
+    if value is None or str(value).strip() == "":
+        return DEFAULT_MEMORY_SUMMARY_MAX_TOKENS
+    try:
+        tokens = int(value)
+    except (TypeError, ValueError) as exc:
+        if strict:
+            raise ValueError("memory_summary_max_tokens must be an integer") from exc
+        return DEFAULT_MEMORY_SUMMARY_MAX_TOKENS
+
+    if MIN_MEMORY_SUMMARY_MAX_TOKENS <= tokens <= MAX_MEMORY_SUMMARY_MAX_TOKENS:
+        return tokens
+    if strict:
+        raise ValueError(
+            "memory_summary_max_tokens must be between {} and {}".format(
+                MIN_MEMORY_SUMMARY_MAX_TOKENS,
+                MAX_MEMORY_SUMMARY_MAX_TOKENS,
+            )
+        )
+    return min(max(tokens, MIN_MEMORY_SUMMARY_MAX_TOKENS), MAX_MEMORY_SUMMARY_MAX_TOKENS)
+
+
+def normalize_activity_source(value: Optional[str], *, strict: bool = False) -> str:
+    text = str(value or "").strip().lower().replace("_", "-")
+    if not text:
+        if strict:
+            raise ValueError(
+                "Unsupported activity source: {}. Supported activity sources: {}".format(
+                    value,
+                    ", ".join(SUPPORTED_ACTIVITY_SOURCES),
+                )
+            )
+        return "history"
+
+    activity_source = ACTIVITY_SOURCE_ALIASES.get(text, text)
+    if activity_source in SUPPORTED_ACTIVITY_SOURCES:
+        return activity_source
+
+    if strict:
+        raise ValueError(
+            "Unsupported activity source: {}. Supported activity sources: {}".format(
+                value,
+                ", ".join(SUPPORTED_ACTIVITY_SOURCES),
+            )
+        )
+    return "history"
+
+
+def _round_token_budget(value: float) -> int:
+    return int(round(value / 100.0) * 100)
+
+
+def memory_summary_budget_from_max(max_tokens: Optional[Union[int, str]]) -> dict:
+    normalized_max = normalize_memory_summary_max_tokens(max_tokens)
+    target_tokens = min(normalized_max - 200, max(1200, _round_token_budget(normalized_max * 0.84)))
+    warn_tokens = min(normalized_max - 100, max(target_tokens + 100, _round_token_budget(normalized_max * 0.92)))
+    personal_memory_tokens = min(
+        normalized_max - 500,
+        max(300, _round_token_budget(normalized_max * 0.30)),
+    )
+    return {
+        "target_tokens": target_tokens,
+        "warn_tokens": warn_tokens,
+        "max_tokens": normalized_max,
+        "personal_memory_tokens": personal_memory_tokens,
+    }
+
+
+def get_memory_summary_budget(paths: Optional["RuntimePaths"] = None) -> dict:
+    explicit = os.environ.get("AI_ASSET_MEMORY_SUMMARY_MAX_TOKENS")
+    if explicit:
+        return memory_summary_budget_from_max(explicit)
+
+    config = load_runtime_config(paths)
+    return memory_summary_budget_from_max(config.get("memory_summary_max_tokens"))
 
 
 def iter_legacy_state_paths():
@@ -266,17 +367,28 @@ def get_memory_mode(paths: Optional["RuntimePaths"] = None) -> str:
     return normalize_memory_mode(config.get("memory_mode"))
 
 
+def get_activity_source(paths: Optional["RuntimePaths"] = None) -> str:
+    explicit = os.environ.get("OPENRELIX_ACTIVITY_SOURCE") or os.environ.get("AI_ASSET_ACTIVITY_SOURCE")
+    if explicit:
+        return normalize_activity_source(explicit)
+
+    config = load_runtime_config(paths)
+    return normalize_activity_source(config.get("activity_source"))
+
+
 def personal_memory_enabled(paths: Optional["RuntimePaths"] = None) -> bool:
     return get_memory_mode(paths) != "off"
 
 
 def codex_context_enabled(paths: Optional["RuntimePaths"] = None) -> bool:
-    return get_memory_mode(paths) == "codex-context"
+    return get_memory_mode(paths) == "integrated"
 
 
 def write_runtime_config(
     language: Optional[str] = None,
     memory_mode: Optional[str] = None,
+    activity_source: Optional[str] = None,
+    memory_summary_max_tokens: Optional[Union[int, str]] = None,
     paths: Optional["RuntimePaths"] = None,
 ) -> dict:
     paths = paths or get_runtime_paths()
@@ -290,7 +402,17 @@ def write_runtime_config(
     )
     config["memory_mode"] = normalized_memory_mode
     config["personal_memory_enabled"] = normalized_memory_mode != "off"
-    config["codex_context_enabled"] = normalized_memory_mode == "codex-context"
+    config["codex_context_enabled"] = normalized_memory_mode == "integrated"
+    config["activity_source"] = normalize_activity_source(
+        activity_source
+        if activity_source is not None
+        else config.get("activity_source")
+    )
+    config["memory_summary_max_tokens"] = normalize_memory_summary_max_tokens(
+        memory_summary_max_tokens
+        if memory_summary_max_tokens is not None
+        else config.get("memory_summary_max_tokens")
+    )
     atomic_write_json(runtime_config_path(paths), config)
     return config
 

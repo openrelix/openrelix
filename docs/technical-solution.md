@@ -1,10 +1,10 @@
-# OpenKeepsake 技术方案
+# OpenRelix 技术方案
 
 ## 定位
 
-`OpenKeepsake` 是一套面向 AI coding agents / AI CLI 的本地优先个人资产系统。它解决的问题不是“再做一个聊天记录备份”，而是把重复出现的工作方法、检查清单、技能、模板和自动化沉淀成可复用资产，并在本地持续整理、可视化和回看。
+`OpenRelix` 意为开源的个人记忆珍藏，是一套面向 AI coding agents / AI CLI 的本地优先个人资产系统。它解决的问题不是“再做一个聊天记录备份”，而是把重复出现的工作方法、检查清单、技能、模板和自动化沉淀成可复用资产，并在本地持续整理、可视化和回看。
 
-GitHub 项目页：[Ray1Ren/openkeepsake](https://github.com/Ray1Ren/openkeepsake)。欢迎点星支持，便于更多人发现这个本地优先方案。
+GitHub 项目页：[openrelix/openrelix](https://github.com/openrelix/openrelix)。欢迎点星支持，便于更多人发现这个本地优先方案。
 
 当前 `v0.1.0 预览版` 的公开交付方式是 macOS installer-first：
 
@@ -36,7 +36,7 @@ Host home
 
 Current v0.1.0 preview adapter: Codex CLI + CODEX_HOME
 
-OpenKeepsake repo
+OpenRelix repo
   - .agents/skills/
   - install/
   - scripts/
@@ -44,7 +44,7 @@ OpenKeepsake repo
   - ops/launchd/
   - docs/
   |
-  | installer / okeep / LaunchAgent
+  | installer / openrelix / LaunchAgent
   v
 External state root
   - raw/
@@ -96,7 +96,7 @@ AI host 自己的用户级目录、history、session 和 native memory 由各 ho
 
 - `.agents/skills/memory-review/`：立即复盘入口。
 - `install/`：安装器、模板渲染、host adapter 用户配置和 shell path 配置；当前 v0.1.0 预览版实现 Codex 配置。
-- `scripts/`：运行时路径、采集、整理、概览生成、token live server 和 `okeep` CLI。
+- `scripts/`：运行时路径、采集、整理、概览生成、token live server 和 `openrelix` CLI。
 - `templates/`：资产样例、任务复盘模板、夜间整理 JSON schema。
 - `ops/launchd/`：macOS LaunchAgent 模板。
 - `docs/`：设计、安装、隐私、指标和学习材料。
@@ -106,7 +106,7 @@ AI host 自己的用户级目录、history、session 和 native memory 由各 ho
 state root 默认在：
 
 ```text
-~/Library/Application Support/openkeepsake
+~/Library/Application Support/openrelix
 ```
 
 可通过 `AI_ASSET_STATE_DIR` 或 `./install/install.sh --state-dir ...` 覆盖。
@@ -143,18 +143,20 @@ state root 的主要目录：
 
 两种 profile：
 
-- `minimal`：初始化 state root，生成第一份 overview / panel，并按默认 `codex-context` 同步 bounded summary。不会安装全局命令、shell rc 或 LaunchAgent。
-- `integrated`：在 minimal 基础上安装全局 skill、custom prompt、`okeep` 命令、bounded history 配置和后台服务。
+- `minimal`：初始化 state root，生成第一份 overview / panel，并按默认 `integrated` 同步 bounded summary。不会安装全局命令、shell rc 或 LaunchAgent。
+- `integrated`：在 minimal 基础上安装全局 skill、custom prompt、`openrelix` 命令、bounded history 配置和后台服务。
 
 重要开关：
 
 - `--language zh|en`
-- `--memory-mode local-only|codex-context|off`
+- `--memory-mode integrated|local-only|off`
 - `--record-memory-only`
-- `--use-codex-context`
+- `--use-integrated`
 - `--disable-personal-memory`
 - `--enable-background-services`
 - `--enable-nightly`
+- `--nightly-organize-time HH:MM`
+- `--nightly-finalize-time HH:MM`
 - `--keep-awake=during-job`
 
 安装器只应做可重复执行的配置动作，避免把一次性的本机状态写死进仓库。
@@ -226,26 +228,28 @@ state root 的主要目录：
 
 它会聚合资产数量、复用事件、估算节省、项目上下文、nightly memory、Codex native memory 对照和 token 使用趋势。
 
-### `scripts/okeep.py`
+### `scripts/openrelix.py`
 
 面向用户的本地 CLI。
 
 常用命令：
 
 ```bash
-okeep review
-okeep review --date "$(date +%F)" --learn-window-days 7
-okeep backfill --from 2026-04-24 --to 2026-04-27 --learn-window-days 7
-okeep backfill --dates 2026-04-21,2026-04-23,2026-04-24 --learn-window-days 7
-okeep core
-okeep refresh
-okeep mode
-okeep mode local-only
-okeep open panel
-okeep paths
+openrelix review
+openrelix review --date "$(date +%F)" --learn-window-days 7
+openrelix backfill --from 2026-04-24 --to 2026-04-27 --learn-window-days 7
+openrelix backfill --dates 2026-04-21,2026-04-23,2026-04-24 --learn-window-days 7
+openrelix core
+openrelix refresh
+openrelix refresh --learn-memory --learn-window-days 7
+./install/install.sh --profile integrated --enable-learning-refresh
+openrelix mode
+openrelix mode local-only
+openrelix open panel
+openrelix paths
 ```
 
-`okeep` 是对底层脚本的稳定入口，适合文档、LaunchAgent、手动调试和日常使用。安装后的记忆模式切换走 `okeep mode`，不需要重复执行安装器。
+`openrelix` 是对底层脚本的稳定入口，适合文档、LaunchAgent、手动调试和日常使用。安装后的记忆模式切换走 `openrelix mode`，不需要重复执行安装器。
 
 ### `.agents/skills/memory-review/`
 
@@ -268,8 +272,8 @@ macOS 后台自动化模板。
 
 - `overview-refresh`：`RunAtLoad`，并每 1800 秒刷新一次 overview。
 - `token-live`：`RunAtLoad` + `KeepAlive`，提供本地 token live endpoint。
-- `nightly-organize`：每天 23:00 生成当日整理预览。
-- `nightly-finalize-previous-day`：每天 00:10 回补前一天终版整理。
+- `nightly-organize`：默认每天 23:00 生成当日整理预览，可通过 `--nightly-organize-time HH:MM` 调整。
+- `nightly-finalize-previous-day`：默认每天 00:10 回补前一天终版整理，可通过 `--nightly-finalize-time HH:MM` 调整。
 
 `--keep-awake=during-job` 只在夜间任务运行期间使用 `caffeinate`，不是永久改变系统睡眠策略。
 
@@ -374,14 +378,15 @@ install/install.sh --profile integrated
   -> optionally configure host-native memory context
   -> symlink repo skill to the current adapter's user skill root
   -> install custom prompt fallback
-  -> install global okeep command
+  -> install global openrelix command
   -> optionally render/bootstrap LaunchAgents
+  -> with --enable-learning-refresh, make overview-refresh call the current Codex adapter every 30 minutes
 ```
 
 ### 手动整理
 
 ```text
-okeep review --date <date> --learn-window-days N
+openrelix review --date <date> --learn-window-days N
   -> auto-backfill missing or non-final daily reports in the learning window
      without recursively expanding each prerequisite day into another learning window
   -> collect_codex_activity.py
@@ -393,7 +398,7 @@ okeep review --date <date> --learn-window-days N
 ### 多日回溯
 
 ```text
-okeep backfill --from <start-date> --to <end-date> --learn-window-days N
+openrelix backfill --from <start-date> --to <end-date> --learn-window-days N
   -> for each date:
      -> collect_codex_activity.py
      -> nightly_consolidate.py
@@ -403,7 +408,7 @@ okeep backfill --from <start-date> --to <end-date> --learn-window-days N
 也可以使用 `--dates` 回溯不连续日期，避免把中间没有活动的日期也生成空 summary：
 
 ```bash
-okeep backfill --dates 2026-04-21,2026-04-23,2026-04-24 --learn-window-days 7
+openrelix backfill --dates 2026-04-21,2026-04-23,2026-04-24 --learn-window-days 7
 ```
 
 回溯不是完全离线：采集阶段是本地脚本读取当前 host 的 history 和 session JSONL；当前 v0.1.0 预览版 Codex 适配器会通过 `codex exec --ephemeral` 调用模型生成结构化 summary；最后再由本地脚本重建 overview / panel。
@@ -426,7 +431,7 @@ LaunchAgent
 当前开源发布建议按 installer-first 讲清楚：
 
 - GitHub 仓库提供源码、模板、skills、docs 和 launchd 模板。
-- npm 包提供 `npx openkeepsake install` 入口。
+- npm 包提供 `npx openrelix install` 入口。
 - 项目定位是 AI-agent-first；当前 v0.1.0 预览版安装器先交付 Codex CLI 适配器。
 - npm 通过 `files` 白名单携带必要源码，不携带个人运行数据。
 - 发布前用 `npm pack --dry-run` 检查包内容。

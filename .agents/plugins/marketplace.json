@@ -1,14 +1,14 @@
 {
-  "name": "openkeepsake",
+  "name": "openrelix",
   "interface": {
-    "displayName": "OpenKeepsake"
+    "displayName": "OpenRelix"
   },
   "plugins": [
     {
-      "name": "openkeepsake",
+      "name": "openrelix",
       "source": {
         "source": "local",
-        "path": "./plugins/openkeepsake"
+        "path": "./plugins/openrelix"
       },
       "policy": {
         "installation": "NOT_AVAILABLE",

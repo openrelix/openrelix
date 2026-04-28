@@ -44,12 +44,15 @@
 - Grouping key: `bucket + memory_type + normalized title` with `value_note` as fallback when title is empty.
 - `created_at` in the dashboard memory view means the first date that grouped memory appeared in the log.
 - `updated_at` in the dashboard memory view means the most recent date that grouped memory appeared in the log.
+- Long-term and short-term memory cards are sorted by estimated 7-day usage frequency, not just by update time.
+- `usage_frequency` is a deterministic window-equivalent score. Direct source-window matches count most, text matches between memory title/keywords/value note and recent window summaries count next, and project/context matches only add a small boost.
+- The frequency window is bounded to the latest 7 daily captures for stable performance; the dashboard does not call an LLM during refresh.
 
 ## Codex native memory view
 
 - The dashboard also reads the configured Codex home, usually `~/.codex/memories/memory_summary.md`, and shows the `What's in Memory` topic items as a parallel native-memory view.
 - This view is meant to represent what Codex itself has in its user-level memory layer, rather than what the nightly asset pipeline inferred afterward.
-- In `codex-context` mode, routine refresh, review, and nightly jobs may regenerate the bounded `memory_summary.md`; they should not write raw windows or the full local registry into Codex native memory files.
+- In `integrated` mode, routine refresh, review, and nightly jobs may regenerate the bounded `memory_summary.md`; they should not write raw windows or the full local registry into Codex native memory files.
 - The native-memory section keeps user profile, preferences, and general tips in the source file; the panel focuses on the topic entries that are easiest to compare with nightly memory.
 - In practice: native memory is closer to long-lived rules and rollout summaries, while the nightly registry is closer to recent task memory with source-window traceability.
 

@@ -20,7 +20,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 import build_overview  # noqa: E402
-import okeep  # noqa: E402
+import openrelix  # noqa: E402
 import asset_runtime  # noqa: E402
 import nightly_consolidate  # noqa: E402
 
@@ -104,7 +104,7 @@ class NightlyLogicTests(unittest.TestCase):
                     (
                         "import sys; "
                         "sys.path.insert(0, 'scripts'); "
-                        "import okeep, build_codex_memory_summary, build_overview, "
+                        "import openrelix, build_codex_memory_summary, build_overview, "
                         "collect_codex_activity, nightly_consolidate, token_live_server"
                     ),
                 ],
@@ -122,29 +122,55 @@ class NightlyLogicTests(unittest.TestCase):
         self.assertEqual(asset_runtime.normalize_language("english"), "en")
         with self.assertRaises(ValueError):
             asset_runtime.normalize_language("fr", strict=True)
-        self.assertEqual(asset_runtime.normalize_memory_mode(None), "codex-context")
-        self.assertEqual(asset_runtime.normalize_memory_mode(""), "codex-context")
+        self.assertEqual(asset_runtime.normalize_memory_mode(None), "integrated")
+        self.assertEqual(asset_runtime.normalize_memory_mode(""), "integrated")
         self.assertEqual(asset_runtime.normalize_memory_mode("record-memory-only"), "local-only")
-        self.assertEqual(asset_runtime.normalize_memory_mode("codex"), "codex-context")
+        self.assertEqual(asset_runtime.normalize_memory_mode("codex"), "integrated")
+        self.assertEqual(asset_runtime.normalize_memory_mode("codex-context"), "integrated")
         self.assertEqual(asset_runtime.normalize_memory_mode("disabled"), "off")
         with self.assertRaises(ValueError):
             asset_runtime.normalize_memory_mode("cloud", strict=True)
+        self.assertEqual(asset_runtime.normalize_activity_source(None), "history")
+        self.assertEqual(asset_runtime.normalize_activity_source("codex_app_server"), "app-server")
+        self.assertEqual(asset_runtime.normalize_activity_source("read-codex-app"), "auto")
+        with self.assertRaises(ValueError):
+            asset_runtime.normalize_activity_source("browser", strict=True)
+        self.assertEqual(asset_runtime.normalize_memory_summary_max_tokens("8000"), 8000)
+        with self.assertRaises(ValueError):
+            asset_runtime.normalize_memory_summary_max_tokens("1000", strict=True)
 
         with TemporaryDirectory() as tmpdir:
             with mock.patch.dict(
                 os.environ,
-                {"AI_ASSET_STATE_DIR": tmpdir, "AI_ASSET_LANGUAGE": "", "AI_ASSET_MEMORY_MODE": ""},
+                {
+                    "AI_ASSET_STATE_DIR": tmpdir,
+                    "AI_ASSET_LANGUAGE": "",
+                    "AI_ASSET_MEMORY_MODE": "",
+                    "OPENRELIX_ACTIVITY_SOURCE": "",
+                    "AI_ASSET_ACTIVITY_SOURCE": "",
+                },
             ):
                 paths = asset_runtime.get_runtime_paths()
                 asset_runtime.ensure_state_layout(paths)
-                config = asset_runtime.write_runtime_config(language="en", memory_mode="codex", paths=paths)
+                config = asset_runtime.write_runtime_config(
+                    language="en",
+                    memory_mode="codex",
+                    activity_source="auto",
+                    memory_summary_max_tokens=8000,
+                    paths=paths,
+                )
 
                 self.assertEqual(config["language"], "en")
-                self.assertEqual(config["memory_mode"], "codex-context")
+                self.assertEqual(config["memory_mode"], "integrated")
+                self.assertEqual(config["activity_source"], "auto")
+                self.assertEqual(config["memory_summary_max_tokens"], 8000)
                 self.assertTrue(config["personal_memory_enabled"])
                 self.assertTrue(config["codex_context_enabled"])
+                self.assertEqual(asset_runtime.get_memory_summary_budget(paths)["max_tokens"], 8000)
+                self.assertEqual(asset_runtime.get_memory_summary_budget(paths)["personal_memory_tokens"], 2400)
                 self.assertEqual(asset_runtime.get_runtime_language(paths), "en")
-                self.assertEqual(asset_runtime.get_memory_mode(paths), "codex-context")
+                self.assertEqual(asset_runtime.get_memory_mode(paths), "integrated")
+                self.assertEqual(asset_runtime.get_activity_source(paths), "auto")
                 self.assertTrue(asset_runtime.personal_memory_enabled(paths))
                 self.assertTrue(asset_runtime.codex_context_enabled(paths))
                 self.assertEqual(
@@ -160,8 +186,8 @@ class NightlyLogicTests(unittest.TestCase):
         with TemporaryDirectory() as tmpdir:
             home = Path(tmpdir)
             app_support = home / "Library" / "Application Support"
-            old_root = app_support / "ai-personal-assets"
-            new_root = app_support / "openkeepsake"
+            old_root = app_support / ("open" + "keepsake")
+            new_root = app_support / "openrelix"
             old_root.mkdir(parents=True)
 
             with mock.patch.dict(
@@ -220,22 +246,22 @@ class NightlyLogicTests(unittest.TestCase):
         self.assertIn("这是一个纯整理任务", chinese_prompt)
         self.assertIn("直接输出符合 schema 的 JSON", chinese_prompt)
 
-    def test_okeep_help_uses_runtime_language(self):
-        with mock.patch.object(okeep, "LANGUAGE", "zh"):
-            help_text = okeep.build_parser().format_help()
-        self.assertIn("OpenKeepsake 命令集", help_text)
+    def test_openrelix_help_uses_runtime_language(self):
+        with mock.patch.object(openrelix, "LANGUAGE", "zh"):
+            help_text = openrelix.build_parser().format_help()
+        self.assertIn("OpenRelix 命令集", help_text)
         self.assertIn("运行指定日期的 review 流水线并打印摘要", help_text)
         self.assertIn("位置参数", help_text)
         self.assertIn("显示帮助并退出", help_text)
         self.assertNotIn("Run today's review pipeline", help_text)
         self.assertNotIn("optional arguments", help_text)
 
-        with mock.patch.object(okeep, "LANGUAGE", "en"):
-            help_text = okeep.build_parser().format_help()
-        self.assertIn("OpenKeepsake command set", help_text)
+        with mock.patch.object(openrelix, "LANGUAGE", "en"):
+            help_text = openrelix.build_parser().format_help()
+        self.assertIn("OpenRelix command set", help_text)
         self.assertIn("Run the review pipeline for a target date", help_text)
 
-    def test_okeep_core_summary_uses_chinese_review_label(self):
+    def test_openrelix_core_summary_uses_chinese_review_label(self):
         stream = io.StringIO()
         data = {
             "generated_at": "2026-04-28 00:12",
@@ -251,8 +277,8 @@ class NightlyLogicTests(unittest.TestCase):
             },
         }
 
-        with mock.patch.object(okeep, "LANGUAGE", "zh"), mock.patch("sys.stdout", stream):
-            okeep.print_core_summary(data)
+        with mock.patch.object(openrelix, "LANGUAGE", "zh"), mock.patch("sys.stdout", stream):
+            openrelix.print_core_summary(data)
 
         output = stream.getvalue()
         self.assertIn("今日复盘", output)
@@ -572,7 +598,7 @@ class NightlyLogicTests(unittest.TestCase):
                                 "windows": [
                                     {
                                         "window_id": date_str,
-                                        "cwd": "/tmp/OpenKeepsake",
+                                        "cwd": "/tmp/OpenRelix",
                                         "started_at": "{}T09:00:00+08:00".format(date_str),
                                         "prompt_count": 1,
                                         "conclusion_count": 1,
@@ -620,12 +646,12 @@ class NightlyLogicTests(unittest.TestCase):
         cards_html = build_overview.make_project_context_cards(
             [
                 {
-                    "label": "OpenKeepsake",
+                    "label": "OpenRelix",
                     "window_count": 6,
                     "question_count": 6,
                     "conclusion_count": 6,
                     "latest_activity_display": "04-27 20:00",
-                    "cwd_preview": "/tmp/OpenKeepsake",
+                    "cwd_preview": "/tmp/OpenRelix",
                     "question_preview": "面板可视化需要二次归类",
                     "takeaway_preview": "项目上下文需要支持展开",
                     "keywords": ["panel"],
@@ -656,12 +682,12 @@ class NightlyLogicTests(unittest.TestCase):
 
 ## What's in Memory
 
-### OpenKeepsake + user-level Codex state
+### OpenRelix + user-level Codex state
 
 #### 2026-04-26
 
 - `/subreview:run` live contract and independent Codex review loop: /subreview:run, codex exec, temp git repo, 10/10
-  - desc: Cross-scope workflow memory for external Codex review requests under a openkeepsake workspace and ~/.codex.
+  - desc: Cross-scope workflow memory for external Codex review requests under a openrelix workspace and ~/.codex.
   - learnings: Treat /subreview:run as the validated live entrypoint.
 """
 
@@ -675,7 +701,7 @@ class NightlyLogicTests(unittest.TestCase):
             parsed = build_overview.parse_codex_native_memory_summary(
                 summary_path,
                 memory_index_path=index_path,
-                known_project_names=["OpenKeepsake", "Android App"],
+                known_project_names=["OpenRelix", "Android App"],
             )
 
         self.assertEqual(parsed["counts"]["user_preferences"], 1)
@@ -692,16 +718,16 @@ class NightlyLogicTests(unittest.TestCase):
         self.assertIn("Codex 独立评审循环", row["display_title"])
         self.assertIn("临时 git snapshot", row["display_value_note"])
         self.assertEqual(row["created_at"], "2026-04-26")
-        self.assertIn("OpenKeepsake", row["context_labels"])
+        self.assertIn("OpenRelix", row["context_labels"])
         self.assertEqual(row["source_fact_label"], "来源文件")
 
     def test_codex_native_memory_known_english_topics_get_chinese_display_copy(self):
         sample_summary = """## What's in Memory
 
-### OpenKeepsake + user-level Codex state
+### OpenRelix + user-level Codex state
 
-- Local Codex personal asset system, genericization, and LaunchAgent runtime: OpenKeepsake, AGENTS.md, memories, dashboard
-  - desc: User-level personal asset system design under a openkeepsake workspace.
+- Local Codex personal asset system, genericization, and LaunchAgent runtime: OpenRelix, AGENTS.md, memories, dashboard
+  - desc: User-level personal asset system design under a openrelix workspace.
   - learnings: The layered setup separates global rules, repo rules, and local state.
 
 - Codex local configuration, MCP setup, token usage, and plugin marketplace inspection: ~/.codex/config.toml, codex mcp add
@@ -721,7 +747,7 @@ class NightlyLogicTests(unittest.TestCase):
         codex_config_row = display_by_title[
             "Codex local configuration, MCP setup, token usage, and plugin marketplace inspection"
         ]
-        self.assertEqual(local_row["display_title"], "本地 OpenKeepsake 系统、通用化与 LaunchAgent 运行时")
+        self.assertEqual(local_row["display_title"], "本地 OpenRelix 系统、通用化与 LaunchAgent 运行时")
         self.assertIn("个人资产系统的分层设计", local_row["display_value_note"])
         self.assertEqual(codex_config_row["display_title"], "Codex 本地配置、MCP、Token 使用与插件市场排查")
         self.assertIn("本机 Codex 环境", codex_config_row["display_value_note"])
@@ -733,7 +759,7 @@ class NightlyLogicTests(unittest.TestCase):
 
 ## General Tips
 
-- Separate repo-code tasks from user-level Codex / OpenKeepsake tasks early; the correct search surface is different.
+- Separate repo-code tasks from user-level Codex / OpenRelix tasks early; the correct search surface is different.
 """
 
         with TemporaryDirectory() as tmpdir:
@@ -749,17 +775,17 @@ class NightlyLogicTests(unittest.TestCase):
         )
         self.assertEqual(
             parsed["tip_rows"][0]["display_body"],
-            "先区分 repo 代码任务和用户级 Codex / OpenKeepsake 任务，两者搜索面不同。",
+            "先区分 repo 代码任务和用户级 Codex / OpenRelix 任务，两者搜索面不同。",
         )
         self.assertIn("When runtime behavior depends", parsed["preference_rows"][0]["display_body_en"])
 
     def test_codex_native_memory_english_mode_preserves_english_display_copy(self):
         sample_summary = """## What's in Memory
 
-### OpenKeepsake + user-level Codex state
+### OpenRelix + user-level Codex state
 
-- Local Codex personal asset system, genericization, and LaunchAgent runtime: OpenKeepsake, AGENTS.md, memories, dashboard
-  - desc: User-level personal asset system design under a openkeepsake workspace.
+- Local Codex personal asset system, genericization, and LaunchAgent runtime: OpenRelix, AGENTS.md, memories, dashboard
+  - desc: User-level personal asset system design under a openrelix workspace.
   - learnings: The layered setup separates global rules, repo rules, and local state.
 """
 
@@ -950,14 +976,14 @@ class NightlyLogicTests(unittest.TestCase):
         comparison = build_overview.build_codex_native_memory_comparison(
             [
                 {
-                    "context_labels": ["OpenKeepsake"],
-                    "display_context": "OpenKeepsake",
+                    "context_labels": ["OpenRelix"],
+                    "display_context": "OpenRelix",
                 }
             ],
             [
                 {
-                    "context_labels": ["OpenKeepsake"],
-                    "display_context": "OpenKeepsake",
+                    "context_labels": ["OpenRelix"],
+                    "display_context": "OpenRelix",
                 },
                 {
                     "context_labels": ["Android App"],
@@ -970,7 +996,7 @@ class NightlyLogicTests(unittest.TestCase):
 
         self.assertEqual(comparison["shared_context_count"], 1)
         self.assertIn("主题项 1 条", comparison["note"])
-        self.assertIn("共享上下文 OpenKeepsake", comparison["note"])
+        self.assertIn("共享上下文 OpenRelix", comparison["note"])
 
     def test_codex_native_memory_comparison_localizes_generated_shared_contexts_in_english(self):
         comparison = build_overview.build_codex_native_memory_comparison(
@@ -1178,6 +1204,30 @@ class NightlyLogicTests(unittest.TestCase):
         self.assertEqual(parsed["counts"]["source_error"], "UnicodeDecodeError")
         self.assertIn("无法读取 custom-codex/memories/memory_summary.md", comparison["note"])
 
+    def test_invalid_utf8_personal_memory_summary_usage_fails_closed(self):
+        with TemporaryDirectory() as tmpdir:
+            summary_path = Path(tmpdir) / "memory_summary.md"
+            summary_path.write_bytes(b"\xff\xfe\xfa")
+
+            usage = build_overview.build_personal_memory_token_usage(
+                [
+                    {
+                        "bucket": "durable",
+                        "memory_type": "semantic",
+                        "priority": "high",
+                        "display_title": "A",
+                        "display_value_note": "compact note",
+                    }
+                ],
+                "integrated",
+                memory_summary_path=summary_path,
+                memory_summary_budget=asset_runtime.memory_summary_budget_from_max(5000),
+            )
+
+        self.assertTrue(usage["enabled"])
+        self.assertGreater(usage["estimated_context_item_count"], 0)
+        self.assertIn("约", usage["mode_note_zh"])
+
     def test_codex_native_memory_summary_exists_false_return_still_reads_file(self):
         with TemporaryDirectory() as tmpdir:
             tmp = Path(tmpdir)
@@ -1305,7 +1355,7 @@ class NightlyLogicTests(unittest.TestCase):
         sample_index = """# Task Group: Local Codex personal asset system, genericization, and LaunchAgent runtime
 
 scope: Asset dashboard and local memory runtime.
-applies_to: cwd=/tmp/OpenKeepsake
+applies_to: cwd=/tmp/OpenRelix
 
 ## Task 1: Build overview
 
@@ -1315,7 +1365,7 @@ applies_to: cwd=/tmp/OpenKeepsake
 
 ### keywords
 
-- OpenKeepsake, dashboard, memory
+- OpenRelix, dashboard, memory
 """
 
         with TemporaryDirectory() as tmpdir:
@@ -1329,7 +1379,7 @@ applies_to: cwd=/tmp/OpenKeepsake
         self.assertEqual(len(index_stats["task_groups"]), 1)
         row = index_stats["task_groups"][0]
         self.assertEqual(row["title"], "Local Codex personal asset system, genericization, and LaunchAgent runtime")
-        self.assertEqual(row["display_title"], "本地 OpenKeepsake 系统、通用化与 LaunchAgent 运行时")
+        self.assertEqual(row["display_title"], "本地 OpenRelix 系统、通用化与 LaunchAgent 运行时")
         self.assertIn("Asset dashboard", row["body"])
         self.assertIn("用户级个人资产系统", row["display_body"])
         self.assertIn("Asset dashboard", row["display_body_en"])
@@ -1459,7 +1509,7 @@ applies_to: cwd=/tmp/OpenKeepsake
                 "title": "Native | [demo](https://example.invalid) <b> `memory`",
                 "updated_at_display": "2026-04-26",
                 "context_labels": ["AI | Personal Assets"],
-                "display_context": "OpenKeepsake",
+                "display_context": "OpenRelix",
                 "value_note": "Demo | value note.",
             }
         ]
@@ -1468,8 +1518,8 @@ applies_to: cwd=/tmp/OpenKeepsake
                 {
                     "title": "Extra native memory {}".format(index),
                     "updated_at_display": "2026-04-26",
-                    "context_labels": ["OpenKeepsake"],
-                    "display_context": "OpenKeepsake",
+                    "context_labels": ["OpenRelix"],
+                    "display_context": "OpenRelix",
                     "value_note": "Extra value note.",
                 }
             )
@@ -1546,10 +1596,10 @@ applies_to: cwd=/tmp/OpenKeepsake
                 "codex_native_memory": [
                     {
                         "title": "Local Codex personal asset system, genericization, and LaunchAgent runtime",
-                        "display_title": "本地 OpenKeepsake 系统、通用化与 LaunchAgent 运行时",
+                        "display_title": "本地 OpenRelix 系统、通用化与 LaunchAgent 运行时",
                         "updated_at_display": "2026-04-26",
-                        "context_labels": ["OpenKeepsake"],
-                        "display_context": "OpenKeepsake",
+                        "context_labels": ["OpenRelix"],
+                        "display_context": "OpenRelix",
                         "value_note": "English note.",
                         "display_value_note": "中文摘要。",
                     }
@@ -1559,9 +1609,85 @@ applies_to: cwd=/tmp/OpenKeepsake
             }
         )
 
-        self.assertIn("本地 OpenKeepsake 系统、通用化与 LaunchAgent 运行时", markdown)
+        self.assertIn("本地 OpenRelix 系统、通用化与 LaunchAgent 运行时", markdown)
         self.assertIn("中文摘要", markdown)
         self.assertNotIn("English note", markdown)
+
+    def test_summary_term_views_default_to_today_with_three_ranges(self):
+        assets = [
+            {
+                "title": "今日资产 OpenRelix",
+                "updated_at": "2026-04-28T10:00:00+08:00",
+                "created_at": "2026-04-28T10:00:00+08:00",
+            },
+            {
+                "title": "旧资产 Douyin",
+                "updated_at": "2026-04-26T10:00:00+08:00",
+                "created_at": "2026-04-26T10:00:00+08:00",
+            },
+        ]
+        reviews = [
+            {
+                "date": "2026-04-27",
+                "task": "近三日复盘 subreview",
+                "domain": "",
+                "repo": "",
+                "text": "",
+            }
+        ]
+        usage_events = [
+            {
+                "date": "2026-04-22",
+                "task": "七日使用 ASR",
+                "note": "",
+                "asset_id": "asr-playbook",
+            }
+        ]
+        nightly_candidates = [
+            {
+                "date": "2026-04-28",
+                "stage": "final",
+                "keywords": ["OpenRelix", "今日特性"],
+                "window_summaries": [],
+            },
+            {
+                "date": "2026-04-26",
+                "stage": "final",
+                "keywords": ["Douyin"],
+                "window_summaries": [],
+            },
+        ]
+
+        with mock.patch.object(
+            build_overview,
+            "build_context_window_overview_for_days",
+        ) as mock_window_overview:
+            mock_window_overview.side_effect = lambda anchor, days, **_: {
+                "source_dates": build_overview.date_strings_ending_at(anchor, days),
+                "window_count": 0,
+                "windows": [],
+            }
+            views = build_overview.build_summary_term_views(
+                assets,
+                reviews,
+                usage_events,
+                nightly_candidates,
+                "2026-04-28",
+                latest_nightly=nightly_candidates[0],
+            )
+
+        self.assertEqual([view["days"] for view in views], [1, 3, 7])
+        self.assertEqual(build_overview.default_summary_term_view(views)["days"], 1)
+
+        today_terms = {row["label"] for row in views[0]["terms"]}
+        three_day_terms = {row["label"] for row in views[1]["terms"]}
+        seven_day_terms = {row["label"] for row in views[2]["terms"]}
+
+        self.assertIn("OpenRelix", today_terms)
+        self.assertNotIn("Douyin", today_terms)
+        self.assertIn("Douyin", three_day_terms)
+        self.assertIn("subreview", three_day_terms)
+        self.assertIn("ASR", seven_day_terms)
 
     def test_build_markdown_zh_empty_mix_rows_use_chinese_placeholder(self):
         markdown = build_overview.build_markdown(
@@ -1755,6 +1881,153 @@ applies_to: cwd=/tmp/OpenKeepsake
 
         self.assertEqual(data["nightly_memory_views"]["session"][0]["created_at"], "2026-04-26")
 
+    def test_memory_registry_sorts_durable_items_by_7_day_usage_frequency(self):
+        usage_window_overview = {
+            "date": "2026-04-28",
+            "days": 7,
+            "windows": [
+                {
+                    "date": "2026-04-28",
+                    "window_id": "w-runtime",
+                    "project_label": "OpenRelix",
+                    "cwd_display": "OpenRelix",
+                    "question_summary": "安装语言需要写入 runtime config",
+                    "main_takeaway": "panel 默认语言要和 runtime config 端到端一致",
+                    "keywords": ["runtime config", "panel", "语言"],
+                },
+                {
+                    "date": "2026-04-27",
+                    "window_id": "w-panel",
+                    "project_label": "OpenRelix",
+                    "cwd_display": "OpenRelix",
+                    "question_summary": "面板默认语言和安装语言不一致",
+                    "main_takeaway": "重新按 runtime config 刷新 overview 和 panel",
+                    "keywords": ["overview", "panel"],
+                },
+                {
+                    "date": "2026-04-26",
+                    "window_id": "w-unrelated",
+                    "project_label": "Douyin",
+                    "cwd_display": "Douyin",
+                    "question_summary": "ScanCamera ASR log_id 排查",
+                    "main_takeaway": "只保留必要 AB 读取",
+                    "keywords": ["ASR", "log_id"],
+                },
+            ],
+        }
+        memory_items = [
+            {
+                "date": "2026-04-28",
+                "source": "nightly_codex",
+                "bucket": "durable",
+                "title": "商标材料归档前先确认发布边界",
+                "memory_type": "semantic",
+                "priority": "medium",
+                "value_note": "商标文档与发布材料要分开归档。",
+                "source_window_ids": [],
+                "keywords": ["商标", "发布"],
+            },
+            {
+                "date": "2026-04-28",
+                "source": "nightly_codex",
+                "bucket": "durable",
+                "title": "安装语言应写入 runtime config 并校验 panel 一致",
+                "memory_type": "procedural",
+                "priority": "high",
+                "value_note": "安装语言、runtime config、overview 与 panel 默认语言要保持端到端一致。",
+                "source_window_ids": ["w-runtime"],
+                "keywords": ["runtime config", "panel", "语言"],
+            },
+        ]
+
+        registry = build_overview.build_memory_registry(
+            memory_items,
+            usage_window_overview,
+            usage_window_overview=usage_window_overview,
+        )
+        durable_rows = [row for row in registry["rows"] if row["bucket"] == "durable"]
+
+        self.assertEqual(
+            durable_rows[0]["title"],
+            "安装语言应写入 runtime config 并校验 panel 一致",
+        )
+        self.assertGreater(durable_rows[0]["usage_frequency"], durable_rows[1]["usage_frequency"])
+        self.assertGreaterEqual(durable_rows[0]["usage_frequency_direct_window_count"], 1)
+        self.assertGreaterEqual(durable_rows[0]["usage_frequency_estimated_window_count"], 1)
+        self.assertEqual(durable_rows[0]["usage_frequency_window_days"], 7)
+
+    def test_memory_usage_frequency_ignores_occurrences_outside_7_day_window(self):
+        usage_window_overview = {"date": "2026-04-28", "days": 7, "windows": []}
+
+        stale = build_overview.build_memory_usage_frequency(
+            {"title": "stale memory", "value_note": "old repeated item"},
+            usage_window_overview,
+            recent_occurrence_dates=["2026-04-01", "2026-04-02", "2026-04-03"],
+        )
+        recent = build_overview.build_memory_usage_frequency(
+            {"title": "recent memory", "value_note": "recent repeated item"},
+            usage_window_overview,
+            recent_occurrence_dates=["2026-04-28", "2026-04-27", "2026-04-20"],
+        )
+
+        self.assertEqual(stale["usage_frequency"], 0)
+        self.assertEqual(recent["usage_frequency"], 0.9)
+
+    def test_memory_registry_sorts_session_items_by_recent_usage_not_lifetime_occurrences(self):
+        usage_window_overview = {
+            "date": "2026-04-28",
+            "days": 7,
+            "windows": [
+                {
+                    "date": "2026-04-28",
+                    "window_id": "w-session",
+                    "project_label": "OpenRelix",
+                    "cwd_display": "OpenRelix",
+                    "question_summary": "refresh learn-memory should forward learn window days",
+                    "main_takeaway": "refresh --learn-memory calls the nightly pipeline explicitly",
+                    "keywords": ["learn-memory", "refresh"],
+                }
+            ],
+        }
+        memory_items = [
+            {
+                "date": "2026-04-{:02d}".format(day),
+                "source": "nightly_codex",
+                "bucket": "session",
+                "title": "旧任务反复出现但近期未使用",
+                "memory_type": "task",
+                "priority": "medium",
+                "value_note": "旧任务重复很多次。",
+                "source_window_ids": [],
+                "keywords": ["旧任务"],
+            }
+            for day in range(1, 11)
+        ]
+        memory_items.append(
+            {
+                "date": "2026-04-28",
+                "source": "nightly_codex",
+                "bucket": "session",
+                "title": "refresh learn-memory 参数转发",
+                "memory_type": "task",
+                "priority": "high",
+                "value_note": "refresh --learn-memory 应显式调用 nightly pipeline 并传递窗口天数。",
+                "source_window_ids": ["w-session"],
+                "keywords": ["learn-memory", "refresh"],
+            }
+        )
+
+        registry = build_overview.build_memory_registry(
+            memory_items,
+            usage_window_overview,
+            usage_window_overview=usage_window_overview,
+        )
+        session_rows = [row for row in registry["rows"] if row["bucket"] == "session"]
+
+        self.assertEqual(session_rows[0]["title"], "refresh learn-memory 参数转发")
+        self.assertGreater(session_rows[0]["usage_frequency"], session_rows[1]["usage_frequency"])
+        self.assertEqual(session_rows[1]["usage_frequency"], 0)
+
     def test_markdown_table_cell_is_table_safe(self):
         cell = build_overview.markdown_table_cell("a|b\n[c](https://example.invalid) <tag> `code`")
 
@@ -1800,15 +2073,15 @@ applies_to: cwd=/tmp/OpenKeepsake
                 "codex_native_memory": [
                     {
                         "title": "Local Codex personal asset system, genericization, and LaunchAgent runtime",
-                        "display_title": "本地 OpenKeepsake 系统、通用化与 LaunchAgent 运行时",
+                        "display_title": "本地 OpenRelix 系统、通用化与 LaunchAgent 运行时",
                         "display_bucket": "Codex 原生",
                         "display_memory_type": "语义",
                         "display_priority": "中优先",
                         "created_at_display": "2026-04-26",
                         "updated_at_display": "2026-04-26",
                         "occurrence_label": "原生归档",
-                        "context_labels": ["OpenKeepsake"],
-                        "display_context": "OpenKeepsake",
+                        "context_labels": ["OpenRelix"],
+                        "display_context": "OpenRelix",
                         "value_note": "Demo value note.",
                         "display_value_note": "中文卡片摘要。",
                         "source_windows": [],
@@ -1850,7 +2123,7 @@ applies_to: cwd=/tmp/OpenKeepsake
         self.assertIn("Codex 原生记忆-任务组", html)
         self.assertNotIn("memory-card-native", html)
         self.assertNotIn("memory-native-strip", html)
-        self.assertIn("本地 OpenKeepsake 系统、通用化与 LaunchAgent 运行时", html)
+        self.assertIn("本地 OpenRelix 系统、通用化与 LaunchAgent 运行时", html)
         self.assertIn("中文卡片摘要", html)
         self.assertIn("Demo value note", html)
         self.assertIn('data-lang-only="en"', html)
@@ -1874,7 +2147,11 @@ applies_to: cwd=/tmp/OpenKeepsake
         self.assertIn("1 task; 1 source", html)
         self.assertNotIn("1 tasks; 1 sources", html)
         self.assertIn(
-            '<div class="review-submeta"><span data-lang-only="zh">首次添加 2026-04-26 · 最近更新 2026-04-26</span><span data-lang-only="en">First added 2026-04-26 · Updated 2026-04-26</span></div>',
+            '<div class="review-submeta memory-card-submeta"><span data-lang-only="zh"><span class="memory-card-submeta-line">首次添加 2026-04-26</span><span class="memory-card-submeta-line">最近更新 2026-04-26</span>',
+            html,
+        )
+        self.assertIn(
+            '<span data-lang-only="en"><span class="memory-card-submeta-line">First added 2026-04-26</span><span class="memory-card-submeta-line">Updated 2026-04-26</span>',
             html,
         )
         self.assertIn(
@@ -1892,6 +2169,7 @@ applies_to: cwd=/tmp/OpenKeepsake
         self.assertIn("Preference 1", html)
 
     def test_personal_memory_token_widget_shows_bounded_context_budget(self):
+        test_summary_budget = asset_runtime.memory_summary_budget_from_max(5000)
         usage = build_overview.build_personal_memory_token_usage(
             [
                 {
@@ -1901,11 +2179,12 @@ applies_to: cwd=/tmp/OpenKeepsake
                     "display_priority": "高优先",
                     "display_title": "面板区块重叠优先检查顶层 section 间距",
                     "display_value_note": "当面板看起来像模块重叠时，先排查顶层 section 的垂直间距与容器 margin 归属。",
-                    "display_context": "OpenKeepsake",
-                    "context_labels": ["OpenKeepsake"],
+                    "display_context": "OpenRelix",
+                    "context_labels": ["OpenRelix"],
                 }
             ],
-            "codex-context",
+            "integrated",
+            memory_summary_budget=test_summary_budget,
         )
 
         self.assertTrue(usage["enabled"])
@@ -1913,15 +2192,63 @@ applies_to: cwd=/tmp/OpenKeepsake
         self.assertGreater(usage["estimated_tokens"], 20)
         self.assertEqual(usage["max_tokens"], 5000)
         self.assertEqual(usage["max_tokens_display"], "5K")
-        self.assertEqual(usage["value_display_zh"], "≤ 5K")
-        self.assertIn("Codex context", usage["mode_label"])
-        self.assertIn("1 条留本地，最多 1 条进摘要", usage["mode_note_zh"])
+        self.assertTrue(usage["value_display_zh"].startswith("≈ "))
+        self.assertLess(usage["meter_percent"], 10)
+        self.assertIn("Integrated", usage["mode_label"])
+        self.assertIn("1 条留本地，约 1 条进摘要（候选不设条数上限）", usage["mode_note_zh"])
         widget = build_overview.make_personal_memory_token_widget(usage)
         self.assertIn("memory-token-widget", widget)
         self.assertIn("Codex context 预算", widget)
-        self.assertIn("≤ 5K", widget)
+        self.assertIn("≈ ", widget)
         self.assertIn("摘要目标 4.2K / 警戒 4.6K / 上限 5K", widget)
-        self.assertIn("1 条留本地，最多 1 条进摘要", widget)
+        self.assertIn("1 条留本地，约 1 条进摘要（候选不设条数上限）", widget)
+
+        many_usage = build_overview.build_personal_memory_token_usage(
+            [
+                {
+                    "bucket": "durable" if index % 2 == 0 else "session",
+                    "memory_type": "semantic",
+                    "priority": "medium",
+                    "display_title": "记忆 {}".format(index),
+                    "display_value_note": "压缩后的摘要说明 {}".format(index),
+                }
+                for index in range(20)
+            ],
+            "integrated",
+            memory_summary_budget=test_summary_budget,
+        )
+        self.assertEqual(many_usage["context_item_limit"], 20)
+        self.assertEqual(many_usage["estimated_context_item_count"], 20)
+        self.assertIn("20 条留本地，约 20 条进摘要（候选不设条数上限）", many_usage["mode_note_zh"])
+
+        with TemporaryDirectory() as tmpdir:
+            summary_path = Path(tmpdir) / "memory_summary.md"
+            summary_path.write_text(
+                "## What's in Memory\n\n"
+                "### Local personal memory registry\n\n"
+                "- [durable/semantic/high] A - compact note\n"
+                "- [session/task/medium] B - compact note\n"
+                "\n### Other\n\n- C\n",
+                encoding="utf-8",
+            )
+            actual_usage = build_overview.build_personal_memory_token_usage(
+                many_usage_rows := [
+                    {
+                        "bucket": "durable",
+                        "memory_type": "semantic",
+                        "priority": "high",
+                        "display_title": "A",
+                        "display_value_note": "compact note",
+                    }
+                    for _ in range(8)
+                ],
+                "integrated",
+                memory_summary_path=summary_path,
+                memory_summary_budget=test_summary_budget,
+            )
+        self.assertEqual(len(many_usage_rows), 8)
+        self.assertEqual(actual_usage["estimated_context_item_count"], 2)
+        self.assertIn("8 条留本地，实际 2 条进摘要", actual_usage["mode_note_zh"])
 
         disabled = build_overview.build_personal_memory_token_usage([], "off")
         self.assertFalse(disabled["enabled"])
@@ -1976,7 +2303,7 @@ applies_to: cwd=/tmp/OpenKeepsake
                     "display_title": "原生记忆",
                     "value_note": "Native note.",
                     "display_value_note": "原生摘要。",
-                    "context_labels": ["OpenKeepsake", "个人资产系统", "Codex 本地环境"],
+                    "context_labels": ["OpenRelix", "个人资产系统", "Codex 本地环境"],
                     "bucket": "native",
                     "memory_type": "semantic",
                     "priority": "medium",
@@ -1984,7 +2311,7 @@ applies_to: cwd=/tmp/OpenKeepsake
             ]
         )
 
-        self.assertIn('<span class="memory-chip">OpenKeepsake</span>', cards_html)
+        self.assertIn('<span class="memory-chip">OpenRelix</span>', cards_html)
         self.assertIn(
             '<span class="memory-chip"><span data-lang-only="zh">个人资产系统</span><span data-lang-only="en">Personal assets system</span></span>',
             cards_html,
@@ -1993,6 +2320,88 @@ applies_to: cwd=/tmp/OpenKeepsake
             '<span class="memory-chip"><span data-lang-only="zh">Codex 本地环境</span><span data-lang-only="en">Codex local environment</span></span>',
             cards_html,
         )
+
+    def test_grouped_memory_cards_can_hide_redundant_bucket_meta(self):
+        row = {
+            "title": "Stable memory",
+            "display_title": "稳定记忆",
+            "value_note": "Stable note.",
+            "display_value_note": "稳定摘要。",
+            "display_bucket": "个人资产-长期记忆",
+            "display_memory_type": "语义",
+            "display_priority": "高优先",
+            "bucket": "durable",
+            "memory_type": "semantic",
+            "priority": "high",
+        }
+
+        cards_html = build_overview.make_memory_cards([row], include_bucket_meta=False)
+
+        self.assertNotIn("个人资产-长期记忆", cards_html)
+        self.assertNotIn("Personal Asset - Long-term Memory", cards_html)
+        self.assertIn("语义 · 高优先", cards_html)
+        self.assertIn("Semantic · High Priority", cards_html)
+
+        default_cards_html = build_overview.make_memory_cards([row])
+        self.assertIn("个人资产-长期记忆", default_cards_html)
+        self.assertIn("Personal Asset - Long-term Memory", default_cards_html)
+
+    def test_memory_type_grouped_cards_group_by_type(self):
+        cards_html = build_overview.make_memory_type_grouped_cards(
+            [
+                {
+                    "title": "Semantic memory",
+                    "display_title": "语义记忆",
+                    "value_note": "Semantic note.",
+                    "display_value_note": "语义摘要。",
+                    "memory_type": "semantic",
+                    "display_memory_type": "语义",
+                    "priority": "medium",
+                    "usage_frequency_sort_key": 1,
+                },
+                {
+                    "title": "Procedure memory",
+                    "display_title": "流程记忆",
+                    "value_note": "Procedure note.",
+                    "display_value_note": "流程摘要。",
+                    "memory_type": "procedural",
+                    "display_memory_type": "流程",
+                    "priority": "high",
+                    "usage_frequency_sort_key": 2,
+                },
+            ],
+            include_bucket_meta=False,
+        )
+
+        self.assertIn('class="memory-type-group"', cards_html)
+        self.assertLess(cards_html.index(">流程<"), cards_html.index(">语义<"))
+        self.assertIn("Procedure", cards_html)
+        self.assertIn("Semantic", cards_html)
+        self.assertNotIn("个人资产-长期记忆", cards_html)
+
+    def test_episodic_memory_type_is_localized(self):
+        self.assertEqual(build_overview.display_memory_type("episodic", language="zh"), "事件记忆")
+        self.assertEqual(build_overview.display_memory_type("episodic", language="en"), "Episodic")
+
+        cards_html = build_overview.make_memory_type_grouped_cards(
+            [
+                {
+                    "title": "Episodic memory",
+                    "display_title": "事件记忆",
+                    "value_note": "Event note.",
+                    "display_value_note": "事件摘要。",
+                    "memory_type": "episodic",
+                    "display_memory_type": "事件记忆",
+                    "priority": "medium",
+                }
+            ],
+            include_bucket_meta=False,
+        )
+
+        self.assertIn(">事件记忆<", cards_html)
+        self.assertIn(">Episodic<", cards_html)
+        self.assertIn("事件记忆 · 中优先", cards_html)
+        self.assertIn("Episodic · Medium Priority", cards_html)
 
     def test_build_html_language_switch_defaults_to_chinese(self):
         html = build_overview.build_html(
@@ -2035,15 +2444,18 @@ applies_to: cwd=/tmp/OpenKeepsake
         self.assertIn('<body data-language="zh" data-theme-choice="system">', html)
         self.assertIn('data-language-option="zh" aria-pressed="true"', html)
         self.assertIn('data-language-option="en" aria-pressed="false"', html)
-        self.assertIn('"OpenKeepsake 工作台": "OpenKeepsake Workbench"', html)
+        self.assertIn('"OpenRelix 工作台": "OpenRelix Workbench"', html)
         self.assertIn(
-            '<span class="hero-brand-line"><span data-lang-only="zh">本地优先的 AI 记忆工作台</span><span data-lang-only="en">Local-first memory workbench for AI agents</span></span>',
+            '<span class="hero-brand-line"><span data-lang-only="zh">你的专属AI记忆珍藏</span><span data-lang-only="en">Your personal AI memory keepsake</span></span>',
             html,
         )
         self.assertIn("applyLanguage(defaultLanguage);", html)
         self.assertIn("refreshStatusLanguage();", html)
         self.assertIn('setStatus("live", "", "live_refreshed");', html)
         self.assertIn("window.localStorage", html)
+        self.assertNotIn("side-nav-sublabel", html)
+        self.assertIn("personal-memory-durable-section", html)
+        self.assertIn("codex-native-topic-section", html)
 
     def test_build_html_language_switch_respects_english_default(self):
         html = build_overview.build_html(
@@ -2370,7 +2782,8 @@ applies_to: cwd=/tmp/OpenKeepsake
         self.assertIn("{session_memory_header}", memory_stack)
         self.assertNotIn('class="grid two-up"', memory_stack)
         self.assertIn("{low_priority_memory_header}", main_template)
-        self.assertIn("{memory_registry_header}", main_template)
+        self.assertNotIn("{memory_registry_header}", main_template)
+        self.assertNotIn("{memory_registry_cards}", main_template)
 
         stack_css = source[source.index(".memory-stack {{") : source.index(".review-card {{")]
         self.assertIn("grid-template-columns: 1fr;", stack_css)
@@ -2455,7 +2868,7 @@ applies_to: cwd=/tmp/OpenKeepsake
                     "date": "2026-04-27",
                     "lead_text": "今天的高信号主题集中在两块",
                     "detail_parts": ["结论已经沉淀"],
-                    "context_labels": ["OpenKeepsake"],
+                    "context_labels": ["OpenRelix"],
                     "stats": [
                         {"label": "窗口", "value": 15},
                         {"label": "长期记忆", "value": 1},
@@ -2495,6 +2908,142 @@ applies_to: cwd=/tmp/OpenKeepsake
         self.assertIn('aria-label="选择窗口日期"', html)
         self.assertIn('value="2026-04-26" selected>2026/04/26</option>', html)
 
+    def test_window_cards_show_activity_source_instead_of_repeating_workspace(self):
+        html = build_overview.make_window_summary_cards(
+            {
+                "date": "2026-04-28",
+                "windows": [
+                    {
+                        "window_id": "w1",
+                        "display_index": 1,
+                        "cwd": "/tmp/OpenRelix",
+                        "cwd_display": "OpenRelix",
+                        "project_label": "OpenRelix",
+                        "activity_source": "app-server",
+                        "thread_source": "cli",
+                        "activity_source_label": "采集：Codex app-server（预览） · 线程来源：cli",
+                        "question_count": 1,
+                        "conclusion_count": 1,
+                        "question_summary": "问题",
+                        "main_takeaway": "结论",
+                        "keywords": [],
+                        "latest_activity_display": "刚刚",
+                        "started_at_display": "刚刚",
+                        "recent_prompts": [],
+                        "recent_conclusions": [],
+                    }
+                ],
+            }
+        )
+
+        self.assertIn("OpenRelix · 窗口 1", html)
+        self.assertIn("采集：Codex app-server（预览） · 线程来源：cli", html)
+        self.assertNotIn('<p class="window-card-path"><a', html)
+
+    def test_window_overview_display_index_counts_down_from_latest_window(self):
+        old_raw_daily_dir = build_overview.RAW_DAILY_DIR
+        try:
+            with TemporaryDirectory() as tmpdir:
+                raw_daily_dir = Path(tmpdir)
+                raw_daily_dir.mkdir(parents=True, exist_ok=True)
+                build_overview.RAW_DAILY_DIR = raw_daily_dir
+                (raw_daily_dir / "2026-04-28.json").write_text(
+                    json.dumps(
+                        {
+                            "date": "2026-04-28",
+                            "window_count": 2,
+                            "windows": [
+                                {
+                                    "window_id": "older",
+                                    "cwd": "/tmp/OpenRelix",
+                                    "started_at": "2026-04-28T09:00:00+08:00",
+                                    "prompt_count": 1,
+                                    "conclusion_count": 1,
+                                    "prompts": [
+                                        {
+                                            "local_time": "2026-04-28T09:01:00+08:00",
+                                            "text": "旧窗口",
+                                        }
+                                    ],
+                                    "conclusions": [
+                                        {
+                                            "completed_at": "2026-04-28T09:02:00+08:00",
+                                            "text": "旧结论",
+                                        }
+                                    ],
+                                },
+                                {
+                                    "window_id": "newer",
+                                    "cwd": "/tmp/OpenRelix",
+                                    "started_at": "2026-04-28T10:00:00+08:00",
+                                    "prompt_count": 1,
+                                    "conclusion_count": 1,
+                                    "prompts": [
+                                        {
+                                            "local_time": "2026-04-28T10:01:00+08:00",
+                                            "text": "新窗口",
+                                        }
+                                    ],
+                                    "conclusions": [
+                                        {
+                                            "completed_at": "2026-04-28T10:02:00+08:00",
+                                            "text": "新结论",
+                                        }
+                                    ],
+                                },
+                            ],
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+
+                overview = build_overview.build_window_overview(
+                    None,
+                    target_date="2026-04-28",
+                )
+        finally:
+            build_overview.RAW_DAILY_DIR = old_raw_daily_dir
+
+        self.assertEqual(
+            [(item["window_id"], item["display_index"]) for item in overview["windows"]],
+            [("newer", 2), ("older", 1)],
+        )
+
+    def test_english_window_cards_localize_source_and_chinese_summaries(self):
+        html = build_overview.make_window_summary_cards(
+            {
+                "date": "2026-04-28",
+                "windows": [
+                    {
+                        "window_id": "w2",
+                        "display_index": 2,
+                        "cwd": "/tmp/OpenRelix",
+                        "cwd_display": "OpenRelix",
+                        "project_label": "OpenRelix",
+                        "activity_source": "app-server",
+                        "thread_source": "cli",
+                        "activity_source_label": "采集：Codex app-server（预览） · 线程来源：cli",
+                        "question_count": 1,
+                        "conclusion_count": 1,
+                        "question_summary": "窗口编号应该倒序",
+                        "main_takeaway": "英文卡片不应混入中文来源",
+                        "keywords": ["窗口"],
+                        "latest_activity_display": "04-28 16:48",
+                        "started_at_display": "04-28 16:00",
+                        "recent_prompts": [{"time": "04-28 16:01", "text": "窗口编号应该倒序"}],
+                        "recent_conclusions": [{"time": "04-28 16:02", "text": "英文卡片不应混入中文来源"}],
+                    }
+                ],
+            },
+            language="en",
+        )
+
+        self.assertIn("OpenRelix · Window 2", html)
+        self.assertIn("Collection: Codex app-server (preview) · thread source: cli", html)
+        self.assertIn("Takeaway: Window.", html)
+        self.assertIn(">Window<", html)
+        self.assertNotIn("采集：", html)
+
     def test_backfill_dates_parser_accepts_non_contiguous_dates(self):
         args = argparse.Namespace(
             dates="2026-04-24,2026-04-21 2026-04-23",
@@ -2504,21 +3053,21 @@ applies_to: cwd=/tmp/OpenKeepsake
         )
 
         self.assertEqual(
-            okeep.resolve_backfill_dates(args),
+            openrelix.resolve_backfill_dates(args),
             ["2026-04-21", "2026-04-23", "2026-04-24"],
         )
 
-    def test_okeep_mode_updates_runtime_config_without_reinstalling(self):
+    def test_openrelix_mode_updates_runtime_config_without_reinstalling(self):
         with TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             runtime_dir = root / "runtime"
             runtime_dir.mkdir(parents=True)
             codex_home = root / "codex"
-            paths = replace(okeep.PATHS, state_root=root, runtime_dir=runtime_dir, codex_home=codex_home)
+            paths = replace(openrelix.PATHS, state_root=root, runtime_dir=runtime_dir, codex_home=codex_home)
             args = argparse.Namespace(memory_mode="local-only", no_refresh=True, json=True)
 
-            with mock.patch.object(okeep, "PATHS", paths), mock.patch("sys.stdout", new_callable=io.StringIO) as stdout:
-                okeep.command_mode(args)
+            with mock.patch.object(openrelix, "PATHS", paths), mock.patch("sys.stdout", new_callable=io.StringIO) as stdout:
+                openrelix.command_mode(args)
 
             config = json.loads((runtime_dir / "config.json").read_text(encoding="utf-8"))
             self.assertEqual(config["memory_mode"], "local-only")
@@ -2532,9 +3081,303 @@ applies_to: cwd=/tmp/OpenKeepsake
             self.assertTrue(payload["codex_config_updated"])
             self.assertFalse(payload["refreshed"])
 
+    def test_openrelix_config_updates_memory_summary_max_tokens(self):
+        with TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            runtime_dir = root / "runtime"
+            runtime_dir.mkdir(parents=True)
+            paths = replace(openrelix.PATHS, state_root=root, runtime_dir=runtime_dir)
+            args = argparse.Namespace(
+                memory_summary_max_tokens=8000,
+                activity_source=None,
+                read_codex_app=False,
+                no_refresh=True,
+                json=True,
+            )
+
+            with mock.patch.object(openrelix, "PATHS", paths), mock.patch("sys.stdout", new_callable=io.StringIO) as stdout:
+                openrelix.command_config(args)
+
+            config = json.loads((runtime_dir / "config.json").read_text(encoding="utf-8"))
+            self.assertEqual(config["memory_summary_max_tokens"], 8000)
+            payload = json.loads(stdout.getvalue())
+            self.assertEqual(payload["memory_summary_max_tokens"], 8000)
+            self.assertEqual(payload["personal_memory_budget_tokens"], 2400)
+            self.assertFalse(payload["refreshed"])
+
+    def test_openrelix_config_updates_activity_source(self):
+        with TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            runtime_dir = root / "runtime"
+            runtime_dir.mkdir(parents=True)
+            paths = replace(openrelix.PATHS, state_root=root, runtime_dir=runtime_dir)
+            args = argparse.Namespace(
+                memory_summary_max_tokens=None,
+                activity_source=None,
+                read_codex_app=True,
+                no_refresh=True,
+                json=True,
+            )
+
+            with mock.patch.object(openrelix, "PATHS", paths), mock.patch("sys.stdout", new_callable=io.StringIO) as stdout:
+                openrelix.command_config(args)
+
+            config = json.loads((runtime_dir / "config.json").read_text(encoding="utf-8"))
+            self.assertEqual(config["activity_source"], "auto")
+            payload = json.loads(stdout.getvalue())
+            self.assertEqual(payload["activity_source"], "auto")
+            self.assertFalse(payload["refreshed"])
+
+    def test_openrelix_config_rejects_out_of_range_memory_summary_max_tokens(self):
+        with TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            runtime_dir = root / "runtime"
+            runtime_dir.mkdir(parents=True)
+            paths = replace(openrelix.PATHS, state_root=root, runtime_dir=runtime_dir)
+            args = argparse.Namespace(
+                memory_summary_max_tokens=1000,
+                activity_source=None,
+                read_codex_app=False,
+                no_refresh=True,
+                json=True,
+            )
+
+            with mock.patch.object(openrelix, "PATHS", paths):
+                with self.assertRaises(SystemExit) as raised:
+                    openrelix.command_config(args)
+
+            self.assertIn("memory_summary_max_tokens must be between", str(raised.exception))
+            self.assertFalse((runtime_dir / "config.json").exists())
+
+    def test_openrelix_refresh_default_does_not_trigger_learning_pipeline(self):
+        args = argparse.Namespace(
+            learn_memory=False,
+            date="2026-04-28",
+            stage="manual",
+            learn_window_days=7,
+            json=True,
+        )
+        overview = {
+            "generated_at": "2026-04-28T12:00:00+08:00",
+            "summary": {"day_summary": "demo"},
+            "metrics": {"today": 1},
+            "token_usage": {},
+            "nightly": {},
+        }
+        calls = []
+
+        with mock.patch.object(openrelix, "run_checked", side_effect=lambda cmd: calls.append(cmd)), mock.patch.object(
+            openrelix,
+            "load_overview",
+            return_value=overview,
+        ), mock.patch("sys.stdout", new_callable=io.StringIO) as stdout:
+            openrelix.command_refresh(args)
+
+        self.assertEqual(calls, [["/bin/zsh", str(openrelix.REFRESH_SCRIPT)]])
+        payload = json.loads(stdout.getvalue())
+        self.assertFalse(payload["learn_memory"])
+        self.assertEqual(payload["summary"], overview["summary"])
+
+    def test_openrelix_refresh_learn_memory_passes_explicit_learning_args(self):
+        args = argparse.Namespace(
+            learn_memory=True,
+            date="2026-04-28",
+            stage="manual",
+            learn_window_days=7,
+            json=True,
+        )
+        overview = {
+            "generated_at": "2026-04-28T12:00:00+08:00",
+            "summary": {},
+            "metrics": {},
+            "token_usage": {},
+            "nightly": {},
+        }
+        calls = []
+
+        with mock.patch.object(openrelix, "run_checked", side_effect=lambda cmd: calls.append(cmd)), mock.patch.object(
+            openrelix,
+            "load_overview",
+            return_value=overview,
+        ), mock.patch("sys.stdout", new_callable=io.StringIO) as stdout:
+            openrelix.command_refresh(args)
+
+        self.assertEqual(
+            calls,
+            [
+                [
+                    "/bin/zsh",
+                    str(openrelix.REFRESH_SCRIPT),
+                    "--learn-memory",
+                    "--date",
+                    "2026-04-28",
+                    "--stage",
+                    "manual",
+                    "--learn-window-days",
+                    "7",
+                ]
+            ],
+        )
+        payload = json.loads(stdout.getvalue())
+        self.assertTrue(payload["learn_memory"])
+
+    def test_openrelix_refresh_learn_memory_omits_zero_window_arg(self):
+        args = argparse.Namespace(
+            learn_memory=True,
+            date="2026-04-28",
+            stage="manual",
+            learn_window_days=0,
+            json=True,
+        )
+
+        with mock.patch.object(openrelix, "run_checked") as run_checked, mock.patch.object(
+            openrelix,
+            "load_overview",
+            return_value={},
+        ), mock.patch("sys.stdout", new_callable=io.StringIO):
+            openrelix.command_refresh(args)
+
+        run_checked.assert_called_once_with(
+            [
+                "/bin/zsh",
+                str(openrelix.REFRESH_SCRIPT),
+                "--learn-memory",
+                "--date",
+                "2026-04-28",
+                "--stage",
+                "manual",
+            ]
+        )
+
+    def test_refresh_overview_learn_memory_forwards_env_to_nightly_pipeline(self):
+        with TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            scripts_dir = root / "scripts"
+            scripts_dir.mkdir(parents=True)
+            refresh_script = scripts_dir / "refresh_overview.sh"
+            refresh_script.write_text(
+                (ROOT / "scripts" / "refresh_overview.sh").read_text(encoding="utf-8"),
+                encoding="utf-8",
+            )
+            record_path = root / "nightly-args.txt"
+            (scripts_dir / "nightly_pipeline.sh").write_text(
+                "#!/bin/zsh\nprintf '%s\\n' \"$@\" > \"$OPENRELIX_TEST_NIGHTLY_ARGS\"\n",
+                encoding="utf-8",
+            )
+            env = dict(os.environ)
+            env.update(
+                {
+                    "OPENRELIX_REFRESH_LEARN_MEMORY": "1",
+                    "OPENRELIX_REFRESH_DATE": "2026-04-28",
+                    "OPENRELIX_REFRESH_STAGE": "manual",
+                    "OPENRELIX_REFRESH_LEARN_WINDOW_DAYS": "7",
+                    "OPENRELIX_TEST_NIGHTLY_ARGS": str(record_path),
+                }
+            )
+
+            result = subprocess.run(
+                ["/bin/zsh", str(refresh_script)],
+                cwd=str(root),
+                env=env,
+                capture_output=True,
+                text=True,
+            )
+            recorded_args = record_path.read_text(encoding="utf-8").splitlines()
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(
+            recorded_args,
+            ["2026-04-28", "manual", "--learn-window-days", "7"],
+        )
+
+    def test_refresh_overview_learn_memory_can_skip_unchanged_inputs(self):
+        with TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            scripts_dir = root / "scripts"
+            scripts_dir.mkdir(parents=True)
+            refresh_script = scripts_dir / "refresh_overview.sh"
+            refresh_script.write_text(
+                (ROOT / "scripts" / "refresh_overview.sh").read_text(encoding="utf-8"),
+                encoding="utf-8",
+            )
+            record_path = root / "nightly-args.txt"
+            (scripts_dir / "nightly_pipeline.sh").write_text(
+                "#!/bin/zsh\nprintf '%s\\n' \"$@\" > \"$OPENRELIX_TEST_NIGHTLY_ARGS\"\n",
+                encoding="utf-8",
+            )
+            env = dict(os.environ)
+            env.update(
+                {
+                    "OPENRELIX_REFRESH_LEARN_MEMORY": "1",
+                    "OPENRELIX_REFRESH_DATE": "2026-04-28",
+                    "OPENRELIX_REFRESH_STAGE": "preliminary",
+                    "OPENRELIX_REFRESH_LEARN_WINDOW_DAYS": "7",
+                    "OPENRELIX_REFRESH_SKIP_UNCHANGED": "1",
+                    "OPENRELIX_TEST_NIGHTLY_ARGS": str(record_path),
+                }
+            )
+
+            result = subprocess.run(
+                ["/bin/zsh", str(refresh_script)],
+                cwd=str(root),
+                env=env,
+                capture_output=True,
+                text=True,
+            )
+            recorded_args = record_path.read_text(encoding="utf-8").splitlines()
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(
+            recorded_args,
+            ["2026-04-28", "preliminary", "--learn-window-days", "7", "--skip-if-unchanged"],
+        )
+
+    def test_learning_refresh_install_guidance_and_launchd_env_are_present(self):
+        showcase = (ROOT / "docs" / "product-showcase.html").read_text(encoding="utf-8")
+        installer = (ROOT / "install" / "install.sh").read_text(encoding="utf-8")
+        launchd_template = (
+            ROOT / "ops" / "launchd" / "io.github.openrelix.overview-refresh.plist.tmpl"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("npx openrelix install --profile integrated --enable-learning-refresh", showcase)
+        self.assertIn("--enable-learning-refresh", installer)
+        self.assertIn("OPENRELIX_REFRESH_LEARN_MEMORY", launchd_template)
+        self.assertIn("OPENRELIX_REFRESH_LEARN_WINDOW_DAYS", launchd_template)
+        self.assertIn("OPENRELIX_REFRESH_SKIP_UNCHANGED", launchd_template)
+        self.assertIn("OPENRELIX_REFRESH_STAGE", launchd_template)
+        self.assertIn("preliminary", launchd_template)
+
+    def test_learning_refresh_install_avoids_duplicate_immediate_model_runs(self):
+        installer = (ROOT / "install" / "install.sh").read_text(encoding="utf-8")
+        launchd_template = (
+            ROOT / "ops" / "launchd" / "io.github.openrelix.overview-refresh.plist.tmpl"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn('OVERVIEW_RUN_AT_LOAD="<false/>"', installer)
+        self.assertIn('"$(( ENABLE_LEARNING_REFRESH ? 0 : 1 ))"', installer)
+        self.assertIn("首次自动学习会在下一个 30 分钟周期运行", installer)
+        self.assertIn("Automatic learning refresh is enabled", installer)
+        self.assertIn("__OVERVIEW_RUN_AT_LOAD__", launchd_template)
+
+    def test_installer_openrelix_templates_exist_and_use_new_entrypoints(self):
+        expected_templates = [
+            ROOT / "install" / "templates" / "bin" / "openrelix.tmpl",
+            ROOT / "ops" / "launchd" / "io.github.openrelix.overview-refresh.plist.tmpl",
+            ROOT / "ops" / "launchd" / "io.github.openrelix.token-live.plist.tmpl",
+            ROOT / "ops" / "launchd" / "io.github.openrelix.nightly-organize.plist.tmpl",
+            ROOT / "ops" / "launchd" / "io.github.openrelix.nightly-finalize-previous-day.plist.tmpl",
+        ]
+
+        for template in expected_templates:
+            self.assertTrue(template.exists(), str(template))
+
+        command_template = expected_templates[0].read_text(encoding="utf-8")
+        self.assertIn("scripts/openrelix.py", command_template)
+        self.assertIn("OPENRELIX_ACTIVITY_SOURCE", command_template)
+
     def test_learning_window_dates_are_chronological(self):
         self.assertEqual(
-            okeep.learning_window_dates("2026-04-27", 7),
+            openrelix.learning_window_dates("2026-04-27", 7),
             [
                 "2026-04-20",
                 "2026-04-21",
@@ -2575,12 +3418,12 @@ applies_to: cwd=/tmp/OpenKeepsake
             )
 
             with mock.patch.object(
-                okeep,
+                openrelix,
                 "PATHS",
-                replace(okeep.PATHS, raw_daily_dir=raw_daily_dir, codex_home=codex_home),
-            ), mock.patch.object(okeep, "CONSOLIDATED_DAILY_DIR", consolidated_daily_dir):
+                replace(openrelix.PATHS, raw_daily_dir=raw_daily_dir, codex_home=codex_home),
+            ), mock.patch.object(openrelix, "CONSOLIDATED_DAILY_DIR", consolidated_daily_dir):
                 self.assertEqual(
-                    okeep.resolve_learning_backfill_dates("2026-04-27", 7),
+                    openrelix.resolve_learning_backfill_dates("2026-04-27", 7),
                     ["2026-04-20", "2026-04-22", "2026-04-23"],
                 )
 
@@ -2629,20 +3472,20 @@ applies_to: cwd=/tmp/OpenKeepsake
                 learn_window_days=7,
             )
 
-            with mock.patch.object(okeep, "CONSOLIDATED_DAILY_DIR", consolidated_daily_dir), mock.patch.object(
-                okeep,
+            with mock.patch.object(openrelix, "CONSOLIDATED_DAILY_DIR", consolidated_daily_dir), mock.patch.object(
+                openrelix,
                 "resolve_learning_backfill_dates",
                 return_value=["2026-04-20", "2026-04-21"],
             ), mock.patch.object(
-                okeep,
+                openrelix,
                 "run_backfill_dates",
                 side_effect=fake_backfill_dates,
             ), mock.patch.object(
-                okeep,
+                openrelix,
                 "run_checked_with_progress",
                 side_effect=fake_run_checked_with_progress,
             ), mock.patch("sys.stdout", new_callable=io.StringIO):
-                okeep.command_review(args)
+                openrelix.command_review(args)
 
             self.assertEqual(calls[0][0], "backfill")
             self.assertEqual(calls[0][1], ["2026-04-20", "2026-04-21"])
@@ -2664,9 +3507,9 @@ applies_to: cwd=/tmp/OpenKeepsake
             selectable_dates=["2026-04-24"],
             backfill={
                 "missing_dates": ["2026-04-24"],
-                "range_command": "okeep backfill --dates '2026-04-24' --stage final --learn-window-days 7",
+                "range_command": "openrelix backfill --dates '2026-04-24' --stage final --learn-window-days 7",
                 "commands_by_date": {
-                    "2026-04-24": "okeep backfill --from 2026-04-24 --to 2026-04-24 --stage final --learn-window-days 7",
+                    "2026-04-24": "openrelix backfill --from 2026-04-24 --to 2026-04-24 --stage final --learn-window-days 7",
                 },
             },
         )
@@ -2674,7 +3517,7 @@ applies_to: cwd=/tmp/OpenKeepsake
         self.assertIn("2026/04/24 · 未整理", html)
         self.assertIn('id="nightly-backfill-panel"', html)
         self.assertIn("缺少整理结果", html)
-        self.assertIn("okeep backfill --from 2026-04-24 --to 2026-04-24", html)
+        self.assertIn("openrelix backfill --from 2026-04-24 --to 2026-04-24", html)
         self.assertIn("data-backfill-copy=\"single\"", html)
 
     def test_build_html_wires_window_overview_date_views(self):
@@ -2931,7 +3774,7 @@ applies_to: cwd=/tmp/OpenKeepsake
                     "details": [
                         {
                             "title": "AI 资产概览链路",
-                            "meta": "自动化 / 仅个人使用 / OpenKeepsake",
+                            "meta": "自动化 / 仅个人使用 / OpenRelix",
                         },
                         {
                             "title": "夜间整理流水线",
@@ -2959,7 +3802,7 @@ applies_to: cwd=/tmp/OpenKeepsake
                 "domain": "general",
                 "display_type": "技能",
                 "display_scope": "仅个人使用",
-                "display_context": "OpenKeepsake",
+                "display_context": "OpenRelix",
             },
             {
                 "id": "asset-b",
@@ -2982,7 +3825,7 @@ applies_to: cwd=/tmp/OpenKeepsake
         self.assertEqual(rows[0]["label"], "技能")
         self.assertEqual(rows[0]["value"], 2)
         self.assertEqual([item["title"] for item in rows[0]["details"]], ["A Skill", "B Skill"])
-        self.assertIn("OpenKeepsake", rows[0]["details"][0]["meta"])
+        self.assertIn("OpenRelix", rows[0]["details"][0]["meta"])
 
     def test_chinese_language_prefers_localized_asset_and_usage_fields(self):
         asset = {
@@ -3029,12 +3872,12 @@ applies_to: cwd=/tmp/OpenKeepsake
 
         asset_rows = build_overview.make_asset_rows([enriched])
         usage_rows = build_overview.make_usage_rows([enriched_event])
-        self.assertIn("飞书画板 CLI 方法", asset_rows)
-        self.assertIn("已验证本地渲染和 dry-run 上传路径。", asset_rows)
-        self.assertNotIn("Lark Whiteboard CLI Playbook", asset_rows)
+        self.assertIn('<span data-lang-only="zh">飞书画板 CLI 方法</span>', asset_rows)
+        self.assertIn('<span data-lang-only="en">Lark Whiteboard CLI Playbook</span>', asset_rows)
+        self.assertIn('<span data-lang-only="zh">已验证本地渲染和 dry-run 上传路径。</span>', asset_rows)
         self.assertNotIn("English display title", asset_rows)
-        self.assertIn("飞书画板 CLI 能力检查", usage_rows)
-        self.assertNotIn("lark-cli whiteboard-cli capability check", usage_rows)
+        self.assertIn('<span data-lang-only="zh">飞书画板 CLI 能力检查</span>', usage_rows)
+        self.assertIn('<span data-lang-only="en">lark-cli whiteboard-cli capability check</span>', usage_rows)
 
     def test_asset_csv_keeps_canonical_enum_columns_and_display_columns(self):
         data = {
@@ -3092,7 +3935,7 @@ applies_to: cwd=/tmp/OpenKeepsake
             "domain": "general",
             "updated_at": "2026-04-27",
             "tags": ["overview", "panel"],
-            "artifact_paths": ["/tmp/OpenKeepsake/scripts/build_overview.py"],
+            "artifact_paths": ["/tmp/OpenRelix/scripts/build_overview.py"],
             "display_type": "自动化",
         }
         events = [
@@ -3268,6 +4111,122 @@ applies_to: cwd=/tmp/OpenKeepsake
         self.assertEqual(digest["recent_window_learning_windows"], 25)
         self.assertEqual(digest["recent_window_learning_batches"], 2)
 
+    def test_nightly_consolidate_skip_if_unchanged_avoids_model_call(self):
+        old_raw_dir = nightly_consolidate.RAW_DIR
+        old_consolidated_dir = nightly_consolidate.CONSOLIDATED_DIR
+        old_registry_dir = nightly_consolidate.REGISTRY_DIR
+        old_language = nightly_consolidate.LANGUAGE
+        old_memory_mode = nightly_consolidate.MEMORY_MODE
+        old_personal_memory_enabled = nightly_consolidate.PERSONAL_MEMORY_ENABLED
+        try:
+            with TemporaryDirectory() as tmpdir:
+                tmp = Path(tmpdir)
+                nightly_consolidate.RAW_DIR = tmp / "raw"
+                nightly_consolidate.CONSOLIDATED_DIR = tmp / "consolidated" / "daily"
+                nightly_consolidate.REGISTRY_DIR = tmp / "registry"
+                nightly_consolidate.LANGUAGE = "zh"
+                nightly_consolidate.MEMORY_MODE = "integrated"
+                nightly_consolidate.PERSONAL_MEMORY_ENABLED = True
+
+                raw_daily_dir = nightly_consolidate.RAW_DIR / "daily"
+                raw_daily_dir.mkdir(parents=True)
+                nightly_consolidate.REGISTRY_DIR.mkdir(parents=True)
+                summary_dir = nightly_consolidate.CONSOLIDATED_DIR / "2026-04-28"
+                summary_dir.mkdir(parents=True)
+
+                raw_payload = {
+                    "date": "2026-04-28",
+                    "stage": "preliminary",
+                    "generated_at": "2026-04-28T10:00:00+08:00",
+                    "timezone": "CST",
+                    "collection_source": "history",
+                    "collection_errors": [],
+                    "window_count": 1,
+                    "excluded_window_count": 0,
+                    "review_like_window_count": 0,
+                    "prompt_count": 1,
+                    "conclusion_count": 1,
+                    "windows": [
+                        {
+                            "window_id": "w1",
+                            "cwd": "/tmp/openrelix",
+                            "prompt_count": 1,
+                            "conclusion_count": 1,
+                            "prompts": [{"text": "enable learning refresh"}],
+                            "conclusions": [{"text": "skip unchanged scheduled runs"}],
+                        }
+                    ],
+                    "excluded_windows": [],
+                    "review_like_windows": [],
+                }
+                refreshed_raw_payload = dict(raw_payload)
+                refreshed_raw_payload["generated_at"] = "2026-04-28T10:30:00+08:00"
+                refreshed_raw_payload["timezone"] = "Asia/Shanghai"
+                refreshed_raw_payload["collection_errors"] = ["transient app-server unavailable"]
+                (raw_daily_dir / "2026-04-28.json").write_text(
+                    json.dumps(refreshed_raw_payload),
+                    encoding="utf-8",
+                )
+
+                existing_summary = {
+                    "date": "2026-04-28",
+                    "language": "zh",
+                    "stage": "preliminary",
+                    "day_summary": "已整理自动学习刷新。",
+                    "window_summaries": [],
+                    "durable_memories": [],
+                    "session_memories": [],
+                    "low_priority_memories": [],
+                    "keywords": [],
+                    "next_actions": [],
+                }
+                learning_context = nightly_consolidate.build_learning_context(
+                    "2026-04-28",
+                    None,
+                    learn_window_days=7,
+                )
+                existing_summary["learning_input_fingerprint"] = (
+                    nightly_consolidate.build_learning_input_fingerprint(
+                        raw_payload,
+                        learning_context,
+                        7,
+                        language="zh",
+                    )
+                )
+                (summary_dir / "summary.json").write_text(
+                    json.dumps(existing_summary),
+                    encoding="utf-8",
+                )
+
+                with mock.patch.object(nightly_consolidate, "ensure_state_layout"), mock.patch.object(
+                    nightly_consolidate,
+                    "run_codex_consolidation",
+                    side_effect=AssertionError("model should not run"),
+                ) as run_model, mock.patch.object(
+                    sys,
+                    "argv",
+                    [
+                        "nightly_consolidate.py",
+                        "--date",
+                        "2026-04-28",
+                        "--stage",
+                        "preliminary",
+                        "--learn-window-days",
+                        "7",
+                        "--skip-if-unchanged",
+                    ],
+                ):
+                    nightly_consolidate.main()
+
+                run_model.assert_not_called()
+        finally:
+            nightly_consolidate.RAW_DIR = old_raw_dir
+            nightly_consolidate.CONSOLIDATED_DIR = old_consolidated_dir
+            nightly_consolidate.REGISTRY_DIR = old_registry_dir
+            nightly_consolidate.LANGUAGE = old_language
+            nightly_consolidate.MEMORY_MODE = old_memory_mode
+            nightly_consolidate.PERSONAL_MEMORY_ENABLED = old_personal_memory_enabled
+
     def test_format_learning_digest_reports_full_coverage_without_window_details(self):
         summary = {
                 "learning_context_digest": {
@@ -3281,7 +4240,7 @@ applies_to: cwd=/tmp/OpenKeepsake
             }
         }
 
-        line = okeep.format_learning_digest(summary)
+        line = openrelix.format_learning_digest(summary)
 
         self.assertEqual(
             line,

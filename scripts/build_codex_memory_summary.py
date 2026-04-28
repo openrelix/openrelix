@@ -7,7 +7,15 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from asset_runtime import atomic_write_text, ensure_state_layout, get_runtime_language, get_runtime_paths, normalize_language
+from asset_runtime import (
+    atomic_write_text,
+    ensure_state_layout,
+    get_memory_summary_budget,
+    get_runtime_language,
+    get_runtime_paths,
+    memory_summary_budget_from_max,
+    normalize_language,
+)
 
 
 PATHS = get_runtime_paths()
@@ -23,12 +31,14 @@ DEFAULT_PROFILE_TOKENS = 280
 DEFAULT_PREFERENCES_TOKENS = 950
 DEFAULT_TIPS_TOKENS = 950
 DEFAULT_ROUTES_TOKENS = 1250
-DEFAULT_PERSONAL_MEMORY_TOKENS = 750
+DEFAULT_PERSONAL_MEMORY_TOKENS = 1500
 DEFAULT_MAX_PREFERENCES = 10
 DEFAULT_MAX_TIPS = 8
 DEFAULT_MAX_ROUTE_ITEMS = 10
 DEFAULT_MAX_ROUTE_KEYWORDS = 4
-DEFAULT_MAX_PERSONAL_MEMORY_ITEMS = 8
+DEFAULT_MAX_PERSONAL_MEMORY_ITEMS = 0
+PERSONAL_MEMORY_TITLE_LIMIT = 86
+PERSONAL_MEMORY_NOTE_LIMIT = 110
 
 SECTION_PREFERENCE = "User preferences"
 SECTION_TIPS = "General Tips"
@@ -97,19 +107,24 @@ def parse_args():
     parser.add_argument("--memory-index", default=str(DEFAULT_MEMORY_INDEX))
     parser.add_argument("--memory-summary", default=str(DEFAULT_MEMORY_SUMMARY))
     parser.add_argument("--personal-memory-registry", default=str(DEFAULT_PERSONAL_MEMORY_REGISTRY))
-    parser.add_argument("--target-tokens", type=int, default=DEFAULT_TARGET_TOKENS)
-    parser.add_argument("--warn-tokens", type=int, default=DEFAULT_WARN_TOKENS)
-    parser.add_argument("--max-tokens", type=int, default=DEFAULT_MAX_TOKENS)
+    parser.add_argument("--target-tokens", type=int)
+    parser.add_argument("--warn-tokens", type=int)
+    parser.add_argument("--max-tokens", type=int)
     parser.add_argument("--profile-tokens", type=int, default=DEFAULT_PROFILE_TOKENS)
     parser.add_argument("--preferences-tokens", type=int, default=DEFAULT_PREFERENCES_TOKENS)
     parser.add_argument("--tips-tokens", type=int, default=DEFAULT_TIPS_TOKENS)
     parser.add_argument("--routes-tokens", type=int, default=DEFAULT_ROUTES_TOKENS)
-    parser.add_argument("--personal-memory-tokens", type=int, default=DEFAULT_PERSONAL_MEMORY_TOKENS)
+    parser.add_argument("--personal-memory-tokens", type=int)
     parser.add_argument("--max-preferences", type=int, default=DEFAULT_MAX_PREFERENCES)
     parser.add_argument("--max-tips", type=int, default=DEFAULT_MAX_TIPS)
     parser.add_argument("--max-route-items", type=int, default=DEFAULT_MAX_ROUTE_ITEMS)
     parser.add_argument("--max-route-keywords", type=int, default=DEFAULT_MAX_ROUTE_KEYWORDS)
-    parser.add_argument("--max-personal-memory-items", type=int, default=DEFAULT_MAX_PERSONAL_MEMORY_ITEMS)
+    parser.add_argument(
+        "--max-personal-memory-items",
+        type=int,
+        default=DEFAULT_MAX_PERSONAL_MEMORY_ITEMS,
+        help="Maximum personal memory items to consider. Use 0 for no item cap; token budget still applies.",
+    )
     parser.add_argument("--no-personal-memory", action="store_true")
     parser.add_argument("--print-only", action="store_true")
     return parser.parse_args()
@@ -554,13 +569,13 @@ def classify_route_heading(group):
         return CROSS_SCOPE_ROUTE_HEADING
     if (
         ("repo/" in combined or "project" in combined or "android" in combined)
-        and ("openkeepsake" in combined or "personal asset" in combined)
+        and ("openrelix" in combined or "personal asset" in combined)
         and ("cwd=" in combined or "user-level codex" in combined)
     ):
         return CROSS_SCOPE_ROUTE_HEADING
     if "local codex state under ~/.codex" in combined or "user-level codex" in combined:
         return PERSONAL_ASSET_ROUTE_HEADING
-    if "openkeepsake" in combined or "personal asset" in combined:
+    if "openrelix" in combined or "personal asset" in combined:
         return PERSONAL_ASSET_ROUTE_HEADING
     if "android" in combined or "gradle" in combined or "kotlin" in combined or "java" in combined:
         return ANDROID_PROJECT_ROUTE_HEADING
@@ -662,55 +677,51 @@ def build_route_lines(groups, token_budget, max_items, max_keywords):
 
 
 def build_personal_memory_lines(items, token_budget, max_items):
-    if not items or token_budget <= 0 or max_items <= 0:
+    if not items or token_budget <= 0:
         return [], 0, "heuristic"
 
     rendered = ["### Local personal memory registry", ""]
     heading_tokens, estimator = estimate_tokens("\n".join(rendered))
     used_tokens = heading_tokens
     item_count = 0
+    has_item_cap = max_items > 0
 
     for item in items:
-        if item_count >= max_items:
+        if has_item_cap and item_count >= max_items:
             break
 
-        keywords = ", ".join(item.keywords[:4])
-        title_line = clip_text(item.title, 140)
-        if keywords:
-            title_line = "{}: {}".format(title_line, keywords)
-        desc = clip_text(item.value_note, 180)
-        learning = "bucket={}, type={}, priority={}".format(
+        title = clip_text(item.title, PERSONAL_MEMORY_TITLE_LIMIT)
+        note = clip_text(item.value_note, PERSONAL_MEMORY_NOTE_LIMIT)
+        compact_meta = "{}/{}/{}".format(
             item.bucket or "unknown",
             item.memory_type or "semantic",
             item.priority or "medium",
         )
-        if item.updated_at:
-            learning = "{}, updated={}".format(learning, item.updated_at)
-        if item.occurrence_count > 1:
-            learning = "{}, seen={}x".format(learning, item.occurrence_count)
+        repeat_suffix = " (seen {}x)".format(item.occurrence_count) if item.occurrence_count > 1 else ""
 
         candidate_variants = []
-        if desc:
+        if note:
             candidate_variants.append(
                 [
-                    "- {}".format(title_line),
-                    "  - desc: {}".format(desc),
-                    "  - learnings: {}".format(learning),
+                    "- [{}] {} - {}{}".format(
+                        compact_meta,
+                        title,
+                        note,
+                        repeat_suffix,
+                    )
                 ]
             )
             candidate_variants.append(
                 [
-                    "- {}".format(title_line),
-                    "  - desc: {}".format(desc),
+                    "- {} - {}{}".format(
+                        title,
+                        clip_text(note, 72),
+                        repeat_suffix,
+                    )
                 ]
             )
-        candidate_variants.append(
-            [
-                "- {}".format(title_line),
-                "  - learnings: {}".format(learning),
-            ]
-        )
-        candidate_variants.append(["- {}".format(title_line)])
+        candidate_variants.append(["- [{}] {}{}".format(compact_meta, title, repeat_suffix)])
+        candidate_variants.append(["- {}{}".format(title, repeat_suffix)])
 
         chosen_lines = None
         for candidate_lines in candidate_variants:
@@ -872,7 +883,11 @@ def tighten_budget(budget):
         max_tips=max(4, budget.max_tips - 1),
         max_route_items=max(4, budget.max_route_items - 1),
         max_route_keywords=max(2, budget.max_route_keywords - 1),
-        max_personal_memory_items=max(3, budget.max_personal_memory_items - 1),
+        max_personal_memory_items=(
+            0
+            if budget.max_personal_memory_items <= 0
+            else max(3, budget.max_personal_memory_items - 1)
+        ),
     )
 
 
@@ -912,15 +927,24 @@ def load_text_if_exists(path):
 
 
 def build_budget_from_args(args):
+    runtime_budget = (
+        memory_summary_budget_from_max(args.max_tokens)
+        if args.max_tokens is not None
+        else get_memory_summary_budget(PATHS)
+    )
     return SummaryBudget(
-        target_tokens=args.target_tokens,
-        warn_tokens=args.warn_tokens,
-        max_tokens=args.max_tokens,
+        target_tokens=args.target_tokens if args.target_tokens is not None else runtime_budget["target_tokens"],
+        warn_tokens=args.warn_tokens if args.warn_tokens is not None else runtime_budget["warn_tokens"],
+        max_tokens=runtime_budget["max_tokens"],
         profile_tokens=args.profile_tokens,
         preferences_tokens=args.preferences_tokens,
         tips_tokens=args.tips_tokens,
         routes_tokens=args.routes_tokens,
-        personal_memory_tokens=args.personal_memory_tokens,
+        personal_memory_tokens=(
+            args.personal_memory_tokens
+            if args.personal_memory_tokens is not None
+            else runtime_budget["personal_memory_tokens"]
+        ),
         max_preferences=args.max_preferences,
         max_tips=args.max_tips,
         max_route_items=args.max_route_items,

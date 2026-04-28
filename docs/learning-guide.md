@@ -1,4 +1,4 @@
-# OpenKeepsake 学习指南
+# OpenRelix 学习指南
 
 ## 适合谁读
 
@@ -12,7 +12,7 @@
 
 > 仓库保存可复用能力，state root 保存个人运行数据，Codex 负责自己的原生上下文，本项目负责把可复用工作沉淀成结构化资产和本地面板。
 
-GitHub 项目页：[Ray1Ren/openkeepsake](https://github.com/Ray1Ren/openkeepsake)。如果这套路径有帮助，欢迎点星支持。
+GitHub 项目页：[openrelix/openrelix](https://github.com/openrelix/openrelix)。如果这套路径有帮助，欢迎点星支持。
 
 ## 30 分钟快速路径
 
@@ -28,7 +28,7 @@ GitHub 项目页：[Ray1Ren/openkeepsake](https://github.com/Ray1Ren/openkeepsak
 
 - 为什么 repo 不保存真实 registry、reviews、raw history 和 logs？
 - minimal install 和 integrated install 的区别是什么？
-- 默认 memory mode 为什么是 `codex-context`，以及什么时候要切到 `record-memory-only`？
+- 默认 memory mode 为什么是 `integrated`，以及什么时候要切到 `record-memory-only`？
 - 为什么 plugin draft 现在不是 v0.1.0 预览版主入口？
 
 ### 2. 跑一个最小安装
@@ -40,7 +40,7 @@ export AI_ASSET_STATE_DIR="$(mktemp -d)"
 ./install/install.sh --language zh
 ```
 
-最小安装会初始化 state root、生成第一份 overview，并按默认 `codex-context` 开启 Codex memories/history、同步一份 bounded summary。它仍然不安装全局 skill，不改 shell rc，不注册 LaunchAgent。
+最小安装会初始化 state root、生成第一份 overview，并按默认 `integrated` 开启 Codex memories/history、同步一份 bounded summary。它仍然不安装全局 skill，不改 shell rc，不注册 LaunchAgent。
 
 检查输出：
 
@@ -63,10 +63,10 @@ runtime/config.json
 
 ### 3. 看运行时路径
 
-如果已经安装了 `okeep`：
+如果已经安装了 `openrelix`：
 
 ```bash
-okeep paths
+openrelix paths
 ```
 
 如果没有全局命令，直接读核心路径模块：
@@ -84,10 +84,10 @@ PY
 
 ### 4. 打开面板
 
-如果有 `okeep`：
+如果有 `openrelix`：
 
 ```bash
-okeep open panel
+openrelix open panel
 ```
 
 否则：
@@ -209,8 +209,8 @@ open "$AI_ASSET_STATE_DIR/reports/panel.html"
 
 - `overview-refresh` 每 1800 秒刷新一次，并 `RunAtLoad`。
 - `token-live` 作为本地服务运行，并 `KeepAlive`。
-- `nightly-organize` 每天 23:00 运行。
-- `nightly-finalize-previous-day` 每天 00:10 运行。
+- `nightly-organize` 默认每天 23:00 运行，可通过 `--nightly-organize-time HH:MM` 调整。
+- `nightly-finalize-previous-day` 默认每天 00:10 运行，可通过 `--nightly-finalize-time HH:MM` 调整。
 - `--keep-awake=during-job` 只包住任务执行期。
 
 运维判断：
@@ -308,28 +308,29 @@ python3 -m json.tool "$STATE_DIR/reports/overview-data.json" >/dev/null
 nightly 手动检查：
 
 ```bash
-okeep review --date "$(date +%F)" --learn-window-days 7
-okeep core
-okeep open panel
+./install/install.sh --profile integrated --enable-learning-refresh
+openrelix refresh --learn-memory --learn-window-days 7
+openrelix core
+openrelix open panel
 ```
 
-带 `--learn-window-days 7` 的手动 review 会先补齐学习窗口内缺失或还不是 final 的日报，再生成当天的 7 日学习记忆和日报；自动补齐阶段不会给每个历史日期再扩展一层 7 日学习窗口，不需要再手动复制同一批日期的 `okeep backfill --dates ...`。
+推荐安装时加 `--enable-learning-refresh`，让 30 分钟 overview-refresh 自动调用当前 Codex 适配器，用今日窗口和最近 7 天上下文生成本地记忆与 overview；默认后台 `overview-refresh` 不调模型。`openrelix refresh --learn-memory --learn-window-days 7` 仍可用于手动立即跑一次。如果需要完整补齐缺失或非 final 的日报，再使用 `openrelix review --date "$(date +%F)" --learn-window-days 7`。
 
 多日回溯检查：
 
 ```bash
-okeep backfill --from 2026-04-24 --to 2026-04-27 --learn-window-days 7
+openrelix backfill --from 2026-04-24 --to 2026-04-27 --learn-window-days 7
 ```
 
 不连续日期建议用 `--dates`，避免给中间没有活动的日期生成空 summary：
 
 ```bash
-okeep backfill --dates 2026-04-21,2026-04-23,2026-04-24 --learn-window-days 7
+openrelix backfill --dates 2026-04-21,2026-04-23,2026-04-24 --learn-window-days 7
 ```
 
 回溯时要区分两段：`collect_codex_activity.py` 是本地离线采集；`nightly_consolidate.py` 会通过 `codex exec --ephemeral` 调用 Codex 大模型生成结构化整理结果。
 
-如果没有全局 `okeep`：
+如果没有全局 `openrelix`：
 
 ```bash
 python3 scripts/collect_codex_activity.py --date "$(date +%F)" --stage manual
@@ -351,10 +352,10 @@ print(get_runtime_paths().state_root)
 PY
 ```
 
-如果装了 `okeep`，用：
+如果装了 `openrelix`，用：
 
 ```bash
-okeep paths
+openrelix paths
 ```
 
 ### panel 没有内容
@@ -363,12 +364,12 @@ okeep paths
 
 - 这是新 state root，还没有资产、复盘或 Codex history。
 - Codex history 没有开启，采集不到窗口。
-- 还没跑 `okeep review` 或 `python3 scripts/build_overview.py`。
+- 还没跑 `openrelix review` 或 `python3 scripts/build_overview.py`。
 
 先运行：
 
 ```bash
-okeep refresh
+openrelix refresh
 ```
 
 或：

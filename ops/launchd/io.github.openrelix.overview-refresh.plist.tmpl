@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
   <key>Label</key>
-  <string>io.github.openkeepsake.overview-refresh</string>
+  <string>io.github.openrelix.overview-refresh</string>
   <key>ProgramArguments</key>
   <array>
     <string>/bin/zsh</string>
@@ -15,13 +15,21 @@
     <string>__STATE_ROOT__</string>
     <key>CODEX_HOME</key>
     <string>__CODEX_HOME__</string>
-    <key>OKEEP_ACTIVITY_SOURCE</key>
+    <key>OPENRELIX_ACTIVITY_SOURCE</key>
     <string>__ACTIVITY_SOURCE__</string>
+    <key>OPENRELIX_REFRESH_STAGE</key>
+    <string>preliminary</string>
+    <key>OPENRELIX_REFRESH_LEARN_MEMORY</key>
+    <string>__LEARNING_REFRESH__</string>
+    <key>OPENRELIX_REFRESH_LEARN_WINDOW_DAYS</key>
+    <string>__LEARNING_REFRESH_WINDOW_DAYS__</string>
+    <key>OPENRELIX_REFRESH_SKIP_UNCHANGED</key>
+    <string>1</string>
     <key>PYTHON_BIN</key>
     <string>__PYTHON_BIN__</string>
   </dict>
   <key>RunAtLoad</key>
-  <true/>
+  __OVERVIEW_RUN_AT_LOAD__
   <key>StartInterval</key>
   <integer>1800</integer>
   <key>StandardErrorPath</key>

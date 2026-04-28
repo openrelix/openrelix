@@ -44,7 +44,7 @@ from asset_runtime import get_memory_mode  # noqa: E402
 print(get_memory_mode())
 PY
   )"
-  if [[ "$memory_mode" == "codex-context" ]]; then
+  if [[ "$memory_mode" == "integrated" ]]; then
     "$PYTHON_BIN" "$REPO_ROOT/scripts/build_codex_memory_summary.py" \
       --memory-summary "$codex_home/memories/memory_summary.md"
   fi

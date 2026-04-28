@@ -1,4 +1,4 @@
-# OpenKeepsake System Overview
+# OpenRelix System Overview
 
 Local-first memory and asset system for AI coding agents
 
@@ -11,7 +11,7 @@ This repository serves two parallel goals:
 1. Preserve durable preferences, playbooks, and reusable workflow assets.
 2. Turn those assets into visible output instead of leaving them trapped in chat history.
 
-GitHub project page: [Ray1Ren/openkeepsake](https://github.com/Ray1Ren/openkeepsake). Stars are welcome if the project is useful to you.
+GitHub project page: [openrelix/openrelix](https://github.com/openrelix/openrelix). Stars are welcome if the project is useful to you.
 
 ## Layering
 
@@ -20,7 +20,7 @@ GitHub project page: [Ray1Ren/openkeepsake](https://github.com/Ray1Ren/openkeeps
 - v0.1.0 preview location: the user's `~/.codex/` directory
 - Purpose: host-specific config, optional global instructions, local memories, and user-level installed skills
 - v0.1.0 preview examples: `~/.codex/config.toml`, `~/.codex/AGENTS.md`, `~/.codex/skills/`
-- Ownership: the AI host owns its native memory/config files. In the current Codex adapter's default `codex-context` mode this repo writes only a bounded `memory_summary.md` for context injection; full local registries, reviews, raw windows, and reports stay in the state root.
+- Ownership: the AI host owns its native memory/config files. In the current Codex adapter's default `integrated` mode this repo writes only a bounded `memory_summary.md` for context injection; full local registries, reviews, raw windows, and reports stay in the state root.
 
 ### 2. Repo source layer
 
@@ -45,9 +45,9 @@ GitHub project page: [Ray1Ren/openkeepsake](https://github.com/Ray1Ren/openkeeps
 - Host-native memory is owned by the host. In the current Codex adapter, native memory lives under `~/.codex/memories/`.
 - This repo treats host-native memory as an optional bounded context target and upstream signal. The panel can display native memory alongside local nightly memories, while the Codex adapter can sync a compressed summary into Codex home for context injection.
 - This repo's own memory layer lives in the active state root, mainly `registry/memory_items.jsonl`, `reviews/`, `raw/`, `consolidated/`, and generated `reports/`.
-- The current adapter's default memory mode is `codex-context`: local personal memory is recorded, and a bounded summary is injected into Codex native context. `--record-memory-only` pins strict local-only behavior, and `--disable-personal-memory` turns off local memory-registry writes.
+- The current adapter's default memory mode is `integrated`: local personal memory is recorded, and a bounded summary is injected into Codex native context. `--record-memory-only` pins strict local-only behavior, and `--disable-personal-memory` turns off local memory-registry writes.
 - Required rules still belong in `AGENTS.md` or project docs. Local memory items are a recall layer, not the only source for behavior that must always apply.
-- `scripts/build_codex_memory_summary.py` builds a compressed summary with a token budget: merge duplicate personal memories, prioritize durable / session items, keep low-priority items local-only, and fit the injected summary around a 4.2K target / 5K max token budget. The default installer, review, backfill, and refresh paths write it to `~/.codex/memories/memory_summary.md`; strict local-only runs keep it out of Codex context.
+- `scripts/build_codex_memory_summary.py` builds a compressed summary with a token budget: merge duplicate personal memories, prioritize durable / session items, keep low-priority items local-only, and fit the injected summary around a configurable token budget. The default maximum is 5K tokens, target / warning budgets are derived automatically from that max, and there is no fixed item cap for personal-memory candidates. Users can change the max through `openrelix config --memory-summary-max-tokens <tokens>` within the supported 2000-20000 range. The default installer, review, backfill, and refresh paths write it to `~/.codex/memories/memory_summary.md`; strict local-only runs keep it out of Codex context.
 
 ## Daily workflow
 

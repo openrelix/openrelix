@@ -15,4 +15,4 @@ log/
 
 # Local-only private skills that should not be packaged.
 .agents/skills/personal-asset-librarian/
-plugins/openkeepsake/skills/personal-asset-librarian
+plugins/openrelix/skills/personal-asset-librarian

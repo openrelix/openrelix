@@ -19,9 +19,14 @@ if str(SCRIPT_DIR) not in sys.path:
 from asset_runtime import (
     ensure_state_layout,
     get_memory_mode,
+    get_memory_summary_budget,
+    get_activity_source,
     get_runtime_language,
     get_runtime_paths,
+    load_runtime_config,
+    normalize_activity_source,
     normalize_language,
+    normalize_memory_summary_max_tokens,
     normalize_memory_mode,
     write_runtime_config,
 )
@@ -30,6 +35,7 @@ from asset_runtime import (
 PATHS = get_runtime_paths()
 LANGUAGE = get_runtime_language(PATHS)
 MEMORY_MODE = get_memory_mode(PATHS)
+ACTIVITY_SOURCE = get_activity_source(PATHS)
 REPO_ROOT = PATHS.repo_root
 REPORTS_DIR = PATHS.reports_dir
 CONSOLIDATED_DAILY_DIR = PATHS.consolidated_daily_dir
@@ -66,8 +72,8 @@ class LocalizedArgumentParser(argparse.ArgumentParser):
 
 def build_parser():
     parser = LocalizedArgumentParser(
-        prog="okeep",
-        description=localized("OpenKeepsake 命令集。", "OpenKeepsake command set."),
+        prog="openrelix",
+        description=localized("OpenRelix 命令集。", "OpenRelix command set."),
     )
     subparsers = parser.add_subparsers(dest="command", parser_class=LocalizedArgumentParser)
 
@@ -237,20 +243,54 @@ def build_parser():
             "Print the selected overview payload as JSON after refresh.",
         ),
     )
+    refresh.add_argument(
+        "--learn-memory",
+        action="store_true",
+        help=localized(
+            "刷新前调用轻量 review 流水线，立即提炼目标日期记忆并入库。",
+            "Run a lightweight review pipeline before refresh to synthesize and store target-date memories immediately.",
+        ),
+    )
+    refresh.add_argument(
+        "--date",
+        default=current_date_str(),
+        help=localized(
+            "learn-memory 的目标日期，格式 YYYY-MM-DD。默认今天。",
+            "Target date for learn-memory in YYYY-MM-DD. Default: today.",
+        ),
+    )
+    refresh.add_argument(
+        "--stage",
+        default="manual",
+        choices=["manual", "preliminary", "final"],
+        help=localized(
+            "learn-memory 写入 nightly summary 的流水线阶段。",
+            "Pipeline stage written by learn-memory.",
+        ),
+    )
+    refresh.add_argument(
+        "--learn-window-days",
+        type=int,
+        default=0,
+        help=localized(
+            "learn-memory 额外参考前 N 天窗口；默认 0，保持轻量。",
+            "For learn-memory, additionally learn from the previous N days; default 0 keeps it lightweight.",
+        ),
+    )
 
     mode = subparsers.add_parser(
         "mode",
         help=localized(
-            "查看或切换 OpenKeepsake 记忆模式。",
-            "Show or switch the OpenKeepsake memory mode.",
+            "查看或切换 OpenRelix 记忆模式。",
+            "Show or switch the OpenRelix memory mode.",
         ),
     )
     mode.add_argument(
         "memory_mode",
         nargs="?",
         help=localized(
-            "目标模式：codex-context | local-only | off。省略时只显示当前模式。",
-            "Target mode: codex-context | local-only | off. Omit to show the current mode.",
+            "目标模式：integrated | local-only | off。省略时只显示当前模式。",
+            "Target mode: integrated | local-only | off. Omit to show the current mode.",
         ),
     )
     mode.add_argument(
@@ -268,6 +308,51 @@ def build_parser():
             "以 JSON 打印模式信息。",
             "Print mode information as JSON.",
         ),
+    )
+
+    config = subparsers.add_parser(
+        "config",
+        help=localized(
+            "查看或更新 OpenRelix 运行配置。",
+            "Show or update OpenRelix runtime config.",
+        ),
+    )
+    config.add_argument(
+        "--memory-summary-max-tokens",
+        type=int,
+        help=localized(
+            "设置注入 host context 的 bounded summary 最大 token，默认 5000，范围 2000-20000；target / warn 自动派生。",
+            "Set the bounded summary max tokens injected into host context. Default 5000, range 2000-20000; target / warning are derived automatically.",
+        ),
+    )
+    config.add_argument(
+        "--activity-source",
+        choices=["history", "app-server", "auto"],
+        help=localized(
+            "设置窗口采集来源：history | app-server | auto。auto 会先尝试 Codex 客户端 app-server，失败时回退 CLI history/session。",
+            "Set window collection source: history | app-server | auto. auto tries Codex app-server first, then falls back to CLI history/session.",
+        ),
+    )
+    config.add_argument(
+        "--read-codex-app",
+        action="store_true",
+        help=localized(
+            "等价于 --activity-source auto，启用 Codex 客户端窗口预览读取。",
+            "Equivalent to --activity-source auto; enables preview reading from Codex app windows.",
+        ),
+    )
+    config.add_argument(
+        "--no-refresh",
+        action="store_true",
+        help=localized(
+            "更新配置后不刷新 summary / overview / 面板。",
+            "Do not refresh summary / overview / panel after updating config.",
+        ),
+    )
+    config.add_argument(
+        "--json",
+        action="store_true",
+        help=localized("以 JSON 打印配置。", "Print config as JSON."),
     )
 
     open_cmd = subparsers.add_parser(
@@ -810,7 +895,12 @@ def command_core(args):
 
 
 def command_refresh(args):
-    run_checked(["/bin/zsh", str(REFRESH_SCRIPT)])
+    cmd = ["/bin/zsh", str(REFRESH_SCRIPT)]
+    if args.learn_memory:
+        cmd.extend(["--learn-memory", "--date", args.date, "--stage", args.stage])
+        if args.learn_window_days > 0:
+            cmd.extend(["--learn-window-days", str(args.learn_window_days)])
+    run_checked(cmd)
     data = load_overview()
     if args.json:
         payload = {
@@ -819,17 +909,21 @@ def command_refresh(args):
             "metrics": data.get("metrics"),
             "token_usage": data.get("token_usage"),
             "nightly": data.get("nightly"),
+            "learn_memory": bool(args.learn_memory),
         }
         print_json(payload)
         return
-    print(localized("概览已刷新", "Overview refreshed"))
+    if args.learn_memory:
+        print(localized("记忆已提炼并刷新概览", "Memory synthesized and overview refreshed"))
+    else:
+        print(localized("概览已刷新", "Overview refreshed"))
     print("")
     print_core_summary(data)
 
 
 def memory_mode_label(memory_mode):
     labels = {
-        "codex-context": localized(
+        "integrated": localized(
             "全开：本地记忆 + host 上下文轻量摘要",
             "Full: local memory + lightweight host-context summary",
         ),
@@ -846,7 +940,7 @@ def memory_mode_label(memory_mode):
 
 
 def codex_config_args_for_memory_mode(memory_mode):
-    if memory_mode == "codex-context":
+    if memory_mode == "integrated":
         return ["--enable-memories", "--enable-history", "--history-max-bytes", "268435456"]
     if memory_mode == "local-only":
         return ["--disable-codex-memories", "--enable-history", "--history-max-bytes", "268435456"]
@@ -881,7 +975,7 @@ def command_mode(args):
                 }
             )
             return
-        print(localized("当前 OpenKeepsake 记忆模式", "Current OpenKeepsake memory mode"))
+        print(localized("当前 OpenRelix 记忆模式", "Current OpenRelix memory mode"))
         print("- memory_mode: {}".format(MEMORY_MODE))
         print("- {}".format(memory_mode_label(MEMORY_MODE)))
         return
@@ -909,16 +1003,90 @@ def command_mode(args):
         )
         return
 
-    print(localized("OpenKeepsake 记忆模式已更新", "OpenKeepsake memory mode updated"))
+    print(localized("OpenRelix 记忆模式已更新", "OpenRelix memory mode updated"))
     print("- memory_mode: {}".format(config.get("memory_mode")))
     print("- {}".format(memory_mode_label(config.get("memory_mode"))))
     print("- config: {}".format(PATHS.runtime_dir / "config.json"))
     if codex_config_updated:
         print("- codex_config: {}".format(PATHS.codex_home / "config.toml"))
     if args.no_refresh:
-        print(localized("- 未刷新 overview；需要时运行 okeep refresh。", "- Overview not refreshed; run okeep refresh when needed."))
+        print(localized("- 未刷新 overview；需要时运行 openrelix refresh。", "- Overview not refreshed; run openrelix refresh when needed."))
     else:
         print(localized("- overview 和面板已刷新。", "- Overview and panel refreshed."))
+
+
+def memory_summary_budget_payload(config=None):
+    config = config or load_runtime_config(PATHS)
+    budget = get_memory_summary_budget(PATHS)
+    return {
+        "activity_source": normalize_activity_source(config.get("activity_source")),
+        "memory_summary_max_tokens": budget["max_tokens"],
+        "memory_summary_target_tokens": budget["target_tokens"],
+        "memory_summary_warn_tokens": budget["warn_tokens"],
+        "personal_memory_budget_tokens": budget["personal_memory_tokens"],
+        "config_path": str(PATHS.runtime_dir / "config.json"),
+        "configured_memory_summary_max_tokens": config.get("memory_summary_max_tokens"),
+    }
+
+
+def command_config(args):
+    requested_max_tokens = args.memory_summary_max_tokens
+    requested_activity_source = "auto" if args.read_codex_app else args.activity_source
+    if requested_max_tokens is None and requested_activity_source is None:
+        payload = memory_summary_budget_payload()
+        if args.json:
+            print_json(payload)
+            return
+        print(localized("OpenRelix 运行配置", "OpenRelix runtime config"))
+        print("- activity_source: {}".format(payload["activity_source"]))
+        print("- memory_summary_max_tokens: {}".format(payload["memory_summary_max_tokens"]))
+        print("- memory_summary_target_tokens: {}".format(payload["memory_summary_target_tokens"]))
+        print("- memory_summary_warn_tokens: {}".format(payload["memory_summary_warn_tokens"]))
+        print("- personal_memory_budget_tokens: {}".format(payload["personal_memory_budget_tokens"]))
+        print("- config: {}".format(payload["config_path"]))
+        return
+
+    normalized_max_tokens = None
+    if requested_max_tokens is not None:
+        try:
+            normalized_max_tokens = normalize_memory_summary_max_tokens(requested_max_tokens, strict=True)
+        except ValueError as exc:
+            raise SystemExit(str(exc)) from exc
+
+    normalized_activity_source = None
+    if requested_activity_source is not None:
+        try:
+            normalized_activity_source = normalize_activity_source(requested_activity_source, strict=True)
+        except ValueError as exc:
+            raise SystemExit(str(exc)) from exc
+
+    config = write_runtime_config(
+        activity_source=normalized_activity_source,
+        memory_summary_max_tokens=normalized_max_tokens,
+        paths=PATHS,
+    )
+    refreshed = False
+    if not args.no_refresh:
+        run_checked(["/bin/zsh", str(REFRESH_SCRIPT)])
+        refreshed = True
+
+    payload = memory_summary_budget_payload(config)
+    payload["refreshed"] = refreshed
+    if args.json:
+        print_json(payload)
+        return
+
+    print(localized("OpenRelix 运行配置已更新", "OpenRelix runtime config updated"))
+    print("- activity_source: {}".format(payload["activity_source"]))
+    print("- memory_summary_max_tokens: {}".format(payload["memory_summary_max_tokens"]))
+    print("- memory_summary_target_tokens: {}".format(payload["memory_summary_target_tokens"]))
+    print("- memory_summary_warn_tokens: {}".format(payload["memory_summary_warn_tokens"]))
+    print("- personal_memory_budget_tokens: {}".format(payload["personal_memory_budget_tokens"]))
+    print("- config: {}".format(payload["config_path"]))
+    if refreshed:
+        print(localized("- summary、overview 和面板已刷新。", "- Summary, overview, and panel refreshed."))
+    else:
+        print(localized("- 未刷新；需要时运行 openrelix refresh。", "- Not refreshed; run openrelix refresh when needed."))
 
 
 def resolve_open_target(target, date_str):
@@ -1000,6 +1168,9 @@ def main():
         return
     if args.command == "mode":
         command_mode(args)
+        return
+    if args.command == "config":
+        command_config(args)
         return
     if args.command == "open":
         command_open(args)

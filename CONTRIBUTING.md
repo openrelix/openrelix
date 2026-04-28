@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for helping improve OpenKeepsake.
+Thanks for helping improve OpenRelix.
 
 ## Scope
 

@@ -1,6 +1,6 @@
 # Dual Trademark Filing Action Sheet
 
-This sheet is for quickly moving the `OPENKEEPSAKE` word mark into filing
+This sheet is for quickly moving the `OPENRELIX` word mark into filing
 in both the United States and China. It is not legal advice.
 
 Last reviewed: 2026-04-27.
@@ -10,14 +10,14 @@ Last reviewed: 2026-04-27.
 Create the earliest practical application records for the word mark:
 
 ```text
-OPENKEEPSAKE
+OPENRELIX
 ```
 
 Use standard characters / plain text first. Do not wait for a logo. Do not file
 an acronym or nickname alone as the first mark unless trademark counsel clears
 it.
 
-File `OPENKEEPSAKE` separately in China. A U.S. application does not
+File `OPENRELIX` separately in China. A U.S. application does not
 automatically protect the mark there. See
 `docs/china-chinese-trademark-filing-kit.md`.
 
@@ -53,7 +53,7 @@ Do not store this private owner data in the repository.
 Recommended first application:
 
 - Filing office: USPTO Trademark Center.
-- Mark: `OPENKEEPSAKE`
+- Mark: `OPENRELIX`
 - Drawing: standard characters.
 - Owner: the individual or legal entity that controls the project brand.
 - Class: 9.
@@ -72,7 +72,7 @@ task reviews, for use with command-line artificial intelligence developer tools
 For a Section 1(a) application, prepare a specimen screenshot or webpage print
 showing:
 
-- `OpenKeepsake` used as the source-identifying project name.
+- `OpenRelix` used as the source-identifying project name.
 - A download, install, release, GitHub repository, npm package, or similar
   action that makes the software available.
 - The public URL and access date.
@@ -86,7 +86,7 @@ Recommended first application:
 
 - Filing office: CNIPA / China trademark system, or a licensed Chinese trademark
   agency.
-- Mark: `OPENKEEPSAKE`
+- Mark: `OPENRELIX`
 - Mark type: word mark / plain English characters.
 - Owner: the individual or legal entity that controls the project brand.
 - Class: 9.
@@ -116,7 +116,7 @@ that name separately.
 1. Confirm applicant owner.
 2. Confirm filing basis for the U.S. application: 1(a) or 1(b).
 3. Capture specimen if using U.S. Section 1(a).
-4. Do a quick exact-match clearance search for `OPENKEEPSAKE`.
+4. Do a quick exact-match clearance search for `OPENRELIX`.
 5. File the U.S. Class 9 application or send this packet to a U.S. attorney.
 6. File the China Class 9 application or send this packet to a Chinese trademark
    agency.
@@ -126,7 +126,7 @@ that name separately.
 ## Agent / Attorney Handoff Note
 
 ```text
-Please file a word-mark trademark application for OPENKEEPSAKE as soon as
+Please file a word-mark trademark application for OPENRELIX as soon as
 possible to establish an application date. The project is an open source,
 downloadable CLI / installer system for local-first reusable AI workflow assets.
 Please start with Class 9 software goods. Class 42 should be included only if you

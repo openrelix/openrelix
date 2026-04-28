@@ -1,9 +1,9 @@
 {
-  "name": "openkeepsake",
+  "name": "openrelix",
   "version": "0.1.0",
   "description": "Local-first asset workflows for AI coding agents, with a Codex plugin adapter for immediate task review and reusable asset capture.",
   "author": {
-    "name": "OpenKeepsake Maintainers"
+    "name": "OpenRelix Maintainers"
   },
   "license": "MIT",
   "keywords": [
@@ -16,10 +16,10 @@
   ],
   "skills": "./skills/",
   "interface": {
-    "displayName": "OpenKeepsake",
+    "displayName": "OpenRelix",
     "shortDescription": "Capture reusable work and trigger immediate task review.",
-    "longDescription": "Provides the shared asset-capture workflow for OpenKeepsake. Pair it with the installer to add the stable /memory-review skill route, plus the optional /prompts:memory-review compatibility entrypoint, background refresh, and nightly organization.",
-    "developerName": "OpenKeepsake Maintainers",
+    "longDescription": "Provides the shared asset-capture workflow for OpenRelix. Pair it with the installer to add the stable /memory-review skill route, plus the optional /prompts:memory-review compatibility entrypoint, background refresh, and nightly organization.",
+    "developerName": "OpenRelix Maintainers",
     "category": "Productivity",
     "capabilities": [
       "Interactive",

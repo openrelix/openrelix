@@ -1,8 +1,8 @@
-# OpenKeepsake Plugin Draft
+# OpenRelix Plugin Draft
 
-This repo-local plugin is a draft packaging surface for the reusable OpenKeepsake workflow. OpenKeepsake is not meant to be tied to one AI host; this directory is the current Codex plugin adapter draft.
+This repo-local plugin is a draft packaging surface for the reusable OpenRelix workflow. OpenRelix is not meant to be tied to one AI host; this directory is the current Codex plugin adapter draft.
 
-Project page: [Ray1Ren/openkeepsake](https://github.com/Ray1Ren/openkeepsake). Stars are welcome if this workflow is useful.
+Project page: [openrelix/openrelix](https://github.com/openrelix/openrelix). Stars are welcome if this workflow is useful.
 
 The v0.1.0 preview public route is installer-first. Use:
 

@@ -4,12 +4,15 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
-  <title>OpenKeepsake™ 产品展示</title>
-  <meta name="description" content="OpenKeepsake™ v0.1.0 预览版是一套面向 AI coding agents / AI CLI 的本地优先个人 AI 资产系统，把重复工作沉淀成可复用技能、记忆、模板、复盘和可视化面板。">
+  <title>OpenRelix™ 产品展示</title>
+  <meta name="description" content="OpenRelix™ v0.1.0 预览版是一套开源的个人记忆珍藏系统，面向 AI coding agents / AI CLI，把重复工作沉淀成可复用技能、记忆、模板、复盘和可视化面板。">
   <script>
     (() => {
       try {
-        const theme = window.localStorage.getItem("openkeepsake-showcase-theme");
+        if (window.location.hash && "scrollRestoration" in window.history) {
+          window.history.scrollRestoration = "manual";
+        }
+        const theme = window.localStorage.getItem("openrelix-showcase-theme");
         if (theme === "light" || theme === "dark") {
           document.documentElement.dataset.theme = theme;
         }
@@ -320,6 +323,23 @@
       min-width: 0;
     }
 
+    .nav-utility {
+      position: absolute;
+      top: 50%;
+      right: 22px;
+      transform: translateY(-50%);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .nav-utility .github-button {
+      min-height: 38px;
+      padding: 0 14px;
+      border-radius: 999px;
+      box-shadow: none;
+    }
+
     .nav-links a {
       padding: 8px 10px;
       border-radius: 8px;
@@ -328,11 +348,6 @@
     .nav-links a:hover {
       background: var(--soft);
       color: var(--ink);
-    }
-
-    .nav-links .nav-github {
-      color: var(--accent);
-      font-weight: 760;
     }
 
     .lang-switch,
@@ -711,6 +726,13 @@
       scroll-margin-top: var(--anchor-offset);
     }
 
+    @supports (content-visibility: auto) {
+      .footer {
+        content-visibility: auto;
+        contain-intrinsic-size: auto 180px;
+      }
+    }
+
     .section.tight {
       padding-top: 68px;
     }
@@ -752,6 +774,11 @@
       color: var(--muted);
       font-size: 17px;
       line-height: 1.68;
+    }
+
+    .section-head > .lead {
+      align-self: end;
+      margin-bottom: 4px;
     }
 
     .grid {
@@ -1159,7 +1186,7 @@
       background: var(--paper-soft);
     }
 
-    .memory-layer-card.is-okeep {
+    .memory-layer-card.is-openrelix {
       background: var(--accent-soft);
     }
 
@@ -1588,6 +1615,105 @@
       counter-reset: step;
     }
 
+    .workflow.memory-flow {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      margin-bottom: 22px;
+    }
+
+    .roadmap-timeline {
+      position: relative;
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 18px;
+      counter-reset: roadmap;
+    }
+
+    .roadmap-timeline::before {
+      content: "";
+      position: absolute;
+      left: 8%;
+      right: 8%;
+      top: 26px;
+      height: 2px;
+      background: var(--line-strong);
+    }
+
+    .roadmap-item {
+      position: relative;
+      display: grid;
+      align-content: start;
+      gap: 12px;
+      min-height: 300px;
+      padding: 0 0 24px;
+    }
+
+    .roadmap-marker {
+      position: relative;
+      z-index: 1;
+      width: 54px;
+      height: 54px;
+      display: grid;
+      place-items: center;
+      border: 2px solid var(--line-strong);
+      border-radius: 999px;
+      background: var(--paper);
+      color: var(--ink);
+      box-shadow: var(--shadow-card);
+      font-size: 13px;
+      font-weight: 780;
+    }
+
+    .roadmap-marker::before {
+      counter-increment: roadmap;
+      content: "0" counter(roadmap);
+    }
+
+    .roadmap-item.is-released .roadmap-marker {
+      border-color: var(--accent);
+      background: var(--accent);
+      color: var(--on-accent);
+    }
+
+    .roadmap-content {
+      min-height: 232px;
+      padding: 24px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--paper);
+      box-shadow: var(--shadow-card);
+    }
+
+    .roadmap-status {
+      display: block;
+      margin: 14px 0 12px;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 720;
+      line-height: 1.35;
+    }
+
+    .roadmap-content h3 {
+      margin: 0 0 12px;
+      color: var(--ink);
+      font-size: 21px;
+      line-height: 1.26;
+    }
+
+    .roadmap-content p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 15px;
+      line-height: 1.68;
+    }
+
+    .roadmap-note {
+      max-width: 760px;
+      margin: 26px 0 0;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.62;
+    }
+
     .stage {
       position: relative;
       min-height: 184px;
@@ -1832,13 +1958,13 @@
     }
 
     #tips .inner {
-      max-width: 1080px;
+      max-width: var(--max);
     }
 
     .tips-subhead {
-      max-width: 720px;
-      margin: 0 auto 30px;
-      text-align: center;
+      max-width: none;
+      margin-bottom: 40px;
+      text-align: left;
     }
 
     .tips-subhead .section-kicker {
@@ -1847,11 +1973,10 @@
 
     .tips-subhead h2 {
       margin-bottom: 0;
-      font-size: 40px;
     }
 
     .tips-subhead .lead {
-      margin: 12px auto 0;
+      max-width: 640px;
     }
 
     .mode-list {
@@ -2430,11 +2555,8 @@
       margin-top: 12px;
     }
 
-    .mode-card.is-terminal > .inline-command {
-      width: min(100%, 760px);
-    }
-
     .tips .inline-command {
+      width: min(100%, 760px);
       margin-top: auto;
       border-color: var(--line);
       background: var(--paper-soft);
@@ -2522,9 +2644,23 @@
         max-width: 760px;
       }
 
+      .section-head > .lead {
+        align-self: auto;
+        margin-bottom: 0;
+      }
+
       .cols-4,
+      .roadmap-timeline,
       .compare {
         grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .roadmap-timeline::before {
+        display: none;
+      }
+
+      .nav-utility .github-button {
+        display: none;
       }
     }
 
@@ -2561,6 +2697,10 @@
         display: none;
       }
 
+      .nav-utility {
+        right: 22px;
+      }
+
       h1 {
         font-size: 46px;
       }
@@ -2585,8 +2725,23 @@
       .cols-3,
       .cols-2,
       .workflow,
+      .workflow.memory-flow,
+      .roadmap-timeline,
       .compare {
         grid-template-columns: 1fr;
+      }
+
+      .roadmap-timeline {
+        gap: 20px;
+      }
+
+      .roadmap-item {
+        min-height: 0;
+        padding-bottom: 0;
+      }
+
+      .roadmap-content {
+        min-height: 0;
       }
 
       .feature {
@@ -2670,6 +2825,11 @@
         gap: 8px;
       }
 
+      .nav-utility {
+        right: 14px;
+        gap: 6px;
+      }
+
       .lang-switch button,
       .theme-switch button {
         padding: 7px 8px;
@@ -2680,7 +2840,7 @@
       }
 
       .hero-inner {
-        padding: 52px 18px 76px;
+        padding: 52px 76px 76px 18px;
       }
 
       .hero-dashboard {
@@ -2880,31 +3040,35 @@
 <body>
   <nav class="site-nav" aria-label="页面导航">
     <div class="nav-inner">
-      <a class="brand" href="#top" aria-label="OpenKeepsake 首页">
-        <span class="mark" aria-hidden="true">OK</span>
-        <span>OpenKeepsake</span>
+      <a class="brand" href="#top" aria-label="OpenRelix 首页">
+        <span class="mark" aria-hidden="true">OR</span>
+        <span>OpenRelix</span>
       </a>
       <div class="nav-actions">
         <div class="nav-links">
           <a href="#pain">痛点</a>
           <a href="#what">产品</a>
+          <a href="#memory-system">记忆系统</a>
           <a href="#tour">导览</a>
           <a href="#install">安装</a>
           <a href="#tips">快速上手</a>
+          <a href="#roadmap">更新计划</a>
           <a href="#open">开源边界</a>
           <a href="#license">授权</a>
-          <a class="nav-github" href="https://github.com/Ray1Ren/openkeepsake" target="_blank" rel="noopener noreferrer">GitHub</a>
-        </div>
-        <div class="lang-switch" aria-label="语言切换">
-          <button type="button" data-language-option="zh" aria-pressed="true">中文</button>
-          <button type="button" data-language-option="en" aria-pressed="false">EN</button>
-        </div>
-        <div class="theme-switch" aria-label="主题切换">
-          <button type="button" data-theme-option="system" aria-pressed="true">系统</button>
-          <button type="button" data-theme-option="light" aria-pressed="false">浅色</button>
-          <button type="button" data-theme-option="dark" aria-pressed="false">深色</button>
         </div>
       </div>
+    </div>
+    <div class="nav-utility" aria-label="页面设置">
+      <div class="theme-switch" aria-label="主题切换">
+        <button type="button" data-theme-option="system" aria-pressed="true">系统</button>
+        <button type="button" data-theme-option="light" aria-pressed="false">浅色</button>
+        <button type="button" data-theme-option="dark" aria-pressed="false">深色</button>
+      </div>
+      <div class="lang-switch" aria-label="语言切换">
+        <button type="button" data-language-option="zh" aria-pressed="true">中文</button>
+        <button type="button" data-language-option="en" aria-pressed="false">EN</button>
+      </div>
+      <a class="button secondary github-button" href="https://github.com/openrelix/openrelix" target="_blank" rel="noopener noreferrer">GitHub 点星支持</a>
     </div>
   </nav>
 
@@ -2913,7 +3077,7 @@
       <div class="hero-dashboard" aria-hidden="true">
         <div class="hero-dashboard-shell">
           <div class="hero-dashboard-top">
-            <span>OpenKeepsake 工作台</span>
+            <span>OpenRelix 工作台</span>
             <span>2026/04/27</span>
             <span class="hero-dashboard-pill">仅本地</span>
           </div>
@@ -2932,7 +3096,7 @@
                 <p>发布检查、模板整理、本地自动化脚本与记忆候选已归类。</p>
                 <div class="hero-dashboard-tags">
                   <span>Host 原生记忆</span>
-                  <span>OpenKeepsake 个人记忆</span>
+                  <span>OpenRelix 个人记忆</span>
                   <span>Token 信号</span>
                 </div>
               </section>
@@ -2961,13 +3125,12 @@
         </div>
       </div>
       <div class="hero-inner">
-        <span class="eyebrow">本地优先的 AI 记忆工作台</span>
-        <h1>OpenKeepsake™</h1>
-        <p class="hero-copy">把每天和 AI CLI 一起做过的工作，沉淀成可复用的技能、方法手册、模板、自动化、记忆和可视化复盘，而不是散落在聊天记录里。</p>
+        <span class="eyebrow">你的专属AI记忆珍藏</span>
+        <h1>OpenRelix™</h1>
+        <p class="hero-copy">OpenRelix 意为开源的个人记忆珍藏：把每天和 AI CLI 一起做过的工作，沉淀成可复用的技能、方法手册、模板、自动化、记忆和可视化复盘，而不是散落在聊天记录里。</p>
         <div class="hero-actions">
           <a class="button" href="#tour">查看功能导览</a>
           <a class="button secondary" href="#install">安装方式</a>
-          <a class="button secondary github-button" href="https://github.com/Ray1Ren/openkeepsake" target="_blank" rel="noopener noreferrer">GitHub 点星支持</a>
         </div>
         <p class="hero-note">v0.1.0 预览版：产品定位不绑定单一 AI host；当前首个公开适配器是 Codex CLI，Claude Code、Gemini CLI 等其他 AI CLI / coding-agent host 在后续适配计划中。本页预览使用脱敏示例面板，不包含真实项目、账号、路径、日志或工作内容。</p>
       </div>
@@ -3000,7 +3163,7 @@
           </article>
           <article class="tile">
             <span class="chip rose">复用困难</span>
-            <h3>OpenKeepsake 个人记忆需要账本</h3>
+            <h3>OpenRelix 个人记忆需要账本</h3>
             <p>你需要看见哪些方法最常复用、节省了多少时间、哪些经验值得升级成技能，同时不挤占过多上下文。</p>
           </article>
         </div>
@@ -3030,12 +3193,47 @@
           <article class="tile">
             <span class="chip amber">上下文策略</span>
             <h3>上下文轻量可控</h3>
-            <p>默认 codex-context：本地记忆入库，轻量摘要进入当前 host 上下文；需要隔离时再显式使用 local-only 或 off。</p>
+            <p>默认 integrated：本地记忆入库，轻量摘要进入当前 host 上下文；需要隔离时再显式使用 local-only 或 off。</p>
           </article>
           <article class="tile">
             <span class="chip rose">个人归属</span>
             <h3>资产永远归个人</h3>
             <p>方法手册、技能、模板、自动化和记忆账本不绑定单一平台，未来可迁移到 Claude Code、其他 CLI 或团队工作流。</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="memory-system">
+      <div class="inner">
+        <div class="section-head">
+          <div>
+            <div class="section-kicker">记忆系统</div>
+            <h2>先沉淀成本地账本，再把必要摘要交给 AI host。</h2>
+          </div>
+          <p class="lead">OpenRelix 不会把所有聊天都塞回上下文。它先把工作记录留在本机，再按固定节奏整理：平时每 30 分钟做小结，深夜做当天总账；需要时也能手动立刻生成。</p>
+        </div>
+        <div class="workflow memory-flow">
+          <div class="stage"><strong>先把这段工作记下来</strong><span>从 AI CLI 已保存的会话记录里读取刚做过的窗口，标清日期、项目和主题；Codex 应用里的对话只有你开启后才会读。</span></div>
+          <div class="stage"><strong>每 30 分钟做一次小结</strong><span>开启后台学习刷新后，它会每 30 分钟看一眼最近窗口，把新结论、待跟进事项和可复用做法整理进本地记忆和面板。</span></div>
+          <div class="stage"><strong>深夜把一天收成总账</strong><span>晚上 23:00 先整理当天窗口，00:10 再把前一天结果固定下来，生成长期记忆、短期跟进、报告和面板。</span></div>
+          <div class="stage"><strong>着急时手动跑一次</strong><span>不想等后台任务时，直接运行 review 或 refresh，就能马上从当前窗口生成记忆；默认只同步压缩摘要，local-only 时只留本地。</span></div>
+        </div>
+        <div class="grid cols-3">
+          <article class="tile">
+            <span class="chip">默认模式</span>
+            <h3>本地记忆 + 轻量上下文</h3>
+            <p>完整记忆账本留在本机；进入 host 的只是压缩摘要，目标 4.2K、上限 5K token，避免长期上下文膨胀。</p>
+          </article>
+          <article class="tile">
+            <span class="chip blue">可追溯</span>
+            <h3>每条记忆都有来源</h3>
+            <p>记忆会保留来源窗口、日期、项目上下文和隐私边界，方便之后回看为什么沉淀、是否还值得保留。</p>
+          </article>
+          <article class="tile">
+            <span class="chip amber">可升级</span>
+            <h3>重复经验会变成资产</h3>
+            <p>多次复用的排障路径、检查清单或提示词会进入资产候选，后续可以升级为 skill、playbook、template 或 automation。</p>
           </article>
         </div>
       </div>
@@ -3055,7 +3253,7 @@
           <div>
             <span class="chip">面板</span>
             <h3>每天自动把工作变成资产</h3>
-            <p>AI agent 窗口结束后，OpenKeepsake 把当天的结论、下一步、可复用做法和隐私状态整理进一个本地面板。</p>
+            <p>AI agent 窗口结束后，OpenRelix 把当天的结论、下一步、可复用做法和隐私状态整理进一个本地面板。</p>
             <ul>
               <li>今天做了什么、沉淀了什么、还缺什么，一屏能扫完。</li>
               <li>重复出现的流程会标成技能、模板或自动化候选。</li>
@@ -3063,7 +3261,7 @@
               <li>输出 HTML、Markdown、JSON、CSV，方便本地查看或二次加工。</li>
             </ul>
           </div>
-          <figure class="shot daily-panel-shot" aria-label="OpenKeepsake 每日资产账本脱敏预览">
+          <figure class="shot daily-panel-shot" aria-label="OpenRelix 每日资产账本脱敏预览">
             <div class="daily-panel-card">
               <div class="daily-panel-main">
                 <div class="daily-panel-kicker">每日资产账本</div>
@@ -3073,13 +3271,13 @@
                 </div>
                 <p class="daily-lead">12 个 agent 窗口已归档：8 条长期记忆、6 条短期跟进、4 个资产升级候选。</p>
                 <ul class="daily-bullets">
-                  <li>长期规则进 OpenKeepsake 登记册；临时上下文进短期工作记忆，避免混成一锅。</li>
+                  <li>长期规则进 OpenRelix 登记册；临时上下文进短期工作记忆，避免混成一锅。</li>
                   <li>每条结论保留来源窗口和隐私边界，只沉淀方法，不保存原始日志。</li>
                   <li>同一结果可导出 HTML / Markdown / JSONL，后续迁移到其他 CLI 不重做。</li>
                 </ul>
                 <div class="daily-context-title">相关上下文</div>
                 <div class="daily-chip-row">
-                  <span class="daily-chip">OpenKeepsake</span>
+                  <span class="daily-chip">OpenRelix</span>
                   <span class="daily-chip">AI CLI</span>
                   <span class="daily-chip">本地隐私边界</span>
                 </div>
@@ -3102,18 +3300,18 @@
           <div>
             <span class="chip blue">复盘</span>
             <h3>立刻分清模型记忆和个人资产账本</h3>
-            <p>左边是会影响下次回答的 host 原生记忆；右边是 OpenKeepsake 本地账本，记录来源、状态和可升级动作。</p>
+            <p>左边是会影响下次回答的 host 原生记忆；右边是 OpenRelix 本地账本，记录来源、状态和可升级动作。</p>
             <ul>
               <li>稳定偏好和通用方法可以进上下文，临时任务默认留本地。</li>
-              <li>每条 OpenKeepsake 记忆带来源、分桶和更新时间，方便回溯核对。</li>
+              <li>每条 OpenRelix 记忆带来源、分桶和更新时间，方便回溯核对。</li>
               <li>重复工作可以从候选升级为技能、模板或自动化。</li>
             </ul>
           </div>
-          <figure class="shot mock-shot memory-real-shot" aria-label="OpenKeepsake 记忆分层功能预览">
-            <div class="mock-toolbar"><span>记忆分层</span><span>Host 与 OpenKeepsake</span></div>
+          <figure class="shot mock-shot memory-real-shot" aria-label="OpenRelix 记忆分层功能预览">
+            <div class="mock-toolbar"><span>记忆分层</span><span>Host 与 OpenRelix</span></div>
             <div class="mock-title">
               <strong>两套记忆，各管一件事</strong>
-              <span>Host 原生记忆影响模型回答；OpenKeepsake 本地记忆保留来源、状态和升级动作。</span>
+              <span>Host 原生记忆影响模型回答；OpenRelix 本地记忆保留来源、状态和升级动作。</span>
             </div>
             <div class="memory-layer-grid">
               <section class="memory-layer-card">
@@ -3142,10 +3340,10 @@
                   </article>
                 </div>
               </section>
-              <section class="memory-layer-card is-okeep">
+              <section class="memory-layer-card is-openrelix">
                 <div class="memory-layer-head">
                   <div>
-                    <span class="memory-layer-kicker">OpenKeepsake 个人记忆</span>
+                    <span class="memory-layer-kicker">OpenRelix 个人记忆</span>
                     <h4>本地可追溯的资产账本</h4>
                   </div>
                   <span class="memory-layer-count">14 条</span>
@@ -3180,15 +3378,15 @@
           <div>
             <span class="chip amber">记忆模式</span>
             <h3>上下文只放该放的内容</h3>
-            <p>OpenKeepsake 会把窗口先按项目和主题收拢，再决定哪些进模型上下文、哪些只留在本地资产账本。</p>
+            <p>OpenRelix 会把窗口先按项目和主题收拢，再决定哪些进模型上下文、哪些只留在本地资产账本。</p>
             <ul>
-              <li>默认 codex-context：完整登记册留在状态目录，压缩摘要进入当前 host 原生上下文。</li>
-              <li>`--use-codex-context`：显式选择当前 Codex 适配器的 host 原生记忆上下文模式。</li>
+              <li>默认 integrated：完整登记册留在状态目录，压缩摘要进入当前 host 原生上下文。</li>
+              <li>`--use-integrated`：显式选择 host 上下文注入模式。</li>
               <li>`--record-memory-only`：只做本地记录和可视化，不注入模型上下文。</li>
               <li>压缩策略：同签名记忆跨天归并，优先长期和任务记忆，低优先级只留本地；摘要目标 4.2K、上限 5K token。</li>
             </ul>
           </div>
-          <figure class="shot context-distribution-shot" aria-label="OpenKeepsake 项目上下文分布预览">
+          <figure class="shot context-distribution-shot" aria-label="OpenRelix 项目上下文分布预览">
             <div class="context-distribution-head">
               <div>
                 <span class="context-distribution-kicker">上下文分布</span>
@@ -3214,7 +3412,7 @@
               <div class="context-bar-item">
                 <div class="context-bar-head">
                   <div class="context-bar-title">
-                    <strong>OpenKeepsake</strong>
+                    <strong>OpenRelix</strong>
                     <span>项目工作区</span>
                   </div>
                   <b class="context-count">4</b>
@@ -3257,11 +3455,11 @@
             <div class="section-kicker">流程</div>
             <h2>流程很短，自动化可控。</h2>
           </div>
-          <p class="lead">首次使用先打开本地面板确认安装结果；需要补齐历史记忆时再手动跑学习指令。它不靠实时 hook 打断工作，而是本地离线采集、按需复盘、定时自动整理、可视化查看。</p>
+          <p class="lead">首次使用按快速上手来：先整理最近 7 天，再打开本地面板看结果。它不靠实时 hook 打断工作，而是本地离线采集、按需刷新、定时整理、可视化查看。</p>
         </div>
         <div class="workflow">
           <div class="stage"><strong>采集</strong><span>后台刷新或手动脚本读取当前 host 历史和会话元数据，按日期和窗口归档。</span></div>
-          <div class="stage"><strong>打开</strong><span>安装完成后先运行 `okeep open panel`，查看本地账本和 host 上下文同步状态。</span></div>
+          <div class="stage"><strong>打开</strong><span>补齐最近 7 天后运行 `openrelix open panel`，查看本地账本和同步状态。</span></div>
           <div class="stage"><strong>分类</strong><span>手动复盘和夜间整理都会区分长期、任务、低优先级记忆，减少长期记忆噪声。</span></div>
           <div class="stage"><strong>登记</strong><span>把可复用内容记录到 JSONL 登记册，保留类型、范围、复用价值和来源。</span></div>
           <div class="stage"><strong>可视化</strong><span>后台刷新、夜间任务或手动脚本生成概览、面板和 CSV，让资产是否有用变得可见。</span></div>
@@ -3276,30 +3474,30 @@
             <div class="section-kicker">安装</div>
             <h2>安装方式。</h2>
           </div>
-          <p class="lead">v0.1.0 预览版面向 macOS，先交付 Codex CLI 适配器。默认就会建立个人资产账本，并把压缩后的轻量摘要同步给当前 host 上下文。默认活动来源仍是 Codex CLI history/session；要读取 Codex 应用线程，安装时额外加 `--read-codex-app`。</p>
+          <p class="lead">推荐命令会安装 `openrelix`、创建本地资产账本，并开启每 30 分钟的增量学习。只想手动整理时，使用不带自动学习开关的安装命令；需要读取 Codex 应用对话时，再选择带应用读取参数的命令。</p>
         </div>
         <div class="install-module" aria-label="安装方式">
           <article class="install-path featured">
             <span class="chip">推荐安装</span>
             <h3>一行命令安装。</h3>
-            <p>适合已经装好 Node.js 18+、Python 3.10+ 和当前 v0.1.0 预览版 Codex CLI 适配器的 macOS 用户；推荐 integrated 配置，会安装 `okeep` 命令。默认命令只读取稳定的 Codex CLI history/session。安装完成后先运行 `okeep open panel` 查看本地面板。</p>
-            <div class="command-row inline-command" aria-label="npx 安装命令">
-              <code class="command-code">npx openkeepsake install --profile integrated</code>
+              <p>已经有 Node.js 18+ 和 Python 3.10+ 的 macOS 用户，直接跑这一行。它会安装 `openrelix` 命令、创建本地资产账本，并开启每 30 分钟的增量学习；后台运行可能消耗 token，需要纯手动模式时去掉自动学习开关。</p>
+              <div class="command-row inline-command" aria-label="npx 安装命令">
+              <code class="command-code">npx openrelix install --profile integrated --enable-learning-refresh</code>
               <button class="command-copy" type="button" aria-label="复制 npx 安装命令"><span data-copy-label aria-live="polite">复制</span></button>
             </div>
-            <p class="install-hint">如果要把 Codex 应用里的线程也纳入读取，使用下面的 opt-in 命令；它会优先尝试 Codex app-server，失败时回退到 CLI 文件。</p>
+            <p class="install-hint">如果你主要用 Codex 应用，也想把应用里的对话纳入整理，安装时用下面这行；默认仍只读 Codex CLI 的本地记录。</p>
             <div class="command-row inline-command" aria-label="Codex 应用安装命令">
-              <code class="command-code">npx openkeepsake install --profile integrated --read-codex-app</code>
+              <code class="command-code">npx openrelix install --profile integrated --enable-learning-refresh --read-codex-app</code>
               <button class="command-copy" type="button" aria-label="复制 Codex 应用安装命令"><span data-copy-label aria-live="polite">复制</span></button>
             </div>
           </article>
           <article class="install-path">
             <span class="chip blue">手动下载</span>
             <h3>也可以从 GitHub 下载源码。</h3>
-            <p data-zh-html='打开 <a class="text-link" href="https://github.com/Ray1Ren/openkeepsake" target="_blank" rel="noopener noreferrer">Ray1Ren/openkeepsake</a>，选择 Code -> Download ZIP；也可以直接点下面的 ZIP 链接。' data-en-html='Open <a class="text-link" href="https://github.com/Ray1Ren/openkeepsake" target="_blank" rel="noopener noreferrer">Ray1Ren/openkeepsake</a> and choose Code -> Download ZIP, or use the ZIP link below directly.'>打开 <a class="text-link" href="https://github.com/Ray1Ren/openkeepsake" target="_blank" rel="noopener noreferrer">Ray1Ren/openkeepsake</a>，选择 Code -> Download ZIP；也可以直接点下面的 ZIP 链接。</p>
+            <p data-zh-html='打开 <a class="text-link" href="https://github.com/openrelix/openrelix" target="_blank" rel="noopener noreferrer">openrelix/openrelix</a>，选择 Code -> Download ZIP；也可以直接点下面的 ZIP 链接。' data-en-html='Open <a class="text-link" href="https://github.com/openrelix/openrelix" target="_blank" rel="noopener noreferrer">openrelix/openrelix</a> and choose Code -> Download ZIP, or use the ZIP link below directly.'>打开 <a class="text-link" href="https://github.com/openrelix/openrelix" target="_blank" rel="noopener noreferrer">openrelix/openrelix</a>，选择 Code -> Download ZIP；也可以直接点下面的 ZIP 链接。</p>
             <div class="install-actions">
-              <a class="button secondary github-button" href="https://github.com/Ray1Ren/openkeepsake" target="_blank" rel="noopener noreferrer">打开 GitHub</a>
-              <a class="button secondary" href="https://github.com/Ray1Ren/openkeepsake/archive/refs/heads/main.zip" target="_blank" rel="noopener noreferrer">下载 ZIP</a>
+              <a class="button secondary github-button" href="https://github.com/openrelix/openrelix" target="_blank" rel="noopener noreferrer">打开 GitHub</a>
+              <a class="button secondary" href="https://github.com/openrelix/openrelix/archive/refs/heads/main.zip" target="_blank" rel="noopener noreferrer">下载 ZIP</a>
             </div>
             <ol class="install-steps">
               <li><span class="install-step-index">1</span><span>下载并解压源码。</span></li>
@@ -3307,12 +3505,12 @@
               <li><span class="install-step-index">3</span><span>执行安装脚本。</span></li>
             </ol>
             <div class="command-row inline-command" aria-label="GitHub 手动下载与安装命令">
-              <code class="command-code">./install/install.sh --profile integrated</code>
+              <code class="command-code">./install/install.sh --profile integrated --enable-learning-refresh</code>
               <button class="command-copy" type="button" aria-label="复制安装脚本命令"><span data-copy-label aria-live="polite">复制</span></button>
             </div>
-            <p class="install-hint">源码安装同理可追加 `--read-codex-app`，默认仍保持 Codex CLI 文件采集。</p>
+            <p class="install-hint">源码安装也一样：只有要读 Codex 应用时，才额外加 `--read-codex-app`。</p>
             <div class="command-row inline-command" aria-label="源码 Codex 应用安装命令">
-              <code class="command-code">./install/install.sh --profile integrated --read-codex-app</code>
+              <code class="command-code">./install/install.sh --profile integrated --enable-learning-refresh --read-codex-app</code>
               <button class="command-copy" type="button" aria-label="复制源码 Codex 应用安装命令"><span data-copy-label aria-live="polite">复制</span></button>
             </div>
           </article>
@@ -3322,34 +3520,70 @@
 
     <section class="section" id="tips">
       <div class="inner">
-        <div class="tips-subhead">
+        <div class="section-head tips-subhead">
           <div>
             <div class="section-kicker">快速上手</div>
-            <h2>使用教程。</h2>
+            <h2>安装后运行顺序。</h2>
           </div>
-          <p class="lead">按顺序完成四步：先打开本地面板，再补齐 7 天记忆；如果要读取 Codex 应用线程，需要在安装命令里额外加 `--read-codex-app`，否则默认只读 Codex CLI history/session；只有需要隔离时才用 `okeep mode` 调整记忆模式。</p>
+          <p class="lead">安装完成后，先执行一次近 7 天整理，把已有 Codex 窗口写入本地账本；如果安装时保留 `--enable-learning-refresh`，后台会每 30 分钟增量刷新；最后打开面板确认结果。</p>
         </div>
         <div class="tips">
           <div class="mode-list" aria-label="快速上手教程">
             <article class="mode-card">
               <span class="mode-kicker">第一步</span>
-              <h3>使用指令，打开本地面板</h3>
-              <p>安装完成后先运行本地面板，确认 OpenKeepsake 账本、面板和上下文同步状态。</p>
+              <h3>整理最近 7 天</h3>
+              <p>先手动跑一次，把最近 7 天的 Codex CLI 记录整理进 OpenRelix 本地账本和面板。安装时加了 `--read-codex-app` 的话，也会尝试纳入 Codex 应用里的对话。</p>
               <div class="command-row inline-command">
-                <code class="command-code">okeep open panel</code>
+                <code class="command-code">openrelix refresh --learn-memory --learn-window-days 7</code>
+                <button class="command-copy" type="button" aria-label="复制学习窗口命令"><span data-copy-label aria-live="polite">复制</span></button>
+              </div>
+              <div class="step-visual" aria-hidden="true">
+                <div class="visual-memory-flow">
+                  <div class="visual-memory-card"><strong>7 天窗口</strong><span class="visual-line"></span><span class="visual-line"></span></div>
+                  <div class="visual-arrow">→</div>
+                  <div class="visual-memory-card"><strong>OpenRelix 本地记忆</strong><span class="visual-line"></span><span class="visual-line"></span></div>
+                  <div class="visual-arrow">→</div>
+                  <div class="visual-memory-card"><strong>本地面板</strong><span class="visual-line"></span><span class="visual-line"></span></div>
+                </div>
+              </div>
+            </article>
+            <article class="mode-card">
+              <span class="mode-kicker">第二步</span>
+              <h3>开启 30 分钟自动学习（推荐）</h3>
+              <p>如果安装命令已经带了 `--enable-learning-refresh`，这一步不用重跑。没带的话，运行下面这行开启后台自动学习；它会每 30 分钟调用 Codex 提炼记忆，可能消耗 token 和后台运行时间，不想后台调模型就跳过。</p>
+              <div class="command-row inline-command">
+                <code class="command-code">npx openrelix install --profile integrated --enable-learning-refresh</code>
+                <button class="command-copy" type="button" aria-label="复制自动学习安装命令"><span data-copy-label aria-live="polite">复制</span></button>
+              </div>
+              <div class="step-visual" aria-hidden="true">
+                <div class="visual-memory-flow">
+                  <div class="visual-memory-card"><strong>30 分钟</strong><span class="visual-line"></span><span class="visual-line"></span></div>
+                  <div class="visual-arrow">→</div>
+                  <div class="visual-memory-card"><strong>Codex 学习</strong><span class="visual-line"></span><span class="visual-line"></span></div>
+                  <div class="visual-arrow">→</div>
+                  <div class="visual-memory-card"><strong>OpenRelix 本地记忆</strong><span class="visual-line"></span><span class="visual-line"></span></div>
+                </div>
+              </div>
+            </article>
+            <article class="mode-card">
+              <span class="mode-kicker">第三步</span>
+              <h3>再打开本地面板</h3>
+              <p>整理完成后打开面板，看今天整理了什么、长期和短期记忆有哪些、同步是否正常。</p>
+              <div class="command-row inline-command">
+                <code class="command-code">openrelix open panel</code>
                 <button class="command-copy" type="button" aria-label="复制打开面板命令"><span data-copy-label aria-live="polite">复制</span></button>
               </div>
               <div class="step-visual visual-local-panel" aria-hidden="true">
                 <div class="visual-local-shell">
                   <div class="visual-local-nav">
-                    <span>01</span>
-                    <span>02</span>
-                    <span>03</span>
-                    <span>04</span>
+                    <span>概览</span>
+                    <span>长期</span>
+                    <span>短期</span>
+                    <span>低优先</span>
                   </div>
                   <div class="visual-local-main">
                     <div class="visual-local-head">
-                      <strong>OpenKeepsake 概览</strong>
+                      <strong>OpenRelix 概览</strong>
                       <span class="visual-local-status">同步正常</span>
                     </div>
                     <div class="visual-local-review">
@@ -3370,51 +3604,33 @@
                 </div>
               </div>
             </article>
-            <article class="mode-card">
-              <span class="mode-kicker">第二步</span>
-              <h3>补齐 7 天记忆</h3>
-              <p>按需运行最近 7 天学习窗口；当前适配器会调用 Codex CLI 生成 OpenKeepsake 本地摘要，不回写 host 原生记忆。若安装时加了 `--read-codex-app`，这条命令会先尝试读取 Codex 应用线程。</p>
-              <div class="command-row inline-command">
-                <code class="command-code">okeep review --date "$(date +%F)" --learn-window-days 7</code>
-                <button class="command-copy" type="button" aria-label="复制学习窗口命令"><span data-copy-label aria-live="polite">复制</span></button>
-              </div>
-              <div class="step-visual" aria-hidden="true">
-                <div class="visual-memory-flow">
-                  <div class="visual-memory-card"><strong>7 天窗口</strong><span class="visual-line"></span><span class="visual-line"></span></div>
-                  <div class="visual-arrow">→</div>
-                  <div class="visual-memory-card"><strong>Host 摘要</strong><span class="visual-line"></span><span class="visual-line"></span></div>
-                  <div class="visual-arrow">→</div>
-                  <div class="visual-memory-card"><strong>OpenKeepsake 本地记忆</strong><span class="visual-line"></span><span class="visual-line"></span></div>
-                </div>
-              </div>
-            </article>
             <article class="mode-card is-wide">
-              <span class="mode-kicker">第三步（可选）</span>
-              <h3>查看或切换 OpenKeepsake 记忆模式</h3>
-              <p>`integrated` 是安装档位，`codex-context` 是记忆模式；使用 `--profile integrated` 安装后默认就是 `codex-context`，后续只在需要严格隔离或只做可视化时才用 `okeep mode` 切换。</p>
+              <span class="mode-kicker">第四步（可选）</span>
+              <h3>查看或切换 OpenRelix 记忆模式</h3>
+              <p>`integrated` 同时是推荐安装档位和默认记忆模式；使用 `--profile integrated` 安装后，后续只在需要严格隔离或只做可视化时才用 `openrelix mode` 切换。</p>
               <div class="mode-options">
                 <div class="mode-option">
-                  <strong>OpenKeepsake 记忆全开模式（默认）</strong>
-                  <span>生成 OpenKeepsake 本地记忆文件和资产面板；完整 registry 留在 state root，压缩摘要注入当前 host 上下文。</span>
+                  <strong>OpenRelix 记忆全开模式（默认）</strong>
+                  <span>生成 OpenRelix 本地记忆文件和资产面板；完整 registry 留在 state root，压缩摘要注入当前 host 上下文。</span>
                   <div class="command-row inline-command">
-                    <code class="command-code">okeep mode codex-context</code>
-                    <button class="command-copy" type="button" aria-label="复制 OpenKeepsake 全开模式命令"><span data-copy-label aria-live="polite">复制</span></button>
+                    <code class="command-code">openrelix mode integrated</code>
+                    <button class="command-copy" type="button" aria-label="复制 OpenRelix 全开模式命令"><span data-copy-label aria-live="polite">复制</span></button>
                   </div>
                 </div>
                 <div class="mode-option">
-                  <strong>OpenKeepsake 记忆本地存储模式</strong>
-                  <span>仅生成和存储 OpenKeepsake 本地记忆与面板，不做上下文注入。</span>
+                  <strong>OpenRelix 记忆本地存储模式</strong>
+                  <span>仅生成和存储 OpenRelix 本地记忆与面板，不做上下文注入。</span>
                   <div class="command-row inline-command">
-                    <code class="command-code">okeep mode local-only</code>
-                    <button class="command-copy" type="button" aria-label="复制 OpenKeepsake 本地存储模式命令"><span data-copy-label aria-live="polite">复制</span></button>
+                    <code class="command-code">openrelix mode local-only</code>
+                    <button class="command-copy" type="button" aria-label="复制 OpenRelix 本地存储模式命令"><span data-copy-label aria-live="polite">复制</span></button>
                   </div>
                 </div>
                 <div class="mode-option">
-                  <strong>禁用 OpenKeepsake 记忆模式</strong>
-                  <span>不生成 OpenKeepsake 记忆文件，不写 OpenKeepsake 本地 memory registry；本项目仅做当前 host 的资产可视化。</span>
+                  <strong>禁用 OpenRelix 记忆模式</strong>
+                  <span>不生成 OpenRelix 记忆文件，不写 OpenRelix 本地 memory registry；本项目仅做当前 host 的资产可视化。</span>
                   <div class="command-row inline-command">
-                    <code class="command-code">okeep mode off</code>
-                    <button class="command-copy" type="button" aria-label="复制禁用 OpenKeepsake 记忆模式命令"><span data-copy-label aria-live="polite">复制</span></button>
+                    <code class="command-code">openrelix mode off</code>
+                    <button class="command-copy" type="button" aria-label="复制禁用 OpenRelix 记忆模式命令"><span data-copy-label aria-live="polite">复制</span></button>
                   </div>
                 </div>
               </div>
@@ -3427,11 +3643,11 @@
               </div>
             </article>
             <article class="mode-card is-terminal">
-              <span class="mode-kicker">第四步（可选）</span>
+              <span class="mode-kicker">第五步（可选）</span>
               <h3>终端状态速览</h3>
               <p>需要在终端快速看核心指标时使用。</p>
               <div class="command-row inline-command">
-                <code class="command-code">okeep core</code>
+                <code class="command-code">openrelix core</code>
                 <button class="command-copy" type="button" aria-label="复制核心命令"><span data-copy-label aria-live="polite">复制</span></button>
               </div>
               <div class="step-visual visual-terminal" aria-hidden="true">
@@ -3441,9 +3657,9 @@
                     <span class="visual-terminal-dot"></span>
                     <span class="visual-terminal-dot"></span>
                   </div>
-                  <span class="visual-terminal-title">okeep core</span>
+                  <span class="visual-terminal-title">openrelix core</span>
                 </div>
-                <div class="visual-terminal-prompt"><span>$</span><code>okeep core</code></div>
+                <div class="visual-terminal-prompt"><span>$</span><code>openrelix core</code></div>
                 <div class="visual-terminal-head"><strong>核心数据</strong><span>快照时间 2026-04-27 23:49:05</span></div>
                 <div class="visual-terminal-table">
                   <div class="visual-terminal-data-row"><b>资产总数</b><strong>6</strong><span>资产注册表中的稳定条目</span></div>
@@ -3480,6 +3696,57 @@
             </article>
           </div>
         </div>
+      </div>
+    </section>
+
+    <section class="section" id="roadmap">
+      <div class="inner">
+        <div class="section-head">
+          <div>
+            <div class="section-kicker">更新计划</div>
+            <h2>按 AI host 适配和个人记忆系统两条主线推进。</h2>
+          </div>
+          <p class="lead">更新计划以 2026/04/28 的 v0.1.0 公开预览版为起点：先把 Codex 体验做深，再扩展到 Claude 生态，最后收口成正式版个人记忆系统。</p>
+        </div>
+        <div class="roadmap-timeline" aria-label="更新计划时间线">
+          <article class="roadmap-item is-released">
+            <div class="roadmap-marker" aria-hidden="true"></div>
+            <div class="roadmap-content">
+              <span class="chip">v0.1.0 已发布</span>
+              <span class="roadmap-status">已发布 · 2026/04/28</span>
+              <h3>预览版闭环发布</h3>
+              <p>跑通本地优先个人 AI 资产系统的最小完整闭环：一键安装、Codex CLI 工作窗口采集、任务复盘、资产登记、记忆分层、面板可视化和 macOS 后台自动化。</p>
+            </div>
+          </article>
+          <article class="roadmap-item">
+            <div class="roadmap-marker" aria-hidden="true"></div>
+            <div class="roadmap-content">
+              <span class="chip blue">v0.2.0</span>
+              <span class="roadmap-status">预计两日内 · 约 2026/04/30 前</span>
+              <h3>深度适配 Codex 软件</h3>
+              <p>把 Codex CLI 与 Codex 软件的活动来源、线程读取、上下文同步和异常回退做得更稳定，同时优化记忆去重、压缩预算、短期/长期分层和面板呈现。</p>
+            </div>
+          </article>
+          <article class="roadmap-item">
+            <div class="roadmap-marker" aria-hidden="true"></div>
+            <div class="roadmap-content">
+              <span class="chip amber">v0.3.0</span>
+              <span class="roadmap-status">预计一周内 · 约 2026/05/05 前</span>
+              <h3>适配 Claude Code CLI + Claude 软件</h3>
+              <p>新增 Claude Code CLI 与 Claude 软件 adapter，把 history、session、工作流和 memory/context 表面映射到同一套本地资产模型，验证跨 host 迁移路径。</p>
+            </div>
+          </article>
+          <article class="roadmap-item">
+            <div class="roadmap-marker" aria-hidden="true"></div>
+            <div class="roadmap-content">
+              <span class="chip rose">v1.0.0</span>
+              <span class="roadmap-status">预计 1-2 周 · 约 2026/05/05 - 2026/05/12</span>
+              <h3>正式版：深度改造个人记忆系统</h3>
+              <p>围绕个人记忆系统做正式版收口：更清晰的长期/短期/低优先分层、更强的资产升级规则、更稳定的跨 host 记忆同步和正式发布文档。</p>
+            </div>
+          </article>
+        </div>
+        <p class="roadmap-note">以上时间是基于 2026/04/28 发布节奏的预估，具体范围会随 host 适配验证、隐私边界检查和安装稳定性测试微调。</p>
       </div>
     </section>
 
@@ -3554,23 +3821,30 @@
   <footer class="footer">
     <div class="inner">
       <div>
-        <strong>OpenKeepsake™</strong>
+        <strong>OpenRelix™</strong>
         <div class="small">面向 AI coding agents / AI CLI 的本地优先个人 AI 资产系统。当前 v0.1.0 预览版首个适配器是 Codex CLI；非官方项目，与 OpenAI 无官方关联。</div>
         <div
           class="small"
           data-zh-html='MIT 授权。版权 (c) 2026 <a class="text-link" href="https://www.npmjs.com/~kk_kais" target="_blank" rel="noopener noreferrer">kk_kais</a>。'
           data-en-html='MIT License. Copyright (c) 2026 <a class="text-link" href="https://www.npmjs.com/~kk_kais" target="_blank" rel="noopener noreferrer">kk_kais</a>.'
         >MIT 授权。版权 (c) 2026 <a class="text-link" href="https://www.npmjs.com/~kk_kais" target="_blank" rel="noopener noreferrer">kk_kais</a>。</div>
-        <div class="small" data-zh-html='GitHub 项目页：<a class="text-link" href="https://github.com/Ray1Ren/openkeepsake" target="_blank" rel="noopener noreferrer">Ray1Ren/openkeepsake</a>，欢迎点星支持。' data-en-html='GitHub project: <a class="text-link" href="https://github.com/Ray1Ren/openkeepsake" target="_blank" rel="noopener noreferrer">Ray1Ren/openkeepsake</a>. Stars are welcome.'>GitHub 项目页：<a class="text-link" href="https://github.com/Ray1Ren/openkeepsake" target="_blank" rel="noopener noreferrer">Ray1Ren/openkeepsake</a>，欢迎点星支持。</div>
+        <div class="small" data-zh-html='GitHub 项目页：<a class="text-link" href="https://github.com/openrelix/openrelix" target="_blank" rel="noopener noreferrer">openrelix/openrelix</a>，欢迎点星支持。' data-en-html='GitHub project: <a class="text-link" href="https://github.com/openrelix/openrelix" target="_blank" rel="noopener noreferrer">openrelix/openrelix</a>. Stars are welcome.'>GitHub 项目页：<a class="text-link" href="https://github.com/openrelix/openrelix" target="_blank" rel="noopener noreferrer">openrelix/openrelix</a>，欢迎点星支持。</div>
       </div>
       <div class="small">本页产品预览使用脱敏示例数据。</div>
     </div>
   </footer>
   <script>
     (() => {
-      const translations = {
+      let translations;
+      function getTranslations() {
+        if (translations) {
+          return translations;
+        }
+        translations = {
         "痛点": "Pain Points",
         "产品": "Product",
+        "更新计划": "Update Plan",
+        "记忆系统": "Memory System",
         "导览": "Tour",
         "安装": "Install",
         "快速上手": "Quick Start",
@@ -3583,8 +3857,8 @@
         "浅色": "Light",
         "深色": "Dark",
         "仅本地": "Local only",
-        "本地优先的 AI 记忆工作台": "Local-first memory workbench for AI agents",
-        "把每天和 AI CLI 一起做过的工作，沉淀成可复用的技能、方法手册、模板、自动化、记忆和可视化复盘，而不是散落在聊天记录里。": "Turn daily work with AI CLIs into reusable skills, playbooks, templates, automations, memories, and visual reviews instead of leaving it scattered across chat history.",
+        "你的专属AI记忆珍藏": "Your personal AI memory keepsake",
+        "OpenRelix 意为开源的个人记忆珍藏：把每天和 AI CLI 一起做过的工作，沉淀成可复用的技能、方法手册、模板、自动化、记忆和可视化复盘，而不是散落在聊天记录里。": "OpenRelix means an open-source personal memory keepsake: it turns daily work with AI CLIs into reusable skills, playbooks, templates, automations, memories, and visual reviews instead of leaving it scattered across chat history.",
         "查看功能导览": "View Product Tour",
         "安装方式": "Install Options",
         "复制安装命令": "Copy Install Commands",
@@ -3602,7 +3876,7 @@
         "个人数据不该跟源码混在一起": "Personal data should not live with source code",
         "可复用能力适合开源，但真实日志、复盘、登记册和运行缓存必须留在本地。": "Reusable capabilities can be open sourced, while real logs, reviews, registries, and runtime caches must stay local.",
         "复用困难": "Hard to reuse",
-        "OpenKeepsake 个人记忆需要账本": "OpenKeepsake memory needs a ledger",
+        "OpenRelix 个人记忆需要账本": "OpenRelix memory needs a ledger",
         "你需要看见哪些方法最常复用、节省了多少时间、哪些经验值得升级成技能，同时不挤占过多上下文。": "You need to see which methods are reused, how much time they save, and what should become a skill without overloading model context.",
         "它是 AI CLI 的本地个人资产层，不是另一个云端知识库。": "It is a local personal asset layer for AI CLIs, not another cloud knowledge base.",
         "仓库只放可复用能力；用户自己的运行状态写到独立状态目录。默认开启本地个人记忆，当前 Codex 适配器只把压缩后的有界摘要同步进 host 原生上下文。": "The repo stores reusable capabilities; user runtime state goes to an external state root. Local personal memory is on by default, and the current Codex adapter syncs only a compressed bounded summary into host-native context.",
@@ -3614,24 +3888,59 @@
         "复盘、登记册、原始窗口、汇总摘要、报表和运行缓存都保存在用户机器。": "Reviews, registries, raw windows, consolidated summaries, reports, and runtime caches stay on the user's machine.",
         "上下文策略": "Context policy",
         "上下文轻量可控": "Context stays light and controlled",
-        "默认 codex-context：本地记忆入库，轻量摘要进入当前 host 上下文；需要隔离时再显式使用 local-only 或 off。": "Default is codex-context: local memory is recorded, a lightweight summary enters the current host context, and local-only or off are explicit isolation choices.",
+        "默认 integrated：本地记忆入库，轻量摘要进入当前 host 上下文；需要隔离时再显式使用 local-only 或 off。": "Default is integrated: local memory is recorded, a lightweight summary enters the current host context, and local-only or off are explicit isolation choices.",
         "个人归属": "Ownership",
         "资产永远归个人": "Assets remain personal",
         "方法手册、技能、模板、自动化和记忆账本不绑定单一平台，未来可迁移到 Claude Code、其他 CLI 或团队工作流。": "Playbooks, skills, templates, automations, and the memory ledger are not tied to one platform and can move to Claude Code, other CLIs, or team workflows later.",
+        "按 AI host 适配和个人记忆系统两条主线推进。": "Advance along two tracks: AI host adapters and the personal memory system.",
+        "更新计划以 2026/04/28 的 v0.1.0 公开预览版为起点：先把 Codex 体验做深，再扩展到 Claude 生态，最后收口成正式版个人记忆系统。": "The update plan starts from the v0.1.0 public preview on 2026/04/28: deepen the Codex experience first, expand into the Claude ecosystem next, then finish the official personal memory system.",
+        "v0.1.0 已发布": "v0.1.0 Released",
+        "已发布 · 2026/04/28": "Released · 2026/04/28",
+        "预览版闭环发布": "Preview Loop Released",
+        "跑通本地优先个人 AI 资产系统的最小完整闭环：一键安装、Codex CLI 工作窗口采集、任务复盘、资产登记、记忆分层、面板可视化和 macOS 后台自动化。": "Delivered the smallest complete loop for a local-first personal AI asset system: one-command install, Codex CLI work-window collection, task reviews, asset registry, memory layering, dashboard visualization, and macOS background automation.",
+        "预计两日内 · 约 2026/04/30 前": "Expected within two days · around 2026/04/30",
+        "深度适配 Codex 软件": "Deep Codex App Adaptation",
+        "把 Codex CLI 与 Codex 软件的活动来源、线程读取、上下文同步和异常回退做得更稳定，同时优化记忆去重、压缩预算、短期/长期分层和面板呈现。": "Make Codex CLI and the Codex app more stable across activity sources, thread reading, context sync, and fallback behavior, while improving memory deduplication, compression budgets, short/long-term layering, and panel presentation.",
+        "预计一周内 · 约 2026/05/05 前": "Expected within one week · around 2026/05/05",
+        "适配 Claude Code CLI + Claude 软件": "Adapt Claude Code CLI + Claude App",
+        "新增 Claude Code CLI 与 Claude 软件 adapter，把 history、session、工作流和 memory/context 表面映射到同一套本地资产模型，验证跨 host 迁移路径。": "Add Claude Code CLI and Claude app adapters, mapping history, sessions, workflows, and memory/context surfaces into the same local asset model to validate cross-host migration.",
+        "预计 1-2 周 · 约 2026/05/05 - 2026/05/12": "Expected in 1-2 weeks · around 2026/05/05 - 2026/05/12",
+        "正式版：深度改造个人记忆系统": "Official Release: Deep Personal Memory System Upgrade",
+        "围绕个人记忆系统做正式版收口：更清晰的长期/短期/低优先分层、更强的资产升级规则、更稳定的跨 host 记忆同步和正式发布文档。": "Finalize the official release around the personal memory system: clearer long-term / short-term / low-priority layers, stronger asset promotion rules, more stable cross-host memory sync, and official release docs.",
+        "以上时间是基于 2026/04/28 发布节奏的预估，具体范围会随 host 适配验证、隐私边界检查和安装稳定性测试微调。": "These dates are estimates based on the 2026/04/28 release cadence; scope may adjust after host-adapter validation, privacy-boundary checks, and install stability testing.",
+        "先沉淀成本地账本，再把必要摘要交给 AI host。": "First capture a local ledger, then hand only the necessary summary to the AI host.",
+        "OpenRelix 不会把所有聊天都塞回上下文。它先把工作记录留在本机，再按固定节奏整理：平时每 30 分钟做小结，深夜做当天总账；需要时也能手动立刻生成。": "OpenRelix does not push every chat back into context. It keeps the work record on your machine first, then organizes it on a steady rhythm: short summaries every 30 minutes, a daily ledger late at night, and manual generation when you need it now.",
+        "先把这段工作记下来": "First, Save This Work Session",
+        "从 AI CLI 已保存的会话记录里读取刚做过的窗口，标清日期、项目和主题；Codex 应用里的对话只有你开启后才会读。": "It reads the recent windows from saved AI CLI session records, labels the date, project, and topic, and only reads Codex app conversations after you turn that source on.",
+        "每 30 分钟做一次小结": "Summarize Every 30 Minutes",
+        "开启后台学习刷新后，它会每 30 分钟看一眼最近窗口，把新结论、待跟进事项和可复用做法整理进本地记忆和面板。": "After background learning refresh is enabled, it checks recent windows every 30 minutes and organizes new conclusions, follow-ups, and reusable practices into local memory and the panel.",
+        "深夜把一天收成总账": "Turn The Day Into A Ledger Late At Night",
+        "晚上 23:00 先整理当天窗口，00:10 再把前一天结果固定下来，生成长期记忆、短期跟进、报告和面板。": "At 23:00 it organizes the current day's windows; at 00:10 it finalizes the previous day into long-term memories, short-term follow-ups, reports, and panels.",
+        "着急时手动跑一次": "Run It Manually When You Need It",
+        "不想等后台任务时，直接运行 review 或 refresh，就能马上从当前窗口生成记忆；默认只同步压缩摘要，local-only 时只留本地。": "When you do not want to wait for the background job, run review or refresh to generate memory from the current windows right away; by default only the compressed summary syncs, and local-only keeps it on the machine.",
+        "默认模式": "Default Mode",
+        "本地记忆 + 轻量上下文": "Local memory + light context",
+        "完整记忆账本留在本机；进入 host 的只是压缩摘要，目标 4.2K、上限 5K token，避免长期上下文膨胀。": "The full memory ledger stays on the machine; the host receives only a compressed summary with a 4.2K target and 5K token cap to avoid long-term context bloat.",
+        "可追溯": "Traceable",
+        "每条记忆都有来源": "Every Memory Has A Source",
+        "记忆会保留来源窗口、日期、项目上下文和隐私边界，方便之后回看为什么沉淀、是否还值得保留。": "Memory keeps the source window, date, project context, and privacy boundary, making it easier to review why it was captured and whether it still deserves to stay.",
+        "可升级": "Upgradeable",
+        "重复经验会变成资产": "Repeated Experience Becomes Assets",
+        "多次复用的排障路径、检查清单或提示词会进入资产候选，后续可以升级为 skill、playbook、template 或 automation。": "Repeated debugging paths, checklists, or prompts become asset candidates that can later be upgraded into skills, playbooks, templates, or automations.",
         "从一天的 AI agent 工作，到可复用资产面板。": "From one day of AI agent work to a reusable asset panel.",
         "下面的预览是脱敏示例面板：保留真实布局、交互密度和模块结构，内容替换为示例工作区和示例数值。": "The previews below use sanitized sample panels: the layout, density, and module structure are retained, while content is sample workspace data.",
-        "OpenKeepsake 工作台": "OpenKeepsake Workspace",
+        "OpenRelix 工作台": "OpenRelix Workspace",
         "每日摘要": "Daily Summary",
         "每日整理结果": "Daily Synthesis",
         "日期\u00a0\u00a02026/04/27": "Date  2026/04/27",
-        "今天主要整理了 OpenKeepsake 的发布准备、隐私边界、记忆模式和本地面板展示。": "Today focused on OpenKeepsake release preparation, privacy boundaries, memory modes, and the local panel presentation.",
-        "Host 原生记忆用于模型上下文，OpenKeepsake 个人记忆用于本地资产账本，两者分层展示。": "Host-native memory serves model context, while OpenKeepsake personal memory serves the local asset ledger; the two are shown as separate layers.",
-        "默认 codex-context：长期可复用内容写入本地 registry，并用 4.2K target / 5K max 的摘要进入当前 host native context。": "Default codex-context: long-term reusable content is written to the local registry and summarized into the current host-native context with a 4.2K target / 5K max budget.",
+        "今天主要整理了 OpenRelix 的发布准备、隐私边界、记忆模式和本地面板展示。": "Today focused on OpenRelix release preparation, privacy boundaries, memory modes, and the local panel presentation.",
+        "Host 原生记忆用于模型上下文，OpenRelix 个人记忆用于本地资产账本，两者分层展示。": "Host-native memory serves model context, while OpenRelix personal memory serves the local asset ledger; the two are shown as separate layers.",
+        "默认 integrated：长期可复用内容写入本地 registry，并用 4.2K target / 5K max 的摘要进入当前 host native context。": "Default integrated: long-term reusable content is written to the local registry and summarized into the current host-native context with a 4.2K target / 5K max budget.",
         "资产使用 Markdown、JSONL 和可视化 panel 保存，未来可迁移到 Claude Code 或其他 CLI。": "Assets are saved as Markdown, JSONL, and visual panels, and can later move to Claude Code or other CLIs.",
         "相关上下文": "Related Context",
         "本地隐私边界": "Local Privacy Boundary",
-        "OpenKeepsake 长期记忆": "OpenKeepsake Long-term Memory",
-        "OpenKeepsake 短期记忆": "OpenKeepsake Short-term Memory",
+        "OpenRelix 长期记忆": "OpenRelix Long-term Memory",
+        "OpenRelix 短期记忆": "OpenRelix Short-term Memory",
         "这些数字是脱敏示例，用来展示面板如何可视化个人 AI 资产。": "These numbers are sanitized samples showing how the panel visualizes personal AI assets.",
         "今天整理了 12 个窗口": "Organized 12 windows today",
         "发布检查、模板整理、本地自动化脚本与记忆候选已归类。": "Release checks, template cleanup, local automation scripts, and memory candidates are grouped.",
@@ -3647,7 +3956,7 @@
         "开启": "On",
         "每天自动把工作变成资产": "Turn daily work into assets automatically",
         "面板": "Dashboard",
-        "AI agent 窗口结束后，OpenKeepsake 把当天的结论、下一步、可复用做法和隐私状态整理进一个本地面板。": "After AI agent windows finish, OpenKeepsake organizes conclusions, next steps, reusable practices, and privacy status into one local panel.",
+        "AI agent 窗口结束后，OpenRelix 把当天的结论、下一步、可复用做法和隐私状态整理进一个本地面板。": "After AI agent windows finish, OpenRelix organizes conclusions, next steps, reusable practices, and privacy status into one local panel.",
         "今天做了什么、沉淀了什么、还缺什么，一屏能扫完。": "See what happened today, what was captured, and what is still missing on one screen.",
         "重复出现的流程会标成技能、模板或自动化候选。": "Repeated workflows are marked as skill, template, or automation candidates.",
         "只存脱敏摘要和来源索引，个人状态默认留在本机。": "Only sanitized summaries and source indexes are stored; personal state stays on the machine by default.",
@@ -3655,7 +3964,7 @@
         "今天哪些工作能复用？": "Which work can be reused today?",
         "日期 2026/04/27": "Date 2026/04/27",
         "12 个 agent 窗口已归档：8 条长期记忆、6 条短期跟进、4 个资产升级候选。": "12 agent windows archived: 8 long-term memories, 6 short-term follow-ups, and 4 asset upgrade candidates.",
-        "长期规则进 OpenKeepsake 登记册；临时上下文进短期工作记忆，避免混成一锅。": "Long-term rules go into the OpenKeepsake registry; temporary context stays in short-term work memory.",
+        "长期规则进 OpenRelix 登记册；临时上下文进短期工作记忆，避免混成一锅。": "Long-term rules go into the OpenRelix registry; temporary context stays in short-term work memory.",
         "每条结论保留来源窗口和隐私边界，只沉淀方法，不保存原始日志。": "Each conclusion keeps its source window and privacy boundary; methods are captured, raw logs are not.",
         "同一结果可导出 HTML / Markdown / JSONL，后续迁移到其他 CLI 不重做。": "The same result exports to HTML, Markdown, and JSONL, so later CLI migration does not start from scratch.",
         "工作窗口": "Work Windows",
@@ -3668,7 +3977,7 @@
 	        "同一条记忆跨天出现时会归并统计。": "Merges the same memory across days.",
 	        "每天自动总结你的辛勤劳动。": "Automatically summarizes your hard work every day.",
 	        "输出 HTML、Markdown、JSON、CSV，方便本地查看或二次加工。": "Outputs HTML, Markdown, JSON, and CSV for local viewing or further processing.",
-        "OpenKeepsake 概览": "OpenKeepsake Overview",
+        "OpenRelix 概览": "OpenRelix Overview",
         "最近整理、核心指标、窗口和记忆明细在本地聚合。": "Recent synthesis, core metrics, windows, and memory details are aggregated locally.",
         "窗口": "Windows",
         "长期记忆": "Long-term Memory",
@@ -3676,25 +3985,25 @@
         "待升级资产": "Asset Candidates",
         "发布检查、模板整理、本地自动化": "Release checks, template cleanup, local automation",
         "按项目和上下文归类": "Grouped by project and context",
-        "同时看见 host 记忆和 OpenKeepsake 个人记忆": "See host memory and OpenKeepsake memory together",
-        "`/memory-review` 和 `okeep review` 会从本地 AI agent 窗口整理当天工作，输出脱敏复盘、长期记忆、短期任务记忆和下一步动作。": "`/memory-review` and `okeep review` organize the day's local AI agent windows into sanitized reviews, long-term memory, short-term task memory, and next actions.",
+        "同时看见 host 记忆和 OpenRelix 个人记忆": "See host memory and OpenRelix memory together",
+        "`/memory-review` 和 `openrelix review` 会从本地 AI agent 窗口整理当天工作，输出脱敏复盘、长期记忆、短期任务记忆和下一步动作。": "`/memory-review` and `openrelix review` organize the day's local AI agent windows into sanitized reviews, long-term memory, short-term task memory, and next actions.",
         "保留结论、方法和决策，不保留原始私有日志。": "Keep conclusions, methods, and decisions, not raw private logs.",
-        "面板把 host native memory 与 OpenKeepsake 本地记忆登记册分层展示。": "The panel separates host-native memory from the OpenKeepsake local memory registry.",
+        "面板把 host native memory 与 OpenRelix 本地记忆登记册分层展示。": "The panel separates host-native memory from the OpenRelix local memory registry.",
         "适合把重复操作升级成 skill 或 automation。": "Repeated operations can be promoted into skills or automations.",
         "立刻分清模型记忆和个人资产账本": "Immediately separate model memory from the personal asset ledger",
         "复盘": "Review",
-        "左边是会影响下次回答的 host 原生记忆；右边是 OpenKeepsake 本地账本，记录来源、状态和可升级动作。": "The left side is host-native memory that can affect future answers; the right side is the OpenKeepsake local ledger with sources, status, and upgrade actions.",
+        "左边是会影响下次回答的 host 原生记忆；右边是 OpenRelix 本地账本，记录来源、状态和可升级动作。": "The left side is host-native memory that can affect future answers; the right side is the OpenRelix local ledger with sources, status, and upgrade actions.",
         "稳定偏好和通用方法可以进上下文，临时任务默认留本地。": "Stable preferences and general methods can enter context; temporary tasks stay local by default.",
-        "每条 OpenKeepsake 记忆带来源、分桶和更新时间，方便回溯核对。": "Every OpenKeepsake memory carries source, bucket, and update time for traceable review.",
+        "每条 OpenRelix 记忆带来源、分桶和更新时间，方便回溯核对。": "Every OpenRelix memory carries source, bucket, and update time for traceable review.",
         "重复工作可以从候选升级为技能、模板或自动化。": "Repeated work can move from candidate to skill, template, or automation.",
         "记忆分层": "Memory Layers",
-        "Host 与 OpenKeepsake": "Host + OpenKeepsake",
+        "Host 与 OpenRelix": "Host + OpenRelix",
         "记忆分层展示": "Layered memory display",
         "Host native memory 与本地个人记忆分开显示，来源和优先级可追溯。": "Host-native memory and local personal memory are displayed separately with traceable sources and priorities.",
         "真实记忆视图": "Real memory view",
-        "按真实来源拆开：当前 host 读 memory_summary 与 MEMORY.md，OpenKeepsake 读 registry/memory_items.jsonl。": "Split by real sources: the current host reads memory_summary and MEMORY.md, while OpenKeepsake reads registry/memory_items.jsonl.",
+        "按真实来源拆开：当前 host 读 memory_summary 与 MEMORY.md，OpenRelix 读 registry/memory_items.jsonl。": "Split by real sources: the current host reads memory_summary and MEMORY.md, while OpenRelix reads registry/memory_items.jsonl.",
         "两套记忆，各管一件事": "Two memory layers, each with one job",
-        "Host 原生记忆影响模型回答；OpenKeepsake 本地记忆保留来源、状态和升级动作。": "Host-native memory shapes model answers; OpenKeepsake local memory keeps sources, status, and upgrade actions.",
+        "Host 原生记忆影响模型回答；OpenRelix 本地记忆保留来源、状态和升级动作。": "Host-native memory shapes model answers; OpenRelix local memory keeps sources, status, and upgrade actions.",
         "Host 原生记忆": "Host Native Memory",
         "模型长期摘要": "Model-readable long-term summary",
         "模型会带着走的规则": "Rules the model carries forward",
@@ -3711,12 +4020,11 @@
         "类型：提示": "kind: tip",
         "任务组": "Task Groups",
         "长期任务地图": "Long-term Task Map",
-        "OpenKeepsake 本地优先系统、独立 Review 流程、host 配置排障。": "OpenKeepsake local-first system, independent review workflow, and host configuration debugging.",
+        "OpenRelix 本地优先系统、独立 Review 流程、host 配置排障。": "OpenRelix local-first system, independent review workflow, and host configuration debugging.",
         "记录常见项目、排障路线和协作偏好，作为模型上下文入口。": "Record common projects, debugging routes, and collaboration preferences as model-context entry points.",
         "来源：MEMORY.md": "source: MEMORY.md",
         "类型：任务组": "kind: task_group",
-        "OpenKeepsake 个人记忆": "OpenKeepsake Personal Memory",
-        "当前记忆登记册": "Current Memory Registry",
+        "OpenRelix 个人记忆": "OpenRelix Personal Memory",
         "本地可追溯的资产账本": "A local, traceable asset ledger",
         "14 条": "14 items",
         "本地优先、state root、LaunchAgent 等稳定规则沉淀为可复用资产。": "Local-first, state root, LaunchAgent, and other stable rules captured as reusable assets.",
@@ -3741,18 +4049,18 @@
         "展示方式：分层对照，不混写": "Display mode: layered comparison, not mixed together",
         "看左边：模型下次怎么响应": "Left: how the model responds next time",
         "看右边：资产从哪里来、下一步做什么": "Right: where assets came from and what happens next",
-        "默认 codex-context，轻量注入上下文": "Default codex-context with lightweight context injection",
+        "默认 integrated，轻量注入上下文": "Default integrated with lightweight context injection",
         "稳定流程沉淀为可复用 skill": "Stable workflows become reusable skills",
         "任务复盘保留结论与方法": "Task reviews keep conclusions and methods",
         "只展示轻量消耗信号": "Only lightweight usage signals are shown",
         "上下文只放该放的内容": "Only put the right content into context",
         "记忆模式": "Memory Modes",
-        "OpenKeepsake 会把窗口先按项目和主题收拢，再决定哪些进模型上下文、哪些只留在本地资产账本。": "OpenKeepsake first groups windows by project and topic, then decides what enters model context and what stays in the local asset ledger.",
-        "个人记忆系统默认开启，默认模式是 codex-context：完整 registry 留在 state root，压缩摘要进入当前 host native context。": "Personal memory is on by default in codex-context mode: the full registry stays in the state root, and a compressed summary enters the current host-native context.",
-        "默认 codex-context：完整登记册留在状态目录，压缩摘要进入当前 host 原生上下文。": "Default codex-context: the full registry stays in the state root and a compressed summary enters the current host-native context.",
+        "OpenRelix 会把窗口先按项目和主题收拢，再决定哪些进模型上下文、哪些只留在本地资产账本。": "OpenRelix first groups windows by project and topic, then decides what enters model context and what stays in the local asset ledger.",
+        "个人记忆系统默认开启，默认模式是 integrated：完整 registry 留在 state root，压缩摘要进入当前 host native context。": "Personal memory is on by default in integrated mode: the full registry stays in the state root, and a compressed summary enters the current host-native context.",
+        "默认 integrated：完整登记册留在状态目录，压缩摘要进入当前 host 原生上下文。": "Default integrated: the full registry stays in the state root and a compressed summary enters the current host-native context.",
         "`--record-memory-only`：严格本地记录，不注入 host native context。": "`--record-memory-only`: strict local recording without injecting host-native context.",
         "`--record-memory-only`：只做本地记录和可视化，不注入模型上下文。": "`--record-memory-only`: only record and visualize locally, without injecting model context.",
-        "`--use-codex-context`：显式选择当前 Codex 适配器的 host 原生记忆上下文模式。": "`--use-codex-context`: explicitly select the host-native memory context mode for the current Codex adapter.",
+        "`--use-integrated`：显式选择 host 上下文注入模式。": "`--use-integrated`: explicitly select host-context injection mode.",
         "`--disable-personal-memory`：关闭本系统本地 memory registry 写入。": "`--disable-personal-memory`: disable this system's local memory-registry writes.",
         "压缩策略：同签名记忆跨天归并，优先长期和任务记忆，低优先级只留本地；摘要目标 4.2K、上限 5K token。": "Compression strategy: merge same-signature memories across days, prioritize durable / session, keep low-priority local only, and cap the summary at a 4.2K target / 5K max token budget.",
         "低优先级内容只留本地；长期规则和短期跟进分开归档，避免上下文噪声。": "Low-priority content stays local; long-term rules and short-term follow-ups are archived separately to reduce context noise.",
@@ -3779,25 +4087,28 @@
         "下一步": "Next step",
         "高频主题进入资产候选；低频主题只保留来源索引。": "High-frequency topics become asset candidates; low-frequency topics keep only source indexes.",
         "流程很短，自动化可控。": "Short flow, controlled automation.",
-        "首次使用先打开本地面板确认安装结果；需要补齐历史记忆时再手动跑学习指令。它不靠实时 hook 打断工作，而是本地离线采集、按需复盘、定时自动整理、可视化查看。": "Open the local panel first to confirm installation; run the learning command manually only when historical memory needs backfilling. It does not interrupt work with real-time hooks: it collects locally offline, reviews on demand, organizes automatically on a schedule, and visualizes the result.",
+        "首次使用按快速上手来：先整理最近 7 天，再打开本地面板看结果。它不靠实时 hook 打断工作，而是本地离线采集、按需刷新、定时整理、可视化查看。": "For first use, follow Quick Start: organize the last 7 days, then open the local panel to inspect the result. It does not interrupt work with real-time hooks: it collects locally offline, refreshes on demand, organizes on a schedule, and visualizes the result.",
         "采集": "Collect",
         "后台刷新或手动脚本读取当前 host 历史和会话元数据，按日期和窗口归档。": "Background refresh or manual scripts read current host history and session metadata, then archive by date and window.",
         "打开": "Open",
-        "安装完成后先运行 `okeep open panel`，查看本地账本和 host 上下文同步状态。": "After installing, run `okeep open panel` first to inspect the local ledger and host context sync status.",
+        "补齐最近 7 天后运行 `openrelix open panel`，查看本地账本和同步状态。": "After backfilling the last 7 days, run `openrelix open panel` to inspect the local ledger and sync status.",
         "分类": "Classify",
         "手动复盘和夜间整理都会区分长期、任务、低优先级记忆，减少长期记忆噪声。": "Manual reviews and nightly organization both separate durable, session, and low-priority memory to reduce long-term noise.",
         "登记": "Register",
         "把可复用内容记录到 JSONL 登记册，保留类型、范围、复用价值和来源。": "Write reusable content into a JSONL registry with type, scope, reuse value, and source.",
         "可视化": "Visualize",
         "后台刷新、夜间任务或手动脚本生成概览、面板和 CSV，让资产是否有用变得可见。": "Background refresh, nightly jobs, or manual scripts generate overview, panel, and CSV outputs so asset value becomes visible.",
-        "使用教程。": "Quick Start Guide.",
+        "装完后怎么用。": "What to do after install.",
+        "安装后运行顺序。": "Post-install run order.",
         "安装方式。": "Install Options.",
-        "v0.1.0 预览版面向 macOS，先交付 Codex CLI 适配器。默认就会建立个人资产账本，并把压缩后的轻量摘要同步给当前 host 上下文。默认活动来源仍是 Codex CLI history/session；要读取 Codex 应用线程，安装时额外加 `--read-codex-app`。": "v0.1.0 preview targets macOS and ships the Codex CLI adapter first. By default it builds the personal asset ledger and syncs a compressed lightweight summary into the current host context. The default activity source remains Codex CLI history/session; to read Codex app threads, add `--read-codex-app` during install.",
+        "先安装 OpenRelix。推荐命令会开启 30 分钟自动 Codex 学习；如果只想手动整理，可以删掉 `--enable-learning-refresh`。默认只读取 Codex CLI 本地记录；如果也要读取 Codex 应用里的对话，安装命令里额外加 `--read-codex-app`。": "Install OpenRelix first. The recommended command enables 30-minute automatic Codex learning; if you only want manual organization, remove `--enable-learning-refresh`. By default it reads only local Codex CLI records; to include conversations from the Codex app, add `--read-codex-app` to the install command.",
+        "推荐命令会安装 `openrelix`、创建本地资产账本，并开启每 30 分钟的增量学习。只想手动整理时，使用不带自动学习开关的安装命令；需要读取 Codex 应用对话时，再选择带应用读取参数的命令。": "The recommended command installs `openrelix`, creates the local asset ledger, and enables incremental learning every 30 minutes. For manual-only use, install without the automatic-learning option; to include Codex app conversations, choose the command with the app-reading option.",
         "推荐安装": "Recommended",
         "一行命令安装。": "Install with one command.",
-        "适合已经装好 Node.js 18+、Python 3.10+ 和当前 v0.1.0 预览版 Codex CLI 适配器的 macOS 用户；推荐 integrated 配置，会安装 `okeep` 命令。默认命令只读取稳定的 Codex CLI history/session。安装完成后先运行 `okeep open panel` 查看本地面板。": "For macOS users who already have Node.js 18+, Python 3.10+, and the current v0.1.0 preview Codex CLI adapter installed; the recommended integrated profile installs the `okeep` command. The default command only reads stable Codex CLI history/session files. After installing, run `okeep open panel` first to view the local panel.",
+        "已经有 Node.js 18+ 和 Python 3.10+ 的 macOS 用户，直接跑这一行。它会安装 `openrelix` 命令、创建本地资产账本，并开启 30 分钟自动学习。这个模式会定时调用 Codex，可能消耗 token 和后台运行时间；不想自动学习时删掉 `--enable-learning-refresh`。": "If you already have Node.js 18+ and Python 3.10+ on macOS, run this line. It installs the `openrelix` command, creates the local asset ledger, and enables 30-minute automatic learning. This mode calls Codex on a schedule and may consume tokens and background runtime; remove `--enable-learning-refresh` if you do not want automatic learning.",
+        "已经有 Node.js 18+ 和 Python 3.10+ 的 macOS 用户，直接跑这一行。它会安装 `openrelix` 命令、创建本地资产账本，并开启每 30 分钟的增量学习；后台运行可能消耗 token，需要纯手动模式时去掉自动学习开关。": "If you already have Node.js 18+ and Python 3.10+ on macOS, run this line. It installs the `openrelix` command, creates the local asset ledger, and enables incremental learning every 30 minutes; background runs may consume tokens, so remove the automatic-learning option for a manual-only setup.",
         "# npx 快速安装": "# quick npx install",
-        "如果要把 Codex 应用里的线程也纳入读取，使用下面的 opt-in 命令；它会优先尝试 Codex app-server，失败时回退到 CLI 文件。": "To include threads from the Codex app, use the opt-in command below; it tries Codex app-server first and falls back to CLI files if unavailable.",
+        "如果你主要用 Codex 应用，也想把应用里的对话纳入整理，安装时用下面这行；默认仍只读 Codex CLI 的本地记录。": "If you mainly use the Codex app and want those conversations included, use the line below during install; by default OpenRelix still reads only local Codex CLI records.",
         "手动下载": "Manual download",
         "也可以从 GitHub 下载源码。": "You can also download the source from GitHub.",
         "打开 GitHub": "Open GitHub",
@@ -3805,12 +4116,16 @@
         "下载并解压源码。": "Download and extract the source.",
         "进入解压后的仓库目录。": "Enter the extracted repository directory.",
         "执行安装脚本。": "Run the installer script.",
-        "源码安装同理可追加 `--read-codex-app`，默认仍保持 Codex CLI 文件采集。": "For source installs, append `--read-codex-app` the same way; by default collection still stays on Codex CLI files.",
-        "按顺序完成四步：先打开本地面板，再补齐 7 天记忆；如果要读取 Codex 应用线程，需要在安装命令里额外加 `--read-codex-app`，否则默认只读 Codex CLI history/session；只有需要隔离时才用 `okeep mode` 调整记忆模式。": "Complete four steps in order: open the local panel first, then backfill 7-day memory; if you want to read Codex app threads, add `--read-codex-app` to the install command, otherwise the default reads only Codex CLI history/session; use `okeep mode` to adjust memory mode only when isolation is needed.",
+        "源码安装也一样：只有要读 Codex 应用时，才额外加 `--read-codex-app`。": "Source install works the same way: add `--read-codex-app` only when you want to read the Codex app.",
+        "装好以后按这个顺序来：先把最近 7 天的 Codex 记录整理一次；再确认是否开启 30 分钟自动学习；最后打开面板看结果。自动学习会定时调用 Codex，不想消耗 token 时可以跳过。": "After install, use this order: organize the last 7 days of Codex records once; then confirm whether 30-minute automatic learning is enabled; finally open the panel to inspect the result. Automatic learning calls Codex on a schedule, so skip it if you do not want token usage.",
+        "安装完成后，先执行一次近 7 天整理，把已有 Codex 窗口写入本地账本；如果安装时保留 `--enable-learning-refresh`，后台会每 30 分钟增量刷新；最后打开面板确认结果。": "After install, run one 7-day organization pass to write existing Codex windows into the local ledger. If you kept `--enable-learning-refresh`, the background job refreshes incrementally every 30 minutes. Then open the panel to verify the result.",
         "第一步": "Step 1",
-        "使用指令，打开本地面板": "Open the local panel with a command",
-        "安装完成后先运行本地面板，确认 OpenKeepsake 账本、面板和上下文同步状态。": "After installing, open the local panel first to confirm the OpenKeepsake ledger, panel, and context sync status.",
+        "先补齐最近 7 天": "Backfill the last 7 days first",
+        "整理最近 7 天": "Organize the last 7 days",
+        "装完后先跑一次，把最近几天的 Codex 记录整理进 OpenRelix 本地记忆和面板。安装时加了 `--read-codex-app` 的话，这里也会读取 Codex 应用里的对话。": "Run this once after install to organize recent Codex records into OpenRelix local memory and the panel. If you installed with `--read-codex-app`, this also reads conversations from the Codex app.",
+        "先手动跑一次，把最近 7 天的 Codex CLI 记录整理进 OpenRelix 本地账本和面板。安装时加了 `--read-codex-app` 的话，也会尝试纳入 Codex 应用里的对话。": "Run this manually once to organize the last 7 days of Codex CLI records into the OpenRelix local ledger and panel. If you installed with `--read-codex-app`, it also tries to include Codex app conversations.",
         "同步正常": "Synced",
+        "概览": "Overview",
         "今日 Review": "Today Review",
         "开源发布、面板可视化、host 记忆分层。": "Open-source release, panel visualization, host memory layering.",
         "长期": "Long",
@@ -3819,27 +4134,32 @@
         "Host context 预算 ≤ 5K": "Host context budget ≤ 5K",
         "受控": "Bounded",
         "第二步": "Step 2",
-        "补齐 7 天记忆": "Backfill 7-day memory",
-        "按需运行最近 7 天学习窗口；当前适配器会调用 Codex CLI 生成 OpenKeepsake 本地摘要，不回写 host 原生记忆。若安装时加了 `--read-codex-app`，这条命令会先尝试读取 Codex 应用线程。": "Run the recent 7-day learning window when needed; the current adapter calls Codex CLI to generate OpenKeepsake local summaries and does not write back to host-native memory. If install used `--read-codex-app`, this command first tries to read Codex app threads.",
+        "开启 30 分钟自动学习（推荐）": "Enable 30-minute automatic learning (recommended)",
+        "如果安装命令已经带了 `--enable-learning-refresh`，这一步不用重跑。没带的话，运行下面这行开启后台自动学习；它会每 30 分钟调用 Codex 提炼记忆，可能消耗 token 和后台运行时间，不想后台调模型就跳过。": "If your install command already included `--enable-learning-refresh`, you do not need to rerun this step. If it did not, run the line below to enable background learning; it calls Codex every 30 minutes to synthesize memory, which may consume tokens and background runtime, so skip it if you do not want background model calls.",
+        "30 分钟": "30 minutes",
+        "Codex 学习": "Codex learning",
+        "第三步": "Step 3",
+        "再打开本地面板": "Then open the local panel",
+        "整理完成后打开面板，看今天整理了什么、长期和短期记忆有哪些、同步是否正常。": "After organizing, open the panel to see what was captured today, which long-term and short-term memories exist, and whether sync is healthy.",
         "7 天窗口": "7-day windows",
-        "Host 摘要": "Host summary",
-        "OpenKeepsake 本地记忆": "OpenKeepsake local memory",
-        "第三步（可选）": "Step 3 (optional)",
-        "查看或切换 OpenKeepsake 记忆模式": "View or switch OpenKeepsake memory mode",
-        "`integrated` 是安装档位，`codex-context` 是记忆模式；使用 `--profile integrated` 安装后默认就是 `codex-context`，后续只在需要严格隔离或只做可视化时才用 `okeep mode` 切换。": "`integrated` is the install profile, while `codex-context` is the memory mode. After installing with `--profile integrated`, the default memory mode is already `codex-context`; use `okeep mode` later only for strict isolation or visualization-only usage.",
+        "OpenRelix 本地记忆": "OpenRelix local memory",
+        "本地面板": "Local panel",
+        "查看或切换 OpenRelix 记忆模式": "View or switch OpenRelix memory mode",
+        "`integrated` 同时是推荐安装档位和默认记忆模式；使用 `--profile integrated` 安装后，后续只在需要严格隔离或只做可视化时才用 `openrelix mode` 切换。": "`integrated` is both the recommended install profile and the default memory mode. After installing with `--profile integrated`, use `openrelix mode` later only for strict isolation or visualization-only usage.",
         "全开": "Full",
         "本地记忆 + 上下文注入": "Local memory + context injection",
         "本地存储": "Local storage",
         "只写本地，不注入": "Write locally, no injection",
         "禁用": "Disabled",
         "只做资产可视化": "Asset visualization only",
-        "OpenKeepsake 记忆全开模式（默认）": "OpenKeepsake memory full mode (default)",
-        "生成 OpenKeepsake 本地记忆文件和资产面板；完整 registry 留在 state root，压缩摘要注入当前 host 上下文。": "Generate OpenKeepsake local memory files and the asset panel; the full registry stays in the state root, and the compressed summary is injected into the current host context.",
-        "OpenKeepsake 记忆本地存储模式": "OpenKeepsake memory local-storage mode",
-        "仅生成和存储 OpenKeepsake 本地记忆与面板，不做上下文注入。": "Only generate and store OpenKeepsake local memory and the panel, without context injection.",
-        "禁用 OpenKeepsake 记忆模式": "Disable OpenKeepsake memory mode",
-        "不生成 OpenKeepsake 记忆文件，不写 OpenKeepsake 本地 memory registry；本项目仅做当前 host 的资产可视化。": "Do not generate OpenKeepsake memory files or write the OpenKeepsake local memory registry; this project only visualizes current-host assets.",
+        "OpenRelix 记忆全开模式（默认）": "OpenRelix memory full mode (default)",
+        "生成 OpenRelix 本地记忆文件和资产面板；完整 registry 留在 state root，压缩摘要注入当前 host 上下文。": "Generate OpenRelix local memory files and the asset panel; the full registry stays in the state root, and the compressed summary is injected into the current host context.",
+        "OpenRelix 记忆本地存储模式": "OpenRelix memory local-storage mode",
+        "仅生成和存储 OpenRelix 本地记忆与面板，不做上下文注入。": "Only generate and store OpenRelix local memory and the panel, without context injection.",
+        "禁用 OpenRelix 记忆模式": "Disable OpenRelix memory mode",
+        "不生成 OpenRelix 记忆文件，不写 OpenRelix 本地 memory registry；本项目仅做当前 host 的资产可视化。": "Do not generate OpenRelix memory files or write the OpenRelix local memory registry; this project only visualizes current-host assets.",
         "第四步（可选）": "Step 4 (optional)",
+        "第五步（可选）": "Step 5 (optional)",
         "终端状态速览": "Terminal status",
         "需要在终端快速看核心指标时使用。": "Use this when you need a quick terminal view of core metrics.",
         "核心数据": "Core data",
@@ -3874,9 +4194,9 @@
         "# GitHub 手动下载后安装": "# install after manual GitHub download",
         "# 严格本地记录：仅可视化和本地存储，不注入 host context": "# strict local record: visualize and store locally only, without injecting host context",
         "# 默认：本地记忆 + host context 轻量摘要": "# default: local memory + lightweight host context summary",
-        "# 可选：禁用个人资产本地记录，仅可视化 AI CLI 的记忆": "# optional: disable OpenKeepsake local memory writes; only visualize AI CLI memory",
+        "# 可选：禁用个人资产本地记录，仅可视化 AI CLI 的记忆": "# optional: disable OpenRelix local memory writes; only visualize AI CLI memory",
         "# 安装后先打开面板": "# after install, open the panel first",
-        "# 可选：补齐 7 天记忆和日报": "# optional: backfill 7-day memory and daily reports",
+        "# 推荐：开启 30 分钟自动学习刷新": "# recommended: enable 30-minute automatic learning refresh",
         "# 终端状态速览": "# terminal status",
         "复制": "Copy",
         "已复制": "Copied",
@@ -3914,11 +4234,19 @@
         "面向 AI coding agents / AI CLI 的本地优先个人 AI 资产系统。当前 v0.1.0 预览版首个适配器是 Codex CLI；非官方项目，与 OpenAI 无官方关联。": "A local-first personal AI asset system for AI coding agents / AI CLI. The first v0.1.0 preview adapter is Codex CLI; unofficial and not affiliated with OpenAI.",
         "MIT 授权。版权 (c) 2026": "MIT License. Copyright (c) 2026",
         "本页产品预览使用脱敏示例数据。": "Product previews on this page use sanitized sample data."
-      };
+        };
+        return translations;
+      }
 
-      const attrTranslations = {
+      let attrTranslations;
+      function getAttrTranslations() {
+        if (attrTranslations) {
+          return attrTranslations;
+        }
+        attrTranslations = {
         "页面导航": "Page navigation",
-        "OpenKeepsake 首页": "OpenKeepsake home",
+        "页面设置": "Page settings",
+        "OpenRelix 首页": "OpenRelix home",
         "语言切换": "Language switch",
         "主题切换": "Theme switch",
         "安装和使用命令": "Install and usage commands",
@@ -3938,39 +4266,43 @@
         "复制一行安装命令": "Copy one-line install command",
         "复制本地记录安装命令": "Copy local-record install command",
         "复制 host 上下文安装命令": "Copy host-context install command",
-        "复制 OpenKeepsake 全开模式命令": "Copy OpenKeepsake full-mode command",
-        "复制 OpenKeepsake 本地存储模式命令": "Copy OpenKeepsake local-storage mode command",
+        "复制 OpenRelix 全开模式命令": "Copy OpenRelix full-mode command",
+        "复制 OpenRelix 本地存储模式命令": "Copy OpenRelix local-storage mode command",
         "复制禁用个人记忆命令": "Copy command to disable personal memory",
-        "复制禁用 OpenKeepsake 记忆模式命令": "Copy command to disable OpenKeepsake memory",
+        "复制禁用 OpenRelix 记忆模式命令": "Copy command to disable OpenRelix memory",
         "复制学习窗口命令": "Copy learning-window command",
         "复制核心命令": "Copy core command",
         "复制打开面板命令": "Copy open-panel command",
-        "OpenKeepsake 脱敏每日整理结果预览": "OpenKeepsake sanitized daily synthesis preview",
-        "OpenKeepsake 每日资产账本脱敏预览": "OpenKeepsake sanitized daily asset ledger preview",
-        "OpenKeepsake 示例概览面板": "OpenKeepsake sample overview panel",
-        "OpenKeepsake 示例记忆面板": "OpenKeepsake sample memory panel",
-        "OpenKeepsake 记忆分层真实视图": "OpenKeepsake real layered memory view",
-        "OpenKeepsake 记忆分层功能预览": "OpenKeepsake layered memory feature preview",
-        "OpenKeepsake 示例窗口面板": "OpenKeepsake sample window panel",
-        "OpenKeepsake 项目上下文分布预览": "OpenKeepsake project context distribution preview"
-      };
+        "OpenRelix 脱敏每日整理结果预览": "OpenRelix sanitized daily synthesis preview",
+        "OpenRelix 每日资产账本脱敏预览": "OpenRelix sanitized daily asset ledger preview",
+        "OpenRelix 示例概览面板": "OpenRelix sample overview panel",
+        "OpenRelix 示例记忆面板": "OpenRelix sample memory panel",
+        "OpenRelix 记忆分层真实视图": "OpenRelix real layered memory view",
+        "OpenRelix 记忆分层功能预览": "OpenRelix layered memory feature preview",
+        "OpenRelix 示例窗口面板": "OpenRelix sample window panel",
+        "OpenRelix 项目上下文分布预览": "OpenRelix project context distribution preview",
+        "更新计划时间线": "Update plan timeline"
+        };
+        return attrTranslations;
+      }
 
       const metaDescription = {
-        zh: "OpenKeepsake 是一套本地优先的个人 AI 资产系统，把重复工作沉淀成可复用技能、记忆、模板、复盘和可视化面板。",
-        en: "OpenKeepsake is a local-first personal AI asset system that turns repeated work into reusable skills, memories, templates, reviews, and visual panels."
+        zh: "OpenRelix 是一套本地优先的个人 AI 资产系统，把重复工作沉淀成可复用技能、记忆、模板、复盘和可视化面板。",
+        en: "OpenRelix is a local-first personal AI asset system that turns repeated work into reusable skills, memories, templates, reviews, and visual panels."
       };
 
       function translatePlainText(language) {
+        const textTranslations = getTranslations();
         document.querySelectorAll("body *").forEach((node) => {
           if (node.children.length !== 0) {
             return;
           }
           const original = node.dataset.zhText || node.textContent.trim();
-          if (!original || !Object.prototype.hasOwnProperty.call(translations, original)) {
+          if (!original || !Object.prototype.hasOwnProperty.call(textTranslations, original)) {
             return;
           }
           node.dataset.zhText = original;
-          node.textContent = language === "en" ? translations[original] : original;
+          node.textContent = language === "en" ? textTranslations[original] : original;
         });
       }
 
@@ -3981,41 +4313,67 @@
       }
 
       function translateAttributes(language) {
+        const ariaTranslations = getAttrTranslations();
         document.querySelectorAll("[aria-label]").forEach((node) => {
           const original = node.dataset.zhAriaLabel || node.getAttribute("aria-label");
-          if (!original || !Object.prototype.hasOwnProperty.call(attrTranslations, original)) {
+          if (!original || !Object.prototype.hasOwnProperty.call(ariaTranslations, original)) {
             return;
           }
           node.dataset.zhAriaLabel = original;
-          node.setAttribute("aria-label", language === "en" ? attrTranslations[original] : original);
+          node.setAttribute("aria-label", language === "en" ? ariaTranslations[original] : original);
         });
       }
 
-      function applyLanguage(language) {
+      function restoreInitialHashPosition() {
+        const rawHash = window.location.hash ? window.location.hash.slice(1) : "";
+        if (!rawHash) {
+          return;
+        }
+        const target = document.getElementById(decodeURIComponent(rawHash));
+        if (!target) {
+          return;
+        }
+        const scrollToTarget = () => {
+          target.scrollIntoView({ block: "start", behavior: "auto" });
+        };
+        window.requestAnimationFrame(scrollToTarget);
+        window.setTimeout(scrollToTarget, 60);
+        window.setTimeout(scrollToTarget, 180);
+      }
+
+      let activeLanguage = document.documentElement.dataset.language === "en" ? "en" : "zh";
+
+      function setLanguageControls(language) {
+        document.querySelectorAll("[data-language-option]").forEach((button) => {
+          button.setAttribute("aria-pressed", button.dataset.languageOption === language ? "true" : "false");
+        });
+      }
+
+      function applyLanguage(language, options = {}) {
         const normalized = language === "en" ? "en" : "zh";
+        const shouldTranslate = normalized !== activeLanguage;
+        activeLanguage = normalized;
         document.documentElement.dataset.language = normalized;
         document.documentElement.lang = normalized === "en" ? "en" : "zh-CN";
-        document.title = normalized === "en" ? "OpenKeepsake™ Product Showcase" : "OpenKeepsake™ 产品展示";
+        document.title = normalized === "en" ? "OpenRelix™ Product Showcase" : "OpenRelix™ 产品展示";
         const description = document.querySelector('meta[name="description"]');
         if (description) {
           description.setAttribute("content", metaDescription[normalized]);
         }
-        translateHtml(normalized);
-        translatePlainText(normalized);
-        translateAttributes(normalized);
-        document.querySelectorAll("[data-language-option]").forEach((button) => {
-          button.setAttribute("aria-pressed", button.dataset.languageOption === normalized ? "true" : "false");
-        });
-        try {
-          window.localStorage.setItem("openkeepsake-showcase-language", normalized);
-        } catch (_) {
-          // Ignore storage errors in private browsing or restricted environments.
+        if (shouldTranslate) {
+          translateHtml(normalized);
+          translatePlainText(normalized);
+          translateAttributes(normalized);
+        }
+        setLanguageControls(normalized);
+        if (options.persist !== false) {
+          try {
+            window.localStorage.setItem("openrelix-showcase-language", normalized);
+          } catch (_) {
+            // Ignore storage errors in private browsing or restricted environments.
+          }
         }
       }
-
-      document.querySelectorAll("[data-language-option]").forEach((button) => {
-        button.addEventListener("click", () => applyLanguage(button.dataset.languageOption));
-      });
 
       const themeOptions = new Set(["system", "light", "dark"]);
 
@@ -4030,15 +4388,11 @@
           button.setAttribute("aria-pressed", button.dataset.themeOption === normalized ? "true" : "false");
         });
         try {
-          window.localStorage.setItem("openkeepsake-showcase-theme", normalized);
+          window.localStorage.setItem("openrelix-showcase-theme", normalized);
         } catch (_) {
           // Ignore storage errors in private browsing or restricted environments.
         }
       }
-
-      document.querySelectorAll("[data-theme-option]").forEach((button) => {
-        button.addEventListener("click", () => applyTheme(button.dataset.themeOption));
-      });
 
       const copyLabels = {
         zh: {
@@ -4096,40 +4450,66 @@
         fallbackCopy(text);
       }
 
-      document.querySelectorAll(".command-copy").forEach((button) => {
-        button.addEventListener("click", async () => {
-          const row = button.closest(".command-row");
-          const command = row ? row.querySelector(".command-code") : null;
-          const text = command ? command.textContent.trim() : "";
-          if (!text) {
-            return;
-          }
-          window.clearTimeout(button.copyResetTimer);
-          try {
-            await copyCommand(text);
-            updateCopyButton(button, "copied");
-          } catch (_) {
-            updateCopyButton(button, "error");
-          }
-          button.copyResetTimer = window.setTimeout(() => updateCopyButton(button, "idle"), 1400);
-        });
+      async function handleCopyButton(button) {
+        const row = button.closest(".command-row");
+        const command = row ? row.querySelector(".command-code") : null;
+        const text = command ? command.textContent.trim() : "";
+        if (!text) {
+          return;
+        }
+        window.clearTimeout(button.copyResetTimer);
+        try {
+          await copyCommand(text);
+          updateCopyButton(button, "copied");
+        } catch (_) {
+          updateCopyButton(button, "error");
+        }
+        button.copyResetTimer = window.setTimeout(() => updateCopyButton(button, "idle"), 1400);
+      }
+
+      document.addEventListener("click", (event) => {
+        const target = event.target instanceof Element ? event.target : event.target && event.target.parentElement;
+        if (!target) {
+          return;
+        }
+        const languageButton = target.closest("[data-language-option]");
+        if (languageButton) {
+          applyLanguage(languageButton.dataset.languageOption);
+          return;
+        }
+        const themeButton = target.closest("[data-theme-option]");
+        if (themeButton) {
+          applyTheme(themeButton.dataset.themeOption);
+          return;
+        }
+        const copyButton = target.closest(".command-copy");
+        if (copyButton) {
+          event.preventDefault();
+          handleCopyButton(copyButton);
+        }
       });
 
       let initialLanguage = "zh";
       try {
-        initialLanguage = window.localStorage.getItem("openkeepsake-showcase-language") || initialLanguage;
+        initialLanguage = window.localStorage.getItem("openrelix-showcase-language") || initialLanguage;
       } catch (_) {
         initialLanguage = "zh";
       }
-      applyLanguage(initialLanguage);
+      initialLanguage = initialLanguage === "en" ? "en" : "zh";
+      if (initialLanguage === "en") {
+        applyLanguage(initialLanguage, { persist: false });
+      } else {
+        setLanguageControls("zh");
+      }
 
       let initialTheme = "system";
       try {
-        initialTheme = window.localStorage.getItem("openkeepsake-showcase-theme") || initialTheme;
+        initialTheme = window.localStorage.getItem("openrelix-showcase-theme") || initialTheme;
       } catch (_) {
         initialTheme = "system";
       }
       applyTheme(initialTheme);
+      restoreInitialHashPosition();
     })();
   </script>
 </body>

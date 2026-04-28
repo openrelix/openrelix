@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
   <key>Label</key>
-  <string>io.github.openkeepsake.nightly-finalize-previous-day</string>
+  <string>io.github.openrelix.nightly-finalize-previous-day</string>
   <key>ProgramArguments</key>
   <array>
     <string>/bin/zsh</string>
@@ -19,7 +19,7 @@
     <string>__KEEP_AWAKE__</string>
     <key>CODEX_HOME</key>
     <string>__CODEX_HOME__</string>
-    <key>OKEEP_ACTIVITY_SOURCE</key>
+    <key>OPENRELIX_ACTIVITY_SOURCE</key>
     <string>__ACTIVITY_SOURCE__</string>
     <key>PYTHON_BIN</key>
     <string>__PYTHON_BIN__</string>
@@ -27,9 +27,9 @@
   <key>StartCalendarInterval</key>
   <dict>
     <key>Hour</key>
-    <integer>0</integer>
+    <integer>__NIGHTLY_FINALIZE_HOUR__</integer>
     <key>Minute</key>
-    <integer>10</integer>
+    <integer>__NIGHTLY_FINALIZE_MINUTE__</integer>
   </dict>
   <key>StandardErrorPath</key>
   <string>__STATE_ROOT__/log/nightly-finalize.err.log</string>

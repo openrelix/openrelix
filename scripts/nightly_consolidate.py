@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -70,6 +71,11 @@ def parse_args():
         type=int,
         default=0,
         help="When > 0, learn from recent window summaries in the previous N days for this manual run only.",
+    )
+    parser.add_argument(
+        "--skip-if-unchanged",
+        action="store_true",
+        help="Skip model consolidation when the raw payload and learning context match the selected summary.",
     )
     return parser.parse_args()
 
@@ -360,7 +366,7 @@ def humanize_context_label(raw_cwd, language=None):
     if str(resolved).startswith(str(PATHS.codex_home)):
         return localized("Codex 本地环境", "Codex local environment", language)
     if str(resolved).startswith(str(PATHS.state_root)):
-        return "OpenKeepsake"
+        return "OpenRelix"
 
     candidate = resolved.name or text.rstrip("/").rsplit("/", 1)[-1]
     compact = re.sub(r"[_-]+", " ", candidate).strip()
@@ -923,6 +929,28 @@ def build_learning_context_digest(learning_context, learn_window_days):
     }
 
 
+def build_learning_input_fingerprint(raw_payload, learning_context, learn_window_days, language=None):
+    fingerprint_learning_context = dict(learning_context or {})
+    fingerprint_learning_context["same_date_reference"] = None
+    payload = {
+        "version": 1,
+        "language": current_language(language),
+        "memory_mode": MEMORY_MODE,
+        "personal_memory_enabled": PERSONAL_MEMORY_ENABLED,
+        "learn_window_days": max(learn_window_days, 0),
+        "daily_compact_payload": build_compact_payload(raw_payload, language=language),
+        "learning_context": fingerprint_learning_context,
+    }
+    encoded = json.dumps(payload, ensure_ascii=True, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
+def summary_matches_learning_input(summary, fingerprint):
+    if not summary or not fingerprint:
+        return False
+    return summary.get("learning_input_fingerprint") == fingerprint
+
+
 def persist_summary_run(summary_dir, summary, stage, label, language=None):
     runs_dir = summary_dir / "runs"
     runs_dir.mkdir(parents=True, exist_ok=True)
@@ -1359,6 +1387,22 @@ def main():
         existing_summary,
         learn_window_days=learn_window_days,
     )
+    learning_input_fingerprint = build_learning_input_fingerprint(
+        raw_payload,
+        learning_context,
+        learn_window_days,
+        language=language,
+    )
+    if args.skip_if_unchanged and summary_matches_learning_input(
+        existing_summary,
+        learning_input_fingerprint,
+    ):
+        print(
+            "nightly_consolidate: unchanged input fingerprint for {}; skip model consolidation.".format(
+                date_str
+            )
+        )
+        return
     prompt = build_prompt_with_learning(raw_payload, learning_context, language=language)
 
     if raw_payload["window_count"] == 0:
@@ -1380,6 +1424,7 @@ def main():
             "generated_at": datetime.now().astimezone().isoformat(),
         }
         empty_summary = apply_memory_mode(empty_summary)
+        empty_summary["learning_input_fingerprint"] = learning_input_fingerprint
         empty_summary["learning_context_digest"] = build_learning_context_digest(
             learning_context,
             learn_window_days,
@@ -1418,6 +1463,7 @@ def main():
     candidate_summary["stage"] = stage
     candidate_summary["generated_at"] = datetime.now().astimezone().isoformat()
     candidate_summary = apply_memory_mode(candidate_summary)
+    candidate_summary["learning_input_fingerprint"] = learning_input_fingerprint
     candidate_summary["quality"] = compute_summary_quality(candidate_summary, raw_payload)
     candidate_summary["learning_context_digest"] = build_learning_context_digest(
         learning_context,
@@ -1436,6 +1482,7 @@ def main():
         selected_summary = dict(candidate_summary)
 
     selected_summary["language"] = language
+    selected_summary["learning_input_fingerprint"] = learning_input_fingerprint
     selected_summary["quality"] = decision["selected_quality"]
     selected_summary["selection_decision"] = {
         "decision": decision["decision"],

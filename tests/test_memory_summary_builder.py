@@ -15,8 +15,8 @@ import build_overview  # noqa: E402
 
 SAMPLE_MEMORY_INDEX = """# Task Group: Local Codex personal asset system, genericization, and LaunchAgent runtime
 
-scope: User-level personal asset system design under `~/work/openkeepsake`, including runtime state placement and nightly behavior.
-applies_to: cwd=~/work/openkeepsake plus user-level Codex state under ~/.codex
+scope: User-level personal asset system design under `~/work/openrelix`, including runtime state placement and nightly behavior.
+applies_to: cwd=~/work/openrelix plus user-level Codex state under ~/.codex
 
 ## Task 1: Build a local-first personal asset system
 
@@ -26,7 +26,7 @@ applies_to: cwd=~/work/openkeepsake plus user-level Codex state under ~/.codex
 
 ### keywords
 
-- openkeepsake, memories, nightly_pipeline.sh, LaunchAgent
+- openrelix, memories, nightly_pipeline.sh, LaunchAgent
 
 ## User preferences
 
@@ -80,8 +80,8 @@ They prefer direct edits when the target state is clear.
 
 
 SAMPLE_PERSONAL_MEMORY_REGISTRY = """
-{"date":"2026-04-26","source":"nightly_codex","bucket":"durable","title":"Default context memory mode","memory_type":"procedural","priority":"high","value_note":"Local memory stays in the state root, while a compressed bounded summary is synced into Codex context by default.","keywords":["memory","codex-context","state root"]}
-{"date":"2026-04-25","source":"nightly_codex","bucket":"session","title":"Backfill command rollout","memory_type":"task","priority":"medium","value_note":"Users can copy a multi-day okeep backfill command from the panel instead of executing shell from the browser.","keywords":["backfill","panel"]}
+{"date":"2026-04-26","source":"nightly_codex","bucket":"durable","title":"Default integrated memory mode","memory_type":"procedural","priority":"high","value_note":"Local memory stays in the state root, while a compressed bounded summary is synced into Codex context by default.","keywords":["memory","integrated","state root"]}
+{"date":"2026-04-25","source":"nightly_codex","bucket":"session","title":"Backfill command rollout","memory_type":"task","priority":"medium","value_note":"Users can copy a multi-day openrelix backfill command from the panel instead of executing shell from the browser.","keywords":["backfill","panel"]}
 {"date":"2026-04-24","source":"nightly_codex","bucket":"low_priority","title":"Do not inject this","memory_type":"semantic","priority":"low","value_note":"Low priority items stay out of the bounded context summary.","keywords":["skip"]}
 """
 
@@ -178,8 +178,11 @@ class MemorySummaryBuilderTests(unittest.TestCase):
 
         self.assertNotEqual(result.status, "over_budget")
         self.assertIn("### Local personal memory registry", result.text)
-        self.assertIn("Default context memory mode", result.text)
-        self.assertIn("bucket=durable", result.text)
+        self.assertIn("Default integrated memory mode", result.text)
+        self.assertIn("[durable/procedural/high]", result.text)
+        personal_section = result.text.split("### Local personal memory registry", 1)[1].split("### ", 1)[0]
+        self.assertNotIn("  - desc:", personal_section)
+        self.assertNotIn("  - learnings:", personal_section)
         self.assertNotIn("Do not inject this", result.text)
 
     def test_personal_memory_registry_uses_runtime_language_fields(self):

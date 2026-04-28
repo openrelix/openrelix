@@ -5,16 +5,15 @@ permission for the source code. It does not grant permission to use project
 names, logos, package names, or other source-identifying marks except as
 described here.
 
-OpenKeepsake™ and okeep™ are trademarks of the project maintainer.
+OpenRelix™ and openrelix™ are trademarks of the project maintainer.
 Trademark rights are not granted by the MIT License. Do not use the registered
 trademark symbol unless registration has issued for the relevant mark and
 jurisdiction.
 
 The following marks identify the original project:
 
-- OpenKeepsake™
-- OKeep™ / okeep™
-- openkeepsake
+- OpenRelix™
+- openrelix™ command and package name
 - Any project logos or visual marks published by the maintainers
 
 These marks may be unregistered or pending registration. Use of these marks must
@@ -27,7 +26,7 @@ You may use the marks to:
 - Refer to the original project in documentation, articles, tutorials, package
   metadata, or dependency lists.
 - Link to the original repository.
-- State that your work is compatible with or based on OpenKeepsake, if the
+- State that your work is compatible with or based on OpenRelix, if the
   statement is accurate.
 - Preserve existing copyright, license, and attribution notices.
 
@@ -50,11 +49,10 @@ You may fork and modify the code under the MIT License. If you distribute a
 modified version, use a distinct name for the modified distribution unless the
 maintainers have approved the use of the official marks.
 
-For npm or CLI distribution, do not publish a modified package under
-`openkeepsake`, `okeep`, or a confusingly similar name. Choose a different
-package name and binary name, and describe the relationship with wording such as
-"based on OpenKeepsake" or "compatible with OpenKeepsake" when
-accurate.
+For npm or CLI distribution, do not publish a modified package or binary under
+`openrelix` or a confusingly similar name. Choose a different package name and
+binary name, and describe the relationship with wording such as "based on
+OpenRelix" or "compatible with OpenRelix" when accurate.
 
 ## No Warranty
 

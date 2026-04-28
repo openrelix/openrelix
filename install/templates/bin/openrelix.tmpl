@@ -4,7 +4,7 @@ set -euo pipefail
 export AI_ASSET_STATE_DIR="__STATE_ROOT__"
 export CODEX_HOME="__CODEX_HOME__"
 export PYTHON_BIN="__PYTHON_BIN__"
-export OKEEP_ACTIVITY_SOURCE="__ACTIVITY_SOURCE__"
+export OPENRELIX_ACTIVITY_SOURCE="__ACTIVITY_SOURCE__"
 export AI_ASSET_COMMAND_PATH="$0"
 
-exec "__PYTHON_BIN__" "__REPO_ROOT__/scripts/okeep.py" "$@"
+exec "__PYTHON_BIN__" "__REPO_ROOT__/scripts/openrelix.py" "$@"
