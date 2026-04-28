@@ -27,6 +27,10 @@
   "bin": {
     "openrelix": "install/npm-bin.js"
   },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/",
+    "access": "public"
+  },
   "files": [
     "AGENTS.md",
     "CODE_OF_CONDUCT.md",
