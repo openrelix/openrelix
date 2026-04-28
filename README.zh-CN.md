@@ -60,6 +60,7 @@ v0.1.0 预览版仅支持 macOS。公开安装路径假设：
 - `zsh`
 - Python 3.10+
 - Codex CLI，并且 `CODEX_HOME` 可写，默认是 `~/.codex`
+- 如果要使用模型学习刷新，需要当前用户的 `codex exec` 登录态可用。若 `openrelix refresh --learn-memory` 报 `401`、`Unauthorized` 或 `invalid_issuer`，先运行 `codex login status` 检查账号；无效时重新 `codex login`，或清理错误的 `OPENAI_API_KEY` 后再重试。
 
 Linux 和 Windows 是后续工作。部分底层 Python 脚本已经把路径做成可配置，但当前公开 installer 和后台自动化应按 macOS-only 理解。
 
@@ -258,6 +259,13 @@ openrelix open panel
 
 ```bash
 openrelix core
+```
+
+检查本机运行环境和模型认证链路：
+
+```bash
+openrelix doctor
+openrelix doctor --model-check
 ```
 
 查看或切换 memory mode：

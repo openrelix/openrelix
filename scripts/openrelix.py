@@ -228,6 +228,30 @@ def build_parser():
         ),
     )
 
+    doctor = subparsers.add_parser(
+        "doctor",
+        help=localized(
+            "检查本机运行环境并给出排障提示。",
+            "Check the local runtime environment and print troubleshooting guidance.",
+        ),
+    )
+    doctor.add_argument(
+        "--model-check",
+        action="store_true",
+        help=localized(
+            "实际运行一次极小的 codex exec，验证模型认证链路。",
+            "Run a tiny codex exec call to verify the model authentication path.",
+        ),
+    )
+    doctor.add_argument(
+        "--json",
+        action="store_true",
+        help=localized(
+            "以 JSON 打印体检结果。",
+            "Print doctor results as JSON.",
+        ),
+    )
+
     refresh = subparsers.add_parser(
         "refresh",
         help=localized(
@@ -584,6 +608,55 @@ def review_summary_paths(date_str):
     return summary_dir / "summary.json", summary_dir / "summary.md"
 
 
+def load_review_summary_if_available(date_str):
+    summary_json_path, _ = review_summary_paths(date_str)
+    if not summary_json_path.exists():
+        return None
+    try:
+        return load_json(summary_json_path)
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def summary_has_model_failure(summary):
+    if not summary:
+        return False
+    if summary.get("last_run_model_status") == "failed" or summary.get("model_status") == "failed":
+        return True
+    decision = summary.get("selection_decision") or {}
+    return decision.get("candidate_model_status") == "failed"
+
+
+def summary_model_failure_hint(summary):
+    if not summary:
+        return ""
+    for key in ("last_run_model_error_hint", "model_error_hint"):
+        if summary.get(key):
+            return str(summary.get(key))
+    decision = summary.get("selection_decision") or {}
+    return str(decision.get("candidate_model_error_hint") or "")
+
+
+def print_model_failure_warning(summary, date_str):
+    hint = summary_model_failure_hint(summary)
+    print(
+        localized(
+            "学习刷新未完整成功：模型归纳失败，当前只生成了保底摘要。",
+            "Learning refresh did not fully succeed: model summarization failed, so only a fallback summary was generated.",
+        ),
+        file=sys.stderr,
+    )
+    if hint:
+        print(hint, file=sys.stderr)
+    print(
+        localized(
+            "修复认证后重试：openrelix refresh --learn-memory --date {}".format(date_str),
+            "After fixing authentication, retry: openrelix refresh --learn-memory --date {}".format(date_str),
+        ),
+        file=sys.stderr,
+    )
+
+
 def print_json(payload):
     print(json.dumps(payload, ensure_ascii=False, indent=2))
 
@@ -662,6 +735,179 @@ def print_core_summary(data):
     print(localized("入口", "Entrypoints"))
     print("- panel: {}".format(REPORTS_DIR / "panel.html"))
     print("- overview: {}".format(REPORTS_DIR / "overview.md"))
+
+
+def append_doctor_check(checks, name, status, detail="", action=""):
+    checks.append(
+        {
+            "name": name,
+            "status": status,
+            "detail": detail,
+            "action": action,
+        }
+    )
+
+
+def command_exists(command):
+    command_text = str(command or "")
+    if not command_text:
+        return False
+    command_path = Path(command_text).expanduser()
+    if command_path.is_absolute() or "/" in command_text:
+        return command_path.exists() and os.access(command_path, os.X_OK)
+    return shutil.which(command_text) is not None
+
+
+def run_doctor_model_check():
+    PATHS.nightly_runner_dir.mkdir(parents=True, exist_ok=True)
+    PATHS.nightly_codex_home.mkdir(parents=True, exist_ok=True)
+    main_auth = PATHS.codex_home / "auth.json"
+    nightly_auth = PATHS.nightly_codex_home / "auth.json"
+    if main_auth.exists() and not nightly_auth.exists():
+        if nightly_auth.is_symlink():
+            nightly_auth.unlink()
+        nightly_auth.symlink_to(main_auth)
+
+    env = dict(os.environ)
+    env["CODEX_HOME"] = str(PATHS.nightly_codex_home)
+    return subprocess.run(
+        [
+            PATHS.codex_bin,
+            "exec",
+            "--skip-git-repo-check",
+            "--cd",
+            str(PATHS.nightly_runner_dir),
+            "--ephemeral",
+            "-",
+        ],
+        input="Reply exactly: OPENRELIX_DOCTOR_OK\n",
+        text=True,
+        capture_output=True,
+        timeout=45,
+        env=env,
+    )
+
+
+def command_doctor(args):
+    checks = []
+
+    append_doctor_check(
+        checks,
+        "state_root",
+        "ok" if PATHS.state_root.exists() and os.access(PATHS.state_root, os.W_OK) else "fail",
+        str(PATHS.state_root),
+        localized("确认 state root 存在且当前用户可写。", "Make sure the state root exists and is writable by this user."),
+    )
+    append_doctor_check(
+        checks,
+        "codex_home",
+        "ok" if PATHS.codex_home.exists() and os.access(PATHS.codex_home, os.W_OK) else "fail",
+        str(PATHS.codex_home),
+        localized("确认 CODEX_HOME 存在且当前用户可写。", "Make sure CODEX_HOME exists and is writable by this user."),
+    )
+    append_doctor_check(
+        checks,
+        "codex_bin",
+        "ok" if command_exists(PATHS.codex_bin) else "fail",
+        str(PATHS.codex_bin),
+        localized("安装 Codex CLI，或通过 CODEX_BIN 指向可执行文件。", "Install Codex CLI, or point CODEX_BIN to the executable."),
+    )
+
+    auth_path = PATHS.codex_home / "auth.json"
+    append_doctor_check(
+        checks,
+        "codex_auth_file",
+        "ok" if auth_path.exists() else "warn",
+        str(auth_path),
+        localized("如果需要模型学习刷新，请先完成 Codex 登录。", "For model-backed learning refresh, complete Codex login first."),
+    )
+
+    if os.environ.get("OPENAI_API_KEY"):
+        append_doctor_check(
+            checks,
+            "openai_api_key_env",
+            "warn",
+            "OPENAI_API_KEY is set",
+            localized(
+                "如果遇到 401 / invalid_issuer，先临时 unset OPENAI_API_KEY，或换成有效的 OpenAI API key 后重试。",
+                "If you hit 401 / invalid_issuer, temporarily unset OPENAI_API_KEY or replace it with a valid OpenAI API key before retrying.",
+            ),
+        )
+    else:
+        append_doctor_check(checks, "openai_api_key_env", "ok", "OPENAI_API_KEY is not set")
+
+    latest_summary = load_review_summary_if_available(current_date_str())
+    if summary_has_model_failure(latest_summary):
+        append_doctor_check(
+            checks,
+            "latest_learning_run",
+            "fail",
+            summary_model_failure_hint(latest_summary),
+            localized(
+                "修复认证后重新运行 openrelix refresh --learn-memory --learn-window-days 7。",
+                "After fixing authentication, rerun openrelix refresh --learn-memory --learn-window-days 7.",
+            ),
+        )
+    else:
+        append_doctor_check(checks, "latest_learning_run", "ok", localized("未发现今天的模型失败记录。", "No model failure recorded for today."))
+
+    if args.model_check:
+        if not command_exists(PATHS.codex_bin):
+            append_doctor_check(
+                checks,
+                "codex_exec_model_check",
+                "fail",
+                str(PATHS.codex_bin),
+                localized("先修复 codex_bin，再运行 --model-check。", "Fix codex_bin first, then rerun --model-check."),
+            )
+        else:
+            try:
+                result = run_doctor_model_check()
+                output = "\n".join(part for part in (result.stdout, result.stderr) if part).strip()
+                if result.returncode == 0:
+                    append_doctor_check(checks, "codex_exec_model_check", "ok", output[-300:])
+                else:
+                    append_doctor_check(
+                        checks,
+                        "codex_exec_model_check",
+                        "fail",
+                        output[-600:] or "codex exec failed with exit code {}".format(result.returncode),
+                        localized(
+                            "重新登录 Codex，或检查 OPENAI_API_KEY 后重试。",
+                            "Log in to Codex again, or check OPENAI_API_KEY, then retry.",
+                        ),
+                    )
+            except subprocess.TimeoutExpired:
+                append_doctor_check(
+                    checks,
+                    "codex_exec_model_check",
+                    "fail",
+                    "codex exec timed out after 45 seconds",
+                    localized("先确认 codex exec 在终端可交互运行。", "Confirm codex exec can run interactively in a terminal."),
+                )
+    else:
+        append_doctor_check(
+            checks,
+            "codex_exec_model_check",
+            "warn",
+            localized("未执行模型认证检查。", "Model authentication check was not run."),
+            localized("需要验证 401 / invalid_issuer 时运行 openrelix doctor --model-check。", "Run openrelix doctor --model-check to verify 401 / invalid_issuer issues."),
+        )
+
+    payload = {
+        "ok": not any(check["status"] == "fail" for check in checks),
+        "checks": checks,
+    }
+    if args.json:
+        print_json(payload)
+    else:
+        print(localized("OpenRelix 体检", "OpenRelix Doctor"))
+        for check in checks:
+            print("[{}] {}: {}".format(check["status"], check["name"], check["detail"]))
+            if check.get("action") and check["status"] != "ok":
+                print("  {}".format(check["action"]))
+    if not payload["ok"]:
+        raise SystemExit(1)
 
 
 def command_review(args):
@@ -761,8 +1007,11 @@ def command_review(args):
         ))
 
     summary = load_json(summary_json_path)
+    model_failed = summary_has_model_failure(summary)
     if args.json:
         print_json(summary)
+        if model_failed:
+            raise SystemExit(1)
     else:
         print(localized("复盘已完成", "Review completed"))
         print("{}: {}".format(localized("日期", "Date"), summary.get("date", args.date)))
@@ -792,9 +1041,14 @@ def command_review(args):
         print("- review: {}".format(summary_md_path))
         print("- panel: {}".format(REPORTS_DIR / "panel.html"))
         print("- overview: {}".format(REPORTS_DIR / "overview.md"))
+        if model_failed:
+            print("")
+            print_model_failure_warning(summary, args.date)
 
     if args.open:
         open_path(summary_md_path)
+    if model_failed:
+        raise SystemExit(1)
 
 
 def run_backfill_dates(dates, stage, learn_window_days=0, force=False, verbose=True):
@@ -902,6 +1156,8 @@ def command_refresh(args):
             cmd.extend(["--learn-window-days", str(args.learn_window_days)])
     run_checked(cmd)
     data = load_overview()
+    learn_summary = load_review_summary_if_available(args.date) if args.learn_memory else None
+    model_failed = summary_has_model_failure(learn_summary)
     if args.json:
         payload = {
             "generated_at": data.get("generated_at"),
@@ -911,14 +1167,26 @@ def command_refresh(args):
             "nightly": data.get("nightly"),
             "learn_memory": bool(args.learn_memory),
         }
+        if args.learn_memory:
+            payload["learn_memory_status"] = "model_failed" if model_failed else "completed"
+            if model_failed:
+                payload["learn_memory_error_hint"] = summary_model_failure_hint(learn_summary)
         print_json(payload)
+        if model_failed:
+            raise SystemExit(1)
         return
     if args.learn_memory:
-        print(localized("记忆已提炼并刷新概览", "Memory synthesized and overview refreshed"))
+        if model_failed:
+            print_model_failure_warning(learn_summary, args.date)
+            print(localized("概览已刷新，但记忆提炼未完整完成", "Overview refreshed, but memory synthesis did not fully complete"))
+        else:
+            print(localized("记忆已提炼并刷新概览", "Memory synthesized and overview refreshed"))
     else:
         print(localized("概览已刷新", "Overview refreshed"))
     print("")
     print_core_summary(data)
+    if model_failed:
+        raise SystemExit(1)
 
 
 def memory_mode_label(memory_mode):
@@ -1162,6 +1430,9 @@ def main():
         return
     if args.command == "core":
         command_core(args)
+        return
+    if args.command == "doctor":
+        command_doctor(args)
         return
     if args.command == "refresh":
         command_refresh(args)

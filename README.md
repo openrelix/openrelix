@@ -63,6 +63,7 @@ v0.1.0 preview is macOS-only. The supported install path assumes:
 - `zsh`
 - Python 3.10+
 - Codex CLI with a writable `CODEX_HOME`, defaulting to `~/.codex`
+- For model-backed learning refresh, a working Codex login for `codex exec`. If `openrelix refresh --learn-memory` reports `401`, `Unauthorized`, or `invalid_issuer`, verify the user account with `codex login status`, then rerun `codex login` or remove an invalid `OPENAI_API_KEY` before retrying.
 
 Linux and Windows support are future work. Some lower-level Python scripts are written to keep paths configurable, but the public installer and background automation should be treated as macOS-only for this release.
 
@@ -305,6 +306,13 @@ Print the current core metrics in the terminal:
 
 ```bash
 openrelix core
+```
+
+Check the local runtime and model authentication path:
+
+```bash
+openrelix doctor
+openrelix doctor --model-check
 ```
 
 View or switch the memory mode without reinstalling:

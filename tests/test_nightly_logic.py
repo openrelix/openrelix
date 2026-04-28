@@ -246,6 +246,46 @@ class NightlyLogicTests(unittest.TestCase):
         self.assertIn("这是一个纯整理任务", chinese_prompt)
         self.assertIn("直接输出符合 schema 的 JSON", chinese_prompt)
 
+    def test_run_codex_consolidation_recreates_broken_auth_symlink(self):
+        old_main_codex_home = nightly_consolidate.MAIN_CODEX_HOME
+        old_nightly_codex_home = nightly_consolidate.NIGHTLY_CODEX_HOME
+        old_runtime_dir = nightly_consolidate.RUNTIME_DIR
+        old_codex_bin = nightly_consolidate.CODEX_BIN
+        old_schema_path = nightly_consolidate.SCHEMA_PATH
+        try:
+            with TemporaryDirectory() as tmpdir:
+                root = Path(tmpdir)
+                main_codex_home = root / "main-codex-home"
+                nightly_codex_home = root / "nightly-codex-home"
+                runtime_dir = root / "runtime"
+                schema_path = root / "schema.json"
+                output_path = root / "out" / "summary.json"
+                main_codex_home.mkdir()
+                nightly_codex_home.mkdir()
+                schema_path.write_text("{}", encoding="utf-8")
+                (main_codex_home / "auth.json").write_text("{}", encoding="utf-8")
+                (nightly_codex_home / "auth.json").symlink_to(root / "missing-auth.json")
+
+                nightly_consolidate.MAIN_CODEX_HOME = main_codex_home
+                nightly_consolidate.NIGHTLY_CODEX_HOME = nightly_codex_home
+                nightly_consolidate.RUNTIME_DIR = runtime_dir
+                nightly_consolidate.CODEX_BIN = sys.executable
+                nightly_consolidate.SCHEMA_PATH = schema_path
+
+                completed = subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
+                with mock.patch.object(nightly_consolidate.subprocess, "run", return_value=completed):
+                    nightly_consolidate.run_codex_consolidation("prompt", output_path, language="zh")
+
+                auth_link = nightly_codex_home / "auth.json"
+                self.assertTrue(auth_link.is_symlink())
+                self.assertEqual(Path(os.readlink(auth_link)), main_codex_home / "auth.json")
+        finally:
+            nightly_consolidate.MAIN_CODEX_HOME = old_main_codex_home
+            nightly_consolidate.NIGHTLY_CODEX_HOME = old_nightly_codex_home
+            nightly_consolidate.RUNTIME_DIR = old_runtime_dir
+            nightly_consolidate.CODEX_BIN = old_codex_bin
+            nightly_consolidate.SCHEMA_PATH = old_schema_path
+
     def test_openrelix_help_uses_runtime_language(self):
         with mock.patch.object(openrelix, "LANGUAGE", "zh"):
             help_text = openrelix.build_parser().format_help()
@@ -3249,6 +3289,103 @@ applies_to: cwd=/tmp/OpenRelix
             ]
         )
 
+    def test_openrelix_refresh_learn_memory_exits_nonzero_on_model_failure(self):
+        args = argparse.Namespace(
+            learn_memory=True,
+            date="2026-04-28",
+            stage="manual",
+            learn_window_days=7,
+            json=False,
+        )
+        overview = {
+            "generated_at": "2026-04-28T12:00:00+08:00",
+            "summary": {},
+            "metrics": {},
+            "token_usage": {},
+            "nightly": {},
+        }
+
+        with TemporaryDirectory() as tmpdir:
+            summary_json_path = Path(tmpdir) / "summary.json"
+            summary_md_path = Path(tmpdir) / "summary.md"
+            summary_json_path.write_text(
+                json.dumps(
+                    {
+                        "date": "2026-04-28",
+                        "last_run_model_status": "failed",
+                        "last_run_model_error_hint": "请重新运行 `codex login`。",
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            with mock.patch.object(openrelix, "run_checked"), mock.patch.object(
+                openrelix,
+                "load_overview",
+                return_value=overview,
+            ), mock.patch.object(
+                openrelix,
+                "review_summary_paths",
+                return_value=(summary_json_path, summary_md_path),
+            ), mock.patch("sys.stdout", new_callable=io.StringIO), mock.patch(
+                "sys.stderr",
+                new_callable=io.StringIO,
+            ) as stderr:
+                with self.assertRaises(SystemExit) as raised:
+                    openrelix.command_refresh(args)
+
+        self.assertEqual(raised.exception.code, 1)
+        self.assertIn("学习刷新未完整成功", stderr.getvalue())
+        self.assertIn("codex login", stderr.getvalue())
+
+    def test_openrelix_doctor_reports_latest_model_failure(self):
+        old_paths = openrelix.PATHS
+        old_consolidated_daily_dir = openrelix.CONSOLIDATED_DAILY_DIR
+        try:
+            with TemporaryDirectory() as tmpdir:
+                root = Path(tmpdir)
+                codex_home = root / "codex-home"
+                consolidated_daily_dir = root / "consolidated" / "daily"
+                codex_home.mkdir(parents=True)
+                summary_dir = consolidated_daily_dir / "2026-04-28"
+                summary_dir.mkdir(parents=True)
+                (summary_dir / "summary.json").write_text(
+                    json.dumps(
+                        {
+                            "date": "2026-04-28",
+                            "last_run_model_status": "failed",
+                            "last_run_model_error_hint": "请重新运行 `codex login`。",
+                        },
+                        ensure_ascii=False,
+                    ),
+                    encoding="utf-8",
+                )
+                openrelix.PATHS = replace(
+                    openrelix.PATHS,
+                    state_root=root,
+                    codex_home=codex_home,
+                    codex_bin=sys.executable,
+                    consolidated_daily_dir=consolidated_daily_dir,
+                    nightly_runner_dir=root / "runtime" / "nightly-runner",
+                    nightly_codex_home=root / "runtime" / "codex-nightly-home",
+                )
+                openrelix.CONSOLIDATED_DAILY_DIR = consolidated_daily_dir
+                args = argparse.Namespace(model_check=False, json=False)
+                with mock.patch.object(openrelix, "current_date_str", return_value="2026-04-28"), mock.patch(
+                    "sys.stdout",
+                    new_callable=io.StringIO,
+                ) as stdout:
+                    with self.assertRaises(SystemExit) as raised:
+                        openrelix.command_doctor(args)
+
+        finally:
+            openrelix.PATHS = old_paths
+            openrelix.CONSOLIDATED_DAILY_DIR = old_consolidated_daily_dir
+
+        self.assertEqual(raised.exception.code, 1)
+        self.assertIn("latest_learning_run", stdout.getvalue())
+        self.assertIn("codex login", stdout.getvalue())
+
     def test_refresh_overview_learn_memory_forwards_env_to_nightly_pipeline(self):
         with TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -3331,6 +3468,72 @@ applies_to: cwd=/tmp/OpenRelix
             recorded_args,
             ["2026-04-28", "preliminary", "--learn-window-days", "7", "--skip-if-unchanged"],
         )
+
+    def test_nightly_pipeline_returns_nonzero_when_latest_model_run_failed(self):
+        with TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            scripts_dir = root / "scripts"
+            scripts_dir.mkdir(parents=True)
+            consolidated_daily_dir = root / "consolidated" / "daily"
+            pipeline_script = scripts_dir / "nightly_pipeline.sh"
+            pipeline_script.write_text(
+                (ROOT / "scripts" / "nightly_pipeline.sh").read_text(encoding="utf-8"),
+                encoding="utf-8",
+            )
+            (scripts_dir / "asset_runtime.py").write_text(
+                "\n".join(
+                    [
+                        "import os",
+                        "from pathlib import Path",
+                        "class RuntimePaths:",
+                        "    consolidated_daily_dir = Path(os.environ['OPENRELIX_TEST_CONSOLIDATED_DAILY_DIR'])",
+                        "def get_runtime_paths():",
+                        "    return RuntimePaths()",
+                        "def get_memory_mode(*args, **kwargs):",
+                        "    return 'local-only'",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            (scripts_dir / "collect_codex_activity.py").write_text("", encoding="utf-8")
+            (scripts_dir / "build_overview.py").write_text("", encoding="utf-8")
+            (scripts_dir / "build_codex_memory_summary.py").write_text("", encoding="utf-8")
+            (scripts_dir / "nightly_consolidate.py").write_text(
+                "\n".join(
+                    [
+                        "import argparse, json, os",
+                        "from pathlib import Path",
+                        "parser = argparse.ArgumentParser()",
+                        "parser.add_argument('--date')",
+                        "parser.add_argument('--stage')",
+                        "parser.add_argument('--learn-window-days')",
+                        "parser.add_argument('--skip-if-unchanged', action='store_true')",
+                        "args = parser.parse_args()",
+                        "summary_dir = Path(os.environ['OPENRELIX_TEST_CONSOLIDATED_DAILY_DIR']) / args.date",
+                        "summary_dir.mkdir(parents=True, exist_ok=True)",
+                        "(summary_dir / 'summary.json').write_text(json.dumps({",
+                        "    'date': args.date,",
+                        "    'last_run_model_status': 'failed',",
+                        "    'last_run_model_error_hint': 'login required',",
+                        "}), encoding='utf-8')",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            env = dict(os.environ)
+            env["OPENRELIX_TEST_CONSOLIDATED_DAILY_DIR"] = str(consolidated_daily_dir)
+
+            result = subprocess.run(
+                ["/bin/zsh", str(pipeline_script), "2026-04-28", "manual"],
+                cwd=str(root),
+                env=env,
+                capture_output=True,
+                text=True,
+            )
+
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("model summarization failed", result.stderr)
+        self.assertIn("login required", result.stderr)
 
     def test_learning_refresh_install_guidance_and_launchd_env_are_present(self):
         showcase = (ROOT / "docs" / "product-showcase.html").read_text(encoding="utf-8")

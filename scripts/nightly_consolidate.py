@@ -6,6 +6,7 @@ import json
 import os
 import re
 import subprocess
+import sys
 from collections import Counter
 from datetime import datetime, timedelta
 from difflib import SequenceMatcher
@@ -54,12 +55,53 @@ SPARSE_CONCLUSION_THRESHOLD = 4
 STAGE_PRIORITY = {"manual": 0, "preliminary": 1, "final": 2}
 
 
+class CodexConsolidationError(RuntimeError):
+    def __init__(self, returncode, stdout="", stderr=""):
+        self.returncode = returncode
+        self.stdout = stdout or ""
+        self.stderr = stderr or ""
+        super().__init__(describe_codex_failure(self.stdout, self.stderr, returncode))
+
+
 def current_language(language=None):
     return normalize_language(language or LANGUAGE)
 
 
 def localized(zh_text, en_text, language=None):
     return en_text if current_language(language) == "en" else zh_text
+
+
+def sanitize_process_text(text):
+    compact = str(text or "")
+    if not compact:
+        return ""
+    compact = re.sub(r"sk-[A-Za-z0-9_-]{12,}", "sk-***", compact)
+    compact = re.sub(r"(Bearer\s+)[A-Za-z0-9._~+/=-]{12,}", r"\1***", compact, flags=re.IGNORECASE)
+    compact = re.sub(r"(refresh_token[\"']?\s*[:=]\s*[\"']?)[^\"'\s,}]+", r"\1***", compact, flags=re.IGNORECASE)
+    compact = re.sub(r"(access_token[\"']?\s*[:=]\s*[\"']?)[^\"'\s,}]+", r"\1***", compact, flags=re.IGNORECASE)
+    return "\n".join(line.rstrip() for line in compact.splitlines() if line.strip())[-1200:]
+
+
+def describe_codex_failure(stdout, stderr, returncode):
+    text = sanitize_process_text("\n".join(part for part in (stdout, stderr) if part))
+    if not text:
+        return "codex exec failed with exit code {}".format(returncode)
+    return text
+
+
+def codex_failure_hint(error_text, language=None):
+    lowered = str(error_text or "").lower()
+    if "invalid_issuer" in lowered or "401" in lowered or "unauthorized" in lowered:
+        return localized(
+            "Codex/OpenAI 认证被拒绝。请在该用户机器上运行 `codex login status` 检查登录态；如无效，运行 `codex login` 重新登录，或清理/替换错误的 `OPENAI_API_KEY` 后重试。",
+            "Codex/OpenAI authentication was rejected. Run `codex login status` on that user's machine; if invalid, run `codex login`, or clear/replace an invalid `OPENAI_API_KEY`, then retry.",
+            language,
+        )
+    return localized(
+        "请先确认 `codex exec` 在该用户机器上可用，再重新运行本次学习刷新。",
+        "Confirm `codex exec` works on that user's machine, then rerun this learning refresh.",
+        language,
+    )
 
 
 def parse_args():
@@ -1000,6 +1042,8 @@ def run_codex_consolidation(prompt, output_path, language=None):
     main_auth = MAIN_CODEX_HOME / "auth.json"
     nightly_auth = NIGHTLY_CODEX_HOME / "auth.json"
     if main_auth.exists() and not nightly_auth.exists():
+        if nightly_auth.is_symlink():
+            nightly_auth.unlink()
         nightly_auth.symlink_to(main_auth)
     env = dict(os.environ)
     env["CODEX_HOME"] = str(NIGHTLY_CODEX_HOME)
@@ -1017,7 +1061,15 @@ def run_codex_consolidation(prompt, output_path, language=None):
         "-",
     ]
     safe_prompt = build_safe_consolidation_prompt(prompt, language=language)
-    subprocess.run(cmd, input=safe_prompt, text=True, check=True, env=env)
+    result = subprocess.run(
+        cmd,
+        input=safe_prompt,
+        text=True,
+        capture_output=True,
+        env=env,
+    )
+    if result.returncode != 0:
+        raise CodexConsolidationError(result.returncode, result.stdout, result.stderr)
 
 
 def fallback_question_summary(window, language=None):
@@ -1112,7 +1164,7 @@ def normalize_summary(raw_payload, summary, language=None):
     return summary
 
 
-def build_fallback_summary(raw_payload, language=None):
+def build_fallback_summary(raw_payload, language=None, model_error=None, model_exit_code=None):
     window_summaries = []
     for raw_window in raw_payload["windows"]:
         window_summaries.append(
@@ -1127,7 +1179,7 @@ def build_fallback_summary(raw_payload, language=None):
             }
         )
 
-    return {
+    summary = {
         "date": raw_payload["date"],
         "day_summary": localized(
             "夜间整理在模型归纳阶段失败，当前结果是基于原始库生成的保底摘要。",
@@ -1142,7 +1194,14 @@ def build_fallback_summary(raw_payload, language=None):
         "next_actions": [],
         "raw_window_count": raw_payload["window_count"],
         "review_like_window_count": raw_payload.get("review_like_window_count", 0),
+        "model_status": "failed",
     }
+    if model_error:
+        summary["model_error"] = model_error
+        summary["model_error_hint"] = codex_failure_hint(model_error, language=language)
+    if model_exit_code is not None:
+        summary["model_exit_code"] = model_exit_code
+    return summary
 
 
 def render_markdown(summary, language=None):
@@ -1457,8 +1516,32 @@ def main():
         run_codex_consolidation(prompt, output_json_path, language=language)
         candidate_summary = load_json(output_json_path)
         candidate_summary = normalize_summary(raw_payload, candidate_summary, language=language)
-    except subprocess.CalledProcessError:
-        candidate_summary = build_fallback_summary(raw_payload, language=language)
+        candidate_summary["model_status"] = "completed"
+    except (CodexConsolidationError, subprocess.CalledProcessError) as exc:
+        if isinstance(exc, CodexConsolidationError):
+            model_error = str(exc)
+            model_exit_code = exc.returncode
+        else:
+            model_error = describe_codex_failure(getattr(exc, "output", ""), getattr(exc, "stderr", ""), exc.returncode)
+            model_exit_code = exc.returncode
+        print(
+            localized(
+                "nightly_consolidate: 模型归纳失败，已生成保底摘要。{}".format(
+                    codex_failure_hint(model_error, language=language)
+                ),
+                "nightly_consolidate: model summarization failed; generated fallback summary. {}".format(
+                    codex_failure_hint(model_error, language=language)
+                ),
+                language,
+            ),
+            file=sys.stderr,
+        )
+        candidate_summary = build_fallback_summary(
+            raw_payload,
+            language=language,
+            model_error=model_error,
+            model_exit_code=model_exit_code,
+        )
     candidate_summary["language"] = language
     candidate_summary["stage"] = stage
     candidate_summary["generated_at"] = datetime.now().astimezone().isoformat()
@@ -1490,7 +1573,17 @@ def main():
         "compared_at": datetime.now().astimezone().isoformat(),
         "candidate_run_json_path": candidate_run["json_path"],
         "learn_window_days": learn_window_days,
+        "candidate_model_status": candidate_summary.get("model_status", "completed"),
     }
+    if candidate_summary.get("model_status") == "failed":
+        selected_summary["selection_decision"]["candidate_model_error"] = candidate_summary.get("model_error", "")
+        selected_summary["selection_decision"]["candidate_model_error_hint"] = candidate_summary.get("model_error_hint", "")
+        selected_summary["selection_decision"]["candidate_model_exit_code"] = candidate_summary.get("model_exit_code")
+    selected_summary["last_run_model_status"] = candidate_summary.get("model_status", "completed")
+    if candidate_summary.get("model_status") == "failed":
+        selected_summary["last_run_model_error"] = candidate_summary.get("model_error", "")
+        selected_summary["last_run_model_error_hint"] = candidate_summary.get("model_error_hint", "")
+        selected_summary["last_run_model_exit_code"] = candidate_summary.get("model_exit_code")
     selected_summary = apply_memory_mode(selected_summary)
     write_json(output_json_path, selected_summary)
     atomic_write_text(summary_dir / "summary.md", render_markdown(selected_summary, language=language))

@@ -50,6 +50,56 @@ PY
   fi
 }
 
+exit_if_latest_model_run_failed() {
+  local failure_message=""
+  set +e
+  failure_message="$(
+    "$PYTHON_BIN" - "$REPO_ROOT" "$target_date" <<'PY'
+import json
+import sys
+
+repo_root = sys.argv[1]
+target_date = sys.argv[2]
+sys.path.insert(0, repo_root + "/scripts")
+
+from asset_runtime import get_runtime_paths  # noqa: E402
+
+summary_path = get_runtime_paths().consolidated_daily_dir / target_date / "summary.json"
+try:
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+except (OSError, json.JSONDecodeError):
+    raise SystemExit(0)
+
+decision = summary.get("selection_decision") or {}
+failed = (
+    summary.get("last_run_model_status") == "failed"
+    or summary.get("model_status") == "failed"
+    or decision.get("candidate_model_status") == "failed"
+)
+if not failed:
+    raise SystemExit(0)
+
+hint = (
+    summary.get("last_run_model_error_hint")
+    or summary.get("model_error_hint")
+    or decision.get("candidate_model_error_hint")
+    or "model summarization failed"
+)
+print(hint)
+raise SystemExit(1)
+PY
+  )"
+  local probe_status=$?
+  set -e
+  if (( probe_status != 0 )); then
+    echo "nightly_pipeline: model summarization failed; generated fallback summary." >&2
+    if [[ -n "$failure_message" ]]; then
+      echo "$failure_message" >&2
+    fi
+    exit "$probe_status"
+  fi
+}
+
 target_date="${1:-$(date +%F)}"
 stage="${2:-manual}"
 extra_args=("${@:3}")
@@ -86,3 +136,4 @@ fi
 "$PYTHON_BIN" "$REPO_ROOT/scripts/nightly_consolidate.py" --date "$target_date" --stage "$stage" "${extra_args[@]}"
 sync_codex_memory_summary_if_enabled
 "$PYTHON_BIN" "$REPO_ROOT/scripts/build_overview.py"
+exit_if_latest_model_run_failed
