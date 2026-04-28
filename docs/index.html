@@ -3485,21 +3485,16 @@
             <div class="section-kicker">安装</div>
             <h2>安装方式。</h2>
           </div>
-          <p class="lead">推荐命令会安装 `openrelix`、创建本地资产账本，并开启每 30 分钟的增量学习。只想手动整理时，使用不带自动学习开关的安装命令；需要读取 Codex 应用对话时，再选择带应用读取参数的命令。</p>
+          <p class="lead">推荐命令会安装 `openrelix`、创建本地资产账本，开启每 30 分钟的增量学习，并把 Codex 应用对话也纳入整理。</p>
         </div>
         <div class="install-module" aria-label="安装方式">
           <article class="install-path featured">
             <span class="chip">推荐安装</span>
             <h3>一行命令安装。</h3>
-              <p>已经有 Node.js 18+ 和 Python 3.10+ 的 macOS 用户，直接跑这一行。它会安装 `openrelix` 命令、创建本地资产账本，并开启每 30 分钟的增量学习；后台运行可能消耗 token，需要纯手动模式时去掉自动学习开关。</p>
-              <div class="command-row inline-command" aria-label="npx 安装命令">
-              <code class="command-code">npx openrelix install --profile integrated --enable-learning-refresh</code>
-              <button class="command-copy" type="button" aria-label="复制 npx 安装命令"><span data-copy-label aria-live="polite">复制</span></button>
-            </div>
-            <p class="install-hint">如果你主要用 Codex 应用，也想把应用里的对话纳入整理，安装时用下面这行；默认仍只读 Codex CLI 的本地记录。</p>
-            <div class="command-row inline-command" aria-label="Codex 应用安装命令">
+              <p>已经有 Node.js 18+ 和 Python 3.10+ 的 macOS 用户，直接跑这一行。它会安装 `openrelix` 命令、创建本地资产账本、开启每 30 分钟的增量学习，并读取 Codex CLI 和 Codex 应用的本地记录。</p>
+            <div class="command-row inline-command" aria-label="npx 安装命令">
               <code class="command-code">npx openrelix install --profile integrated --enable-learning-refresh --read-codex-app</code>
-              <button class="command-copy" type="button" aria-label="复制 Codex 应用安装命令"><span data-copy-label aria-live="polite">复制</span></button>
+              <button class="command-copy" type="button" aria-label="复制 npx 安装命令"><span data-copy-label aria-live="polite">复制</span></button>
             </div>
           </article>
           <article class="install-path">
@@ -3515,14 +3510,10 @@
               <li><span class="install-step-index">2</span><span>进入解压后的仓库目录。</span></li>
               <li><span class="install-step-index">3</span><span>执行安装脚本。</span></li>
             </ol>
+            <p class="install-hint">源码安装也一样：执行下面这行，直接启用自动学习并读取 Codex 应用记录。</p>
             <div class="command-row inline-command" aria-label="GitHub 手动下载与安装命令">
-              <code class="command-code">./install/install.sh --profile integrated --enable-learning-refresh</code>
-              <button class="command-copy" type="button" aria-label="复制安装脚本命令"><span data-copy-label aria-live="polite">复制</span></button>
-            </div>
-            <p class="install-hint">源码安装也一样：只有要读 Codex 应用时，才额外加 `--read-codex-app`。</p>
-            <div class="command-row inline-command" aria-label="源码 Codex 应用安装命令">
               <code class="command-code">./install/install.sh --profile integrated --enable-learning-refresh --read-codex-app</code>
-              <button class="command-copy" type="button" aria-label="复制源码 Codex 应用安装命令"><span data-copy-label aria-live="polite">复制</span></button>
+              <button class="command-copy" type="button" aria-label="复制安装脚本命令"><span data-copy-label aria-live="polite">复制</span></button>
             </div>
           </article>
         </div>
@@ -3536,16 +3527,16 @@
             <div class="section-kicker">快速上手</div>
             <h2>安装后运行顺序。</h2>
           </div>
-          <p class="lead">安装完成后，先执行一次近 7 天整理，把已有 Codex 窗口写入本地账本；如果安装时保留 `--enable-learning-refresh`，后台会每 30 分钟增量刷新；最后打开面板确认结果。</p>
+          <p class="lead">安装完成后，先执行一次近 7 天终版整理，把已有 Codex 窗口写入本地账本；整理完成后打开面板确认结果。</p>
         </div>
         <div class="tips">
           <div class="mode-list" aria-label="快速上手教程">
             <article class="mode-card">
               <span class="mode-kicker">第一步</span>
               <h3>整理最近 7 天</h3>
-              <p>先手动跑一次，把最近 7 天的 Codex CLI 记录整理进 OpenRelix 本地账本和面板。安装时加了 `--read-codex-app` 的话，也会尝试纳入 Codex 应用里的对话。</p>
+              <p>先手动跑一次终版 review，把最近 7 天的 Codex 记录整理进 OpenRelix 本地账本和面板。安装命令带了 `--read-codex-app` 时，也会纳入 Codex 应用里的对话。</p>
               <div class="command-row inline-command">
-                <code class="command-code">openrelix refresh --learn-memory --learn-window-days 7</code>
+                <code class="command-code">openrelix review --stage final --learn-window-days 7</code>
                 <button class="command-copy" type="button" aria-label="复制学习窗口命令"><span data-copy-label aria-live="polite">复制</span></button>
               </div>
               <div class="step-visual" aria-hidden="true">
@@ -3560,24 +3551,6 @@
             </article>
             <article class="mode-card">
               <span class="mode-kicker">第二步</span>
-              <h3>开启 30 分钟自动学习（推荐）</h3>
-              <p>如果安装命令已经带了 `--enable-learning-refresh`，这一步不用重跑。没带的话，运行下面这行开启后台自动学习；它会每 30 分钟调用 Codex 提炼记忆，可能消耗 token 和后台运行时间，不想后台调模型就跳过。</p>
-              <div class="command-row inline-command">
-                <code class="command-code">npx openrelix install --profile integrated --enable-learning-refresh</code>
-                <button class="command-copy" type="button" aria-label="复制自动学习安装命令"><span data-copy-label aria-live="polite">复制</span></button>
-              </div>
-              <div class="step-visual" aria-hidden="true">
-                <div class="visual-memory-flow">
-                  <div class="visual-memory-card"><strong>30 分钟</strong><span class="visual-line"></span><span class="visual-line"></span></div>
-                  <div class="visual-arrow">→</div>
-                  <div class="visual-memory-card"><strong>Codex 学习</strong><span class="visual-line"></span><span class="visual-line"></span></div>
-                  <div class="visual-arrow">→</div>
-                  <div class="visual-memory-card"><strong>OpenRelix 本地记忆</strong><span class="visual-line"></span><span class="visual-line"></span></div>
-                </div>
-              </div>
-            </article>
-            <article class="mode-card">
-              <span class="mode-kicker">第三步</span>
               <h3>再打开本地面板</h3>
               <p>整理完成后打开面板，看今天整理了什么、长期和短期记忆有哪些、同步是否正常。</p>
               <div class="command-row inline-command">
@@ -3616,7 +3589,7 @@
               </div>
             </article>
             <article class="mode-card is-wide">
-              <span class="mode-kicker">第四步（可选）</span>
+              <span class="mode-kicker">第三步（可选）</span>
               <h3>查看或切换 OpenRelix 记忆模式</h3>
               <p>`integrated` 同时是推荐安装档位和默认记忆模式；使用 `--profile integrated` 安装后，后续只在需要严格隔离或只做可视化时才用 `openrelix mode` 切换。</p>
               <div class="mode-options">
@@ -3654,7 +3627,7 @@
               </div>
             </article>
             <article class="mode-card is-terminal">
-              <span class="mode-kicker">第五步（可选）</span>
+              <span class="mode-kicker">第四步（可选）</span>
               <h3>终端状态速览</h3>
               <p>需要在终端快速看核心指标时使用。</p>
               <div class="command-row inline-command">
@@ -4114,10 +4087,12 @@
         "安装方式。": "Install Options.",
         "先安装 OpenRelix。推荐命令会开启 30 分钟自动 Codex 学习；如果只想手动整理，可以删掉 `--enable-learning-refresh`。默认只读取 Codex CLI 本地记录；如果也要读取 Codex 应用里的对话，安装命令里额外加 `--read-codex-app`。": "Install OpenRelix first. The recommended command enables 30-minute automatic Codex learning; if you only want manual organization, remove `--enable-learning-refresh`. By default it reads only local Codex CLI records; to include conversations from the Codex app, add `--read-codex-app` to the install command.",
         "推荐命令会安装 `openrelix`、创建本地资产账本，并开启每 30 分钟的增量学习。只想手动整理时，使用不带自动学习开关的安装命令；需要读取 Codex 应用对话时，再选择带应用读取参数的命令。": "The recommended command installs `openrelix`, creates the local asset ledger, and enables incremental learning every 30 minutes. For manual-only use, install without the automatic-learning option; to include Codex app conversations, choose the command with the app-reading option.",
+        "推荐命令会安装 `openrelix`、创建本地资产账本，开启每 30 分钟的增量学习，并把 Codex 应用对话也纳入整理。": "The recommended command installs `openrelix`, creates the local asset ledger, enables incremental learning every 30 minutes, and also includes Codex app conversations.",
         "推荐安装": "Recommended",
         "一行命令安装。": "Install with one command.",
         "已经有 Node.js 18+ 和 Python 3.10+ 的 macOS 用户，直接跑这一行。它会安装 `openrelix` 命令、创建本地资产账本，并开启 30 分钟自动学习。这个模式会定时调用 Codex，可能消耗 token 和后台运行时间；不想自动学习时删掉 `--enable-learning-refresh`。": "If you already have Node.js 18+ and Python 3.10+ on macOS, run this line. It installs the `openrelix` command, creates the local asset ledger, and enables 30-minute automatic learning. This mode calls Codex on a schedule and may consume tokens and background runtime; remove `--enable-learning-refresh` if you do not want automatic learning.",
         "已经有 Node.js 18+ 和 Python 3.10+ 的 macOS 用户，直接跑这一行。它会安装 `openrelix` 命令、创建本地资产账本，并开启每 30 分钟的增量学习；后台运行可能消耗 token，需要纯手动模式时去掉自动学习开关。": "If you already have Node.js 18+ and Python 3.10+ on macOS, run this line. It installs the `openrelix` command, creates the local asset ledger, and enables incremental learning every 30 minutes; background runs may consume tokens, so remove the automatic-learning option for a manual-only setup.",
+        "已经有 Node.js 18+ 和 Python 3.10+ 的 macOS 用户，直接跑这一行。它会安装 `openrelix` 命令、创建本地资产账本、开启每 30 分钟的增量学习，并读取 Codex CLI 和 Codex 应用的本地记录。": "If you already have Node.js 18+ and Python 3.10+ on macOS, run this line. It installs the `openrelix` command, creates the local asset ledger, enables incremental learning every 30 minutes, and reads local records from both Codex CLI and the Codex app.",
         "# npx 快速安装": "# quick npx install",
         "如果你主要用 Codex 应用，也想把应用里的对话纳入整理，安装时用下面这行；默认仍只读 Codex CLI 的本地记录。": "If you mainly use the Codex app and want those conversations included, use the line below during install; by default OpenRelix still reads only local Codex CLI records.",
         "手动下载": "Manual download",
@@ -4128,13 +4103,16 @@
         "进入解压后的仓库目录。": "Enter the extracted repository directory.",
         "执行安装脚本。": "Run the installer script.",
         "源码安装也一样：只有要读 Codex 应用时，才额外加 `--read-codex-app`。": "Source install works the same way: add `--read-codex-app` only when you want to read the Codex app.",
+        "源码安装也一样：执行下面这行，直接启用自动学习并读取 Codex 应用记录。": "Source install works the same way: run the line below to enable automatic learning and read Codex app records.",
         "装好以后按这个顺序来：先把最近 7 天的 Codex 记录整理一次；再确认是否开启 30 分钟自动学习；最后打开面板看结果。自动学习会定时调用 Codex，不想消耗 token 时可以跳过。": "After install, use this order: organize the last 7 days of Codex records once; then confirm whether 30-minute automatic learning is enabled; finally open the panel to inspect the result. Automatic learning calls Codex on a schedule, so skip it if you do not want token usage.",
         "安装完成后，先执行一次近 7 天整理，把已有 Codex 窗口写入本地账本；如果安装时保留 `--enable-learning-refresh`，后台会每 30 分钟增量刷新；最后打开面板确认结果。": "After install, run one 7-day organization pass to write existing Codex windows into the local ledger. If you kept `--enable-learning-refresh`, the background job refreshes incrementally every 30 minutes. Then open the panel to verify the result.",
+        "安装完成后，先执行一次近 7 天终版整理，把已有 Codex 窗口写入本地账本；整理完成后打开面板确认结果。": "After install, run one final 7-day organization pass to write existing Codex windows into the local ledger. Then open the panel to verify the result.",
         "第一步": "Step 1",
         "先补齐最近 7 天": "Backfill the last 7 days first",
         "整理最近 7 天": "Organize the last 7 days",
         "装完后先跑一次，把最近几天的 Codex 记录整理进 OpenRelix 本地记忆和面板。安装时加了 `--read-codex-app` 的话，这里也会读取 Codex 应用里的对话。": "Run this once after install to organize recent Codex records into OpenRelix local memory and the panel. If you installed with `--read-codex-app`, this also reads conversations from the Codex app.",
         "先手动跑一次，把最近 7 天的 Codex CLI 记录整理进 OpenRelix 本地账本和面板。安装时加了 `--read-codex-app` 的话，也会尝试纳入 Codex 应用里的对话。": "Run this manually once to organize the last 7 days of Codex CLI records into the OpenRelix local ledger and panel. If you installed with `--read-codex-app`, it also tries to include Codex app conversations.",
+        "先手动跑一次终版 review，把最近 7 天的 Codex 记录整理进 OpenRelix 本地账本和面板。安装命令带了 `--read-codex-app` 时，也会纳入 Codex 应用里的对话。": "Run one final review manually to organize the last 7 days of Codex records into the OpenRelix local ledger and panel. When the install command includes `--read-codex-app`, it also includes Codex app conversations.",
         "同步正常": "Synced",
         "概览": "Overview",
         "今日 Review": "Today Review",
@@ -4169,6 +4147,7 @@
         "仅生成和存储 OpenRelix 本地记忆与面板，不做上下文注入。": "Only generate and store OpenRelix local memory and the panel, without context injection.",
         "禁用 OpenRelix 记忆模式": "Disable OpenRelix memory mode",
         "不生成 OpenRelix 记忆文件，不写 OpenRelix 本地 memory registry；本项目仅做当前 host 的资产可视化。": "Do not generate OpenRelix memory files or write the OpenRelix local memory registry; this project only visualizes current-host assets.",
+        "第三步（可选）": "Step 3 (optional)",
         "第四步（可选）": "Step 4 (optional)",
         "第五步（可选）": "Step 5 (optional)",
         "终端状态速览": "Terminal status",

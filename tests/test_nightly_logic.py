@@ -3542,7 +3542,17 @@ applies_to: cwd=/tmp/OpenRelix
             ROOT / "ops" / "launchd" / "io.github.openrelix.overview-refresh.plist.tmpl"
         ).read_text(encoding="utf-8")
 
-        self.assertIn("npx openrelix install --profile integrated --enable-learning-refresh", showcase)
+        self.assertIn("npx openrelix install --profile integrated --enable-learning-refresh --read-codex-app", showcase)
+        self.assertIn("openrelix review --stage final --learn-window-days 7", showcase)
+        self.assertNotIn(
+            '<code class="command-code">npx openrelix install --profile integrated --enable-learning-refresh</code>',
+            showcase,
+        )
+        self.assertNotIn(
+            '<code class="command-code">openrelix refresh --learn-memory --learn-window-days 7</code>',
+            showcase,
+        )
+        self.assertNotIn("<h3>开启 30 分钟自动学习（推荐）</h3>", showcase)
         self.assertIn("--enable-learning-refresh", installer)
         self.assertIn("OPENRELIX_REFRESH_LEARN_MEMORY", launchd_template)
         self.assertIn("OPENRELIX_REFRESH_LEARN_WINDOW_DAYS", launchd_template)
