@@ -198,6 +198,8 @@ Memory 默认开启。当前 Codex adapter 的默认模式是 `integrated`：系
    - 每天 `00:10` 生成前一日终版
    - 开启 `--enable-update-check` 时，每天 `09:30` 做一次 npm 最新版本检查
 
+如果希望 nightly/manual pipeline 额外调用一次 Codex，把 Codex 原生记忆卡片标题和摘要加工成更易读的展示文案，可以设置 `OPENRELIX_ENABLE_NATIVE_DISPLAY_POLISH=1`。生成的展示缓存只写入本地 state root。
+
 在 active AI coding agent 里需要立即做任务复盘时，当前 Codex adapter 暴露的 skill 入口是：
 
 ```text

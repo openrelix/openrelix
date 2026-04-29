@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import csv
+import hashlib
 import json
 import math
 import os
@@ -36,6 +37,7 @@ from build_codex_memory_summary import (
     PERSONAL_MEMORY_NOTE_LIMIT,
     PERSONAL_MEMORY_TITLE_LIMIT,
     estimate_tokens as estimate_summary_tokens,
+    reverse_date_sort_key as memory_summary_reverse_date_sort_key,
 )
 
 PATHS = get_runtime_paths()
@@ -47,6 +49,7 @@ REVIEWS_DIR = PATHS.reviews_dir
 CONSOLIDATED_DIR = PATHS.consolidated_daily_dir
 RAW_DAILY_DIR = PATHS.raw_daily_dir
 TOKEN_CACHE_PATH = REPORTS_DIR / "token-usage-cache.json"
+CODEX_NATIVE_DISPLAY_CACHE_PATH = PATHS.runtime_dir / "codex-native-display-cache.json"
 CCUSAGE_TIMEZONE = "Asia/Shanghai"
 CCUSAGE_WINDOW_DAYS = 14
 AUTO_REFRESH_SECONDS = 1800
@@ -692,6 +695,10 @@ PANEL_I18N_EN = {
     "今天哪些工作能复用？": "What work can be reused today?",
     "每日摘要": "Daily Summary",
     "Codex context 预算": "Codex Context Budget",
+    "进入 Codex context 的记忆": "Memories in Codex Context",
+    "按当前 bounded summary 预算估算；按类型分组展示。": (
+        "Estimated from the current bounded-summary budget and grouped by memory type."
+    ),
     "受控": "Bounded",
     "本地": "Local",
     "长期": "Long-term",
@@ -816,6 +823,8 @@ PANEL_I18N_EN = {
     "整理命中": "Synthesis Hits",
     "高优先": "High Priority",
     "中优先": "Medium Priority",
+    "高频率": "High Frequency",
+    "中频率": "Medium Frequency",
     "语义": "Semantic",
     "流程": "Procedure",
     "事件记忆": "Episodic",
@@ -1925,19 +1934,77 @@ def estimate_memory_row_tokens(row):
     return tokens
 
 
-def estimate_memory_summary_fit(context_rows, max_items, token_budget):
+def sort_memory_summary_context_rows(context_rows):
+    priority_rank = {"high": 0, "medium": 1, "low": 2}
+    bucket_rank = {"durable": 0, "session": 1}
+
+    def sort_key(row):
+        return (
+            bucket_rank.get(row.get("bucket", ""), 2),
+            priority_rank.get(row.get("priority", "medium"), 1),
+            memory_summary_reverse_date_sort_key(row.get("updated_at") or row.get("date") or row.get("created_at")),
+            -safe_int(row.get("occurrence_count", 0)),
+            row.get("title", "") or row.get("display_title", ""),
+        )
+
+    return sorted(context_rows or [], key=sort_key)
+
+
+def select_memory_summary_context_rows(context_rows, max_items, token_budget):
+    if token_budget <= 0:
+        return [], 0
     heading_tokens, _ = estimate_summary_tokens("### Local personal memory registry\n")
     used_tokens = heading_tokens
-    fit_count = 0
-    for row in context_rows[:max_items]:
+    selected_rows = []
+    has_item_cap = max_items > 0
+    for row in sort_memory_summary_context_rows(context_rows):
+        if has_item_cap and len(selected_rows) >= max_items:
+            break
         row_tokens = estimate_memory_row_tokens(row)
         if row_tokens <= 0:
             continue
         if used_tokens + row_tokens > token_budget:
             continue
         used_tokens += row_tokens
-        fit_count += 1
-    return fit_count, min(used_tokens, token_budget)
+        selected_rows.append(row)
+    return selected_rows, min(used_tokens, token_budget)
+
+
+def estimate_memory_summary_fit(context_rows, max_items, token_budget):
+    selected_rows, used_tokens = select_memory_summary_context_rows(
+        context_rows,
+        max_items,
+        token_budget,
+    )
+    return len(selected_rows), used_tokens
+
+
+def build_personal_memory_context_preview(
+    memory_registry,
+    memory_mode,
+    memory_summary_budget=None,
+    item_count=None,
+):
+    if str(memory_mode or "integrated") != "integrated":
+        return []
+    summary_budget = memory_summary_budget or get_memory_summary_budget(PATHS)
+    personal_memory_budget_tokens = summary_budget["personal_memory_tokens"]
+    rows = memory_registry or []
+    context_rows = [row for row in rows if row.get("bucket") in {"durable", "session"}]
+    has_candidate_cap = MEMORY_SUMMARY_MAX_PERSONAL_MEMORY_ITEMS > 0
+    context_item_limit = (
+        min(len(context_rows), MEMORY_SUMMARY_MAX_PERSONAL_MEMORY_ITEMS)
+        if has_candidate_cap
+        else len(context_rows)
+    )
+    selected_rows, _ = select_memory_summary_context_rows(
+        context_rows,
+        context_item_limit,
+        personal_memory_budget_tokens,
+    )
+    if item_count is not None:
+        selected_rows = selected_rows[: max(0, safe_int(item_count))]
+    return selected_rows
 
 
 def read_personal_memory_summary_usage(summary_path):
@@ -1977,7 +2044,9 @@ def build_personal_memory_token_usage(
     enabled = memory_mode != "off"
     rows = memory_registry or []
     row_count = len(rows)
-    context_rows = [row for row in rows if row.get("bucket") in {"durable", "session"}]
+    context_rows = sort_memory_summary_context_rows(
+        [row for row in rows if row.get("bucket") in {"durable", "session"}]
+    )
     has_candidate_cap = MEMORY_SUMMARY_MAX_PERSONAL_MEMORY_ITEMS > 0
     context_item_limit = (
         min(len(context_rows), MEMORY_SUMMARY_MAX_PERSONAL_MEMORY_ITEMS)
@@ -5178,6 +5247,60 @@ def codex_native_translation_key(title):
     return normalize_context_match_text(title)
 
 
+def codex_native_display_source_text(title="", body=""):
+    text = normalize_brand_display_text(
+        "\n".join(str(part or "").strip() for part in (title, body) if str(part or "").strip())
+    )
+    return re.sub(r"`([^`]+)`", r"\1", text)
+
+
+def codex_native_display_cache_key(kind, title="", body=""):
+    source_text = codex_native_display_source_text(title, body)
+    digest = hashlib.sha256(
+        "{}\0{}".format(kind or "item", source_text).encode("utf-8")
+    ).hexdigest()
+    return "{}:{}".format(kind or "item", digest[:24])
+
+
+@lru_cache(maxsize=1)
+def load_codex_native_display_cache():
+    try:
+        payload = json.loads(CODEX_NATIVE_DISPLAY_CACHE_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    if not isinstance(payload, dict) or payload.get("version") != 1:
+        return {}
+    raw_items = payload.get("items") or {}
+    if isinstance(raw_items, list):
+        raw_items = {
+            item.get("key"): item
+            for item in raw_items
+            if isinstance(item, dict) and item.get("key")
+        }
+    if not isinstance(raw_items, dict):
+        return {}
+    items = {}
+    for key, item in raw_items.items():
+        if not isinstance(item, dict):
+            continue
+        title_zh = normalize_brand_display_text(item.get("title_zh", ""))
+        body_zh = normalize_brand_display_text(item.get("body_zh", ""))
+        if not title_zh and not body_zh:
+            continue
+        items[str(key)] = {
+            "title_zh": title_zh,
+            "body_zh": body_zh,
+        }
+    return items
+
+
+def codex_native_cached_display(kind, title="", body="", language=None):
+    if is_english(language):
+        return {}
+    key = codex_native_display_cache_key(kind, title, body)
+    return load_codex_native_display_cache().get(key, {})
+
+
 def parse_codex_native_structured_line(line):
     match = CODEX_NATIVE_STRUCTURED_LINE_RE.match(str(line or "").strip())
     if not match:
@@ -5222,7 +5345,14 @@ def generic_codex_native_task_group_title(title="", keywords=None, index=1):
     labels = codex_native_task_group_labels_zh(title, keywords)
     if labels:
         return " / ".join(labels[:3]) + "任务组"
-    return "历史任务组 {}".format(index)
+    source_title = compact_preview_text(normalize_brand_display_text(title), limit=72)
+    if source_title:
+        return source_title
+    for keyword in keywords or []:
+        source_keyword = compact_preview_text(normalize_brand_display_text(keyword), limit=72)
+        if source_keyword:
+            return source_keyword
+    return "历史任务组"
 
 
 def generic_codex_native_task_group_body(task_count=0, source_count=0, labels=None):
@@ -5305,6 +5435,10 @@ def build_codex_native_bullet_title(body, kind, index, language=None):
     rule = find_codex_native_bullet_rule(body)
     if rule:
         return rule["title"]
+    _, rest = split_codex_native_context_prefix(body)
+    source = normalize_brand_display_text(rest or body)
+    if source:
+        return compact_preview_text(source, limit=72)
     default_prefix = "偏好" if kind == "preference" else "通用 tips"
     return "{} {}".format(default_prefix, index)
 
@@ -5342,8 +5476,7 @@ def build_codex_native_display_body(title, body, language=None, kind=None):
         return rule["body"]
 
     if kind in {"preference", "tip"} and not contains_cjk(body):
-        label = "偏好" if kind == "preference" else "通用提示"
-        return "这条{}来自 Codex 原生记忆；英文原文已折叠，可展开核对执行边界。".format(label)
+        return normalize_brand_display_text(body)
 
     return normalize_brand_display_text(body)
 
@@ -5378,6 +5511,7 @@ def build_codex_native_display_note(
     detail_heading="",
     language=None,
 ):
+    title_text = normalize_brand_display_text(title)
     keyword_blob = normalize_brand_display_text(keyword_blob)
     desc = normalize_brand_display_text(desc)
     learnings = normalize_brand_display_text(learnings)
@@ -5441,6 +5575,8 @@ def build_codex_native_display_note(
         return normalize_brand_display_text("；".join(part for part in note_parts if part))
     if hidden_english_source:
         return CODEX_NATIVE_GENERIC_TOPIC_NOTE_ZH
+    if title_text and contains_cjk(title_text):
+        return "主题：{}。".format(compact_preview_text(title_text, limit=140).rstrip("。"))
     return "来自 Codex 原生记忆的主题条目。"
 
 
@@ -5512,7 +5648,16 @@ def parse_codex_native_memory_summary(
         )
         display_title_en = build_codex_native_bullet_title_en(body, kind, index)
         display_body = build_codex_native_display_body("", body, language=language, kind=kind)
-        display_body_en = normalize_brand_display_text(body)
+        display_body_en = compact_preview_text(normalize_brand_display_text(body), limit=220)
+        cached_display = codex_native_cached_display(
+            kind,
+            display_body_en,
+            display_body_en,
+            language=language,
+        )
+        if cached_display:
+            display_title = cached_display.get("title_zh") or display_title
+            display_body = cached_display.get("body_zh") or display_body
         return {
             "kind": kind,
             "display_kind": display_kind,
@@ -5521,7 +5666,7 @@ def parse_codex_native_memory_summary(
             "display_title_en": display_title_en,
             "body": compact_preview_text(normalize_brand_display_text(body), limit=220),
             "display_body": compact_preview_text(display_body, limit=220),
-            "display_body_en": compact_preview_text(display_body_en, limit=220),
+            "display_body_en": display_body_en,
             "meta": localized(
                 "Codex 原生 · {}".format(section_label_zh),
                 "Codex Native · {}".format(section_label),
@@ -5611,6 +5756,15 @@ def parse_codex_native_memory_summary(
             detail_heading=current_item.get("detail_heading", ""),
             language=language,
         )
+        cached_display = codex_native_cached_display(
+            "topic",
+            compact_preview_text(normalize_brand_display_text(title), limit=140),
+            value_note_en or value_note or title,
+            language=language,
+        )
+        if cached_display:
+            display_title = cached_display.get("title_zh") or display_title
+            display_value_note = cached_display.get("body_zh") or display_value_note
 
         rows.append(
             {
@@ -5885,6 +6039,21 @@ def load_codex_memory_index_stats(memory_index_path, language=None):
                 current_group.get("rollout_reference_count", 0),
                 labels,
             )
+        cached_display = codex_native_cached_display(
+            "task_group",
+            compact_preview_text(
+                normalize_brand_display_text(current_group.get("title", "")),
+                limit=120,
+            ),
+            compact_preview_text(
+                normalize_brand_display_text(body_en or body or current_group.get("title", "")),
+                limit=220,
+            ),
+            language=language,
+        )
+        if cached_display:
+            display_title = cached_display.get("title_zh") or display_title
+            display_body = cached_display.get("body_zh") or display_body
         task_groups.append(
             {
                 "title": compact_preview_text(normalize_brand_display_text(current_group.get("title", "")), limit=120),
@@ -7340,6 +7509,11 @@ def build_data(assets, usage_events, reviews, language=None):
         language=language,
         memory_summary_path=codex_memory_summary_path,
     )
+    context_memory_preview = build_personal_memory_context_preview(
+        memory_registry["rows"],
+        memory_mode,
+        item_count=personal_memory_token_usage.get("estimated_context_item_count"),
+    )
     known_project_names = collect_known_project_names(window_overview)
     codex_memory_summary_path_label = render_path(codex_memory_summary_path)
     codex_memory_index_path_label = render_path(codex_memory_index_path)
@@ -7877,6 +8051,7 @@ def build_data(assets, usage_events, reviews, language=None):
         "memory_items": memory_items,
         "memory_registry": memory_registry["rows"],
         "personal_memory_token_usage": personal_memory_token_usage,
+        "context_memory_preview": context_memory_preview,
         "codex_native_memory": codex_native_memory["rows"],
         "codex_native_preference_rows": codex_native_memory.get("preference_rows", []),
         "codex_native_tip_rows": codex_native_memory.get("tip_rows", []),
@@ -9708,6 +9883,7 @@ def make_side_nav():
         ("link", "project-context-section", "项目上下文", "Context", "项目上下文", "Context"),
         ("group", "记忆层", "Memory Layer"),
         ("link", "memory-section", "个人资产记忆", "Personal Asset Memory", "个人资产记忆", "Personal Asset Memory"),
+        ("child", "personal-memory-context-section", "进入 context", "In Context", "进入 Codex context 的记忆", "Memories in Codex Context"),
         ("child", "personal-memory-durable-section", "长期记忆", "Long-term Memory", "个人资产-长期记忆", "Personal Asset - Long-term Memory"),
         ("child", "personal-memory-session-section", "短期工作记忆", "Short-term Work Memory", "个人资产-短期工作记忆", "Personal Asset - Short-term Work Memory"),
         ("child", "personal-memory-low-priority-section", "低优先级记忆", "Low-priority Memory", "个人资产-低优先级记忆", "Personal Asset - Low-priority Memory"),
@@ -9895,7 +10071,7 @@ def make_memory_family_header(title_zh, title_en, note_zh, note_en, extra_html="
     )
 
 
-def make_memory_cards(items, include_bucket_meta=True, visible_count=4):
+def make_memory_cards(items, include_bucket_meta=True, visible_count=4, meta_renderer=None):
     if not items:
         return '<p class="empty">暂无。</p>'
 
@@ -10092,23 +10268,26 @@ def make_memory_cards(items, include_bucket_meta=True, visible_count=4):
         context_labels = item.get("context_labels", [])
         if not context_labels and item.get("display_context"):
             context_labels = [item.get("display_context")]
-        meta_parts = []
-        if include_bucket_meta:
-            meta_parts.append(
-                ui_text(item.get("display_bucket") or display_memory_bucket(item.get("bucket", "")))
+        if meta_renderer:
+            meta_html = meta_renderer(item)
+        else:
+            meta_parts = []
+            if include_bucket_meta:
+                meta_parts.append(
+                    ui_text(item.get("display_bucket") or display_memory_bucket(item.get("bucket", "")))
+                )
+            meta_parts.extend(
+                [
+                    ui_text(item.get("display_memory_type") or display_memory_type(item.get("memory_type", ""))),
+                    ui_text(item.get("display_priority") or display_memory_priority(item.get("priority", ""))),
+                ]
             )
-        meta_parts.extend(
-            [
-                ui_text(item.get("display_memory_type") or display_memory_type(item.get("memory_type", ""))),
-                ui_text(item.get("display_priority") or display_memory_priority(item.get("priority", ""))),
-            ]
-        )
-        meta_parts = [part for part in meta_parts if part]
-        meta_parts_en = [english_for_ui_text(part) for part in meta_parts]
-        meta_html = panel_language_variant_html(
-            escape(" · ".join(meta_parts)),
-            escape(" · ".join(meta_parts_en)) if meta_parts_en != meta_parts else "",
-        )
+            meta_parts = [part for part in meta_parts if part]
+            meta_parts_en = [english_for_ui_text(part) for part in meta_parts]
+            meta_html = panel_language_variant_html(
+                escape(" · ".join(meta_parts)),
+                escape(" · ".join(meta_parts_en)) if meta_parts_en != meta_parts else "",
+            )
 
         created_display = item.get("created_at_display") or display_memory_date(item.get("created_at", ""))
         updated_display = item.get("updated_at_display") or display_memory_date(item.get("updated_at", ""))
@@ -10246,7 +10425,68 @@ def make_memory_cards(items, include_bucket_meta=True, visible_count=4):
     )
 
 
-def make_memory_type_grouped_cards(items, include_bucket_meta=False):
+def context_memory_bucket_label(item, language=None):
+    bucket = str(item.get("bucket") or "").strip()
+    labels = {
+        "durable": ("长期记忆", "Long-term Memory"),
+        "session": ("短期记忆", "Short-term Memory"),
+        "low_priority": ("低优先级记忆", "Low-priority Memory"),
+    }
+    if bucket in labels:
+        zh_label, en_label = labels[bucket]
+        return localized(zh_label, en_label, language)
+    display_bucket = normalize_brand_display_text(
+        item.get("display_bucket") or display_memory_bucket(bucket, language=language)
+    )
+    if is_english(language):
+        return panel_english_text(display_bucket) or display_bucket or "Memory"
+    display_bucket = display_bucket.replace("个人资产-", "")
+    return display_bucket or "记忆"
+
+
+def context_memory_frequency_label(item, language=None):
+    usage_score = safe_float(item.get("usage_frequency_sort_key", item.get("usage_frequency", 0)))
+    matched_windows = safe_int(item.get("usage_frequency_matched_window_count", 0))
+    direct_windows = safe_int(item.get("usage_frequency_direct_window_count", 0))
+    estimated_windows = safe_int(item.get("usage_frequency_estimated_window_count", 0))
+    occurrence_count = safe_int(item.get("occurrence_count", 0))
+    is_high_frequency = (
+        usage_score >= 1
+        or matched_windows >= 2
+        or direct_windows + estimated_windows >= 2
+        or occurrence_count >= 3
+    )
+    if is_high_frequency:
+        return localized("高频率", "High Frequency", language)
+    return localized("中频率", "Medium Frequency", language)
+
+
+def context_memory_priority_label(item, language=None):
+    priority = str(item.get("priority") or "").strip().lower()
+    display_priority = normalize_brand_display_text(item.get("display_priority") or "")
+    if priority == "high" or display_priority.startswith("高"):
+        return localized("高优先", "High Priority", language)
+    return localized("中优先", "Medium Priority", language)
+
+
+def make_context_memory_card_meta(item):
+    meta_parts_zh = [
+        context_memory_bucket_label(item, language="zh"),
+        context_memory_priority_label(item, language="zh"),
+        context_memory_frequency_label(item, language="zh"),
+    ]
+    meta_parts_en = [
+        context_memory_bucket_label(item, language="en"),
+        context_memory_priority_label(item, language="en"),
+        context_memory_frequency_label(item, language="en"),
+    ]
+    return panel_language_variant_html(
+        escape(" · ".join(part for part in meta_parts_zh if part)),
+        escape(" · ".join(part for part in meta_parts_en if part)),
+    )
+
+
+def make_memory_type_grouped_cards(items, include_bucket_meta=False, meta_renderer=None):
     if not items:
         return '<p class="empty">暂无。</p>'
 
@@ -10300,10 +10540,19 @@ def make_memory_type_grouped_cards(items, include_bucket_meta=False):
                     sorted_rows,
                     include_bucket_meta=include_bucket_meta,
                     visible_count=4,
+                    meta_renderer=meta_renderer,
                 ),
             )
         )
     return "".join(sections)
+
+
+def make_context_memory_type_grouped_cards(items):
+    return make_memory_type_grouped_cards(
+        items,
+        include_bucket_meta=False,
+        meta_renderer=make_context_memory_card_meta,
+    )
 
 
 def native_meta_to_chinese(meta_text):
@@ -12066,6 +12315,25 @@ def build_html(data):
             {
                 "label": "怎么算",
                 "body": "频率来自近 7 日窗口匹配：来源窗口直接命中权重最高，标题、关键词、说明与历史窗口摘要匹配会按相关度加权，项目上下文只做小幅加分。",
+            },
+        ],
+    )
+    context_memory_help = make_help_popover(
+        "进入 Codex context 的记忆",
+        [
+            {
+                "label": "统计什么",
+                "body": {
+                    "zh": "当前会进入 bounded summary 的个人资产记忆候选；只包含 durable 和 session bucket。",
+                    "en": "Personal asset memory candidates that fit the bounded summary; only durable and session buckets are included.",
+                },
+            },
+            {
+                "label": "怎么看",
+                "body": {
+                    "zh": "先按流程、语义等记忆类型分组，每组默认展示 2 行 2 列，点开卡片可看来源与上下文。",
+                    "en": "Items are grouped by memory type such as procedural and semantic; each group shows a 2-by-2 preview by default, and cards expand to show source context.",
+                },
             },
         ],
     )
@@ -16116,6 +16384,13 @@ def build_html(data):
 
     <section class="memory-family" id="memory-section">
       {personal_asset_memory_family_header}
+      <section class="panel" id="personal-memory-context-section">
+        {context_memory_header}
+        <div class="memory-group-list">
+          {context_memory_cards}
+        </div>
+      </section>
+
       <section class="grid memory-stack">
         <section class="panel" id="personal-memory-durable-section">
           {durable_memory_header}
@@ -18156,6 +18431,11 @@ def build_html(data):
             "可跨天复用的条目",
             durable_memory_help,
         ),
+        context_memory_header=make_panel_header(
+            "进入 Codex context 的记忆",
+            "按当前 bounded summary 预算估算；按类型分组展示。",
+            context_memory_help,
+        ),
         session_memory_header=make_panel_header(
             "个人资产-短期工作记忆",
             "更偏当天任务推进",
@@ -18198,6 +18478,9 @@ def build_html(data):
         durable_memory_cards=make_memory_type_grouped_cards(
             data.get("nightly_memory_views", {}).get("durable", []),
             include_bucket_meta=False,
+        ),
+        context_memory_cards=make_context_memory_type_grouped_cards(
+            data.get("context_memory_preview", []),
         ),
         session_memory_cards=make_memory_type_grouped_cards(
             data.get("nightly_memory_views", {}).get("session", []),

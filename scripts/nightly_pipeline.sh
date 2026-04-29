@@ -50,6 +50,30 @@ PY
   fi
 }
 
+build_codex_native_display_cache_if_enabled() {
+  if [[ "${OPENRELIX_ENABLE_NATIVE_DISPLAY_POLISH:-0}" != "1" ]]; then
+    return 0
+  fi
+  local memory_mode=""
+  memory_mode="$(
+    "$PYTHON_BIN" - "$REPO_ROOT" <<'PY'
+import sys
+
+repo_root = sys.argv[1]
+sys.path.insert(0, repo_root + "/scripts")
+
+from asset_runtime import get_memory_mode  # noqa: E402
+
+print(get_memory_mode())
+PY
+  )"
+  if [[ "$memory_mode" == "integrated" ]]; then
+    if ! "$PYTHON_BIN" "$REPO_ROOT/scripts/build_codex_native_display_cache.py"; then
+      echo "nightly_pipeline: codex native display polish failed; using source-text fallback." >&2
+    fi
+  fi
+}
+
 exit_if_latest_model_run_failed() {
   local failure_message=""
   set +e
@@ -135,5 +159,6 @@ PY
 fi
 "$PYTHON_BIN" "$REPO_ROOT/scripts/nightly_consolidate.py" --date "$target_date" --stage "$stage" "${extra_args[@]}"
 sync_codex_memory_summary_if_enabled
+build_codex_native_display_cache_if_enabled
 "$PYTHON_BIN" "$REPO_ROOT/scripts/build_overview.py"
 exit_if_latest_model_run_failed

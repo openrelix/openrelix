@@ -228,6 +228,8 @@ state root 的主要目录：
 
 它会聚合资产数量、复用事件、估算节省、项目上下文、nightly memory、Codex native memory 对照和 token 使用趋势。
 
+`scripts/build_overview.py` 当前仍是兼容入口；后续隔离重构按 [build_overview 隔离重构方案](build-overview-isolation-plan.md) 执行。该方案要求先补契约和 import 副作用验证，再逐步拆分 token/update secret、memory、window、asset 和 renderer 模块。
+
 ### `scripts/openrelix.py`
 
 面向用户的本地 CLI。

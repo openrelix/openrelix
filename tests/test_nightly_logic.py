@@ -20,6 +20,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 import build_overview  # noqa: E402
+import build_codex_native_display_cache  # noqa: E402
 import check_personal_info  # noqa: E402
 import openrelix  # noqa: E402
 import asset_runtime  # noqa: E402
@@ -109,6 +110,19 @@ class NightlyLogicTests(unittest.TestCase):
         original = build_overview._PERSONAL_CODEX_NATIVE_RULES
         build_overview._PERSONAL_CODEX_NATIVE_RULES = self._empty_personal_codex_rules()
         self.addCleanup(lambda: setattr(build_overview, "_PERSONAL_CODEX_NATIVE_RULES", original))
+        original_display_cache_path = build_overview.CODEX_NATIVE_DISPLAY_CACHE_PATH
+        display_cache_tmpdir = TemporaryDirectory()
+        self.addCleanup(display_cache_tmpdir.cleanup)
+        build_overview.CODEX_NATIVE_DISPLAY_CACHE_PATH = Path(display_cache_tmpdir.name) / "missing-display-cache.json"
+        self.addCleanup(
+            lambda: setattr(
+                build_overview,
+                "CODEX_NATIVE_DISPLAY_CACHE_PATH",
+                original_display_cache_path,
+            )
+        )
+        build_overview.load_codex_native_display_cache.cache_clear()
+        self.addCleanup(build_overview.load_codex_native_display_cache.cache_clear)
 
     def test_codex_native_default_rule_tables_stay_empty(self):
         self.assertEqual(check_personal_info.codex_native_rule_table_hits(), [])
@@ -947,6 +961,29 @@ class NightlyLogicTests(unittest.TestCase):
         self.assertIn("Example release validation rule", row["display_title_en"])
         self.assertIn("Keep public release notes minimal", row["display_value_note_en"])
 
+    def test_codex_native_structured_chinese_memory_keeps_meaningful_title_and_body(self):
+        sample_summary = """## What's in Memory
+
+### Local personal memory registry
+
+- [durable/semantic/high] 正常 git push 和 npm publish 不会上传 OpenRelix state root
+"""
+
+        with TemporaryDirectory() as tmpdir:
+            summary_path = Path(tmpdir) / "memory_summary.md"
+            summary_path.write_text(sample_summary, encoding="utf-8")
+
+            parsed = build_overview.parse_codex_native_memory_summary(summary_path, language="zh")
+
+        row = parsed["rows"][0]
+        self.assertEqual(row["display_title"], "正常 git push 和 npm publish 不会上传 OpenRelix state root")
+        self.assertEqual(
+            row["display_value_note"],
+            "主题：正常 git push 和 npm publish 不会上传 OpenRelix state root。",
+        )
+        self.assertNotIn("[durable/semantic/high]", row["display_title"])
+        self.assertNotEqual(row["display_value_note"], "原生记忆摘要")
+
     def test_codex_native_memory_summary_bullets_get_chinese_display_body(self):
         self._use_personal_codex_rules(
             bullet={
@@ -1022,6 +1059,219 @@ class NightlyLogicTests(unittest.TestCase):
         self.assertIn("在example-project项目里", parsed["preference_rows"][1]["display_body"])
         self.assertIn("命中第二条规则", parsed["preference_rows"][1]["display_body"])
         self.assertEqual(parsed["preference_rows"][0]["title"], "Preference 1")
+
+    def test_codex_native_memory_preferences_without_rules_keep_source_meaning(self):
+        sample_summary = """## User preferences
+
+- When the target state is clear, default to direct edits and concrete outputs instead of long proposal mode.
+
+## General Tips
+
+- Use local browser checks for product pages when browser tooling is available.
+"""
+
+        with TemporaryDirectory() as tmpdir:
+            summary_path = Path(tmpdir) / "memory_summary.md"
+            summary_path.write_text(sample_summary, encoding="utf-8")
+
+            parsed = build_overview.parse_codex_native_memory_summary(summary_path, language="zh")
+
+        preference = parsed["preference_rows"][0]
+        tip = parsed["tip_rows"][0]
+        self.assertIn("When the target state is clear", preference["display_title"])
+        self.assertIn("direct edits and concrete outputs", preference["display_body"])
+        self.assertNotIn("偏好：", preference["display_title"])
+        self.assertNotIn("这条偏好来自", preference["display_body"])
+        self.assertIn("Use local browser checks", tip["display_title"])
+        self.assertIn("browser tooling is available", tip["display_body"])
+        self.assertNotIn("通用 tips：", tip["display_title"])
+        self.assertNotIn("这条通用提示来自", tip["display_body"])
+
+    def test_codex_native_memory_preferences_use_model_display_cache(self):
+        preference_source = "When the target state is clear, default to direct edits and concrete outputs instead of long proposal mode."
+        tip_source = "Use local browser checks for product pages when browser tooling is available."
+        sample_summary = """## User preferences
+
+- {preference_source}
+
+## General Tips
+
+- {tip_source}
+""".format(preference_source=preference_source, tip_source=tip_source)
+
+        with TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            summary_path = tmp / "memory_summary.md"
+            cache_path = tmp / "codex-native-display-cache.json"
+            summary_path.write_text(sample_summary, encoding="utf-8")
+            cache_path.write_text(
+                json.dumps(
+                    {
+                        "version": 1,
+                        "items": {
+                            build_overview.codex_native_display_cache_key(
+                                "preference",
+                                preference_source,
+                                preference_source,
+                            ): {
+                                "title_zh": "目标明确时直接改",
+                                "body_zh": "需求已经清楚时，直接给出改动和结果，少停留在方案讨论。",
+                            },
+                            build_overview.codex_native_display_cache_key(
+                                "tip",
+                                tip_source,
+                                tip_source,
+                            ): {
+                                "title_zh": "产品页优先浏览器验证",
+                                "body_zh": "产品页改动后，优先用本地浏览器检查真实展示效果。",
+                            },
+                        },
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+
+            with mock.patch.object(build_overview, "CODEX_NATIVE_DISPLAY_CACHE_PATH", cache_path):
+                build_overview.load_codex_native_display_cache.cache_clear()
+                parsed = build_overview.parse_codex_native_memory_summary(summary_path, language="zh")
+
+        preference = parsed["preference_rows"][0]
+        tip = parsed["tip_rows"][0]
+        self.assertEqual(preference["display_title"], "目标明确时直接改")
+        self.assertEqual(preference["display_body"], "需求已经清楚时，直接给出改动和结果，少停留在方案讨论。")
+        self.assertEqual(tip["display_title"], "产品页优先浏览器验证")
+        self.assertEqual(tip["display_body"], "产品页改动后，优先用本地浏览器检查真实展示效果。")
+        self.assertNotIn("偏好：", preference["display_title"])
+        self.assertNotIn("通用 tips：", tip["display_title"])
+
+    def test_codex_native_display_cache_prompt_uses_entries_contract(self):
+        prompt = build_codex_native_display_cache.build_safe_display_prompt(
+            build_codex_native_display_cache.build_prompt(
+                [
+                    {
+                        "key": "preference:example",
+                        "kind": "preference",
+                        "source_label": "User preferences",
+                        "source_title": "Prefer direct edits",
+                        "source_body": "Prefer direct edits when the goal is clear.",
+                    }
+                ]
+            )
+        )
+
+        self.assertIn("唯一合法输入就是下方 entries_json", prompt)
+        self.assertIn("<entries_json>", prompt)
+        self.assertNotIn("learning_context_json", prompt)
+        self.assertNotIn("daily_compact_json", prompt)
+
+    def test_codex_native_display_cache_marks_missing_model_keys_partial(self):
+        entries = [
+            {
+                "key": "preference:one",
+                "kind": "preference",
+                "source_label": "User preferences",
+                "source_title": "Prefer direct edits",
+                "source_body": "Prefer direct edits.",
+            },
+            {
+                "key": "tip:two",
+                "kind": "tip",
+                "source_label": "General Tips",
+                "source_title": "Use browser checks",
+                "source_body": "Use browser checks.",
+            },
+        ]
+
+        with TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+
+            class FakePaths:
+                runtime_dir = tmp / "runtime"
+                nightly_runner_dir = tmp / "runner"
+                codex_home = tmp / "codex-home"
+                nightly_codex_home = tmp / "nightly-codex-home"
+                codex_bin = Path("/bin/echo")
+
+            def fake_run(*args, **kwargs):
+                FakePaths.runtime_dir.mkdir(parents=True, exist_ok=True)
+                (FakePaths.runtime_dir / "codex-native-display-cache.raw.json").write_text(
+                    json.dumps(
+                        {
+                            "items": [
+                                {
+                                    "key": "preference:one",
+                                    "title_zh": "直接改动",
+                                    "body_zh": "目标明确时直接给出改动。",
+                                }
+                            ]
+                        },
+                        ensure_ascii=False,
+                    ),
+                    encoding="utf-8",
+                )
+                return subprocess.CompletedProcess(args[0], 0, "", "")
+
+            with mock.patch.object(build_codex_native_display_cache, "PATHS", FakePaths), mock.patch.object(
+                build_codex_native_display_cache,
+                "sync_codex_exec_home",
+                lambda *_args, **_kwargs: None,
+            ), mock.patch.object(build_codex_native_display_cache.subprocess, "run", side_effect=fake_run):
+                payload = build_codex_native_display_cache.run_codex_display_generation(
+                    entries,
+                    tmp / "cache.json",
+                )
+
+        self.assertEqual(payload["status"], "partial")
+        self.assertEqual(payload["missing_keys"], ["tip:two"])
+        self.assertEqual(payload["items"]["preference:one"]["title_zh"], "直接改动")
+
+    def test_codex_native_memory_topic_cache_key_matches_compacted_title(self):
+        long_title = "OpenRelix release validation package website checklist " * 4
+        body = "Sample release validation note."
+        sample_summary = """## What's in Memory
+
+### Sample fixtures
+
+- {long_title}
+  - desc: {body}
+""".format(long_title=long_title, body=body)
+
+        with TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            summary_path = tmp / "memory_summary.md"
+            cache_path = tmp / "codex-native-display-cache.json"
+            summary_path.write_text(sample_summary, encoding="utf-8")
+            cache_path.write_text(
+                json.dumps(
+                    {
+                        "version": 1,
+                        "items": {
+                            build_overview.codex_native_display_cache_key(
+                                "topic",
+                                build_overview.compact_preview_text(
+                                    build_overview.normalize_brand_display_text(long_title),
+                                    limit=140,
+                                ),
+                                body,
+                            ): {
+                                "title_zh": "发布验证清单",
+                                "body_zh": "沉淀发布、包内容和网站检查的验证经验。",
+                            }
+                        },
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+
+            with mock.patch.object(build_overview, "CODEX_NATIVE_DISPLAY_CACHE_PATH", cache_path):
+                build_overview.load_codex_native_display_cache.cache_clear()
+                parsed = build_overview.parse_codex_native_memory_summary(summary_path, language="zh")
+
+        row = parsed["rows"][0]
+        self.assertEqual(row["display_title"], "发布验证清单")
+        self.assertEqual(row["display_value_note"], "沉淀发布、包内容和网站检查的验证经验。")
 
     def test_codex_native_memory_tips_get_readable_chinese_explanations(self):
         self._use_personal_codex_rules(
@@ -1104,7 +1354,8 @@ class NightlyLogicTests(unittest.TestCase):
 
         html = build_overview.make_codex_native_brief_cards(rows, "task_group", language="zh")
 
-        self.assertIn("历史任务组 1", html)
+        self.assertIn("Example task group", html)
+        self.assertNotIn("历史任务组 1", html)
         self.assertIn("来自 MEMORY.md 的历史任务组索引", html)
         self.assertNotIn("关键词：Release checklist", html)
         self.assertNotIn('data-lang-only="zh">Release checklist', html)
@@ -1733,7 +1984,7 @@ applies_to: cwd=/tmp/OpenRelix
         self.assertIn("dashboard", row["keywords"])
         self.assertNotIn("voiceover_template.md should not be parsed as a keyword after the keyword section closes.", row["keywords"])
 
-    def test_codex_memory_index_english_task_group_gets_generic_chinese_fallback(self):
+    def test_codex_memory_index_english_task_group_keeps_source_title_without_cache(self):
         sample_index = """# Task Group: Example release surface and package validation
 
 scope: Release checklist, package manifest, and public website validation.
@@ -1752,11 +2003,67 @@ scope: Release checklist, package manifest, and public website validation.
             index_stats = build_overview.load_codex_memory_index_stats(index_path, language="zh")
 
         row = index_stats["task_groups"][0]
-        self.assertEqual(row["display_title"], "历史任务组 1")
+        self.assertEqual(row["display_title"], "Example release surface and package validation")
+        self.assertNotIn("历史任务组 1", row["display_title"])
         self.assertIn("来自 MEMORY.md 的历史任务组索引", row["display_body"])
         self.assertIn("包含 1 个任务", row["display_body"])
         self.assertIn("1 个来源", row["display_body"])
         self.assertIn("Release checklist", row["display_body_en"])
+
+    def test_codex_memory_index_task_group_uses_model_display_cache(self):
+        title = "Example release surface and package validation " * 4
+        body = "Release checklist, package manifest, and public website validation. " * 5
+        sample_index = """# Task Group: {title}
+
+scope: {body}
+
+## Task 1: Validate package
+
+### rollout_summary_files
+
+- rollout_summaries/demo.md (thread_id=demo)
+""".format(title=title, body=body)
+
+        with TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            index_path = tmp / "MEMORY.md"
+            cache_path = tmp / "codex-native-display-cache.json"
+            index_path.write_text(sample_index, encoding="utf-8")
+            cache_path.write_text(
+                json.dumps(
+                    {
+                        "version": 1,
+                        "items": {
+                            build_overview.codex_native_display_cache_key(
+                                "task_group",
+                                build_overview.compact_preview_text(
+                                    build_overview.normalize_brand_display_text(title),
+                                    limit=120,
+                                ),
+                                build_overview.compact_preview_text(
+                                    build_overview.normalize_brand_display_text(body),
+                                    limit=220,
+                                ),
+                            ): {
+                                "title_zh": "发布检查与包验证",
+                                "body_zh": "这个任务组沉淀发布清单、包配置和公开页面验证经验。",
+                            }
+                        },
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+
+            with mock.patch.object(build_overview, "CODEX_NATIVE_DISPLAY_CACHE_PATH", cache_path):
+                build_overview.load_codex_native_display_cache.cache_clear()
+                index_stats = build_overview.load_codex_memory_index_stats(index_path, language="zh")
+
+        row = index_stats["task_groups"][0]
+        self.assertEqual(row["display_title"], "发布检查与包验证")
+        self.assertEqual(row["display_body"], "这个任务组沉淀发布清单、包配置和公开页面验证经验。")
+        self.assertNotIn("历史任务组", row["display_title"])
+        self.assertNotIn("来自 MEMORY.md 的历史任务组索引", row["display_body"])
 
     def test_codex_memory_index_task_group_uses_external_label_rules(self):
         self._use_personal_codex_rules(
@@ -2578,7 +2885,7 @@ scope: Release checklist, package manifest, and public website validation.
         self.assertIn("优先用 rg 查找文件。", html)
         self.assertIn("任务组", html)
         self.assertIn("Task Groups", html)
-        self.assertIn("历史任务组 1", html)
+        self.assertNotIn("历史任务组 1", html)
         self.assertIn("Example task group", html)
         self.assertIn("native-brief-card", html)
         self.assertIn("User Preference", html)
@@ -2808,6 +3115,108 @@ scope: Release checklist, package manifest, and public website validation.
         self.assertIn("Semantic", cards_html)
         self.assertNotIn("个人资产-长期记忆", cards_html)
 
+    def test_context_memory_grouped_cards_show_context_meta_and_expand(self):
+        cards_html = build_overview.make_context_memory_type_grouped_cards(
+            [
+                {
+                    "title": "Procedure memory",
+                    "display_title": "流程记忆",
+                    "value_note": "Procedure note.",
+                    "display_value_note": "流程摘要。",
+                    "bucket": "durable",
+                    "memory_type": "procedural",
+                    "priority": "high",
+                    "usage_frequency_sort_key": 1.2,
+                    "usage_frequency_matched_window_count": 2,
+                    "occurrence_count": 3,
+                }
+            ]
+            + [
+                {
+                    "title": "Semantic memory {}".format(index),
+                    "display_title": "语义记忆 {}".format(index),
+                    "value_note": "Semantic note {}.".format(index),
+                    "display_value_note": "语义摘要 {}。".format(index),
+                    "bucket": "session",
+                    "memory_type": "semantic",
+                    "priority": "low" if index == 0 else "medium",
+                    "usage_frequency_sort_key": 0,
+                }
+                for index in range(5)
+            ]
+            + [
+                {
+                    "title": "Low priority memory",
+                    "display_title": "低优先记忆",
+                    "value_note": "Low priority note.",
+                    "display_value_note": "低优先摘要。",
+                    "bucket": "low_priority",
+                    "memory_type": "mapping",
+                    "priority": "medium",
+                    "usage_frequency_sort_key": 0,
+                }
+            ],
+        )
+
+        self.assertIn('class="memory-type-group"', cards_html)
+        self.assertLess(cards_html.index(">流程<"), cards_html.index(">语义<"))
+        self.assertIn("长期记忆 · 高优先 · 高频率", cards_html)
+        self.assertIn("Long-term Memory · High Priority · High Frequency", cards_html)
+        self.assertIn("短期记忆 · 中优先 · 中频率", cards_html)
+        self.assertIn("低优先级记忆 · 中优先 · 中频率", cards_html)
+        self.assertNotIn(" · 低优先 · ", cards_html)
+        self.assertIn("查看来源与上下文", cards_html)
+        self.assertIn("查看更多 1 条", cards_html)
+
+    def test_context_memory_preview_only_uses_integrated_context_candidates(self):
+        budget = asset_runtime.memory_summary_budget_from_max(5000)
+        rows = [
+            {
+                "bucket": "session",
+                "memory_type": "semantic",
+                "priority": "high",
+                "display_title": "高频短期记忆",
+                "display_value_note": "高频短期摘要。",
+                "usage_frequency_sort_key": 9,
+                "updated_at": "2026-04-29",
+                "occurrence_count": 10,
+            },
+            {
+                "bucket": "durable",
+                "memory_type": "procedural",
+                "priority": "high",
+                "display_title": "长期高优记忆",
+                "display_value_note": "长期高优摘要。",
+                "usage_frequency_sort_key": 0,
+                "updated_at": "2026-04-20",
+                "occurrence_count": 1,
+            },
+            {
+                "bucket": "low_priority",
+                "memory_type": "semantic",
+                "priority": "medium",
+                "display_title": "低优先记忆",
+                "display_value_note": "低优先摘要。",
+            },
+        ]
+
+        preview = build_overview.build_personal_memory_context_preview(
+            rows,
+            "integrated",
+            memory_summary_budget=budget,
+            item_count=1,
+        )
+
+        self.assertEqual([row["display_title"] for row in preview], ["长期高优记忆"])
+        self.assertEqual(
+            build_overview.build_personal_memory_context_preview(
+                rows,
+                "local-only",
+                memory_summary_budget=budget,
+            ),
+            [],
+        )
+
     def test_episodic_memory_type_is_localized(self):
         self.assertEqual(build_overview.display_memory_type("episodic", language="zh"), "事件记忆")
         self.assertEqual(build_overview.display_memory_type("episodic", language="en"), "Episodic")
@@ -2884,6 +3293,8 @@ scope: Release checklist, package manifest, and public website validation.
         self.assertIn('setStatus("live", "", "live_refreshed");', html)
         self.assertIn("window.localStorage", html)
         self.assertNotIn("side-nav-sublabel", html)
+        self.assertIn("personal-memory-context-section", html)
+        self.assertIn("进入 Codex context 的记忆", html)
         self.assertIn("personal-memory-durable-section", html)
         self.assertIn("codex-native-topic-section", html)
 
@@ -4020,6 +4431,105 @@ scope: Release checklist, package manifest, and public website validation.
         self.assertIn("model summarization failed", result.stderr)
         self.assertIn("login required", result.stderr)
 
+    def test_nightly_pipeline_native_display_polish_requires_explicit_opt_in(self):
+        with TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            scripts_dir = root / "scripts"
+            scripts_dir.mkdir(parents=True)
+            consolidated_daily_dir = root / "consolidated" / "daily"
+            marker_path = root / "native-display-polish-called"
+            pipeline_script = scripts_dir / "nightly_pipeline.sh"
+            pipeline_script.write_text(
+                (ROOT / "scripts" / "nightly_pipeline.sh").read_text(encoding="utf-8"),
+                encoding="utf-8",
+            )
+            (scripts_dir / "asset_runtime.py").write_text(
+                "\n".join(
+                    [
+                        "import os",
+                        "from pathlib import Path",
+                        "class RuntimePaths:",
+                        "    consolidated_daily_dir = Path(os.environ['OPENRELIX_TEST_CONSOLIDATED_DAILY_DIR'])",
+                        "def get_runtime_paths():",
+                        "    return RuntimePaths()",
+                        "def get_memory_mode(*args, **kwargs):",
+                        "    return os.environ.get('OPENRELIX_TEST_MEMORY_MODE', 'integrated')",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            (scripts_dir / "collect_codex_activity.py").write_text("", encoding="utf-8")
+            (scripts_dir / "build_overview.py").write_text("", encoding="utf-8")
+            (scripts_dir / "build_codex_memory_summary.py").write_text("", encoding="utf-8")
+            (scripts_dir / "build_codex_native_display_cache.py").write_text(
+                "\n".join(
+                    [
+                        "import os",
+                        "from pathlib import Path",
+                        "Path(os.environ['OPENRELIX_TEST_NATIVE_DISPLAY_MARKER']).write_text('called', encoding='utf-8')",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            (scripts_dir / "nightly_consolidate.py").write_text(
+                "\n".join(
+                    [
+                        "import argparse, json, os",
+                        "from pathlib import Path",
+                        "parser = argparse.ArgumentParser()",
+                        "parser.add_argument('--date')",
+                        "parser.add_argument('--stage')",
+                        "parser.add_argument('--learn-window-days')",
+                        "parser.add_argument('--skip-if-unchanged', action='store_true')",
+                        "args = parser.parse_args()",
+                        "summary_dir = Path(os.environ['OPENRELIX_TEST_CONSOLIDATED_DAILY_DIR']) / args.date",
+                        "summary_dir.mkdir(parents=True, exist_ok=True)",
+                        "(summary_dir / 'summary.json').write_text(json.dumps({",
+                        "    'date': args.date,",
+                        "    'last_run_model_status': 'ok',",
+                        "}), encoding='utf-8')",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            env = dict(os.environ)
+            env["OPENRELIX_TEST_CONSOLIDATED_DAILY_DIR"] = str(consolidated_daily_dir)
+            env["OPENRELIX_TEST_NATIVE_DISPLAY_MARKER"] = str(marker_path)
+            env.pop("OPENRELIX_ENABLE_NATIVE_DISPLAY_POLISH", None)
+
+            default_result = subprocess.run(
+                ["/bin/zsh", str(pipeline_script), "2026-04-28", "manual"],
+                cwd=str(root),
+                env=env,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(default_result.returncode, 0, default_result.stderr)
+            self.assertFalse(marker_path.exists())
+
+            env["OPENRELIX_ENABLE_NATIVE_DISPLAY_POLISH"] = "1"
+            opt_in_result = subprocess.run(
+                ["/bin/zsh", str(pipeline_script), "2026-04-28", "manual"],
+                cwd=str(root),
+                env=env,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(opt_in_result.returncode, 0, opt_in_result.stderr)
+            self.assertEqual(marker_path.read_text(encoding="utf-8"), "called")
+
+            marker_path.unlink()
+            env["OPENRELIX_TEST_MEMORY_MODE"] = "local-only"
+            local_only_result = subprocess.run(
+                ["/bin/zsh", str(pipeline_script), "2026-04-28", "manual"],
+                cwd=str(root),
+                env=env,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(local_only_result.returncode, 0, local_only_result.stderr)
+            self.assertFalse(marker_path.exists())
+
     def test_learning_refresh_install_guidance_and_launchd_env_are_present(self):
         showcase = (ROOT / "docs" / "product-showcase.html").read_text(encoding="utf-8")
         installer = (ROOT / "install" / "install.sh").read_text(encoding="utf-8")
@@ -4786,6 +5296,7 @@ scope: Release checklist, package manifest, and public website validation.
         self.assertNotIn("install/", package_json["files"])
         self.assertIn("install/*.py", package_json["files"])
         self.assertIn("install/templates/", package_json["files"])
+        self.assertIn("scripts/build_codex_native_display_cache.py", package_json["files"])
 
     def test_asset_value_estimation_uses_events_and_recent_windows(self):
         asset = {

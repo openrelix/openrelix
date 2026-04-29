@@ -1,6 +1,6 @@
 {
   "name": "openrelix",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "OpenRelix™ v0.2 preview: open-source personal memory keepsake for AI coding agent workflows.",
   "license": "MIT",
   "author": {
@@ -58,6 +58,7 @@
     "scripts/asset_runtime.py",
     "scripts/build_macos_client.sh",
     "scripts/build_codex_memory_summary.py",
+    "scripts/build_codex_native_display_cache.py",
     "scripts/build_overview.py",
     "scripts/cleanup_smoke_temp.sh",
     "scripts/collect_codex_activity.py",

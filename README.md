@@ -208,6 +208,8 @@ The integrated profile does this:
    - nightly finalize for the previous day at `00:10`
    - optional npm update check at `09:30` when `--enable-update-check` is passed
 
+Set `OPENRELIX_ENABLE_NATIVE_DISPLAY_POLISH=1` for the nightly/manual pipeline when you want an extra Codex pass to polish Codex-native memory card titles and summaries for display. The generated display cache stays in the local state root.
+
 When you need an immediate task review inside the active AI coding agent, the current Codex adapter exposes this skill entrypoint:
 
 ```text
