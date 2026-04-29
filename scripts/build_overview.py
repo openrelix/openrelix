@@ -137,8 +137,8 @@ def redact_personal_text(value):
     if not isinstance(value, str):
         return value
     text = value
-    text = re.sub(r"file:///(?:Users|home)/[^/\s<>\"']+", "file://~", text)
-    text = re.sub(r"(?:/Users|/home)/[^/\s<>\"']+", "~", text)
+    text = re.sub(r"file:///(?:Users|home)/[^/\\\s<>\"']+", "file://~", text)
+    text = re.sub(r"(?:/Users|/home)/[^/\\\s<>\"']+", "~", text)
 
     def redact_url(match):
         url = match.group(0)
@@ -152,7 +152,7 @@ def redact_personal_text(value):
             return url
         return "<link>"
 
-    text = re.sub(r"https?://[^\s<>\"']+", redact_url, text)
+    text = re.sub(r"https?://[^\\\s<>\"']+", redact_url, text)
     for pattern in personal_redaction_patterns():
         text = pattern.sub(PERSONAL_REDACTION_LABEL, text)
     return text
@@ -356,13 +356,11 @@ FREEFORM_TEXT_EN = {
     "Codex 全局工作手册": "Codex global operating manual",
     "个人资产整理技能": "Personal asset librarian skill",
     "AI 资产概览链路": "AI asset overview pipeline",
-    "Codex /subreview:run 外部评审循环": "Codex /subreview:run external review loop",
     "Token 图表 Apple 风格配色优化": "Token chart Apple-style color refinement",
     "记忆面板四列展开布局": "Memory panel four-column expanded layout",
     "飞书画板 CLI 能力检查": "Feishu Whiteboard CLI capability check",
     "资产与复盘面板布局优化": "Asset and review panel layout refinement",
     "资产面板 artifact 路径跳转": "Asset panel artifact path links",
-    "Codex 独立评审命令落地": "Codex independent review command rollout",
     "个人资产系统初始化": "Personal asset system bootstrap",
     "沉淀一套稳定的全局工作方式，约束 Codex 的通用行为和本地资产边界。": (
         "Captures a stable global operating model for Codex behavior and local asset boundaries."
@@ -372,9 +370,6 @@ FREEFORM_TEXT_EN = {
     ),
     "把本地资产、复盘和 token 数据整理成一份可直接查看的概览和面板。": (
         "Turns local assets, reviews, and token data into a directly browsable overview and panel."
-    ),
-    "在 Codex CLI 里用 /subreview:run 驱动一个独立 Codex reviewer 评分，并让主 agent 迭代修复直到通过评审。": (
-        "Uses /subreview:run in Codex CLI to drive an independent reviewer and iterate fixes until review passes."
     ),
 }
 
@@ -5096,22 +5091,20 @@ def classify_codex_native_memory_type(title, desc="", learnings=""):
 # live at <state_root>/personal_codex_rules.py — that path is outside the
 # git repo and the npm package, so personal project names cannot leak in.
 # See _load_personal_codex_native_rules() below for the supported keys.
-CODEX_NATIVE_TITLE_ZH = {
-    "subreview run live contract and independent codex review loop": "Codex 独立评审循环",
-    "local codex personal asset system genericization and launchagent runtime": "本地 OpenRelix 系统、通用化与 LaunchAgent 运行时",
-}
-CODEX_NATIVE_NOTE_ZH = {
-    "subreview run live contract and independent codex review loop": "记录 /subreview:run 的独立评审入口、临时 git snapshot 和 10/10 评分闭环。",
-    "local codex personal asset system genericization and launchagent runtime": "用户级个人资产系统、全局规则通用化、记忆面板和 LaunchAgent 运行时。",
-}
-CODEX_NATIVE_TASK_BODY_ZH = {
-    "subreview run live contract and independent codex review loop": "独立 Codex 评审循环，围绕 /subreview:run、临时 git snapshot 和评分迭代收口。",
-    "local codex personal asset system genericization and launchagent runtime": "用户级个人资产系统、全局规则通用化、记忆面板和 LaunchAgent 运行时。",
-}
+CODEX_NATIVE_TITLE_ZH = {}
+CODEX_NATIVE_NOTE_ZH = {}
+CODEX_NATIVE_TASK_BODY_ZH = {}
 CODEX_NATIVE_BULLET_ZH = {}
 CODEX_NATIVE_TOPIC_RULES_ZH = []
 CODEX_NATIVE_BULLET_RULES_ZH = []
 CODEX_NATIVE_BULLET_TITLE_EN_BY_ZH = {}
+CODEX_NATIVE_STRUCTURED_LINE_RE = re.compile(
+    r"^\[(?P<bucket>[a-z_]+)/(?P<memory_type>[a-z_]+)/(?P<priority>[a-z_]+)\]\s+(?P<body>.+)$",
+    flags=re.IGNORECASE,
+)
+CODEX_NATIVE_GENERIC_TOPIC_TITLE_ZH = "Codex 原生主题"
+CODEX_NATIVE_GENERIC_TOPIC_NOTE_ZH = "来自 Codex 原生记忆的主题条目；英文原文已折叠，可展开核对来源。"
+CODEX_NATIVE_TASK_GROUP_LABEL_RULES_ZH = ()
 
 
 def _load_personal_codex_native_rules():
@@ -5123,6 +5116,7 @@ def _load_personal_codex_native_rules():
         "topic_rules": [],
         "bullet_rules": [],
         "bullet_title_en": {},
+        "task_group_label_rules": [],
     }
     try:
         path = PATHS.state_root / "personal_codex_rules.py"
@@ -5146,6 +5140,9 @@ def _load_personal_codex_native_rules():
     extras["topic_rules"] = list(getattr(module, "EXTRA_TOPIC_RULES_ZH", []) or [])
     extras["bullet_rules"] = list(getattr(module, "EXTRA_BULLET_RULES_ZH", []) or [])
     extras["bullet_title_en"] = dict(getattr(module, "EXTRA_BULLET_TITLE_EN_BY_ZH", {}) or {})
+    extras["task_group_label_rules"] = list(
+        getattr(module, "EXTRA_TASK_GROUP_LABEL_RULES_ZH", []) or []
+    )
     return extras
 
 
@@ -5179,6 +5176,69 @@ def _codex_native_bullet_items():
 
 def codex_native_translation_key(title):
     return normalize_context_match_text(title)
+
+
+def parse_codex_native_structured_line(line):
+    match = CODEX_NATIVE_STRUCTURED_LINE_RE.match(str(line or "").strip())
+    if not match:
+        return {}
+    body = normalize_brand_display_text(match.group("body").strip())
+    title, separator, note = body.partition(" - ")
+    return {
+        "bucket": match.group("bucket").lower(),
+        "memory_type": match.group("memory_type").lower(),
+        "priority": match.group("priority").lower(),
+        "title": title.strip() or body,
+        "note": note.strip() if separator else "",
+    }
+
+
+def is_untranslated_english_text(text):
+    text = normalize_brand_display_text(str(text or "")).strip()
+    return bool(text and not contains_cjk(text) and re.search(r"[A-Za-z]", text))
+
+
+def codex_native_task_group_labels_zh(title="", keywords=None):
+    keyword_text = " ".join(str(keyword or "") for keyword in (keywords or []))
+    source_text = normalize_brand_display_text("{} {}".format(title or "", keyword_text))
+    haystack = normalize_context_match_text(source_text.replace("_", " ").replace("-", " "))
+    labels = []
+    rules = list(CODEX_NATIVE_TASK_GROUP_LABEL_RULES_ZH) + list(
+        _PERSONAL_CODEX_NATIVE_RULES.get("task_group_label_rules", [])
+    )
+    for fragments, label in rules:
+        if all(normalize_context_match_text(fragment) in haystack for fragment in fragments):
+            if label not in labels:
+                labels.append(label)
+    cjk_candidates = []
+    for candidate in [title] + list(keywords or []):
+        text = compact_preview_text(normalize_brand_display_text(candidate), limit=32)
+        if text and contains_cjk(text) and text not in cjk_candidates:
+            cjk_candidates.append(text)
+    return (cjk_candidates + labels)[:5]
+
+
+def generic_codex_native_task_group_title(title="", keywords=None, index=1):
+    labels = codex_native_task_group_labels_zh(title, keywords)
+    if labels:
+        return " / ".join(labels[:3]) + "任务组"
+    return "历史任务组 {}".format(index)
+
+
+def generic_codex_native_task_group_body(task_count=0, source_count=0, labels=None):
+    parts = ["来自 MEMORY.md 的历史任务组索引"]
+    cleaned_labels = [
+        normalize_brand_display_text(str(label or "").strip())
+        for label in (labels or [])
+        if normalize_brand_display_text(str(label or "").strip())
+    ]
+    if cleaned_labels:
+        parts.append("主题：{}".format("、".join(cleaned_labels[:4])))
+    if task_count:
+        parts.append("包含 {} 个任务".format(task_count))
+    if source_count:
+        parts.append("{} 个来源".format(source_count))
+    return "；".join(parts) + "。"
 
 
 def find_codex_native_topic_rule(title, keyword_blob="", desc="", learnings="", detail_heading=""):
@@ -5283,7 +5343,7 @@ def build_codex_native_display_body(title, body, language=None, kind=None):
 
     if kind in {"preference", "tip"} and not contains_cjk(body):
         label = "偏好" if kind == "preference" else "通用提示"
-        return "这条{}来自 Codex 原生记忆，目前没有结构化中文解释；请展开英文原文核对执行边界。".format(label)
+        return "这条{}来自 Codex 原生记忆；英文原文已折叠，可展开核对执行边界。".format(label)
 
     return normalize_brand_display_text(body)
 
@@ -5305,6 +5365,8 @@ def build_codex_native_display_title(title, language=None, keyword_blob="", desc
     )
     if rule:
         return normalize_brand_display_text(rule["title"])
+    if is_untranslated_english_text(title):
+        return CODEX_NATIVE_GENERIC_TOPIC_TITLE_ZH
     return title
 
 
@@ -5358,15 +5420,28 @@ def build_codex_native_display_note(
         return normalize_brand_display_text(note)
 
     note_parts = []
-    if desc:
+    hidden_english_source = False
+    if desc and not is_untranslated_english_text(desc):
         note_parts.append("摘要：{}".format(compact_preview_text(desc, limit=140)))
-    if learnings:
+    elif desc:
+        hidden_english_source = True
+    if learnings and not is_untranslated_english_text(learnings):
         note_parts.append("经验：{}".format(compact_preview_text(learnings, limit=140)))
-    if keyword_blob:
+    elif learnings:
+        hidden_english_source = True
+    if keyword_blob and not is_untranslated_english_text(keyword_blob):
         note_parts.append("关键词：{}".format(keyword_blob))
-    if detail_heading:
+    elif keyword_blob:
+        hidden_english_source = True
+    if detail_heading and not is_untranslated_english_text(detail_heading):
         note_parts.append("分组：{}".format(detail_heading))
-    return normalize_brand_display_text("；".join(part for part in note_parts if part) or "原生记忆摘要")
+    elif detail_heading:
+        hidden_english_source = True
+    if note_parts:
+        return normalize_brand_display_text("；".join(part for part in note_parts if part))
+    if hidden_english_source:
+        return CODEX_NATIVE_GENERIC_TOPIC_NOTE_ZH
+    return "来自 Codex 原生记忆的主题条目。"
 
 
 def empty_codex_native_memory_summary(source_exists=False, source_readable=False, source_error=""):
@@ -5471,6 +5546,16 @@ def parse_codex_native_memory_summary(
         keyword_blob = keyword_blob.strip()
         desc = current_item.get("desc", "").strip()
         learnings = current_item.get("learnings", "").strip()
+        structured_line = parse_codex_native_structured_line(title_line)
+        memory_type = ""
+        if structured_line:
+            title = structured_line["title"]
+            desc = structured_line.get("note") or desc
+            keyword_blob = ""
+            memory_type = structured_line.get("memory_type", "")
+            current_item["priority"] = structured_line.get("priority") or current_item.get("priority", "medium")
+        if not memory_type:
+            memory_type = classify_codex_native_memory_type(title, desc, learnings)
 
         note_parts = []
         note_parts_en = []
@@ -5530,7 +5615,7 @@ def parse_codex_native_memory_summary(
         rows.append(
             {
                 "memory_key": "native::{}::{}".format(
-                    classify_codex_native_memory_type(title, desc, learnings),
+                    memory_type,
                     normalize_memory_signature_text(
                         "{} {} {} {} {}".format(
                             context_labels[0] if context_labels else "",
@@ -5544,9 +5629,9 @@ def parse_codex_native_memory_summary(
                 ),
                 "bucket": "native",
                 "display_bucket": localized("Codex 原生", "Codex Native", language),
-                "memory_type": classify_codex_native_memory_type(title, desc, learnings),
+                "memory_type": memory_type,
                 "display_memory_type": display_memory_type(
-                    classify_codex_native_memory_type(title, desc, learnings),
+                    memory_type,
                     language=language,
                 ),
                 "priority": current_item.get("priority", "medium"),
@@ -5556,6 +5641,7 @@ def parse_codex_native_memory_summary(
                 ),
                 "title": compact_preview_text(normalize_brand_display_text(title), limit=140),
                 "display_title": compact_preview_text(display_title, limit=140),
+                "display_title_en": compact_preview_text(normalize_brand_display_text(title), limit=140),
                 "value_note": value_note,
                 "value_note_en": value_note_en,
                 "display_value_note": display_value_note,
@@ -5735,8 +5821,11 @@ def load_codex_memory_index_stats(memory_index_path, language=None):
             "{} 个任务".format(current_group.get("task_count", 0)),
             "{} 个来源".format(current_group.get("rollout_reference_count", 0)),
         ]
-        if keywords:
-            meta_parts.append("关键词 {}".format("、".join(keywords[:3])))
+        zh_meta_keywords = [
+            keyword for keyword in keywords[:3] if not is_untranslated_english_text(keyword)
+        ]
+        if zh_meta_keywords:
+            meta_parts.append("关键词 {}".format("、".join(zh_meta_keywords)))
         body = normalize_brand_display_text(current_group.get("scope", "") or current_group.get("applies_to", ""))
         body_en = body
         if not body:
@@ -5748,29 +5837,59 @@ def load_codex_memory_index_stats(memory_index_path, language=None):
             keyword_blob=", ".join(keywords),
             desc=body,
         )
+        display_title_en = normalize_brand_display_text(current_group.get("title", ""))
+        if (
+            not is_english(language)
+            and (
+                display_title == CODEX_NATIVE_GENERIC_TOPIC_TITLE_ZH
+                or is_untranslated_english_text(display_title)
+            )
+        ):
+            display_title = generic_codex_native_task_group_title(
+                current_group.get("title", ""),
+                keywords,
+                len(task_groups) + 1,
+            )
         display_body = build_codex_native_display_body(
             current_group.get("title", ""),
             body,
             language=language,
         )
+        body_needs_generic_zh = not is_english(language) and is_untranslated_english_text(body)
+        title_key = codex_native_translation_key(current_group.get("title", ""))
+        has_task_body_translation = _codex_native_task_body_has_key(title_key)
         topic_body = build_codex_native_display_note(
             current_group.get("title", ""),
             keyword_blob=", ".join(keywords[:3]),
             desc=body,
             language=language,
         )
-        title_key = codex_native_translation_key(current_group.get("title", ""))
         if (
-            not _codex_native_task_body_has_key(title_key)
+            not has_task_body_translation
             and not is_english(language)
+            and not body_needs_generic_zh
             and topic_body
             and not topic_body.startswith("摘要：")
         ):
             display_body = topic_body
+        if (
+            not has_task_body_translation
+            and (
+                body_needs_generic_zh
+                or (not is_english(language) and is_untranslated_english_text(display_body))
+            )
+        ):
+            labels = codex_native_task_group_labels_zh(current_group.get("title", ""), keywords)
+            display_body = generic_codex_native_task_group_body(
+                current_group.get("task_count", 0),
+                current_group.get("rollout_reference_count", 0),
+                labels,
+            )
         task_groups.append(
             {
                 "title": compact_preview_text(normalize_brand_display_text(current_group.get("title", "")), limit=120),
                 "display_title": compact_preview_text(display_title, limit=120),
+                "display_title_en": compact_preview_text(display_title_en, limit=120),
                 "body": compact_preview_text(body, limit=220),
                 "display_body": compact_preview_text(display_body, limit=220),
                 "display_body_en": compact_preview_text(normalize_brand_display_text(body_en), limit=220),
@@ -10250,6 +10369,15 @@ def make_codex_native_brief_memory_items(rows, kind, language=None):
         },
     }.get(kind, {})
 
+    def split_keywords_for_language(keywords):
+        cleaned = [
+            normalize_brand_display_text(str(keyword))
+            for keyword in (keywords or [])[:5]
+            if normalize_brand_display_text(str(keyword))
+        ]
+        zh_keywords = [keyword for keyword in cleaned if not is_untranslated_english_text(keyword)]
+        return zh_keywords, cleaned
+
     items = []
     for index, row in enumerate(rows, start=1):
         display_title = normalize_brand_display_text(row.get("display_title") or row.get("title") or "{} {}".format(
@@ -10259,6 +10387,8 @@ def make_codex_native_brief_memory_items(rows, kind, language=None):
         display_title_en = normalize_brand_display_text(
             row.get("display_title_en") or row.get("title_en") or ""
         )
+        if not display_title_en and is_untranslated_english_text(display_title):
+            display_title_en = display_title
         raw_title = normalize_brand_display_text(row.get("title") or "")
         if not raw_title or raw_title == display_title:
             raw_title = "{} {}".format(kind_config.get("title_prefix_en", "Item"), index)
@@ -10267,11 +10397,34 @@ def make_codex_native_brief_memory_items(rows, kind, language=None):
         body_en = normalize_brand_display_text(
             row.get("display_body_en") or row.get("body") or row.get("scope", "") or display_body
         )
-        if row.get("keywords"):
-            keywords = [normalize_brand_display_text(keyword) for keyword in row.get("keywords", [])[:5]]
-            keyword_text = "、".join(keywords)
+        if not is_english(language) and is_untranslated_english_text(display_title):
+            if kind == "task_group":
+                display_title = generic_codex_native_task_group_title(
+                    row.get("title") or display_title,
+                    row.get("keywords", []),
+                    index,
+                )
+            else:
+                display_title = "{} {}".format(kind_config.get("title_prefix_zh", "条目"), index)
+        if not is_english(language) and is_untranslated_english_text(display_body):
+            if kind == "task_group":
+                labels = codex_native_task_group_labels_zh(
+                    row.get("title") or display_title_en or display_title,
+                    row.get("keywords", []),
+                )
+                display_body = generic_codex_native_task_group_body(
+                    row.get("task_count", 0),
+                    row.get("rollout_reference_count", 0),
+                    labels,
+                )
+            else:
+                display_body = kind_config.get("empty_body_zh", "")
+        zh_keywords, en_keywords = split_keywords_for_language(row.get("keywords", []))
+        if zh_keywords:
+            keyword_text = "、".join(zh_keywords)
             display_body = "{}；关键词：{}".format(display_body, keyword_text) if display_body else "关键词：{}".format(keyword_text)
-            body_en = "{}; keywords: {}".format(body_en, ", ".join(keywords)) if body_en else "Keywords: {}".format(", ".join(keywords))
+        if en_keywords:
+            body_en = "{}; keywords: {}".format(body_en, ", ".join(en_keywords)) if body_en else "Keywords: {}".format(", ".join(en_keywords))
         source_files = row.get("source_files") or [
             {
                 "path": "",
@@ -10366,15 +10519,31 @@ def make_codex_native_brief_cards(rows, kind, language=None):
             if normalize_brand_display_text(str(keyword))
         ]
 
-    def render_keywords(row):
+    def split_keywords_for_language(row):
         keywords = row_keywords(row)
-        if not keywords:
-            return ""
-        keyword_html = "".join(
+        zh_keywords = [keyword for keyword in keywords if not is_untranslated_english_text(keyword)]
+        return zh_keywords, keywords
+
+    def render_keyword_chip_html(keywords):
+        return "".join(
             '<span class="native-brief-chip">{}</span>'.format(escape(keyword))
             for keyword in keywords
         )
-        return '<div class="native-brief-chip-row">{}</div>'.format(keyword_html)
+
+    def render_keywords(row):
+        zh_keywords, en_keywords = split_keywords_for_language(row)
+        if not zh_keywords and not en_keywords:
+            return ""
+        zh_html = render_keyword_chip_html(zh_keywords)
+        en_html = render_keyword_chip_html(en_keywords)
+        if zh_html and en_html and zh_html != en_html:
+            return (
+                '<div class="native-brief-chip-row" data-lang-only="zh">{}</div>'
+                '<div class="native-brief-chip-row" data-lang-only="en">{}</div>'
+            ).format(zh_html, en_html)
+        if zh_html:
+            return '<div class="native-brief-chip-row">{}</div>'.format(zh_html)
+        return '<div class="native-brief-chip-row" data-lang-only="en">{}</div>'.format(en_html)
 
     def render_meta(row):
         meta = normalize_brand_display_text(row.get("meta") or "")
@@ -10413,6 +10582,19 @@ def make_codex_native_brief_cards(rows, kind, language=None):
         display_title_full = normalize_brand_display_text(row.get("display_title") or fallback_title_zh)
         display_title_en = normalize_brand_display_text(row.get("display_title_en") or "")
         raw_title = normalize_brand_display_text(row.get("title") or fallback_title_en)
+        if not display_title_en and is_untranslated_english_text(display_title_full):
+            display_title_en = display_title_full
+        if not is_english(language) and is_untranslated_english_text(display_title_full):
+            if kind == "task_group":
+                display_title_full = generic_codex_native_task_group_title(
+                    row.get("title") or display_title_full,
+                    row.get("keywords", []),
+                    index,
+                )
+            else:
+                display_title_full = fallback_title_zh
+        if not display_title_en and raw_title != display_title_full:
+            display_title_en = raw_title
         display_body_full = normalize_brand_display_text(
             row.get("display_body")
             or row.get("body")
@@ -10427,11 +10609,25 @@ def make_codex_native_brief_cards(rows, kind, language=None):
             or row.get("display_body")
             or kind_config.get("empty_body_en", "")
         )
-        keywords = row_keywords(row)
-        if keywords:
-            keyword_text = "、".join(keywords)
+        if not is_english(language) and is_untranslated_english_text(display_body_full):
+            if kind == "task_group":
+                labels = codex_native_task_group_labels_zh(
+                    row.get("title") or display_title_en or display_title_full,
+                    row.get("keywords", []),
+                )
+                display_body_full = generic_codex_native_task_group_body(
+                    row.get("task_count", 0),
+                    row.get("rollout_reference_count", 0),
+                    labels,
+                )
+            else:
+                display_body_full = kind_config.get("empty_body_zh", "")
+        zh_keywords, en_keywords = split_keywords_for_language(row)
+        if zh_keywords:
+            keyword_text = "、".join(zh_keywords)
             display_body_full = "{}；关键词：{}".format(display_body_full, keyword_text) if display_body_full else "关键词：{}".format(keyword_text)
-            raw_body_full = "{}; keywords: {}".format(raw_body_full, ", ".join(keywords)) if raw_body_full else "Keywords: {}".format(", ".join(keywords))
+        if en_keywords:
+            raw_body_full = "{}; keywords: {}".format(raw_body_full, ", ".join(en_keywords)) if raw_body_full else "Keywords: {}".format(", ".join(en_keywords))
 
         display_title = compact_preview_text(display_title_full, limit=MEMORY_BRIEF_TITLE_LIMIT)
         raw_title_brief = compact_preview_text(raw_title, limit=MEMORY_BRIEF_TITLE_LIMIT)
@@ -12132,6 +12328,27 @@ def build_html(data):
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="openrelix:version" content="{current_version}" data-pkg="{npm_package}" data-update-endpoint="{update_endpoint}" data-update-status-endpoint="{update_status_endpoint}" data-update-token="{update_token}">
   <title>{document_title}</title>
+  <script>
+    (function () {{
+      const themeStorageKey = "openrelix-panel-theme";
+      const supportedThemes = ["system", "light", "dark"];
+      let themeChoice = "system";
+      try {{
+        const storedTheme = window.localStorage ? window.localStorage.getItem(themeStorageKey) : "";
+        themeChoice = supportedThemes.includes(storedTheme) ? storedTheme : "system";
+      }} catch (error) {{
+        themeChoice = "system";
+      }}
+      const systemPrefersDark = window.matchMedia
+        ? window.matchMedia("(prefers-color-scheme: dark)").matches
+        : false;
+      const resolvedTheme = themeChoice === "dark" || (themeChoice === "system" && systemPrefersDark)
+        ? "dark"
+        : "light";
+      document.documentElement.setAttribute("data-theme-choice", themeChoice);
+      document.documentElement.setAttribute("data-theme", resolvedTheme);
+    }})();
+  </script>
   <style>
     :root {{
       color-scheme: light;
@@ -12165,6 +12382,7 @@ def build_html(data):
       --shadow-soft: 0 8px 24px rgba(0, 0, 0, 0.05);
     }}
 
+    html[data-theme="dark"],
     body[data-theme="dark"] {{
       color-scheme: dark;
       --canvas-top: #111318;
@@ -12198,7 +12416,7 @@ def build_html(data):
     }}
 
     @media (prefers-color-scheme: dark) {{
-      body[data-theme-choice="system"]:not([data-theme="light"]) {{
+      html[data-theme-choice="system"]:not([data-theme="light"]) {{
         color-scheme: dark;
         --canvas-top: #111318;
         --bg: #171a21;
@@ -12250,7 +12468,7 @@ def build_html(data):
       overflow-x: clip;
       overscroll-behavior-x: none;
       scroll-behavior: smooth;
-      background: #171a21;
+      background: #f5f5f7;
     }}
 
     html[data-theme="light"] {{
@@ -15849,7 +16067,7 @@ def build_html(data):
     }}
   </style>
 </head>
-<body data-language="{default_language}" data-theme-choice="system">
+<body data-language="{default_language}">
   {side_nav}
   <div class="app-shell">
   <main class="page">
@@ -16635,6 +16853,7 @@ def build_html(data):
         const resolvedTheme = resolveTheme(currentThemeChoice);
         document.body.setAttribute("data-theme-choice", currentThemeChoice);
         document.body.setAttribute("data-theme", resolvedTheme);
+        document.documentElement.setAttribute("data-theme-choice", currentThemeChoice);
         document.documentElement.setAttribute("data-theme", resolvedTheme);
         document.querySelectorAll("[data-theme-option]").forEach(function (button) {{
           const isActive = button.getAttribute("data-theme-option") === currentThemeChoice;

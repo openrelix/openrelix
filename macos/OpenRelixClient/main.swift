@@ -94,35 +94,58 @@ private func missingPanelHTML(panelPath: String, stateRootPath: String) -> Strin
       <meta name="viewport" content="width=device-width, initial-scale=1">
       <title>OpenRelix</title>
       <style>
-        :root { color-scheme: dark; }
+        :root {
+          color-scheme: light dark;
+          --bg: #f5f5f7;
+          --ink: #1d1d1f;
+          --muted: rgba(29, 29, 31, .68);
+          --card-bg: rgba(255, 255, 255, .82);
+          --card-border: rgba(0, 0, 0, .1);
+          --code-bg: rgba(0, 0, 0, .06);
+          --code-ink: #174ea6;
+          --shadow: 0 24px 80px rgba(0, 0, 0, .12);
+        }
+        @media (prefers-color-scheme: dark) {
+          :root {
+            color-scheme: dark;
+            --bg: #171a21;
+            --ink: #f4f5f7;
+            --muted: rgba(244, 245, 247, .74);
+            --card-bg: rgba(255, 255, 255, .06);
+            --card-border: rgba(255, 255, 255, .13);
+            --code-bg: rgba(0, 0, 0, .28);
+            --code-ink: #d8e7ff;
+            --shadow: 0 24px 80px rgba(0, 0, 0, .42);
+          }
+        }
         * { box-sizing: border-box; }
         html, body { margin: 0; min-height: 100%; }
         body {
           display: grid;
           min-height: 100vh;
           place-items: center;
-          background: #111318;
-          color: #f4f5f7;
+          background: var(--bg);
+          color: var(--ink);
           font: 15px/1.55 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
         }
         main {
           width: min(680px, calc(100vw - 48px));
-          border: 1px solid rgba(255,255,255,.13);
+          border: 1px solid var(--card-border);
           border-radius: 18px;
-          background: rgba(255,255,255,.06);
+          background: var(--card-bg);
           padding: 32px;
-          box-shadow: 0 24px 80px rgba(0,0,0,.42);
+          box-shadow: var(--shadow);
         }
         h1 { margin: 0 0 10px; font-size: 26px; letter-spacing: 0; }
-        p { margin: 10px 0 0; color: rgba(244,245,247,.74); }
+        p { margin: 10px 0 0; color: var(--muted); }
         code {
           display: block;
           margin-top: 14px;
           padding: 12px 14px;
           overflow-wrap: anywhere;
           border-radius: 10px;
-          background: rgba(0,0,0,.28);
-          color: #d8e7ff;
+          background: var(--code-bg);
+          color: var(--code-ink);
           font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
           font-size: 13px;
         }
@@ -140,11 +163,81 @@ private func missingPanelHTML(panelPath: String, stateRootPath: String) -> Strin
     """
 }
 
-private final class AppDelegate: NSObject, NSApplicationDelegate {
+private let panelThemeBridgeScript = """
+(function() {
+  if (!window.webkit || !window.webkit.messageHandlers || !window.webkit.messageHandlers.openrelixTheme) {
+    return;
+  }
+
+  var lastTheme = "";
+  var themeStorageKey = "openrelix-panel-theme";
+  var supportedThemes = ["system", "light", "dark"];
+  var systemDarkQuery = window.matchMedia ? window.matchMedia("(prefers-color-scheme: dark)") : null;
+
+  function resolveTheme() {
+    var rootTheme = document.documentElement.getAttribute("data-theme");
+    var bodyTheme = document.body ? document.body.getAttribute("data-theme") : "";
+    var theme = rootTheme || bodyTheme;
+    if (theme === "dark" || theme === "light") {
+      return theme;
+    }
+    try {
+      var storedTheme = window.localStorage ? window.localStorage.getItem(themeStorageKey) : "";
+      if (supportedThemes.indexOf(storedTheme) !== -1 && storedTheme !== "system") {
+        return storedTheme;
+      }
+    } catch (error) {
+    }
+    return systemDarkQuery && systemDarkQuery.matches ? "dark" : "light";
+  }
+
+  function postTheme() {
+    var theme = resolveTheme();
+    if (theme === lastTheme) {
+      return;
+    }
+    lastTheme = theme;
+    window.webkit.messageHandlers.openrelixTheme.postMessage(theme);
+  }
+
+  postTheme();
+
+  var observer = new MutationObserver(postTheme);
+  observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+  function observeBody() {
+    if (document.body) {
+      observer.observe(document.body, { attributes: true, attributeFilter: ["data-theme"] });
+      postTheme();
+    }
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", observeBody, { once: true });
+  } else {
+    observeBody();
+  }
+
+  if (systemDarkQuery) {
+    if (typeof systemDarkQuery.addEventListener === "function") {
+      systemDarkQuery.addEventListener("change", postTheme);
+    } else if (typeof systemDarkQuery.addListener === "function") {
+      systemDarkQuery.addListener(postTheme);
+    }
+  }
+})();
+"""
+
+private final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler {
     private var window: NSWindow?
     private var webView: WKWebView?
     private var stateRoot = preferredStateRoot()
-    private let defaultBackground = NSColor(
+    private let lightPanelBackground = NSColor(
+        calibratedRed: 245.0 / 255.0,
+        green: 245.0 / 255.0,
+        blue: 247.0 / 255.0,
+        alpha: 1.0
+    )
+    private let darkPanelBackground = NSColor(
         calibratedRed: 0.09,
         green: 0.10,
         blue: 0.13,
@@ -168,16 +261,20 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
         let pagePreferences = WKWebpagePreferences()
         pagePreferences.allowsContentJavaScript = true
         configuration.defaultWebpagePreferences = pagePreferences
+        configuration.userContentController.addUserScript(
+            WKUserScript(
+                source: panelThemeBridgeScript,
+                injectionTime: .atDocumentStart,
+                forMainFrameOnly: true
+            )
+        )
+        configuration.userContentController.add(self, name: "openrelixTheme")
 
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.allowsBackForwardNavigationGestures = true
         webView.wantsLayer = true
-        webView.layer?.backgroundColor = defaultBackground.cgColor
         if webView.responds(to: Selector(("setDrawsBackground:"))) {
             webView.setValue(false, forKey: "drawsBackground")
-        }
-        if #available(macOS 12.0, *) {
-            webView.underPageBackgroundColor = defaultBackground
         }
         self.webView = webView
 
@@ -190,15 +287,43 @@ private final class AppDelegate: NSObject, NSApplicationDelegate {
         window.center()
         window.minSize = NSSize(width: 920, height: 620)
         window.title = "OpenRelix"
-        window.backgroundColor = defaultBackground
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
         if #available(macOS 11.0, *) {
             window.toolbarStyle = .unified
         }
         window.contentView = webView
-        window.makeKeyAndOrderFront(nil)
         self.window = window
+        applyPanelBackground(isDark: nil)
+        window.makeKeyAndOrderFront(nil)
+    }
+
+    private func systemPrefersDark() -> Bool {
+        NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+    }
+
+    private func panelBackground(isDark: Bool?) -> NSColor {
+        (isDark ?? systemPrefersDark()) ? darkPanelBackground : lightPanelBackground
+    }
+
+    private func applyPanelBackground(isDark: Bool?) {
+        let background = panelBackground(isDark: isDark)
+        webView?.layer?.backgroundColor = background.cgColor
+        if #available(macOS 12.0, *) {
+            webView?.underPageBackgroundColor = background
+        }
+        window?.backgroundColor = background
+    }
+
+    func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+        guard message.name == "openrelixTheme", let theme = message.body as? String else {
+            return
+        }
+        if theme == "dark" {
+            applyPanelBackground(isDark: true)
+        } else if theme == "light" {
+            applyPanelBackground(isDark: false)
+        }
     }
 
     private func buildMenu() {

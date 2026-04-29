@@ -31,6 +31,7 @@ Run manually:
 """
 from __future__ import annotations
 
+import ast
 import os
 import re
 import subprocess
@@ -60,6 +61,17 @@ BUILT_IN_PATTERNS = [
         "personal email",
     ),
 ]
+
+CODEX_NATIVE_DEFAULT_RULE_TABLES = {
+    "CODEX_NATIVE_TITLE_ZH",
+    "CODEX_NATIVE_NOTE_ZH",
+    "CODEX_NATIVE_TASK_BODY_ZH",
+    "CODEX_NATIVE_BULLET_ZH",
+    "CODEX_NATIVE_TOPIC_RULES_ZH",
+    "CODEX_NATIVE_BULLET_RULES_ZH",
+    "CODEX_NATIVE_BULLET_TITLE_EN_BY_ZH",
+    "CODEX_NATIVE_TASK_GROUP_LABEL_RULES_ZH",
+}
 
 SKIP_SUFFIXES = {
     ".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico", ".pdf",
@@ -125,6 +137,48 @@ def repo_local_state_dirs():
     return hits
 
 
+def empty_literal(node):
+    if isinstance(node, ast.Dict):
+        return not node.keys
+    if isinstance(node, (ast.List, ast.Tuple, ast.Set)):
+        return not node.elts
+    return False
+
+
+def codex_native_rule_table_hits():
+    """Require personal codex-native display rules to stay outside repo source."""
+    path = ROOT / "scripts" / "build_overview.py"
+    try:
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    except (OSError, SyntaxError) as exc:
+        return [("scripts/build_overview.py", 1, "could not inspect codex-native default rules: {}".format(exc))]
+
+    seen = {}
+    for node in tree.body:
+        targets = []
+        if isinstance(node, ast.Assign):
+            targets = node.targets
+            value = node.value
+        elif isinstance(node, ast.AnnAssign):
+            targets = [node.target]
+            value = node.value
+        else:
+            continue
+        for target in targets:
+            if isinstance(target, ast.Name) and target.id in CODEX_NATIVE_DEFAULT_RULE_TABLES:
+                seen[target.id] = (node.lineno, empty_literal(value))
+
+    hits = []
+    for name in sorted(CODEX_NATIVE_DEFAULT_RULE_TABLES):
+        if name not in seen:
+            hits.append(("scripts/build_overview.py", 1, "{} missing; external-rule guard cannot verify it".format(name)))
+            continue
+        line_no, is_empty = seen[name]
+        if not is_empty:
+            hits.append(("scripts/build_overview.py", line_no, "{} must stay empty; put entries in <state_root>/personal_codex_rules.py".format(name)))
+    return hits
+
+
 def list_repo_files():
     tracked = subprocess.run(
         ["git", "-C", str(ROOT), "ls-files"],
@@ -175,7 +229,8 @@ def main():
     files = list_repo_files()
     hits = scan(files, patterns)
     state_dirs = repo_local_state_dirs()
-    if hits or state_dirs:
+    rule_table_hits = codex_native_rule_table_hits()
+    if hits or state_dirs or rule_table_hits:
         if state_dirs:
             print("personal-info-check: FAIL — repo-local runtime state directory found")
             for name in state_dirs:
@@ -184,6 +239,11 @@ def main():
         if hits:
             print("personal-info-check: FAIL — {} hit(s) found".format(len(hits)))
             for rel, line, label, _raw in hits:
+                print("  {}:{}  [{}]".format(rel, line, label))
+            print()
+        if rule_table_hits:
+            print("personal-info-check: FAIL — codex-native display rules must stay external")
+            for rel, line, label in rule_table_hits:
                 print("  {}:{}  [{}]".format(rel, line, label))
             print()
         print("Refusing to proceed. Keep runtime data in the external state root,")

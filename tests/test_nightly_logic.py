@@ -20,6 +20,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 import build_overview  # noqa: E402
+import check_personal_info  # noqa: E402
 import openrelix  # noqa: E402
 import asset_runtime  # noqa: E402
 import nightly_consolidate  # noqa: E402
@@ -91,6 +92,29 @@ class VisibleTextCollector(HTMLParser):
 
 
 class NightlyLogicTests(unittest.TestCase):
+    @staticmethod
+    def _empty_personal_codex_rules():
+        return {
+            "title": {},
+            "note": {},
+            "task_body": {},
+            "bullet": {},
+            "topic_rules": [],
+            "bullet_rules": [],
+            "bullet_title_en": {},
+            "task_group_label_rules": [],
+        }
+
+    def setUp(self):
+        original = build_overview._PERSONAL_CODEX_NATIVE_RULES
+        build_overview._PERSONAL_CODEX_NATIVE_RULES = self._empty_personal_codex_rules()
+        self.addCleanup(lambda: setattr(build_overview, "_PERSONAL_CODEX_NATIVE_RULES", original))
+
+    def test_codex_native_default_rule_tables_stay_empty(self):
+        self.assertEqual(check_personal_info.codex_native_rule_table_hits(), [])
+        for name in check_personal_info.CODEX_NATIVE_DEFAULT_RULE_TABLES:
+            self.assertFalse(getattr(build_overview, name), name)
+
     def test_entrypoint_module_imports_do_not_create_state_layout(self):
         with TemporaryDirectory() as tmpdir:
             state_dir = Path(tmpdir) / "state"
@@ -776,6 +800,15 @@ class NightlyLogicTests(unittest.TestCase):
         self.assertIsNone(build_overview.parse_nightly_summary_date({"date": "bad-date"}))
 
     def test_parse_codex_native_memory_summary_keeps_command_titles_intact(self):
+        self._use_personal_codex_rules(
+            title={
+                "example review live contract and independent cli review loop": "示例独立审阅流程",
+            },
+            note={
+                "example review live contract and independent cli review loop": "记录示例命令入口、临时 git snapshot 和评分闭环。",
+            },
+        )
+
         sample_summary = """## User preferences
 
 - Prefer exact values first.
@@ -790,9 +823,9 @@ class NightlyLogicTests(unittest.TestCase):
 
 #### 2026-04-26
 
-- `/subreview:run` live contract and independent Codex review loop: /subreview:run, codex exec, temp git repo, 10/10
-  - desc: Cross-scope workflow memory for external Codex review requests under a openrelix workspace and ~/.codex.
-  - learnings: Treat /subreview:run as the validated live entrypoint.
+- `/example:review` live contract and independent CLI review loop: /example:review, codex exec, temp git repo, 10/10
+  - desc: Cross-scope workflow memory for external review requests under an example workspace.
+  - learnings: Treat /example:review as the validated live entrypoint.
 """
 
         with TemporaryDirectory() as tmpdir:
@@ -818,8 +851,8 @@ class NightlyLogicTests(unittest.TestCase):
         self.assertIn("Keep the global layer repo-agnostic", parsed["tip_rows"][0]["body"])
         self.assertEqual(len(parsed["rows"]), 1)
         row = parsed["rows"][0]
-        self.assertIn("/subreview:run", row["title"])
-        self.assertIn("Codex 独立评审循环", row["display_title"])
+        self.assertIn("/example:review", row["title"])
+        self.assertIn("示例独立审阅流程", row["display_title"])
         self.assertIn("临时 git snapshot", row["display_value_note"])
         self.assertEqual(row["created_at"], "2026-04-26")
         self.assertIn("OpenRelix", row["context_labels"])
@@ -832,15 +865,7 @@ class NightlyLogicTests(unittest.TestCase):
         These helpers let us exercise the matching logic with synthetic fixtures
         that contain no real personal project names.
         """
-        base = {
-            "title": {},
-            "note": {},
-            "task_body": {},
-            "bullet": {},
-            "topic_rules": [],
-            "bullet_rules": [],
-            "bullet_title_en": {},
-        }
+        base = self._empty_personal_codex_rules()
         base.update(extras)
         original = build_overview._PERSONAL_CODEX_NATIVE_RULES
         build_overview._PERSONAL_CODEX_NATIVE_RULES = base
@@ -898,6 +923,29 @@ class NightlyLogicTests(unittest.TestCase):
         self.assertIn("覆盖示例主题 B 的样例描述", beta_row["display_value_note"])
         self.assertEqual(rule_row["display_title"], "示例主题规则")
         self.assertIn("通过规则匹配命中", rule_row["display_value_note"])
+
+    def test_codex_native_structured_memory_uses_generic_chinese_fallback(self):
+        sample_summary = """## What's in Memory
+
+### Local personal memory registry
+
+- [durable/semantic/high] Example release validation rule - Keep public release notes minimal and verify package contents before publishing.
+"""
+
+        with TemporaryDirectory() as tmpdir:
+            summary_path = Path(tmpdir) / "memory_summary.md"
+            summary_path.write_text(sample_summary, encoding="utf-8")
+
+            parsed = build_overview.parse_codex_native_memory_summary(summary_path, language="zh")
+
+        self.assertEqual(len(parsed["rows"]), 1)
+        row = parsed["rows"][0]
+        self.assertEqual(row["memory_type"], "semantic")
+        self.assertEqual(row["priority"], "high")
+        self.assertEqual(row["display_title"], "Codex 原生主题")
+        self.assertIn("英文原文已折叠", row["display_value_note"])
+        self.assertIn("Example release validation rule", row["display_title_en"])
+        self.assertIn("Keep public release notes minimal", row["display_value_note_en"])
 
     def test_codex_native_memory_summary_bullets_get_chinese_display_body(self):
         self._use_personal_codex_rules(
@@ -1041,13 +1089,35 @@ class NightlyLogicTests(unittest.TestCase):
         self.assertNotIn("关联上下文", html)
         self.assertNotIn("最近工作区", html)
 
+    def test_codex_native_brief_cards_keep_english_keywords_out_of_chinese_body(self):
+        rows = [
+            {
+                "display_title": "Example task group",
+                "display_body": "Release checklist and package validation.",
+                "display_body_en": "Release checklist and package validation.",
+                "meta": "1 个任务；1 个来源",
+                "keywords": ["Release checklist", "package manifest"],
+                "task_count": 1,
+                "rollout_reference_count": 1,
+            }
+        ]
+
+        html = build_overview.make_codex_native_brief_cards(rows, "task_group", language="zh")
+
+        self.assertIn("历史任务组 1", html)
+        self.assertIn("来自 MEMORY.md 的历史任务组索引", html)
+        self.assertNotIn("关键词：Release checklist", html)
+        self.assertNotIn('data-lang-only="zh">Release checklist', html)
+        self.assertIn('data-lang-only="en"><span class="native-brief-chip">Release checklist</span>', html)
+        self.assertIn("keywords: Release checklist, package manifest", html)
+
     def test_codex_native_memory_english_mode_preserves_english_display_copy(self):
         sample_summary = """## What's in Memory
 
 ### OpenRelix + user-level Codex state
 
-- Local Codex personal asset system, genericization, and LaunchAgent runtime: OpenRelix, AGENTS.md, memories, dashboard
-  - desc: User-level personal asset system design under a openrelix workspace.
+- Example dashboard, generic rules, and LaunchAgent runtime: OpenRelix, AGENTS.md, memories, dashboard
+  - desc: Example local-first dashboard design under a public workspace.
   - learnings: The layered setup separates global rules, repo rules, and local state.
 """
 
@@ -1061,7 +1131,7 @@ class NightlyLogicTests(unittest.TestCase):
         row = parsed["rows"][0]
         self.assertEqual(
             row["display_title"],
-            "Local Codex personal asset system, genericization, and LaunchAgent runtime",
+            "Example dashboard, generic rules, and LaunchAgent runtime",
         )
         self.assertIn("Summary:", row["display_value_note"])
         self.assertIn("Lessons:", row["display_value_note"])
@@ -1614,9 +1684,18 @@ class NightlyLogicTests(unittest.TestCase):
         self.assertIn("1 个任务组", comparison["note"])
 
     def test_codex_memory_index_exposes_task_group_rows(self):
-        sample_index = """# Task Group: Local Codex personal asset system, genericization, and LaunchAgent runtime
+        self._use_personal_codex_rules(
+            title={
+                "example dashboard and launchagent runtime": "示例面板与 LaunchAgent 运行时",
+            },
+            task_body={
+                "example dashboard and launchagent runtime": "示例面板与本地运行时。",
+            },
+        )
 
-scope: Asset dashboard and local memory runtime.
+        sample_index = """# Task Group: Example dashboard and LaunchAgent runtime
+
+scope: Example dashboard and local runtime.
 applies_to: cwd=/tmp/OpenRelix
 
 ## Task 1: Build overview
@@ -1627,7 +1706,7 @@ applies_to: cwd=/tmp/OpenRelix
 
 ### keywords
 
-- OpenRelix, dashboard, memory
+- example, dashboard, memory
 
 ## User preferences
 
@@ -1644,15 +1723,69 @@ applies_to: cwd=/tmp/OpenRelix
         self.assertEqual(index_stats["rollout_reference_count"], 1)
         self.assertEqual(len(index_stats["task_groups"]), 1)
         row = index_stats["task_groups"][0]
-        self.assertEqual(row["title"], "Local Codex personal asset system, genericization, and LaunchAgent runtime")
-        self.assertEqual(row["display_title"], "本地 OpenRelix 系统、通用化与 LaunchAgent 运行时")
-        self.assertIn("Asset dashboard", row["body"])
-        self.assertIn("用户级个人资产系统", row["display_body"])
-        self.assertIn("Asset dashboard", row["display_body_en"])
+        self.assertEqual(row["title"], "Example dashboard and LaunchAgent runtime")
+        self.assertEqual(row["display_title"], "示例面板与 LaunchAgent 运行时")
+        self.assertIn("Example dashboard", row["body"])
+        self.assertIn("示例面板与本地运行时", row["display_body"])
+        self.assertIn("Example dashboard", row["display_body_en"])
         self.assertEqual(row["task_count"], 1)
         self.assertEqual(row["rollout_reference_count"], 1)
         self.assertIn("dashboard", row["keywords"])
         self.assertNotIn("voiceover_template.md should not be parsed as a keyword after the keyword section closes.", row["keywords"])
+
+    def test_codex_memory_index_english_task_group_gets_generic_chinese_fallback(self):
+        sample_index = """# Task Group: Example release surface and package validation
+
+scope: Release checklist, package manifest, and public website validation.
+
+## Task 1: Validate package
+
+### rollout_summary_files
+
+- rollout_summaries/demo.md (thread_id=demo)
+"""
+
+        with TemporaryDirectory() as tmpdir:
+            index_path = Path(tmpdir) / "MEMORY.md"
+            index_path.write_text(sample_index, encoding="utf-8")
+
+            index_stats = build_overview.load_codex_memory_index_stats(index_path, language="zh")
+
+        row = index_stats["task_groups"][0]
+        self.assertEqual(row["display_title"], "历史任务组 1")
+        self.assertIn("来自 MEMORY.md 的历史任务组索引", row["display_body"])
+        self.assertIn("包含 1 个任务", row["display_body"])
+        self.assertIn("1 个来源", row["display_body"])
+        self.assertIn("Release checklist", row["display_body_en"])
+
+    def test_codex_memory_index_task_group_uses_external_label_rules(self):
+        self._use_personal_codex_rules(
+            task_group_label_rules=[
+                (("release", "surface"), "发布面"),
+                (("package", "validation"), "包检查"),
+            ],
+        )
+        sample_index = """# Task Group: Example release surface and package validation
+
+scope: Release checklist, package manifest, and public website validation.
+
+## Task 1: Validate package
+
+### rollout_summary_files
+
+- rollout_summaries/demo.md (thread_id=demo)
+"""
+
+        with TemporaryDirectory() as tmpdir:
+            index_path = Path(tmpdir) / "MEMORY.md"
+            index_path.write_text(sample_index, encoding="utf-8")
+
+            index_stats = build_overview.load_codex_memory_index_stats(index_path, language="zh")
+
+        row = index_stats["task_groups"][0]
+        self.assertEqual(row["display_title"], "发布面 / 包检查任务组")
+        self.assertIn("主题：发布面、包检查", row["display_body"])
+        self.assertNotIn("Release checklist", row["display_body"])
 
     def test_codex_memory_index_task_group_fallback_body_is_bilingual(self):
         sample_index = """# Task Group: Legacy group
@@ -1862,11 +1995,11 @@ applies_to: cwd=/tmp/OpenRelix
                 "codex_memory_index_path_label": "custom-codex/memories/MEMORY.md",
                 "codex_native_memory": [
                     {
-                        "title": "Local Codex personal asset system, genericization, and LaunchAgent runtime",
-                        "display_title": "本地 OpenRelix 系统、通用化与 LaunchAgent 运行时",
+                        "title": "Example dashboard and LaunchAgent runtime",
+                        "display_title": "示例面板与 LaunchAgent 运行时",
                         "updated_at_display": "2026-04-26",
-                        "context_labels": ["OpenRelix"],
-                        "display_context": "OpenRelix",
+                        "context_labels": ["Example"],
+                        "display_context": "Example",
                         "value_note": "English note.",
                         "display_value_note": "中文摘要。",
                     }
@@ -1876,7 +2009,7 @@ applies_to: cwd=/tmp/OpenRelix
             }
         )
 
-        self.assertIn("本地 OpenRelix 系统、通用化与 LaunchAgent 运行时", markdown)
+        self.assertIn("示例面板与 LaunchAgent 运行时", markdown)
         self.assertIn("中文摘要", markdown)
         self.assertNotIn("English note", markdown)
 
@@ -2330,6 +2463,20 @@ applies_to: cwd=/tmp/OpenRelix
         self.assertNotIn("|", cell)
         self.assertNotIn("\n", cell)
 
+    def test_redaction_preserves_json_escaped_html_attribute_quotes(self):
+        payload = (
+            'const snapshot = {"html":"'
+            '<a href=\\"file:///Users/example\\" target=\\"_blank\\" title=\\"/Users/example\\">home</a>'
+            '"};'
+        )
+
+        redacted = build_overview.normalize_brand_display_text(payload)
+
+        self.assertIn('href=\\"file://~\\" target=\\"_blank\\"', redacted)
+        self.assertIn('title=\\"~\\"', redacted)
+        self.assertNotIn('href=\\"file://~" target=', redacted)
+        self.assertNotIn('title=\\"~" target=', redacted)
+
     def test_build_html_renders_codex_native_memory_panel(self):
         html = build_overview.build_html(
             {
@@ -2366,16 +2513,16 @@ applies_to: cwd=/tmp/OpenRelix
                 "codex_memory_summary_path_label": "custom-codex/memories/memory_summary.md",
                 "codex_native_memory": [
                     {
-                        "title": "Local Codex personal asset system, genericization, and LaunchAgent runtime",
-                        "display_title": "本地 OpenRelix 系统、通用化与 LaunchAgent 运行时",
+                        "title": "Example dashboard and LaunchAgent runtime",
+                        "display_title": "示例面板与 LaunchAgent 运行时",
                         "display_bucket": "Codex 原生",
                         "display_memory_type": "语义",
                         "display_priority": "中优先",
                         "created_at_display": "2026-04-26",
                         "updated_at_display": "2026-04-26",
                         "occurrence_label": "原生归档",
-                        "context_labels": ["OpenRelix"],
-                        "display_context": "OpenRelix",
+                        "context_labels": ["Example"],
+                        "display_context": "Example",
                         "value_note": "Demo value note.",
                         "display_value_note": "中文卡片摘要。",
                         "source_windows": [],
@@ -2398,8 +2545,8 @@ applies_to: cwd=/tmp/OpenRelix
                 ],
                 "codex_native_task_groups": [
                     {
-                        "display_title": "Local asset system",
-                        "display_body": "Asset dashboard and memory runtime.",
+                        "display_title": "Example task group",
+                        "display_body": "Example dashboard and memory runtime.",
                         "meta": "1 个任务；1 个来源",
                         "keywords": ["dashboard"],
                     }
@@ -2417,7 +2564,7 @@ applies_to: cwd=/tmp/OpenRelix
         self.assertIn("Codex 原生记忆-任务组", html)
         self.assertNotIn("memory-card-native", html)
         self.assertNotIn("memory-native-strip", html)
-        self.assertIn("本地 OpenRelix 系统、通用化与 LaunchAgent 运行时", html)
+        self.assertIn("示例面板与 LaunchAgent 运行时", html)
         self.assertIn("中文卡片摘要", html)
         self.assertIn("Demo value note", html)
         self.assertIn('data-lang-only="en"', html)
@@ -2431,12 +2578,14 @@ applies_to: cwd=/tmp/OpenRelix
         self.assertIn("优先用 rg 查找文件。", html)
         self.assertIn("任务组", html)
         self.assertIn("Task Groups", html)
-        self.assertIn("Local asset system", html)
+        self.assertIn("历史任务组 1", html)
+        self.assertIn("Example task group", html)
         self.assertIn("native-brief-card", html)
         self.assertIn("User Preference", html)
         self.assertIn("General Tip", html)
         self.assertIn("Codex 原生记忆-任务组", html)
-        self.assertIn("关键词：dashboard", html)
+        self.assertNotIn("关键词：dashboard", html)
+        self.assertIn("keywords: dashboard", html)
         self.assertIn("1 task; 1 source", html)
         self.assertNotIn("1 tasks; 1 sources", html)
         self.assertIn("查看来源与上下文", html)
@@ -2721,7 +2870,8 @@ applies_to: cwd=/tmp/OpenRelix
         )
 
         self.assertIn('<html lang="zh-CN" data-default-language="zh">', html)
-        self.assertIn('<body data-language="zh" data-theme-choice="system">', html)
+        self.assertIn('<body data-language="zh">', html)
+        self.assertNotIn('<body data-language="zh" data-theme-choice="system">', html)
         self.assertIn('data-language-option="zh" aria-pressed="true"', html)
         self.assertIn('data-language-option="en" aria-pressed="false"', html)
         self.assertIn('"OpenRelix 工作台": "OpenRelix Workbench"', html)
@@ -2776,7 +2926,8 @@ applies_to: cwd=/tmp/OpenRelix
         )
 
         self.assertIn('<html lang="en" data-default-language="en">', html)
-        self.assertIn('<body data-language="en" data-theme-choice="system">', html)
+        self.assertIn('<body data-language="en">', html)
+        self.assertNotIn('<body data-language="en" data-theme-choice="system">', html)
         self.assertIn('data-language-option="zh" aria-pressed="false"', html)
         self.assertIn('data-language-option="en" aria-pressed="true"', html)
 
@@ -3149,11 +3300,24 @@ applies_to: cwd=/tmp/OpenRelix
 
         self.assertIn("--bg: #f5f5f7;", source)
         self.assertIn("background: var(--surface);", source)
+        self.assertIn("document.documentElement.setAttribute(\"data-theme-choice\", themeChoice);", source)
+        self.assertIn("document.documentElement.setAttribute(\"data-theme-choice\", currentThemeChoice);", source)
+        self.assertIn("html[data-theme=\"dark\"],", source)
+        self.assertIn("background: #f5f5f7;", source)
         self.assertIn("font-family: -apple-system, BlinkMacSystemFont", source)
         self.assertNotIn("linear-gradient(135deg, #182225", source)
         self.assertNotIn("radial-gradient", source)
         self.assertNotIn("font-size: clamp", source)
         self.assertNotIn("letter-spacing: 0.08em", source)
+
+    def test_build_html_prepaint_light_preference_is_not_overridden_by_body(self):
+        source = (ROOT / "scripts" / "build_overview.py").read_text(encoding="utf-8")
+
+        self.assertIn('document.documentElement.setAttribute("data-theme", resolvedTheme);', source)
+        self.assertIn('html[data-theme-choice="system"]:not([data-theme="light"])', source)
+        self.assertNotIn('body[data-theme-choice="system"]:not([data-theme="light"])', source)
+        self.assertNotIn('<body data-language="{default_language}" data-theme-choice="system">', source)
+        self.assertIn('<body data-language="{default_language}">', source)
 
     def test_nightly_summary_hides_internal_stage_and_review_like_badges(self):
         html = build_overview.make_nightly_summary_panel(
@@ -3920,8 +4084,19 @@ applies_to: cwd=/tmp/OpenRelix
         self.assertIn('localized_text "状态目录" "State root"', mac_client_builder)
         self.assertNotIn('echo "Built $OUTPUT_PATH"', mac_client_builder)
         self.assertNotIn('echo "State root $STATE_ROOT"', mac_client_builder)
-
         self.assertIn("已跳过：未找到记忆索引、已有摘要或个人记忆登记册", memory_summary_builder)
+
+    def test_macos_client_under_page_background_tracks_web_theme(self):
+        mac_client = (ROOT / "macos" / "OpenRelixClient" / "main.swift").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("panelThemeBridgeScript", mac_client)
+        self.assertIn("WKScriptMessageHandler", mac_client)
+        self.assertIn("openrelixTheme", mac_client)
+        self.assertIn("webView?.underPageBackgroundColor = background", mac_client)
+        self.assertIn("window?.backgroundColor = background", mac_client)
+        self.assertNotIn("private let defaultBackground", mac_client)
 
     def test_installer_openrelix_templates_exist_and_use_new_entrypoints(self):
         expected_templates = [
