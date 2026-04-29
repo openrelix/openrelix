@@ -144,6 +144,25 @@ npx openrelix install --enable-learning-refresh --enable-nightly --keep-awake=du
 
 默认安装档位是 `integrated`。最小安装会初始化 state root，生成第一份 overview，开启当前 Codex adapter 的 memories/history，并同步一份 bounded memory summary 到 `CODEX_HOME`。它不会安装 shell 命令，不改 shell rc，也不 bootstrap LaunchAgents。需要只在本系统本地记录、不注入 host context 时，使用 `--minimal --record-memory-only`。
 
+如果只是想在 repo checkout 里做一次临时烟测，验证从安装到生成面板的效果，并且不触碰真实 state root 或真实 `CODEX_HOME`，运行：
+
+```bash
+scripts/smoke_temp_panel.sh
+```
+
+这个脚本会创建临时 state 目录和临时 Codex home，执行 `--minimal --record-memory-only` 安装，打印 `doctor` / `core` 检查结果，最后打开生成的 `reports/panel.html`。终端或 CI 场景不想自动打开浏览器时，加 `--no-open`：
+
+```bash
+scripts/smoke_temp_panel.sh --no-open
+```
+
+验证完成后清理这些临时目录：
+
+```bash
+scripts/cleanup_smoke_temp.sh --dry-run
+scripts/cleanup_smoke_temp.sh --yes
+```
+
 installer 会把运行语言和 memory mode 写入 state root 下的 `runtime/config.json`。支持的语言是 `zh` 和 `en`；语言会影响终端输出、overview 文件、夜间 summary prompt、fallback summary、即时 task review、asset / usage event 的展示字段，以及本地 consolidation pipeline 写出的结构化 memory items。稳定 enum keys 保持 canonical，展示层再按语言格式化。
 
 ```bash

@@ -448,6 +448,13 @@ zsh -n install/install.sh scripts/*.sh
 npm pack --dry-run
 ```
 
+验证安装到面板的临时闭环：
+
+```bash
+scripts/smoke_temp_panel.sh --no-open
+scripts/cleanup_smoke_temp.sh --dry-run
+```
+
 文档或安装器改动应额外检查：
 
 - 是否引入了硬编码个人绝对路径。

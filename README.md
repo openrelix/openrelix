@@ -150,6 +150,25 @@ Minimal install:
 
 The default install profile is `integrated`. Minimal install initializes the state root, generates the first overview, enables the current Codex adapter's memories/history, and syncs a bounded memory summary into `CODEX_HOME`. It still does not install shell commands, change shell rc files, or bootstrap LaunchAgents. Use `--minimal --record-memory-only` when you want a minimal install that records only to this system's local state root without host-context injection.
 
+For a repo-checkout smoke test that stops at the generated panel and does not touch your real state root or real `CODEX_HOME`, run:
+
+```bash
+scripts/smoke_temp_panel.sh
+```
+
+The script creates temporary state and Codex home directories, runs a `--minimal --record-memory-only` install, prints `doctor` / `core` output, and opens the generated `reports/panel.html`. Use `--no-open` in terminal-only or CI-style checks:
+
+```bash
+scripts/smoke_temp_panel.sh --no-open
+```
+
+Clean up the temporary smoke directories when you are done:
+
+```bash
+scripts/cleanup_smoke_temp.sh --dry-run
+scripts/cleanup_smoke_temp.sh --yes
+```
+
 The installer stores the selected runtime language and memory mode in the state root under `runtime/config.json`. Supported language values are `zh` and `en`; interactive installs prompt when no language is passed, and non-interactive installs default to `zh`. The language controls local terminal output, generated overview files, nightly summary prompts, fallback summaries, immediate task reviews, asset / usage-event human-facing fields, and the structured memory items written by the local consolidation pipeline. Stable enum keys stay canonical so automation can still classify records, while the visible fields follow the selected language.
 
 ```bash

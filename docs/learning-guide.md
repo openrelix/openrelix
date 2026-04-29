@@ -33,11 +33,30 @@ GitHub 项目页：[openrelix/openrelix](https://github.com/openrelix/openrelix)
 
 ### 2. 跑一个最小安装
 
-建议用临时 state root，避免污染自己的正式数据：
+最快的 repo checkout 验证方式是直接跑临时面板烟测脚本：
+
+```bash
+scripts/smoke_temp_panel.sh
+```
+
+它会创建临时 state root 和临时 `CODEX_HOME`，执行 `--minimal --record-memory-only` 安装，打印 `doctor` / `core` 结果，最后打开生成的 `reports/panel.html`。如果只想在终端里拿到面板路径：
+
+```bash
+scripts/smoke_temp_panel.sh --no-open
+```
+
+验证后可以清理脚本创建的临时目录：
+
+```bash
+scripts/cleanup_smoke_temp.sh --dry-run
+scripts/cleanup_smoke_temp.sh --yes
+```
+
+需要手动拆解安装过程时，也建议使用临时 state root，避免污染自己的正式数据：
 
 ```bash
 export AI_ASSET_STATE_DIR="$(mktemp -d)"
-./install/install.sh --language zh
+./install/install.sh --minimal --language zh
 ```
 
 最小安装会初始化 state root、生成第一份 overview，并按默认 `integrated` 开启 Codex memories/history、同步一份 bounded summary。它仍然不安装全局 skill，不改 shell rc，不注册 LaunchAgent。
@@ -299,10 +318,8 @@ npm pack --dry-run
 安装链路检查：
 
 ```bash
-STATE_DIR="$(mktemp -d)"
-AI_ASSET_STATE_DIR="$STATE_DIR" ./install/install.sh --language zh
-AI_ASSET_STATE_DIR="$STATE_DIR" python3 scripts/build_overview.py
-python3 -m json.tool "$STATE_DIR/reports/overview-data.json" >/dev/null
+scripts/smoke_temp_panel.sh --no-open
+scripts/cleanup_smoke_temp.sh --dry-run
 ```
 
 nightly 手动检查：

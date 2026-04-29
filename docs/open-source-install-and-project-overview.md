@@ -189,7 +189,7 @@ npx openrelix install --profile integrated --enable-learning-refresh --activity-
 最小安装：
 
 ```bash
-./install/install.sh
+./install/install.sh --minimal
 ```
 
 最小安装做这些事：
@@ -199,6 +199,25 @@ npx openrelix install --profile integrated --enable-learning-refresh --activity-
 3. 在当前 Codex 适配器下按默认 `integrated` 开启 memories/history，并同步一份 bounded summary
 
 默认最小安装会初始化 state root、生成第一份 overview，并在当前 Codex 适配器下开启 memories/history，把 bounded summary 同步进 `CODEX_HOME` 以便注入 host 上下文。它仍然不会安装全局命令，不会写 shell rc，也不会注册 LaunchAgent。如果只想本地记录、不注入 host context，请显式传 `--record-memory-only`。
+
+从 repo checkout 本地验证“安装后能看到面板”的最小闭环时，建议使用临时烟测脚本：
+
+```bash
+scripts/smoke_temp_panel.sh
+```
+
+它会创建临时 state root 和临时 `CODEX_HOME`，执行 `--minimal --record-memory-only`，打印 `doctor` / `core` 检查结果，并打开生成的 `reports/panel.html`。不想自动打开浏览器时使用：
+
+```bash
+scripts/smoke_temp_panel.sh --no-open
+```
+
+验证结束后可以清理临时 state root 和临时 `CODEX_HOME`：
+
+```bash
+scripts/cleanup_smoke_temp.sh --dry-run
+scripts/cleanup_smoke_temp.sh --yes
+```
 
 安装时可以选择本地运行语言：
 

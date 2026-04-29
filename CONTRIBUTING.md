@@ -32,6 +32,20 @@ python3 -m unittest discover -s tests
 zsh -n install/install.sh
 ```
 
+When you need to verify the install-to-panel path without writing to your real
+state root or real `CODEX_HOME`, run:
+
+```bash
+scripts/smoke_temp_panel.sh --no-open
+```
+
+Preview and clean temporary smoke directories with:
+
+```bash
+scripts/cleanup_smoke_temp.sh --dry-run
+scripts/cleanup_smoke_temp.sh --yes
+```
+
 If your change touches JSON metadata, validate it with:
 
 ```bash

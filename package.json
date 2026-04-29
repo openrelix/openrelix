@@ -59,6 +59,7 @@
     "scripts/build_macos_client.sh",
     "scripts/build_codex_memory_summary.py",
     "scripts/build_overview.py",
+    "scripts/cleanup_smoke_temp.sh",
     "scripts/collect_codex_activity.py",
     "scripts/migrate_legacy_state.py",
     "scripts/nightly_consolidate.py",
@@ -67,6 +68,7 @@
     "scripts/nightly_pipeline.sh",
     "scripts/refresh_overview.sh",
     "scripts/run_with_optional_caffeinate.sh",
+    "scripts/smoke_temp_panel.sh",
     "scripts/token_live_server.py",
     "templates/"
   ],
