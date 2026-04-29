@@ -15,5 +15,7 @@
 
 - Do not reintroduce hard-coded user paths like `/Users/<name>/...` into reusable scripts or docs.
 - Do not commit user data, raw Codex history, generated reports, or launchd output logs.
+- Never put personal information, internal-only project details, user-specific memory content, private paths, account names, tokens, logs, or proprietary snippets into files that may be published as open source. This includes source code, tests, docs, website assets, npm package contents, GitHub Pages content, release artifacts, screenshots, fixtures, generated examples, and changelogs.
+- Keep personal or site-specific Codex native memory mappings outside the repo, for example in the external state root extension file. Open-source code may only contain generic parsers, generic fallbacks, and sanitized public examples.
 - Prefer installer or template changes over one-off local setup instructions.
 - When adding automation, make state roots and Codex home paths configurable through environment variables.
