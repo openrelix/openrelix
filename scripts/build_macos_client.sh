@@ -11,10 +11,53 @@ OUTPUT_PATH="${OPENRELIX_APP_OUTPUT:-$REPO_ROOT/dist/$APP_NAME.app}"
 APP_ICON_SOURCE="${OPENRELIX_APP_ICON_SOURCE:-$REPO_ROOT/macos/OpenRelixClient/AppIcon.png}"
 APP_ICON_BASENAME="OpenRelixAppIcon"
 STATE_ROOT="${AI_ASSET_STATE_DIR:-}"
+LANGUAGE="${AI_ASSET_LANGUAGE:-en}"
 OPEN_AFTER=0
 
+normalize_language_code() {
+  local raw="${1:l}"
+  case "$raw" in
+    zh|zh-*|zh_*|cn|chinese|中文)
+      printf 'zh'
+      ;;
+    en|en-*|en_*|english)
+      printf 'en'
+      ;;
+    *)
+      printf 'en'
+      ;;
+  esac
+}
+
+LANGUAGE="$(normalize_language_code "$LANGUAGE")"
+
+localized_text() {
+  local zh_text="$1"
+  local en_text="$2"
+  if [[ "$LANGUAGE" == "zh" ]]; then
+    printf '%s' "$zh_text"
+  else
+    printf '%s' "$en_text"
+  fi
+}
+
 usage() {
-  cat <<'EOF'
+  if [[ "$LANGUAGE" == "zh" ]]; then
+    cat <<'EOF'
+用法：scripts/build_macos_client.sh [选项]
+
+构建轻量 OpenRelix macOS 客户端。这个客户端是一个原生 AppKit
+外壳，会用 WKWebView 加载本地 reports/panel.html。
+
+选项：
+  --output PATH       将 .app bundle 写入 PATH。
+  --state-root PATH   写入 App 使用的 OpenRelix 状态目录。
+  --icon PATH         使用 PATH 作为 App 图标源 PNG。
+  --open              构建后打开 App。
+  -h, --help          显示此帮助。
+EOF
+  else
+    cat <<'EOF'
 Usage: scripts/build_macos_client.sh [options]
 
 Build the lightweight OpenRelix macOS client. The client is a native AppKit
@@ -27,6 +70,7 @@ Options:
   --open              Open the app after building.
   -h, --help          Show this help.
 EOF
+  fi
 }
 
 make_app_icon() {
@@ -64,7 +108,7 @@ while (( $# )); do
   case "$1" in
     --output)
       if (( $# < 2 )); then
-        echo "Missing value for --output" >&2
+        echo "$(localized_text "--output 缺少取值" "Missing value for --output")" >&2
         exit 2
       fi
       OUTPUT_PATH="$2"
@@ -76,7 +120,7 @@ while (( $# )); do
       ;;
     --state-root)
       if (( $# < 2 )); then
-        echo "Missing value for --state-root" >&2
+        echo "$(localized_text "--state-root 缺少取值" "Missing value for --state-root")" >&2
         exit 2
       fi
       STATE_ROOT="$2"
@@ -88,7 +132,7 @@ while (( $# )); do
       ;;
     --icon)
       if (( $# < 2 )); then
-        echo "Missing value for --icon" >&2
+        echo "$(localized_text "--icon 缺少取值" "Missing value for --icon")" >&2
         exit 2
       fi
       APP_ICON_SOURCE="$2"
@@ -107,7 +151,7 @@ while (( $# )); do
       exit 0
       ;;
     *)
-      echo "Unknown option: $1" >&2
+      echo "$(localized_text "未知选项: $1" "Unknown option: $1")" >&2
       usage >&2
       exit 2
       ;;
@@ -115,17 +159,17 @@ while (( $# )); do
 done
 
 if [[ "$OSTYPE" != darwin* ]]; then
-  echo "The OpenRelix macOS client can only be built on macOS." >&2
+  echo "$(localized_text "OpenRelix macOS 客户端只能在 macOS 上构建。" "The OpenRelix macOS client can only be built on macOS.")" >&2
   exit 1
 fi
 
 if ! command -v swiftc >/dev/null 2>&1; then
-  echo "Missing swiftc. Install Xcode Command Line Tools first: xcode-select --install" >&2
+  echo "$(localized_text "缺少 swiftc。请先安装 Xcode Command Line Tools：xcode-select --install" "Missing swiftc. Install Xcode Command Line Tools first: xcode-select --install")" >&2
   exit 1
 fi
 
 if ! command -v "$PYTHON_BIN" >/dev/null 2>&1; then
-  echo "Missing Python interpreter: $PYTHON_BIN" >&2
+  echo "$(localized_text "缺少 Python 解释器" "Missing Python interpreter"): $PYTHON_BIN" >&2
   exit 1
 fi
 
@@ -144,7 +188,7 @@ fi
 
 SOURCE_FILE="$REPO_ROOT/macos/OpenRelixClient/main.swift"
 if [[ ! -f "$SOURCE_FILE" ]]; then
-  echo "Missing client source: $SOURCE_FILE" >&2
+  echo "$(localized_text "缺少客户端源码" "Missing client source"): $SOURCE_FILE" >&2
   exit 1
 fi
 
@@ -175,10 +219,10 @@ if [[ -f "$APP_ICON_SOURCE" ]]; then
       "$RESOURCES_DIR/$APP_ICON_BASENAME.iconset" \
       "$RESOURCES_DIR/$APP_ICON_BASENAME.icns"
   else
-    echo "Skipping app icon generation because sips or iconutil is unavailable." >&2
+    echo "$(localized_text "未找到 sips 或 iconutil，已跳过 App 图标生成。" "Skipping app icon generation because sips or iconutil is unavailable.")" >&2
   fi
 else
-  echo "Skipping app icon generation because source icon is missing: $APP_ICON_SOURCE" >&2
+  echo "$(localized_text "缺少源图标，已跳过 App 图标生成" "Skipping app icon generation because source icon is missing"): $APP_ICON_SOURCE" >&2
 fi
 
 cat > "$CONTENTS_DIR/Info.plist" <<EOF
@@ -224,8 +268,8 @@ if [[ "${OPENRELIX_SKIP_CODESIGN:-0}" != "1" ]] && command -v codesign >/dev/nul
   codesign --force --deep --sign - "$OUTPUT_PATH" >/dev/null 2>&1 || true
 fi
 
-echo "Built $OUTPUT_PATH"
-echo "State root $STATE_ROOT"
+echo "$(localized_text "已构建" "Built") $OUTPUT_PATH"
+echo "$(localized_text "状态目录" "State root") $STATE_ROOT"
 
 if (( OPEN_AFTER )); then
   open "$OUTPUT_PATH"

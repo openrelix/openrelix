@@ -21,6 +21,7 @@ test-results/
 *.jpeg
 *.webp
 !macos/OpenRelixClient/AppIcon.png
+!docs/openrelix-icon.png
 
 # Keep the sanitized product showcase screenshots publishable.
 !docs/product-showcase-assets/

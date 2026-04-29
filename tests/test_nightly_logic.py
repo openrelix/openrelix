@@ -183,6 +183,51 @@ class NightlyLogicTests(unittest.TestCase):
                 self.assertFalse(config["personal_memory_enabled"])
                 self.assertFalse(config["codex_context_enabled"])
 
+    def test_personal_denylist_redacts_generated_display_text(self):
+        with TemporaryDirectory() as tmpdir:
+            denylist = Path(tmpdir) / "personal_denylist.txt"
+            denylist.write_text("PrivateProject\n私有项目\n", encoding="utf-8")
+            with mock.patch.dict(
+                os.environ,
+                {"OPENRELIX_PERSONAL_DENYLIST": str(denylist)},
+                clear=False,
+            ):
+                build_overview.personal_redaction_patterns.cache_clear()
+                try:
+                    self.assertEqual(
+                        build_overview.normalize_brand_display_text("PrivateProject dashboard"),
+                        "Work project dashboard",
+                    )
+                    self.assertEqual(
+                        build_overview.normalize_brand_display_text("来自私有项目的复盘"),
+                        "来自Work project的复盘",
+                    )
+                finally:
+                    build_overview.personal_redaction_patterns.cache_clear()
+
+    def test_repo_panel_entrypoint_is_not_written_by_default(self):
+        old_paths = build_overview.PATHS
+        old_reports_dir = build_overview.REPORTS_DIR
+        with TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            repo_root = root / "repo"
+            state_reports = root / "state" / "reports"
+            repo_root.mkdir()
+            state_reports.mkdir(parents=True)
+            try:
+                build_overview.PATHS = replace(old_paths, repo_root=repo_root)
+                build_overview.REPORTS_DIR = state_reports
+                with mock.patch.dict(
+                    os.environ,
+                    {build_overview.WRITE_REPO_PANEL_ENTRYPOINT_ENV: ""},
+                    clear=False,
+                ):
+                    build_overview.write_repo_panel_entrypoint()
+                self.assertFalse((repo_root / "reports").exists())
+            finally:
+                build_overview.PATHS = old_paths
+                build_overview.REPORTS_DIR = old_reports_dir
+
     def test_default_state_root_prefers_legacy_slug_only_when_new_root_is_absent(self):
         with TemporaryDirectory() as tmpdir:
             home = Path(tmpdir)
@@ -265,7 +310,16 @@ class NightlyLogicTests(unittest.TestCase):
                 nightly_codex_home.mkdir()
                 schema_path.write_text("{}", encoding="utf-8")
                 (main_codex_home / "auth.json").write_text("{}", encoding="utf-8")
+                (main_codex_home / "config.toml").write_text(
+                    'model_provider = "DySearchTeam"\n'
+                    'model = "gpt-5.4"\n'
+                    "\n"
+                    "[model_providers.DySearchTeam]\n"
+                    'base_url = "https://proxy.example/api/modelhub/online/"\n',
+                    encoding="utf-8",
+                )
                 (nightly_codex_home / "auth.json").symlink_to(root / "missing-auth.json")
+                (nightly_codex_home / "config.toml").write_text('model = "stale"\n', encoding="utf-8")
 
                 nightly_consolidate.MAIN_CODEX_HOME = main_codex_home
                 nightly_consolidate.NIGHTLY_CODEX_HOME = nightly_codex_home
@@ -274,12 +328,21 @@ class NightlyLogicTests(unittest.TestCase):
                 nightly_consolidate.SCHEMA_PATH = schema_path
 
                 completed = subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
-                with mock.patch.object(nightly_consolidate.subprocess, "run", return_value=completed):
+                with mock.patch.object(nightly_consolidate.subprocess, "run", return_value=completed) as run:
                     nightly_consolidate.run_codex_consolidation("prompt", output_path, language="zh")
 
                 auth_link = nightly_codex_home / "auth.json"
                 self.assertTrue(auth_link.is_symlink())
                 self.assertEqual(Path(os.readlink(auth_link)), main_codex_home / "auth.json")
+                nightly_config = nightly_codex_home / "config.toml"
+                self.assertFalse(nightly_config.is_symlink())
+                self.assertIn("DySearchTeam", nightly_config.read_text(encoding="utf-8"))
+                command = run.call_args.args[0]
+                self.assertIn("--sandbox", command)
+                self.assertIn("read-only", command)
+                self.assertIn("--disable", command)
+                self.assertIn('approval_policy="never"', command)
+                self.assertIn('history.persistence="none"', command)
         finally:
             nightly_consolidate.MAIN_CODEX_HOME = old_main_codex_home
             nightly_consolidate.NIGHTLY_CODEX_HOME = old_nightly_codex_home
@@ -1825,7 +1888,7 @@ applies_to: cwd=/tmp/OpenRelix
                 "created_at": "2026-04-28T10:00:00+08:00",
             },
             {
-                "title": "旧资产 Douyin",
+                "title": "旧资产 LegacyProject",
                 "updated_at": "2026-04-26T10:00:00+08:00",
                 "created_at": "2026-04-26T10:00:00+08:00",
             },
@@ -1857,7 +1920,7 @@ applies_to: cwd=/tmp/OpenRelix
             {
                 "date": "2026-04-26",
                 "stage": "final",
-                "keywords": ["Douyin"],
+                "keywords": ["LegacyProject"],
                 "window_summaries": [],
             },
         ]
@@ -1887,8 +1950,8 @@ applies_to: cwd=/tmp/OpenRelix
         seven_day_terms = {row["label"] for row in views[1]["terms"]}
 
         self.assertIn("OpenRelix", today_terms)
-        self.assertNotIn("Douyin", today_terms)
-        self.assertIn("Douyin", seven_day_terms)
+        self.assertNotIn("Legacyproject", today_terms)
+        self.assertIn("Legacyproject", seven_day_terms)
         self.assertIn("subreview", seven_day_terms)
         self.assertIn("ASR", seven_day_terms)
 
@@ -2138,9 +2201,9 @@ applies_to: cwd=/tmp/OpenRelix
                 {
                     "date": "2026-04-26",
                     "window_id": "w-unrelated",
-                    "project_label": "Douyin",
-                    "cwd_display": "Douyin",
-                    "question_summary": "ScanCamera ASR log_id 排查",
+                    "project_label": "LegacyProject",
+                    "cwd_display": "LegacyProject",
+                    "question_summary": "Search module ASR log_id 排查",
                     "main_takeaway": "只保留必要 AB 读取",
                     "keywords": ["ASR", "log_id"],
                 },
@@ -3831,6 +3894,34 @@ applies_to: cwd=/tmp/OpenRelix
         self.assertIn("首次自动学习会在下一个 30 分钟周期运行", installer)
         self.assertIn("Automatic learning refresh is enabled", installer)
         self.assertIn("__OVERVIEW_RUN_AT_LOAD__", launchd_template)
+
+    def test_installer_chinese_language_uses_chinese_guidance_for_install_steps(self):
+        installer = (ROOT / "install" / "install.sh").read_text(encoding="utf-8")
+        openrelix_cli = (ROOT / "scripts" / "openrelix.py").read_text(encoding="utf-8")
+        mac_client_builder = (ROOT / "scripts" / "build_macos_client.sh").read_text(encoding="utf-8")
+        memory_summary_builder = (ROOT / "scripts" / "build_codex_memory_summary.py").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn('localized_text "安装轻量 macOS 客户端..."', installer)
+        self.assertIn('localized_text "完成" "done"', installer)
+        self.assertIn("源码目录: $REPO_ROOT", installer)
+        self.assertIn('INSTALLED_MAC_CLIENT_APP="$USER_APPLICATIONS_DIR/OpenRelix.app"', installer)
+        self.assertIn('ditto "$STATE_DIR/runtime/mac-app/OpenRelix.app" "$INSTALLED_MAC_CLIENT_APP"', installer)
+        self.assertNotIn('step "Installing the lightweight macOS client..."', installer)
+        self.assertNotIn('ln -sfn "$STATE_DIR/runtime/mac-app/OpenRelix.app"', installer)
+
+        self.assertIn('Path.home() / "Applications" / MACOS_CLIENT_APP_NAME', openrelix_cli)
+        self.assertIn("def sync_macos_client_app(source, destination):", openrelix_cli)
+        self.assertIn('"Output path for the .app bundle; default is ~/Applications/OpenRelix.app."', openrelix_cli)
+
+        self.assertIn("normalize_language_code()", mac_client_builder)
+        self.assertIn('localized_text "已构建" "Built"', mac_client_builder)
+        self.assertIn('localized_text "状态目录" "State root"', mac_client_builder)
+        self.assertNotIn('echo "Built $OUTPUT_PATH"', mac_client_builder)
+        self.assertNotIn('echo "State root $STATE_ROOT"', mac_client_builder)
+
+        self.assertIn("已跳过：未找到记忆索引、已有摘要或个人记忆登记册", memory_summary_builder)
 
     def test_installer_openrelix_templates_exist_and_use_new_entrypoints(self):
         expected_templates = [

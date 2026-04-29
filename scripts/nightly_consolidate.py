@@ -21,6 +21,7 @@ from asset_runtime import (
     get_runtime_paths,
     normalize_language,
     personal_memory_enabled,
+    sync_codex_exec_home,
 )
 
 PATHS = get_runtime_paths()
@@ -93,8 +94,8 @@ def codex_failure_hint(error_text, language=None):
     lowered = str(error_text or "").lower()
     if "invalid_issuer" in lowered or "401" in lowered or "unauthorized" in lowered:
         return localized(
-            "Codex/OpenAI 认证被拒绝。请在该用户机器上运行 `codex login status` 检查登录态；如无效，运行 `codex login` 重新登录，或清理/替换错误的 `OPENAI_API_KEY` 后重试。",
-            "Codex/OpenAI authentication was rejected. Run `codex login status` on that user's machine; if invalid, run `codex login`, or clear/replace an invalid `OPENAI_API_KEY`, then retry.",
+            "Codex/OpenAI 认证被拒绝。请先确认 `codex exec` 在普通终端可用；如果使用集体/代理配置，确认 `CODEX_HOME/config.toml` 中的 model_provider/base_url 与 auth.json 一起存在；如果使用官方 OpenAI API key，再清理或替换错误的 `OPENAI_API_KEY` 后重试。",
+            "Codex/OpenAI authentication was rejected. First confirm `codex exec` works in a normal terminal. If you use a shared/proxy provider, make sure `CODEX_HOME/config.toml` keeps the matching model_provider/base_url together with auth.json. If you use an official OpenAI API key, clear or replace an invalid `OPENAI_API_KEY`, then retry.",
             language,
         )
     return localized(
@@ -1038,13 +1039,7 @@ def build_safe_consolidation_prompt(prompt, language=None):
 def run_codex_consolidation(prompt, output_path, language=None):
     output_path.parent.mkdir(parents=True, exist_ok=True)
     RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
-    NIGHTLY_CODEX_HOME.mkdir(parents=True, exist_ok=True)
-    main_auth = MAIN_CODEX_HOME / "auth.json"
-    nightly_auth = NIGHTLY_CODEX_HOME / "auth.json"
-    if main_auth.exists() and not nightly_auth.exists():
-        if nightly_auth.is_symlink():
-            nightly_auth.unlink()
-        nightly_auth.symlink_to(main_auth)
+    sync_codex_exec_home(MAIN_CODEX_HOME, NIGHTLY_CODEX_HOME)
     env = dict(os.environ)
     env["CODEX_HOME"] = str(NIGHTLY_CODEX_HOME)
     cmd = [
@@ -1054,6 +1049,18 @@ def run_codex_consolidation(prompt, output_path, language=None):
         "--cd",
         str(RUNTIME_DIR),
         "--ephemeral",
+        "--sandbox",
+        "read-only",
+        "--disable",
+        "memories",
+        "--disable",
+        "codex_hooks",
+        "-c",
+        'approval_policy="never"',
+        "-c",
+        'history.persistence="none"',
+        "-c",
+        "history.max_bytes=1048576",
         "--output-schema",
         str(SCHEMA_PATH),
         "--output-last-message",

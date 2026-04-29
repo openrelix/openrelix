@@ -1,7 +1,7 @@
 {
   "name": "openrelix",
-  "version": "0.2.0",
-  "description": "OpenRelix™ v0.1 preview: open-source personal memory keepsake for AI coding agent workflows.",
+  "version": "0.2.1",
+  "description": "OpenRelix™ v0.2 preview: open-source personal memory keepsake for AI coding agent workflows.",
   "license": "MIT",
   "author": {
     "name": "kk_kais",
@@ -44,6 +44,7 @@
     ".agents/skills/memory-review/",
     "docs/*.md",
     "docs/index.html",
+    "docs/openrelix-icon.png",
     "docs/product-showcase.html",
     "docs/changelog/v0.x.html",
     "install/*.js",

@@ -58,6 +58,7 @@ LIVE_TOKEN_ENDPOINT = "http://{}:{}/token-usage".format(LIVE_TOKEN_HOST, LIVE_TO
 LIVE_TOKEN_POLL_SECONDS = 300
 LIVE_TOKEN_TIMEOUT_MS = 20000
 PROJECT_GITHUB_URL = "https://github.com/openrelix/openrelix"
+WRITE_REPO_PANEL_ENTRYPOINT_ENV = "OPENRELIX_WRITE_REPO_PANEL_ENTRYPOINT"
 BRAND_DISPLAY_REPLACEMENTS = (
     ("scripts/openrelix.py.py", "scripts/openrelix.py"),
 )
@@ -74,6 +75,7 @@ MEMORY_BRIEF_BODY_LIMIT = 132
 MEMORY_BRIEF_FULL_TEXT_LIMIT = 520
 PANEL_PATH_LABEL = render_path(REPORTS_DIR / "panel.html")
 OVERVIEW_JSON_PATH_LABEL = render_path(REPORTS_DIR / "overview-data.json")
+PERSONAL_REDACTION_LABEL = "Work project"
 
 
 def _load_brand_icon_data_uri():
@@ -95,13 +97,74 @@ LOCAL_PATH_TOKEN_RE = re.compile(
 )
 
 
+@lru_cache(maxsize=1)
+def personal_redaction_patterns():
+    candidates = []
+    explicit = os.environ.get("OPENRELIX_PERSONAL_DENYLIST")
+    if explicit:
+        candidates.append(Path(explicit).expanduser())
+    try:
+        candidates.append(PATHS.state_root / "personal_denylist.txt")
+    except Exception:
+        pass
+
+    compiled = []
+    seen = set()
+    for path in candidates:
+        try:
+            resolved = path.resolve()
+        except OSError:
+            continue
+        if resolved in seen or not resolved.is_file():
+            continue
+        seen.add(resolved)
+        try:
+            lines = resolved.read_text(encoding="utf-8").splitlines()
+        except OSError:
+            continue
+        for raw in lines:
+            line = raw.strip()
+            if not line or line.startswith("#"):
+                continue
+            try:
+                compiled.append(re.compile(line))
+            except re.error:
+                continue
+    return tuple(compiled)
+
+
+def redact_personal_text(value):
+    if not isinstance(value, str):
+        return value
+    text = value
+    text = re.sub(r"file:///(?:Users|home)/[^/\s<>\"']+", "file://~", text)
+    text = re.sub(r"(?:/Users|/home)/[^/\s<>\"']+", "~", text)
+
+    def redact_url(match):
+        url = match.group(0)
+        lowered = url.lower()
+        if (
+            lowered.startswith("http://127.")
+            or lowered.startswith("http://localhost")
+            or lowered.startswith("https://github.com/openrelix/")
+            or lowered.startswith("https://openrelix.org")
+        ):
+            return url
+        return "<link>"
+
+    text = re.sub(r"https?://[^\s<>\"']+", redact_url, text)
+    for pattern in personal_redaction_patterns():
+        text = pattern.sub(PERSONAL_REDACTION_LABEL, text)
+    return text
+
+
 def normalize_brand_display_text(value):
     if not isinstance(value, str):
         return value
     text = value
     for source, target in BRAND_DISPLAY_REPLACEMENTS:
         text = text.replace(source, target)
-    return text
+    return redact_personal_text(text)
 
 
 def normalize_brand_display_payload(value):
@@ -203,7 +266,6 @@ TERM_ALIASES = {
     "library": "资产库",
     "openrelix": "OpenRelix",
     PREVIOUS_PUBLIC_APP_SLUG: "OpenRelix",
-    "douyin": "Douyin",
     "github": "GitHub",
     "launchagent": "LaunchAgent",
     "subreview": "subreview",
@@ -293,7 +355,6 @@ FREEFORM_TEXT_EN = {
     "协作沟通": "Collaboration",
     "Codex 全局工作手册": "Codex global operating manual",
     "个人资产整理技能": "Personal asset librarian skill",
-    "抖音工作资产整理技能": "Douyin work asset librarian skill",
     "AI 资产概览链路": "AI asset overview pipeline",
     "Codex /subreview:run 外部评审循环": "Codex /subreview:run external review loop",
     "Token 图表 Apple 风格配色优化": "Token chart Apple-style color refinement",
@@ -308,9 +369,6 @@ FREEFORM_TEXT_EN = {
     ),
     "把复盘、方法、模板和流程整理成可持续复用的本地资产。": (
         "Turns reviews, methods, templates, and workflows into sustainable reusable local assets."
-    ),
-    "把抖音相关工作的经验沉淀为可复用条目，同时避免给仓库增加 git 负担。": (
-        "Captures Douyin work experience as reusable entries without adding git burden to the repo."
     ),
     "把本地资产、复盘和 token 数据整理成一份可直接查看的概览和面板。": (
         "Turns local assets, reviews, and token data into a directly browsable overview and panel."
@@ -339,7 +397,6 @@ FREEFORM_PHRASE_EN = {
     "独立评审": "independent review",
     "外部评审": "external review",
     "飞书画板": "Feishu Whiteboard",
-    "抖音": "Douyin",
     "图表": "chart",
     "风格": "style",
     "配色": "color",
@@ -370,7 +427,6 @@ DISPLAY_TYPE = {
 DISPLAY_DOMAIN = {
     "general": "跨场景通用",
     "通用": "跨场景通用",
-    "douyin": "Douyin",
     "openrelix": "OpenRelix",
     "personal-asset-automation": "个人资产自动化",
     "open-source-branding": "开源品牌",
@@ -441,7 +497,6 @@ DISPLAY_DOMAIN_EN = {
     "general": "Cross-scenario",
     "通用": "Cross-scenario",
     "跨场景通用": "Cross-scenario",
-    "douyin": "Douyin",
     "openrelix": "OpenRelix",
     "personal-asset-automation": "Personal asset automation",
     "个人资产自动化": "Personal asset automation",
@@ -1693,7 +1748,7 @@ def normalize_brand_display_text(value):
     for phrase in LEGACY_BRAND_PHRASES:
         text = text.replace(phrase, BRAND_DISPLAY_NAME)
     text = re.sub(r"\bAPA\b", BRAND_DISPLAY_NAME, text)
-    return text
+    return redact_personal_text(text)
 
 
 def current_local_datetime():
@@ -5041,9 +5096,18 @@ def classify_codex_native_memory_type(title, desc="", learnings=""):
 # live at <state_root>/personal_codex_rules.py — that path is outside the
 # git repo and the npm package, so personal project names cannot leak in.
 # See _load_personal_codex_native_rules() below for the supported keys.
-CODEX_NATIVE_TITLE_ZH = {}
-CODEX_NATIVE_NOTE_ZH = {}
-CODEX_NATIVE_TASK_BODY_ZH = {}
+CODEX_NATIVE_TITLE_ZH = {
+    "subreview run live contract and independent codex review loop": "Codex 独立评审循环",
+    "local codex personal asset system genericization and launchagent runtime": "本地 OpenRelix 系统、通用化与 LaunchAgent 运行时",
+}
+CODEX_NATIVE_NOTE_ZH = {
+    "subreview run live contract and independent codex review loop": "记录 /subreview:run 的独立评审入口、临时 git snapshot 和 10/10 评分闭环。",
+    "local codex personal asset system genericization and launchagent runtime": "用户级个人资产系统、全局规则通用化、记忆面板和 LaunchAgent 运行时。",
+}
+CODEX_NATIVE_TASK_BODY_ZH = {
+    "subreview run live contract and independent codex review loop": "独立 Codex 评审循环，围绕 /subreview:run、临时 git snapshot 和评分迭代收口。",
+    "local codex personal asset system genericization and launchagent runtime": "用户级个人资产系统、全局规则通用化、记忆面板和 LaunchAgent 运行时。",
+}
 CODEX_NATIVE_BULLET_ZH = {}
 CODEX_NATIVE_TOPIC_RULES_ZH = []
 CODEX_NATIVE_BULLET_RULES_ZH = []
@@ -8151,6 +8215,11 @@ def build_markdown(data):
 
 
 def build_csv(data, output_path):
+    def csv_value(value):
+        if isinstance(value, str):
+            return normalize_brand_display_text(value)
+        return value
+
     with output_path.open("w", encoding="utf-8", newline="") as csvfile:
         writer = csv.writer(csvfile)
         writer.writerow(
@@ -8185,27 +8254,30 @@ def build_csv(data, output_path):
         ]:
             writer.writerow(
                 [
-                    asset.get("id", ""),
-                    asset.get("display_title") or asset.get("title", ""),
-                    asset.get("type", ""),
-                    asset.get("display_type", asset.get("type", "")),
-                    asset.get("domain", ""),
-                    asset.get("display_domain", asset.get("domain", "")),
-                    asset.get("scope", ""),
-                    asset.get("display_scope", asset.get("scope", "")),
-                    asset.get("status", ""),
-                    asset.get("display_status", asset.get("status", "")),
-                    asset.get("created_at", ""),
-                    asset.get("updated_at", ""),
-                    asset.get("manual_reuse_count", 0),
-                    asset.get("tracked_usage_events", 0),
-                    asset.get("tracked_minutes_saved", 0),
-                    asset.get("estimated_value_score", 0),
-                    asset.get("estimated_minutes_saved", 0),
-                    asset.get("value_evidence_count", 0),
-                    asset.get("display_value_note") or asset.get("value_note", ""),
-                    "; ".join(asset.get("artifact_paths", [])),
-                    ", ".join(asset.get("tags", [])),
+                    csv_value(value)
+                    for value in [
+                        asset.get("id", ""),
+                        asset.get("display_title") or asset.get("title", ""),
+                        asset.get("type", ""),
+                        asset.get("display_type", asset.get("type", "")),
+                        asset.get("domain", ""),
+                        asset.get("display_domain", asset.get("domain", "")),
+                        asset.get("scope", ""),
+                        asset.get("display_scope", asset.get("scope", "")),
+                        asset.get("status", ""),
+                        asset.get("display_status", asset.get("status", "")),
+                        asset.get("created_at", ""),
+                        asset.get("updated_at", ""),
+                        asset.get("manual_reuse_count", 0),
+                        asset.get("tracked_usage_events", 0),
+                        asset.get("tracked_minutes_saved", 0),
+                        asset.get("estimated_value_score", 0),
+                        asset.get("estimated_minutes_saved", 0),
+                        asset.get("value_evidence_count", 0),
+                        asset.get("display_value_note") or asset.get("value_note", ""),
+                        "; ".join(asset.get("artifact_paths", [])),
+                        ", ".join(asset.get("tags", [])),
+                    ]
                 ]
             )
 
@@ -8607,6 +8679,8 @@ def remove_legacy_dashboard_outputs():
 
 
 def write_repo_panel_entrypoint():
+    if not os.environ.get(WRITE_REPO_PANEL_ENTRYPOINT_ENV):
+        return
     repo_reports_dir = PATHS.repo_root / "reports"
     if repo_reports_dir.resolve() == REPORTS_DIR.resolve():
         return

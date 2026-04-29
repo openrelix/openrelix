@@ -94,6 +94,10 @@ class BuildResult:
     status: str
 
 
+def localized(zh_text, en_text):
+    return zh_text if LANGUAGE == "zh" else en_text
+
+
 def parse_args():
     parser = argparse.ArgumentParser(
         description=(
@@ -965,7 +969,12 @@ def main():
     personal_memory_text = "" if args.no_personal_memory else load_text_if_exists(personal_memory_registry_path)
     personal_memory_items = parse_personal_memory_registry(personal_memory_text, language=LANGUAGE)
     if not memory_index_text and not existing_summary_text and not personal_memory_items:
-        print("skip: no memory index, existing summary, or personal memory registry found")
+        print(
+            localized(
+                "已跳过：未找到记忆索引、已有摘要或个人记忆登记册",
+                "skip: no memory index, existing summary, or personal memory registry found",
+            )
+        )
         return
 
     budget = build_budget_from_args(args)
@@ -977,7 +986,10 @@ def main():
     )
     if result.status == "over_budget":
         raise SystemExit(
-            "generated memory summary is still over budget: {} > {} ({})".format(
+            localized(
+                "生成的记忆摘要仍超过预算：{} > {} ({})",
+                "generated memory summary is still over budget: {} > {} ({})",
+            ).format(
                 result.estimated_tokens,
                 budget.max_tokens,
                 result.estimator,
@@ -989,16 +1001,28 @@ def main():
     else:
         atomic_write_text(memory_summary_path, result.text)
 
-    print(
-        "memory_summary status={} estimated_tokens={} estimator={} target={} warn={} max={}".format(
-            result.status,
-            result.estimated_tokens,
-            result.estimator,
-            budget.target_tokens,
-            budget.warn_tokens,
-            budget.max_tokens,
+    if LANGUAGE == "zh":
+        print(
+            "记忆摘要 状态={} 估算_tokens={} 估算器={} 目标={} 警戒={} 上限={}".format(
+                result.status,
+                result.estimated_tokens,
+                result.estimator,
+                budget.target_tokens,
+                budget.warn_tokens,
+                budget.max_tokens,
+            )
         )
-    )
+    else:
+        print(
+            "memory_summary status={} estimated_tokens={} estimator={} target={} warn={} max={}".format(
+                result.status,
+                result.estimated_tokens,
+                result.estimator,
+                budget.target_tokens,
+                budget.warn_tokens,
+                budget.max_tokens,
+            )
+        )
 
 
 if __name__ == "__main__":

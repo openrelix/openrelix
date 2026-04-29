@@ -32,6 +32,7 @@ from asset_runtime import (
     normalize_language,
     normalize_memory_summary_max_tokens,
     normalize_memory_mode,
+    sync_codex_exec_home,
     write_runtime_config,
 )
 
@@ -499,8 +500,8 @@ def build_parser():
     app_cmd.add_argument(
         "--output",
         help=localized(
-            "客户端 .app 输出路径；默认写入 state root 的 runtime/mac-app。",
-            "Output path for the .app bundle; default is runtime/mac-app under the state root.",
+            "客户端 .app 输出路径；默认安装到 ~/Applications/OpenRelix.app。",
+            "Output path for the .app bundle; default is ~/Applications/OpenRelix.app.",
         ),
     )
     app_cmd.add_argument(
@@ -1047,13 +1048,7 @@ def command_exists(command):
 
 def run_doctor_model_check():
     PATHS.nightly_runner_dir.mkdir(parents=True, exist_ok=True)
-    PATHS.nightly_codex_home.mkdir(parents=True, exist_ok=True)
-    main_auth = PATHS.codex_home / "auth.json"
-    nightly_auth = PATHS.nightly_codex_home / "auth.json"
-    if main_auth.exists() and not nightly_auth.exists():
-        if nightly_auth.is_symlink():
-            nightly_auth.unlink()
-        nightly_auth.symlink_to(main_auth)
+    sync_codex_exec_home(PATHS.codex_home, PATHS.nightly_codex_home)
 
     env = dict(os.environ)
     env["CODEX_HOME"] = str(PATHS.nightly_codex_home)
@@ -1065,6 +1060,18 @@ def run_doctor_model_check():
             "--cd",
             str(PATHS.nightly_runner_dir),
             "--ephemeral",
+            "--sandbox",
+            "read-only",
+            "--disable",
+            "memories",
+            "--disable",
+            "codex_hooks",
+            "-c",
+            'approval_policy="never"',
+            "-c",
+            'history.persistence="none"',
+            "-c",
+            "history.max_bytes=1048576",
             "-",
         ],
         input="Reply exactly: OPENRELIX_DOCTOR_OK\n",
@@ -1249,6 +1256,43 @@ def command_doctor(args):
     else:
         append_doctor_check(checks, "openai_api_key_env", "ok", "OPENAI_API_KEY is not set")
 
+    codex_config_path = PATHS.codex_home / "config.toml"
+    if codex_config_path.exists():
+        try:
+            config_text = codex_config_path.read_text(encoding="utf-8")
+        except OSError as exc:
+            append_doctor_check(
+                checks,
+                "codex_config_file",
+                "warn",
+                str(codex_config_path),
+                localized("无法读取 config.toml：{}".format(exc), "Could not read config.toml: {}".format(exc)),
+            )
+        else:
+            provider_match = re.search(r'(?m)^\s*model_provider\s*=\s*"([^"]+)"', config_text)
+            provider_detail = "model_provider={}".format(provider_match.group(1)) if provider_match else "config.toml present"
+            append_doctor_check(
+                checks,
+                "codex_config_file",
+                "ok",
+                provider_detail,
+                localized(
+                    "集体/代理配置需要 auth.json 和 config.toml 一起保留。",
+                    "Shared/proxy providers need auth.json and config.toml to stay together.",
+                ),
+            )
+    else:
+        append_doctor_check(
+            checks,
+            "codex_config_file",
+            "warn",
+            str(codex_config_path),
+            localized(
+                "如果使用集体/代理配置，请确认 config.toml 中的 model_provider/base_url 没有丢失。",
+                "If you use a shared/proxy provider, make sure config.toml still has the matching model_provider/base_url.",
+            ),
+        )
+
     latest_summary = load_review_summary_if_available(current_date_str())
     if summary_has_model_failure(latest_summary):
         append_doctor_check(
@@ -1286,8 +1330,8 @@ def command_doctor(args):
                         "fail",
                         output[-600:] or "codex exec failed with exit code {}".format(result.returncode),
                         localized(
-                            "重新登录 Codex，或检查 OPENAI_API_KEY 后重试。",
-                            "Log in to Codex again, or check OPENAI_API_KEY, then retry.",
+                            "重新登录 Codex；如果使用集体/代理配置，同时检查 config.toml 的 model_provider/base_url；如果使用官方 key，再检查 OPENAI_API_KEY。",
+                            "Log in to Codex again. If you use a shared/proxy provider, also check config.toml model_provider/base_url; if you use an official key, check OPENAI_API_KEY.",
                         ),
                     )
             except subprocess.TimeoutExpired:
@@ -1887,8 +1931,39 @@ def open_path(path):
     subprocess.run([cmd, str(path)], check=True)
 
 
-def default_macos_client_app_path():
+def staged_macos_client_app_path():
     return PATHS.runtime_dir / "mac-app" / MACOS_CLIENT_APP_NAME
+
+
+def default_macos_client_app_path():
+    return Path.home() / "Applications" / MACOS_CLIENT_APP_NAME
+
+
+def remove_macos_client_app(path):
+    if path.is_symlink() or path.is_file():
+        path.unlink()
+    elif path.exists():
+        shutil.rmtree(path)
+
+
+def sync_macos_client_app(source, destination):
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    remove_macos_client_app(destination)
+    if shutil.which("ditto"):
+        subprocess.run(["ditto", str(source), str(destination)], check=True)
+    else:
+        shutil.copytree(source, destination)
+    lsregister = Path(
+        "/System/Library/Frameworks/CoreServices.framework/Frameworks/"
+        "LaunchServices.framework/Support/lsregister"
+    )
+    if lsregister.exists():
+        subprocess.run(
+            [str(lsregister), "-f", str(destination)],
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
 
 
 def command_app(args):
@@ -1898,7 +1973,8 @@ def command_app(args):
             "The macOS client can only be built and opened on macOS.",
         ))
 
-    app_path = Path(args.output).expanduser() if args.output else default_macos_client_app_path()
+    output_explicit = bool(args.output)
+    app_path = Path(args.output).expanduser() if output_explicit else default_macos_client_app_path()
     if not app_path.is_absolute():
         app_path = Path.cwd() / app_path
     app_path = app_path.resolve()
@@ -1916,17 +1992,20 @@ def command_app(args):
             ))
         env = os.environ.copy()
         env.setdefault("AI_ASSET_STATE_DIR", str(PATHS.state_root))
+        build_output_path = app_path if output_explicit else staged_macos_client_app_path()
         subprocess.run(
             [
                 str(BUILD_MACOS_CLIENT_SCRIPT),
                 "--output",
-                str(app_path),
+                str(build_output_path),
                 "--state-root",
                 str(PATHS.state_root),
             ],
             check=True,
             env=env,
         )
+        if not output_explicit:
+            sync_macos_client_app(build_output_path, app_path)
 
     if not getattr(args, "no_open", False):
         open_path(app_path)

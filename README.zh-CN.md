@@ -60,7 +60,7 @@ v0.1.0 预览版仅支持 macOS。公开安装路径假设：
 - `zsh`
 - Python 3.10+
 - Codex CLI，并且 `CODEX_HOME` 可写，默认是 `~/.codex`
-- 如果要使用模型学习刷新，需要当前用户的 `codex exec` 登录态可用。若 `openrelix refresh --learn-memory` 报 `401`、`Unauthorized` 或 `invalid_issuer`，先运行 `codex login status` 检查账号；无效时重新 `codex login`，或清理错误的 `OPENAI_API_KEY` 后再重试。
+- 如果要使用模型学习刷新，需要当前用户的 `codex exec` 模型链路可用。若 `openrelix refresh --learn-memory` 报 `401`、`Unauthorized` 或 `invalid_issuer`，先确认普通终端里 `codex exec` 可用；使用集体/代理配置时，`CODEX_HOME/auth.json` 和 `CODEX_HOME/config.toml` 需要一起保留，因为 `model_provider/base_url` 不在 `auth.json` 里；使用官方 OpenAI API key 时，再检查或清理错误的 `OPENAI_API_KEY`。
 
 Linux 和 Windows 是后续工作。部分底层 Python 脚本已经把路径做成可配置，但当前公开 installer 和后台自动化应按 macOS-only 理解。
 
@@ -171,7 +171,7 @@ Memory 默认开启。当前 Codex adapter 的默认模式是 `integrated`：系
 3. 把 repo 提供的 `memory-review` skill symlink 到 `~/.codex/skills/`。
 4. 把 repo 提供的 custom prompt 安装到 `~/.codex/prompts/memory-review.md` 作为兼容 fallback。
 5. 安装全局 `openrelix` shell command，并确保用户选择的 bin 目录在 `PATH` 中。
-6. 如果本机有 `swiftc`，构建轻量 macOS 客户端到 `<state-root>/runtime/mac-app/OpenRelix.app`。
+6. 如果本机有 `swiftc`，先在 state root 构建轻量 macOS 客户端，再把真实 app bundle 安装到 `~/Applications/OpenRelix.app`。
 7. 渲染并 bootstrap macOS LaunchAgents：
    - 每 30 分钟刷新 overview；如果开启 `--enable-learning-refresh`，会调用当前 Codex adapter 并从 7 天窗口学习
    - token live server
@@ -209,8 +209,8 @@ openrelix update --check
 openrelix update --yes
 ```
 
-macOS 上可以用 `openrelix app` 构建并打开一个轻量原生客户端，默认位置是
-`<state-root>/runtime/mac-app/OpenRelix.app`。它只是用 AppKit/WebKit 封装同一份本地
+macOS 上可以用 `openrelix app` 构建并打开一个轻量原生客户端，默认安装位置是
+`~/Applications/OpenRelix.app`。它只是用 AppKit/WebKit 封装同一份本地
 `reports/panel.html`，不引入 Electron，也不依赖托管服务。从 repo checkout 调试时，也可以运行
 `./scripts/build_macos_client.sh --open` 构建本地 `dist/OpenRelix.app`。
 

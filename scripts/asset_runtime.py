@@ -344,6 +344,51 @@ def atomic_write_json(path: Path, payload) -> None:
     atomic_write_text(path, json.dumps(payload, ensure_ascii=False, indent=2) + "\n")
 
 
+def _remove_runtime_file(path: Path) -> None:
+    if path.is_symlink() or path.exists():
+        if path.is_dir() and not path.is_symlink():
+            raise IsADirectoryError(str(path))
+        path.unlink()
+
+
+def _ensure_runtime_symlink(source: Path, link_path: Path) -> None:
+    if link_path.is_symlink():
+        try:
+            if Path(os.readlink(link_path)) == source:
+                return
+        except OSError:
+            pass
+    _remove_runtime_file(link_path)
+    link_path.symlink_to(source)
+
+
+def _sync_runtime_text_file(source: Path, target: Path) -> None:
+    if target.is_symlink():
+        target.unlink()
+    elif target.exists() and target.is_dir():
+        raise IsADirectoryError(str(target))
+    atomic_write_text(target, source.read_text(encoding="utf-8"))
+    try:
+        os.chmod(target, 0o600)
+    except OSError:
+        pass
+
+
+def sync_codex_exec_home(main_codex_home: Path, exec_codex_home: Path) -> None:
+    """Prepare an isolated CODEX_HOME for non-interactive Codex exec runs."""
+    exec_codex_home.mkdir(parents=True, exist_ok=True)
+    for name, mode in (("auth.json", "symlink"), ("config.toml", "copy")):
+        source = main_codex_home / name
+        target = exec_codex_home / name
+        if source.exists():
+            if mode == "symlink":
+                _ensure_runtime_symlink(source, target)
+            else:
+                _sync_runtime_text_file(source, target)
+            continue
+        _remove_runtime_file(target)
+
+
 def runtime_config_path(paths: Optional["RuntimePaths"] = None) -> Path:
     paths = paths or get_runtime_paths()
     return paths.runtime_dir / "config.json"

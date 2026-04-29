@@ -53,6 +53,8 @@ LEARN_AFTER_INSTALL=1
 STEP_INDEX=0
 TOTAL_STEPS=1
 OVERVIEW_RUN_AT_LOAD="<true/>"
+USER_APPLICATIONS_DIR="$HOME/Applications"
+INSTALLED_MAC_CLIENT_APP="$USER_APPLICATIONS_DIR/OpenRelix.app"
 
 usage() {
   cat <<'EOF'
@@ -128,17 +130,27 @@ without context injection.
 EOF
 }
 
+localized_text() {
+  local zh_text="$1"
+  local en_text="$2"
+  if [[ "$LANGUAGE" == "zh" ]]; then
+    printf '%s' "$zh_text"
+  else
+    printf '%s' "$en_text"
+  fi
+}
+
 step() {
   STEP_INDEX=$((STEP_INDEX + 1))
   printf '[%d/%d] %s\n' "$STEP_INDEX" "$TOTAL_STEPS" "$1"
 }
 
 step_done() {
-  printf '        done\n'
+  printf '        %s\n' "$(localized_text "完成" "done")"
 }
 
 step_skip() {
-  printf '        skipped\n'
+  printf '        %s\n' "$(localized_text "已跳过" "skipped")"
 }
 
 run_step() {
@@ -946,11 +958,11 @@ if errors:
 PY
 }
 
-run_step "Initializing state root, language config, and first overview..." \
+run_step "$(localized_text "初始化状态目录、语言配置和第一份概览..." "Initializing state root, language config, and first overview...")" \
   initialize_state_root
 
 if (( ENABLE_CODEX_MEMORY_SUMMARY )); then
-  run_step "Syncing the bounded Codex memory summary..." \
+  run_step "$(localized_text "同步受控的 Codex 记忆摘要..." "Syncing the bounded Codex memory summary...")" \
     "$PYTHON_BIN" "$REPO_ROOT/scripts/build_codex_memory_summary.py" \
     --memory-summary "$CODEX_HOME/memories/memory_summary.md"
 fi
@@ -965,14 +977,14 @@ if (( ENABLE_HISTORY )); then
   config_args+=(--enable-history --history-max-bytes 268435456)
 fi
 if (( ${#config_args[@]} > 0 )); then
-  run_step "Configuring Codex user settings..." \
+  run_step "$(localized_text "配置 Codex 用户设置..." "Configuring Codex user settings...")" \
     "$PYTHON_BIN" "$REPO_ROOT/install/configure_codex_user.py" \
     --config "$CODEX_HOME/config.toml" \
     "${config_args[@]}"
 fi
 
 if (( INSTALL_GLOBAL_SKILLS )); then
-  step "Linking memory-review into the user Codex skill directory..."
+  step "$(localized_text "把 memory-review 链接到用户 Codex skill 目录..." "Linking memory-review into the user Codex skill directory...")"
   mkdir -p "$CODEX_HOME/skills"
   ln -sfn "$REPO_ROOT/.agents/skills/memory-review" \
     "$CODEX_HOME/skills/memory-review"
@@ -980,7 +992,7 @@ if (( INSTALL_GLOBAL_SKILLS )); then
 fi
 
 if (( INSTALL_CUSTOM_PROMPTS )); then
-  step "Installing Codex custom prompts..."
+  step "$(localized_text "安装 Codex 自定义提示词..." "Installing Codex custom prompts...")"
   mkdir -p "$CODEX_HOME/prompts"
   "$PYTHON_BIN" "$REPO_ROOT/install/render_template.py" \
     --template "$REPO_ROOT/install/templates/codex-prompts/memory-review.md.tmpl" \
@@ -991,7 +1003,7 @@ if (( INSTALL_CUSTOM_PROMPTS )); then
 fi
 
 if (( INSTALL_GLOBAL_COMMAND )); then
-  step "Installing the global openrelix command..."
+  step "$(localized_text "安装全局 openrelix 命令..." "Installing the global openrelix command...")"
   mkdir -p "$BIN_DIR"
   "$PYTHON_BIN" "$REPO_ROOT/install/render_template.py" \
     --template "$REPO_ROOT/install/templates/bin/openrelix.tmpl" \
@@ -1012,28 +1024,41 @@ if (( INSTALL_GLOBAL_COMMAND )); then
 fi
 
 if [[ "$OSTYPE" == darwin* ]] && (( INSTALL_MAC_CLIENT )); then
-  step "Installing the lightweight macOS client..."
+  step "$(localized_text "安装轻量 macOS 客户端..." "Installing the lightweight macOS client...")"
   if [[ ! -x "$REPO_ROOT/scripts/build_macos_client.sh" ]]; then
     if (( MAC_CLIENT_EXPLICIT )); then
-      echo "Missing macOS client builder: $REPO_ROOT/scripts/build_macos_client.sh" >&2
+      echo "$(localized_text "缺少 macOS 客户端构建脚本" "Missing macOS client builder"): $REPO_ROOT/scripts/build_macos_client.sh" >&2
       exit 1
     fi
-    echo "        missing builder; skipped"
+    printf '        %s\n' "$(localized_text "缺少构建脚本；已跳过" "missing builder; skipped")"
     step_skip
   elif ! command -v swiftc >/dev/null 2>&1; then
     if (( MAC_CLIENT_EXPLICIT )); then
-      echo "Missing swiftc. Install Xcode Command Line Tools first: xcode-select --install" >&2
+      echo "$(localized_text "缺少 swiftc。请先安装 Xcode Command Line Tools：xcode-select --install" "Missing swiftc. Install Xcode Command Line Tools first: xcode-select --install")" >&2
       exit 1
     fi
-    echo "        swiftc not found; skipped"
+    printf '        %s\n' "$(localized_text "未找到 swiftc；已跳过" "swiftc not found; skipped")"
+    step_skip
+  elif ! command -v ditto >/dev/null 2>&1; then
+    if (( MAC_CLIENT_EXPLICIT )); then
+      echo "$(localized_text "缺少 ditto，无法把 macOS 客户端安装到用户应用目录。" "Missing ditto; cannot install the macOS client into the user Applications directory.")" >&2
+      exit 1
+    fi
+    printf '        %s\n' "$(localized_text "未找到 ditto；已跳过" "ditto not found; skipped")"
     step_skip
   else
     "$REPO_ROOT/scripts/build_macos_client.sh" \
       --output "$STATE_DIR/runtime/mac-app/OpenRelix.app" \
       --state-root "$STATE_DIR"
     MAC_CLIENT_INSTALLED=1
-    mkdir -p "$HOME/Applications"
-    ln -sfn "$STATE_DIR/runtime/mac-app/OpenRelix.app" "$HOME/Applications/OpenRelix.app"
+    mkdir -p "$USER_APPLICATIONS_DIR"
+    rm -rf "$INSTALLED_MAC_CLIENT_APP"
+    ditto "$STATE_DIR/runtime/mac-app/OpenRelix.app" "$INSTALLED_MAC_CLIENT_APP"
+    LSREGISTER="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
+    if [[ -x "$LSREGISTER" ]]; then
+      "$LSREGISTER" -f "$INSTALLED_MAC_CLIENT_APP" >/dev/null 2>&1 || true
+    fi
+    printf '        %s\n' "$(localized_text "已同步到用户应用目录: $INSTALLED_MAC_CLIENT_APP" "Synced to user Applications: $INSTALLED_MAC_CLIENT_APP")"
     step_done
   fi
 fi
@@ -1042,7 +1067,7 @@ if [[ "$OSTYPE" == darwin* ]] && (( ENABLE_BACKGROUND_SERVICES || ENABLE_NIGHTLY
   mkdir -p "$HOME/Library/LaunchAgents"
 
   if (( ENABLE_BACKGROUND_SERVICES )); then
-    step "Installing background refresh services..."
+    step "$(localized_text "安装后台刷新服务..." "Installing background refresh services...")"
     render_plist \
       "io.github.openrelix.overview-refresh.plist.tmpl" \
       "$HOME/Library/LaunchAgents/io.github.openrelix.overview-refresh.plist"
@@ -1061,7 +1086,7 @@ if [[ "$OSTYPE" == darwin* ]] && (( ENABLE_BACKGROUND_SERVICES || ENABLE_NIGHTLY
   fi
 
   if (( ENABLE_NIGHTLY )); then
-    step "Installing nightly organization services..."
+    step "$(localized_text "安装夜间整理服务..." "Installing nightly organization services...")"
     render_plist \
       "io.github.openrelix.nightly-organize.plist.tmpl" \
       "$HOME/Library/LaunchAgents/io.github.openrelix.nightly-organize.plist"
@@ -1079,7 +1104,7 @@ if [[ "$OSTYPE" == darwin* ]] && (( ENABLE_BACKGROUND_SERVICES || ENABLE_NIGHTLY
   fi
 
   if (( ENABLE_UPDATE_CHECK )); then
-    step "Installing daily update check service..."
+    step "$(localized_text "安装每日更新检查服务..." "Installing daily update check service...")"
     render_plist \
       "io.github.openrelix.update-check.plist.tmpl" \
       "$HOME/Library/LaunchAgents/io.github.openrelix.update-check.plist"
@@ -1112,7 +1137,7 @@ open_panel_command() {
       printf 'openrelix app\n'
       return
     fi
-    printf 'open %q\n' "$STATE_DIR/runtime/mac-app/OpenRelix.app"
+    printf 'open %q\n' "$INSTALLED_MAC_CLIENT_APP"
     return
   fi
   if (( INSTALL_GLOBAL_COMMAND )); then
@@ -1126,7 +1151,7 @@ mac_app_command() {
   if (( INSTALL_GLOBAL_COMMAND )); then
     printf 'openrelix app'
   else
-    printf 'open %q' "$STATE_DIR/runtime/mac-app/OpenRelix.app"
+    printf 'open %q' "$INSTALLED_MAC_CLIENT_APP"
   fi
 }
 
@@ -1165,9 +1190,9 @@ OpenRelix 已安装完成。
 
 安装信息：
   安装模式: $INSTALL_PROFILE
-  Repo root: $REPO_ROOT
-  State root: $STATE_DIR
-  Codex home: $CODEX_HOME
+  源码目录: $REPO_ROOT
+  状态目录: $STATE_DIR
+  Codex 目录: $CODEX_HOME
   语言: $LANGUAGE
   记忆模式: $MEMORY_MODE
   活动来源: $ACTIVITY_SOURCE
@@ -1427,7 +1452,7 @@ if (( INTERACTIVE_TTY )) && (( LEARN_AFTER_INSTALL )); then
 fi
 
 if (( INTERACTIVE_TTY )) && (( WILL_AUTO_LAUNCH )); then
-  APP_LAUNCH_PATH="$STATE_DIR/runtime/mac-app/OpenRelix.app"
+  APP_LAUNCH_PATH="$INSTALLED_MAC_CLIENT_APP"
   if [[ -d "$APP_LAUNCH_PATH" ]]; then
     if [[ "$LANGUAGE" == "en" ]]; then
       printf $'\nOpen the OpenRelix client now? [Y/n]: '

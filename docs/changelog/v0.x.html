@@ -618,6 +618,17 @@
     <section class="section">
       <div class="inner">
         <div class="changelog-list">
+          <article class="changelog-entry is-released" id="v0-2-1">
+            <div class="changelog-meta">
+              <span class="changelog-version">v0.2.1</span>
+              <span class="changelog-date">2026-04-29</span>
+              <span class="changelog-chip">已发布</span>
+            </div>
+            <div class="changelog-body">
+              <p>更新了登陆校验失败的bug。</p>
+            </div>
+          </article>
+
           <article class="changelog-entry is-released" id="v0-2-0">
             <div class="changelog-meta">
               <span class="changelog-version">v0.2.0</span>
@@ -629,7 +640,7 @@
               <p>v0.1 系列之后的第一次 minor 升级。OpenRelix 不再只是命令行——它现在是个能在 Launchpad 里搜到的 macOS app，并且会在右下角小声提醒你「有新版了」。</p>
               <span class="group-title">新功能</span>
               <ul>
-                <li>macOS 桌面端：构建产物自动挂到 <code>~/Applications/OpenRelix.app</code>，Launchpad / Spotlight / Finder「应用程序」都能直接搜到，不用再翻终端</li>
+                <li>macOS 桌面端：真实 app bundle 自动同步到 <code>~/Applications/OpenRelix.app</code>，Launchpad / Spotlight / Finder「应用程序」更稳定可发现，不用再翻终端</li>
                 <li>面板内自动检查新版本：右下角飘个小药丸告诉你有新版可升，客户端面板可以一键执行 <code>openrelix update --yes</code>（走本地 Token 校验 + <code>file://</code> 来源限制，杜绝公网页面摸进来）；浏览器端没有本地权限，降级为帮你把 <code>npm update -g openrelix</code> 复制到剪贴板</li>
                 <li>安装 / 更新结束后会主动问你两句：要不要现在就学一下最近 7 天的记忆（5–15 分钟）？要不要顺手打开客户端？不想被问就加 <code>--no-learn</code> / <code>--no-launch</code>，CI 和非交互终端自动跳过</li>
               </ul>
@@ -761,12 +772,13 @@
         "Unreleased": "Unreleased",
         "主线开发中的改动": "Mainline Changes In Progress",
         "以下改动已合入 main 分支，但尚未单独发布版本号；下一次版本号上调时这些条目会归入对应版本。": "These changes are merged into main but have not received their own version bump yet; the next release will absorb them.",
+        "更新了登陆校验失败的bug。": "Fixed the login validation failure bug.",
         "桌面端来了，面板会自己提醒升级": "Desktop App Has Arrived — And The Panel Pings You About Updates",
         "v0.1 系列之后的第一次 minor 升级。OpenRelix 不再只是命令行——它现在是个能在 Launchpad 里搜到的 macOS app，并且会在右下角小声提醒你「有新版了」。": "First minor bump after the v0.1 series. OpenRelix isn't just a CLI anymore — it's a macOS app you can find from Launchpad, and it quietly nudges you in the bottom-right whenever there's a new version waiting.",
         "新功能": "New Features",
         "优化": "Improvements",
         "修复": "Fixes",
-        "macOS 桌面端：构建产物自动挂到 ~/Applications/OpenRelix.app，Launchpad / Spotlight / Finder「应用程序」都能直接搜到，不用再翻终端": "macOS desktop client: the build automatically symlinks itself into ~/Applications/OpenRelix.app, so Launchpad, Spotlight, and Finder's Applications all surface it directly — no more digging through a terminal to launch it.",
+        "macOS 桌面端：真实 app bundle 自动同步到 ~/Applications/OpenRelix.app，Launchpad / Spotlight / Finder「应用程序」更稳定可发现，不用再翻终端": "macOS desktop client: a real app bundle is synced into ~/Applications/OpenRelix.app, so Launchpad, Spotlight, and Finder's Applications can discover it more reliably — no more digging through a terminal to launch it.",
         "面板内自动检查新版本：右下角飘个小药丸告诉你有新版可升，客户端面板可以一键执行 openrelix update --yes（走本地 Token 校验 + file:// 来源限制，杜绝公网页面摸进来）；浏览器端没有本地权限，降级为帮你把 npm update -g openrelix 复制到剪贴板": "In-panel version check: a tiny pill quietly slides up in the bottom-right when a new version is available. From the desktop client, one click runs openrelix update --yes — gated by a persistent X-OpenRelix-Token plus a file:// origin check, so no public site can DNS-rebind its way in. Browsers without that local permission fall back to copying npm update -g openrelix to your clipboard.",
         "安装 / 更新结束后会主动问你两句：要不要现在就学一下最近 7 天的记忆（5–15 分钟）？要不要顺手打开客户端？不想被问就加 --no-learn / --no-launch，CI 和非交互终端自动跳过": "After install / update finishes, it asks you two things: want it to learn from the last 7 days of memory right now (5–15 min)? want to pop the desktop client open while you're at it? Pass --no-learn / --no-launch to skip; CI and non-interactive terminals skip automatically.",
         "安装时语言选择的中英文提示都强调了一遍：选完之后 UI、本地记忆、模型生成内容会一起锁定语言，事后想切得重装并清空记忆": "The language picker during install now spells it out in both Chinese and English: your choice locks the UI, the local memory, and the model-generated content together — switching later means reinstalling and wiping the memories you've already built up.",

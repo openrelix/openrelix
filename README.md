@@ -63,7 +63,7 @@ v0.1.0 preview is macOS-only. The supported install path assumes:
 - `zsh`
 - Python 3.10+
 - Codex CLI with a writable `CODEX_HOME`, defaulting to `~/.codex`
-- For model-backed learning refresh, a working Codex login for `codex exec`. If `openrelix refresh --learn-memory` reports `401`, `Unauthorized`, or `invalid_issuer`, verify the user account with `codex login status`, then rerun `codex login` or remove an invalid `OPENAI_API_KEY` before retrying.
+- For model-backed learning refresh, a working Codex model path for `codex exec`. If `openrelix refresh --learn-memory` reports `401`, `Unauthorized`, or `invalid_issuer`, first confirm `codex exec` works in a normal terminal. Shared/proxy providers must keep `CODEX_HOME/auth.json` and `CODEX_HOME/config.toml` together because `model_provider/base_url` is not stored in `auth.json`; official OpenAI API key setups should also check or clear an invalid `OPENAI_API_KEY`.
 
 Linux and Windows support are future work. Some lower-level Python scripts are written to keep paths configurable, but the public installer and background automation should be treated as macOS-only for this release.
 
@@ -181,7 +181,7 @@ The integrated profile does this:
 3. Installs the repo-provided `memory-review` skill globally by symlinking it into `~/.codex/skills/`.
 4. Installs the repo-provided custom prompt into `~/.codex/prompts/memory-review.md` as a compatibility fallback.
 5. Installs the global `openrelix` shell command and ensures the chosen user bin directory is on `PATH`.
-6. Builds the lightweight macOS client at `<state-root>/runtime/mac-app/OpenRelix.app` when `swiftc` is available.
+6. Builds the lightweight macOS client in the state root, then installs a real app bundle at `~/Applications/OpenRelix.app` when `swiftc` is available.
 7. Renders and bootstraps macOS LaunchAgents for:
    - overview refresh every 30 minutes; with `--enable-learning-refresh`, this calls the current Codex adapter and learns from a 7-day window
    - token live server
@@ -227,8 +227,8 @@ openrelix update --check
 openrelix update --yes
 ```
 
-On macOS, `openrelix app` builds and opens a lightweight native client at
-`<state-root>/runtime/mac-app/OpenRelix.app`. It is an AppKit/WebKit shell over
+On macOS, `openrelix app` builds and opens a lightweight native client installed at
+`~/Applications/OpenRelix.app`. It is an AppKit/WebKit shell over
 the same local `reports/panel.html`, so it adds no Electron runtime or hosted
 service. From a repo checkout, you can also run `./scripts/build_macos_client.sh
 --open` to build a local `dist/OpenRelix.app`.

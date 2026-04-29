@@ -6,7 +6,8 @@ indicate accidental personal-project leakage (machine-specific absolute paths,
 hardcoded credentials, or contributor-defined denylist hits).
 
 Exits 0 if the working tree is clean, 1 otherwise. Prints each hit with
-file:line and a short preview so the offending content is easy to find.
+file:line and a redacted label only. Do not echo the matched text: this check
+often runs in CI/pre-commit logs, and the match itself can be private.
 
 The check has two layers:
 
@@ -37,6 +38,15 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+REPO_LOCAL_STATE_DIRS = {
+    "raw",
+    "consolidated",
+    "registry",
+    "reviews",
+    "reports",
+    "runtime",
+    "log",
+}
 
 BUILT_IN_PATTERNS = [
     (r"/Users/[A-Za-z][A-Za-z0-9._-]{1,30}/", "user-home absolute path"),
@@ -101,8 +111,18 @@ def load_user_denylist():
             line = raw.strip()
             if not line or line.startswith("#"):
                 continue
-            patterns.append((line, "personal denylist entry ({})".format(resolved)))
+            patterns.append((line, "personal denylist entry"))
     return patterns
+
+
+def repo_local_state_dirs():
+    hits = []
+    for name in sorted(REPO_LOCAL_STATE_DIRS):
+        path = ROOT / name
+        if not path.exists():
+            continue
+        hits.append(name)
+    return hits
 
 
 def list_repo_files():
@@ -135,7 +155,7 @@ def scan(files, patterns):
             compiled.append((re.compile(raw_pattern), label, raw_pattern))
         except re.error as exc:
             print(
-                "personal-info-check: invalid regex skipped — {!r}: {}".format(raw_pattern, exc),
+                "personal-info-check: invalid regex skipped for [{}]: {}".format(label, exc),
                 file=sys.stderr,
             )
     for rel, path in files:
@@ -146,10 +166,7 @@ def scan(files, patterns):
         for compiled_re, label, raw in compiled:
             for match in compiled_re.finditer(text):
                 line_no = text.count("\n", 0, match.start()) + 1
-                snippet = match.group(0)
-                if len(snippet) > 80:
-                    snippet = snippet[:77] + "..."
-                hits.append((rel, line_no, label, raw, snippet))
+                hits.append((rel, line_no, label, raw))
     return hits
 
 
@@ -157,13 +174,20 @@ def main():
     patterns = list(BUILT_IN_PATTERNS) + load_user_denylist()
     files = list_repo_files()
     hits = scan(files, patterns)
-    if hits:
-        print("personal-info-check: FAIL — {} hit(s) found".format(len(hits)))
-        for rel, line, label, _raw, snippet in hits:
-            print("  {}:{}  [{}]  {}".format(rel, line, label, snippet))
-        print()
-        print("Refusing to proceed. Move personal data to <state_root>/personal_codex_rules.py")
-        print("or update <state_root>/personal_denylist.txt if a pattern is too aggressive.")
+    state_dirs = repo_local_state_dirs()
+    if hits or state_dirs:
+        if state_dirs:
+            print("personal-info-check: FAIL — repo-local runtime state directory found")
+            for name in state_dirs:
+                print("  {}/  [repo-local runtime state]".format(name))
+            print()
+        if hits:
+            print("personal-info-check: FAIL — {} hit(s) found".format(len(hits)))
+            for rel, line, label, _raw in hits:
+                print("  {}:{}  [{}]".format(rel, line, label))
+            print()
+        print("Refusing to proceed. Keep runtime data in the external state root,")
+        print("or update the external personal denylist if a pattern is too aggressive.")
         return 1
     print("personal-info-check: clean ({} files, {} patterns)".format(len(files), len(patterns)))
     return 0
