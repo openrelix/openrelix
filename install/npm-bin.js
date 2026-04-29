@@ -21,8 +21,10 @@ function printHelp() {
   console.log(`Usage:
   npx openrelix install [install-options]
   npx openrelix update [--check | --recommended | --print-command]
+  npx openrelix uninstall [--delete-local-memory | --keep-local-memory]
   npx openrelix app [--build | --no-open]
   openrelix install [install-options]
+  openrelix uninstall [--delete-local-memory | --keep-local-memory]
   openrelix --version
   openrelix --help
 
@@ -36,6 +38,8 @@ Examples:
   npx openrelix install --minimal
   npx openrelix install --enable-learning-refresh --enable-nightly --keep-awake=during-job
   npx openrelix install --enable-learning-refresh --enable-nightly --enable-update-check
+  npx openrelix uninstall
+  npx openrelix uninstall --delete-local-memory
   npx openrelix update --print-command
   npx openrelix app
   npx openrelix install --enable-nightly --nightly-organize-time 22:30 --nightly-finalize-time 01:00
@@ -48,6 +52,7 @@ Add --enable-learning-refresh when you want the 30-minute overview-refresh Launc
 Activity source defaults to auto: try Codex app-server first, then fall back to CLI history/session. Add --activity-source history to force CLI files only.
 Nightly defaults to 23:00 preview and 00:10 previous-day finalize. Use --nightly-organize-time and --nightly-finalize-time with HH:MM to override.
 Daily update check defaults to 09:30 when --enable-update-check is passed; it checks npm only and does not auto-install updates.
+Uninstall removes OpenRelix LaunchAgents, the macOS app, shell command, user-level skill, and prompt. It asks before deleting the local state root; use --delete-local-memory for a full purge or --keep-local-memory for unattended removal that keeps memory.
 Run "npx openrelix install --help" to show installer options.`);
 }
 
@@ -178,6 +183,10 @@ if (command === "install") {
 if (command === "update" || command === "upgrade") {
   handleUpdate(args.slice(1));
   process.exit(0);
+}
+
+if (command === "uninstall" || command === "remove") {
+  runPythonCli(["uninstall", ...args.slice(1)]);
 }
 
 if (command === "app" || command === "client" || command === "mac") {

@@ -4018,6 +4018,7 @@
         "系统": "System",
         "浅色": "Light",
         "深色": "Dark",
+        "中文": "ZH",
         "仅本地": "Local only",
         "你的专属AI记忆珍藏": "Your personal AI memory keepsake",
         "OpenRelix 意为开源的个人记忆珍藏：把每天和 AI CLI 一起做过的工作，沉淀成可复用的技能、方法手册、模板、自动化、记忆和可视化复盘，而不是散落在聊天记录里。": "OpenRelix means an open-source personal memory keepsake: it turns daily work with AI CLIs into reusable skills, playbooks, templates, automations, memories, and visual reviews instead of leaving it scattered across chat history.",
@@ -4468,6 +4469,22 @@
         const textTranslations = getTranslations();
         document.querySelectorAll("body *").forEach((node) => {
           if (node.children.length !== 0) {
+            if (!canTranslateInlineRichText(node)) {
+              return;
+            }
+            const original = node.dataset.zhText || node.textContent.trim();
+            if (!original || !Object.prototype.hasOwnProperty.call(textTranslations, original)) {
+              return;
+            }
+            node.dataset.zhText = original;
+            if (!node.dataset.zhHtml) {
+              node.dataset.zhHtml = node.innerHTML;
+            }
+            if (language === "en") {
+              node.textContent = textTranslations[original];
+            } else {
+              node.innerHTML = node.dataset.zhHtml;
+            }
             return;
           }
           const original = node.dataset.zhText || node.textContent.trim();
@@ -4483,6 +4500,18 @@
         document.querySelectorAll("[data-zh-html][data-en-html]").forEach((node) => {
           node.innerHTML = language === "en" ? node.dataset.enHtml : node.dataset.zhHtml;
         });
+      }
+
+      function canTranslateInlineRichText(node) {
+        if (!node.children.length || node.matches("[data-zh-html][data-en-html]")) {
+          return false;
+        }
+        const richTextTags = new Set(["p", "li", "span", "small"]);
+        if (!richTextTags.has(node.tagName.toLowerCase())) {
+          return false;
+        }
+        const inlineTags = new Set(["a", "code", "span", "strong", "em", "b", "i"]);
+        return Array.from(node.children).every((child) => inlineTags.has(child.tagName.toLowerCase()));
       }
 
       function translateAttributes(language) {
@@ -4524,7 +4553,6 @@
 
       function applyLanguage(language, options = {}) {
         const normalized = language === "en" ? "en" : "zh";
-        const shouldTranslate = normalized !== activeLanguage;
         activeLanguage = normalized;
         document.documentElement.dataset.language = normalized;
         document.documentElement.lang = normalized === "en" ? "en" : "zh-CN";
@@ -4533,11 +4561,9 @@
         if (description) {
           description.setAttribute("content", metaDescription[normalized]);
         }
-        if (shouldTranslate) {
-          translateHtml(normalized);
-          translatePlainText(normalized);
-          translateAttributes(normalized);
-        }
+        translateHtml(normalized);
+        translatePlainText(normalized);
+        translateAttributes(normalized);
         setLanguageControls(normalized);
         if (options.persist !== false) {
           try {

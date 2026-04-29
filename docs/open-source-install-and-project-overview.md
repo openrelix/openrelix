@@ -448,6 +448,21 @@ npx openrelix install --profile integrated --enable-learning-refresh
 - `openrelix review`
   按需跑一遍“今天”的 review / consolidate 流水线，并输出 `summary.md`
 
+如果需要卸载本机集成，使用：
+
+```bash
+npx openrelix uninstall
+```
+
+它会清理 OpenRelix 的 LaunchAgents、macOS 客户端、全局 shell 入口、用户级 `memory-review` skill、custom prompt fallback 和 installer 管理的 shell `PATH` block。交互式终端会询问是否同时删除本地记忆；无人值守时请显式选择：
+
+```bash
+npx openrelix uninstall --keep-local-memory
+npx openrelix uninstall --delete-local-memory
+```
+
+`--delete-local-memory` 会删除 active state root 和 OpenRelix 写入的 `CODEX_HOME/memories/memory_summary.md`，但不会删除整个 `CODEX_HOME`、Codex 登录凭据或 Codex history/session 文件。
+
 ---
 
 ## 后台自动化能力

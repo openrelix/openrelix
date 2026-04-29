@@ -745,7 +745,7 @@
             </div>
           </article>
         </div>
-        <p class="footnote">v0.x 系列预计涵盖 v0.1 → v0.9 的预览版迭代；正式 v1.0 与之后的更新会有独立的更新日志页面。完整的版本规划见 <a href="../index.html#roadmap">首页更新计划</a>。</p>
+        <p class="footnote" data-zh-html='v0.x 系列预计涵盖 v0.1 → v0.9 的预览版迭代；正式 v1.0 与之后的更新会有独立的更新日志页面。完整的版本规划见 <a href="../index.html#roadmap">首页更新计划</a>。' data-en-html='The v0.x series covers v0.1 through v0.9 preview iterations; v1.0 and later get their own changelog page. The full release plan lives in the <a href="../index.html#roadmap">homepage roadmap</a>.'>v0.x 系列预计涵盖 v0.1 → v0.9 的预览版迭代；正式 v1.0 与之后的更新会有独立的更新日志页面。完整的版本规划见 <a href="../index.html#roadmap">首页更新计划</a>。</p>
       </div>
     </section>
   </main>
@@ -772,6 +772,7 @@
         "系统": "System",
         "浅色": "Light",
         "深色": "Dark",
+        "中文": "ZH",
         "GitHub 点星支持": "Star on GitHub",
         "v0.x · 预览版": "v0.x · Preview",
         "v0.x 预览版更新日志": "v0.x Preview Changelog",
@@ -806,16 +807,23 @@
         "学习刷新可观测性": "Learning Refresh Observability",
         "把 host 鉴权异常从静默失败提升为可见信号，方便用户和开发者快速定位「为什么记忆没刷新」。": "Surface host authentication errors instead of silently failing, so it’s easier to diagnose “why didn’t memory refresh.”",
         "学习刷新流程暴露模型认证失败信号，鉴权失效时面板与日志会明确提示，而不是仅静默跳过": "Learning refresh now exposes model auth failures: when credentials are stale, the panel and logs surface a clear signal instead of silently skipping",
+        "学习刷新流程暴露模型认证失败信号，鉴权失效时面板与日志会明确提示，而不是仅静默跳过 (03283eb)": "Learning refresh now exposes model auth failures: when credentials are stale, the panel and logs surface a clear signal instead of silently skipping (03283eb)",
         "站点、文档与移动端打磨": "Site, Docs & Mobile Polish",
         "v0.1.0 发布后第一轮快速跟进：完善 npm 包文档、上线自定义域名、收口产品展示页的入口与导航，并修复移动端可用性问题。": "First fast-follow after v0.1.0: round out the npm package docs, ship the custom domain, finalize the entry and navigation of the product showcase, and fix mobile usability issues.",
         "文档与发布物": "Docs & Release Artifacts",
         "站点与导航": "Site & Navigation",
         "移动端修复": "Mobile Fixes",
         "新增 npm 中文 README，与英文版同步内容": "Add a Chinese README for npm, kept in sync with the English version",
+        "新增 npm 中文 README，与英文版同步内容 (7a2ab77)": "Add a Chinese README for npm, kept in sync with the English version (7a2ab77)",
+        "GitHub Pages 启用自定义域名 openrelix.org (4b521f1)": "Enable the custom openrelix.org domain for GitHub Pages (4b521f1)",
         "产品展示页移到站点根路径 /": "Move the product showcase page to the site root /",
+        "产品展示页移到站点根路径 / (a366c4b)": "Move the product showcase page to the site root / (a366c4b)",
         "打磨产品展示页导航与入口页面排版": "Polish the product showcase navigation and entry page layout",
+        "打磨产品展示页导航与入口页面排版 (656b4e0)": "Polish the product showcase navigation and entry page layout (656b4e0)",
         "修复移动端 Hero 区 CTA 按钮重叠问题": "Fix overlapping Hero CTA buttons on mobile",
+        "修复移动端 Hero 区 CTA 按钮重叠问题 (a197281)": "Fix overlapping Hero CTA buttons on mobile (a197281)",
         "恢复移动端产品展示页的导航交互": "Restore mobile navigation behavior on the product showcase",
+        "恢复移动端产品展示页的导航交互 (033e093)": "Restore mobile navigation behavior on the product showcase (033e093)",
         "OpenRelix 公开预览版首发": "OpenRelix Public Preview Initial Release",
         "跑通本地优先个人 AI 资产系统的最小完整闭环：把每天和 AI CLI 一起做过的工作沉淀成可复用的技能、模板、自动化、记忆和可视化复盘，而不是散落在聊天记录里。": "Deliver the smallest complete loop for a local-first personal AI asset system: turn daily AI CLI work into reusable skills, templates, automations, memories, and visual reviews instead of leaving it scattered across chat history.",
         "核心能力": "Core Capabilities",
@@ -831,6 +839,8 @@
         "密钥、Token、Cookie、原始内部日志不进入资产库与公开预览": "Secrets, tokens, cookies, and raw internal logs never enter the asset library or public preview",
         "初始化 OpenKeepsake 预览版骨架": "Initialize the OpenKeepsake preview skeleton",
         "整理为 OpenRelix 公开预览版": "Reshape into the OpenRelix public preview",
+        "初始化 OpenKeepsake 预览版骨架 (4eb4460)": "Initialize the OpenKeepsake preview skeleton (4eb4460)",
+        "整理为 OpenRelix 公开预览版 (bb2e91e)": "Reshape into the OpenRelix public preview (bb2e91e)",
         "v0.x 系列预计涵盖 v0.1 → v0.9 的预览版迭代；正式 v1.0 与之后的更新会有独立的更新日志页面。完整的版本规划见": "The v0.x series covers v0.1 through v0.9 preview iterations; v1.0 and later get their own changelog page. The full release plan lives in the",
         "首页更新计划": "homepage roadmap",
         "面向 AI coding agents / AI CLI 的本地优先个人 AI 资产系统。": "A local-first personal AI asset system for AI coding agents / AI CLIs.",
@@ -853,7 +863,26 @@
 
       function translatePlainText(language) {
         document.querySelectorAll("body :not(script):not(style)").forEach((node) => {
-          if (node.children.length || !node.textContent) {
+          if (node.children.length) {
+            if (!canTranslateInlineRichText(node)) {
+              return;
+            }
+            const original = node.dataset.zhText || node.textContent.trim();
+            if (!original || !Object.prototype.hasOwnProperty.call(textTranslations, original)) {
+              return;
+            }
+            node.dataset.zhText = original;
+            if (!node.dataset.zhHtml) {
+              node.dataset.zhHtml = node.innerHTML;
+            }
+            if (language === "en") {
+              node.textContent = textTranslations[original];
+            } else {
+              node.innerHTML = node.dataset.zhHtml;
+            }
+            return;
+          }
+          if (!node.textContent) {
             return;
           }
           const original = node.dataset.zhText || node.textContent.trim();
@@ -869,6 +898,18 @@
         document.querySelectorAll("[data-zh-html][data-en-html]").forEach((node) => {
           node.innerHTML = language === "en" ? node.dataset.enHtml : node.dataset.zhHtml;
         });
+      }
+
+      function canTranslateInlineRichText(node) {
+        if (!node.children.length || node.matches("[data-zh-html][data-en-html]")) {
+          return false;
+        }
+        const richTextTags = new Set(["p", "li", "span", "small"]);
+        if (!richTextTags.has(node.tagName.toLowerCase())) {
+          return false;
+        }
+        const inlineTags = new Set(["a", "code", "span", "strong", "em", "b", "i"]);
+        return Array.from(node.children).every((child) => inlineTags.has(child.tagName.toLowerCase()));
       }
 
       function translateAttributes(language) {
@@ -892,7 +933,6 @@
 
       function applyLanguage(language, options = {}) {
         const normalized = language === "en" ? "en" : "zh";
-        const shouldTranslate = normalized !== activeLanguage;
         activeLanguage = normalized;
         document.documentElement.dataset.language = normalized;
         document.documentElement.lang = normalized === "en" ? "en" : "zh-CN";
@@ -901,11 +941,9 @@
         if (description) {
           description.setAttribute("content", metaDescription[normalized]);
         }
-        if (shouldTranslate) {
-          translateHtml(normalized);
-          translatePlainText(normalized);
-          translateAttributes(normalized);
-        }
+        translateHtml(normalized);
+        translatePlainText(normalized);
+        translateAttributes(normalized);
         setLanguageControls(normalized);
         if (options.persist !== false) {
           try {
@@ -958,11 +996,7 @@
         initialLanguage = "zh";
       }
       initialLanguage = initialLanguage === "en" ? "en" : "zh";
-      if (initialLanguage === "en") {
-        applyLanguage(initialLanguage, { persist: false });
-      } else {
-        setLanguageControls("zh");
-      }
+      applyLanguage(initialLanguage, { persist: false });
 
       let initialTheme = "system";
       try {

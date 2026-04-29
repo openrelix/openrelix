@@ -169,6 +169,21 @@ scripts/cleanup_smoke_temp.sh --dry-run
 scripts/cleanup_smoke_temp.sh --yes
 ```
 
+Uninstall OpenRelix local integrations:
+
+```bash
+npx openrelix uninstall
+```
+
+The uninstall command removes the LaunchAgents, `~/Applications/OpenRelix.app`, the installer-managed `openrelix` shell entrypoint, the user-level `memory-review` skill symlink, the custom-prompt fallback, and the managed shell `PATH` block. In an interactive terminal it asks whether to delete the local memory state root as well. For unattended runs, choose explicitly:
+
+```bash
+npx openrelix uninstall --keep-local-memory
+npx openrelix uninstall --delete-local-memory
+```
+
+`--delete-local-memory` deletes the active state root and the OpenRelix-written `CODEX_HOME/memories/memory_summary.md`. It does not delete your whole `CODEX_HOME`, Codex auth, or Codex history/session files.
+
 The installer stores the selected runtime language and memory mode in the state root under `runtime/config.json`. Supported language values are `zh` and `en`; interactive installs prompt when no language is passed, and non-interactive installs default to `zh`. The language controls local terminal output, generated overview files, nightly summary prompts, fallback summaries, immediate task reviews, asset / usage-event human-facing fields, and the structured memory items written by the local consolidation pipeline. Stable enum keys stay canonical so automation can still classify records, while the visible fields follow the selected language.
 
 ```bash

@@ -4624,6 +4624,77 @@ scope: Release checklist, package manifest, and public website validation.
         self.assertIn("scripts/openrelix.py", command_template)
         self.assertIn("OPENRELIX_ACTIVITY_SOURCE", command_template)
 
+    def test_openrelix_uninstall_command_is_exposed_through_cli_and_npm(self):
+        openrelix_cli = (ROOT / "scripts" / "openrelix.py").read_text(encoding="utf-8")
+        npm_bin = (ROOT / "install" / "npm-bin.js").read_text(encoding="utf-8")
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        zh_readme = (ROOT / "README.zh-CN.md").read_text(encoding="utf-8")
+
+        self.assertIn('"uninstall"', openrelix_cli)
+        self.assertIn("--delete-local-memory", openrelix_cli)
+        self.assertIn("--keep-local-memory", openrelix_cli)
+        self.assertIn("command_uninstall(args)", openrelix_cli)
+        self.assertIn('command === "uninstall"', npm_bin)
+        self.assertIn("npx openrelix uninstall --delete-local-memory", readme)
+        self.assertIn("npx openrelix uninstall --delete-local-memory", zh_readme)
+
+    def test_uninstall_local_memory_delete_has_dry_run_and_repo_guard(self):
+        with TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            state_root = tmp / "state"
+            codex_home = tmp / "codex"
+            state_root.mkdir()
+            (state_root / "registry").mkdir()
+            (state_root / "registry" / "memory_items.jsonl").write_text("{}", encoding="utf-8")
+            (codex_home / "memories").mkdir(parents=True)
+            (codex_home / "memories" / "memory_summary.md").write_text("## What's in Memory\n", encoding="utf-8")
+            paths = replace(
+                openrelix.PATHS,
+                state_root=state_root,
+                codex_home=codex_home,
+            )
+
+            actions = []
+            with mock.patch.object(openrelix, "PATHS", paths), mock.patch.object(
+                openrelix,
+                "local_memory_roots_for_uninstall",
+                return_value=[state_root],
+            ):
+                openrelix.remove_local_memory_for_uninstall(actions, dry_run=True)
+
+            self.assertTrue(state_root.exists())
+            self.assertTrue((codex_home / "memories" / "memory_summary.md").exists())
+            self.assertEqual([item["status"] for item in actions], ["would_remove", "would_remove"])
+
+        actions = []
+        paths = replace(openrelix.PATHS, state_root=ROOT, codex_home=Path("/tmp/openrelix-codex-home"))
+        with mock.patch.object(openrelix, "PATHS", paths), mock.patch.object(
+            openrelix,
+            "local_memory_roots_for_uninstall",
+            return_value=[ROOT],
+        ):
+            openrelix.remove_local_memory_for_uninstall(actions, dry_run=False)
+        self.assertEqual(actions[0]["status"], "blocked")
+        self.assertIn("protected root", actions[0]["detail"])
+
+    def test_uninstall_removes_only_managed_shell_path_block(self):
+        original = "\n".join(
+            [
+                "export KEEP=1",
+                "# >>> openrelix >>>",
+                'export PATH="/tmp/openrelix-bin:$PATH"',
+                "# <<< openrelix <<<",
+                "export AFTER=1",
+            ]
+        ) + "\n"
+
+        updated, removed = openrelix.strip_managed_shell_path_block(original)
+
+        self.assertTrue(removed)
+        self.assertIn("export KEEP=1", updated)
+        self.assertIn("export AFTER=1", updated)
+        self.assertNotIn("openrelix-bin", updated)
+
     def test_learning_window_dates_are_chronological(self):
         self.assertEqual(
             openrelix.learning_window_dates("2026-04-27", 7),

@@ -163,6 +163,21 @@ scripts/cleanup_smoke_temp.sh --dry-run
 scripts/cleanup_smoke_temp.sh --yes
 ```
 
+卸载本机 OpenRelix 集成：
+
+```bash
+npx openrelix uninstall
+```
+
+卸载命令会删除 LaunchAgents、`~/Applications/OpenRelix.app`、installer 管理的 `openrelix` shell 入口、用户级 `memory-review` skill symlink、custom-prompt fallback，以及 installer 管理的 shell `PATH` block。交互式终端里会询问是否同时删除本地记忆 state root。无人值守场景请显式选择：
+
+```bash
+npx openrelix uninstall --keep-local-memory
+npx openrelix uninstall --delete-local-memory
+```
+
+`--delete-local-memory` 会删除 active state root 和 OpenRelix 写入的 `CODEX_HOME/memories/memory_summary.md`。它不会删除整个 `CODEX_HOME`，也不会删除 Codex auth 或 Codex history/session 文件。
+
 installer 会把运行语言和 memory mode 写入 state root 下的 `runtime/config.json`。支持的语言是 `zh` 和 `en`；语言会影响终端输出、overview 文件、夜间 summary prompt、fallback summary、即时 task review、asset / usage event 的展示字段，以及本地 consolidation pipeline 写出的结构化 memory items。稳定 enum keys 保持 canonical，展示层再按语言格式化。
 
 ```bash

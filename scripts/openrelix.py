@@ -21,6 +21,8 @@ if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
 from asset_runtime import (
+    APP_SLUG,
+    LEGACY_APP_SLUGS,
     ensure_state_layout,
     get_memory_mode,
     get_memory_summary_budget,
@@ -375,6 +377,53 @@ def build_parser():
             "以 JSON 打印更新检查结果。",
             "Print update check results as JSON.",
         ),
+    )
+
+    uninstall = subparsers.add_parser(
+        "uninstall",
+        help=localized(
+            "卸载本机 OpenRelix 集成，可选择是否删除本地记忆。",
+            "Uninstall local OpenRelix integrations, optionally deleting local memory.",
+        ),
+    )
+    local_memory_group = uninstall.add_mutually_exclusive_group()
+    local_memory_group.add_argument(
+        "--delete-local-memory",
+        action="store_true",
+        help=localized(
+            "同时删除本地 state root 和 OpenRelix 写入的 Codex memory summary。",
+            "Also delete the local state root and OpenRelix-written Codex memory summary.",
+        ),
+    )
+    local_memory_group.add_argument(
+        "--keep-local-memory",
+        action="store_true",
+        help=localized(
+            "保留本地 state root 和 Codex memory summary，不交互询问。",
+            "Keep the local state root and Codex memory summary without prompting.",
+        ),
+    )
+    uninstall.add_argument(
+        "-y",
+        "--yes",
+        action="store_true",
+        help=localized(
+            "不交互确认；未显式指定时默认保留本地记忆。",
+            "Do not prompt; keep local memory unless explicitly requested.",
+        ),
+    )
+    uninstall.add_argument(
+        "--dry-run",
+        action="store_true",
+        help=localized(
+            "只打印将要删除的内容，不实际修改文件。",
+            "Print what would be removed without changing files.",
+        ),
+    )
+    uninstall.add_argument(
+        "--json",
+        action="store_true",
+        help=localized("以 JSON 打印卸载结果。", "Print uninstall results as JSON."),
     )
 
     mode = subparsers.add_parser(
@@ -1966,6 +2015,390 @@ def sync_macos_client_app(source, destination):
         )
 
 
+def uninstall_launch_agent_labels():
+    suffixes = (
+        "overview-refresh",
+        "token-live",
+        "nightly-organize",
+        "nightly-finalize-previous-day",
+        "update-check",
+    )
+    prefixes = (
+        "io.github.openrelix",
+        "io.github.open" + "keepsake",
+        "io.github.ai-personal-assets",
+        "io.github.codex-personal-assets",
+    )
+    return ["{}.{}".format(prefix, suffix) for prefix in prefixes for suffix in suffixes]
+
+
+def record_uninstall_action(actions, action, target, status, detail=""):
+    actions.append(
+        {
+            "action": action,
+            "target": str(target),
+            "status": status,
+            "detail": str(detail or ""),
+        }
+    )
+
+
+def path_exists_or_symlink(path):
+    return path.exists() or path.is_symlink()
+
+
+def remove_path_for_uninstall(path, action, actions, dry_run=False, record_missing=True):
+    path = Path(path).expanduser()
+    if not path_exists_or_symlink(path):
+        if record_missing:
+            record_uninstall_action(actions, action, path, "missing")
+        return
+    if dry_run:
+        record_uninstall_action(actions, action, path, "would_remove")
+        return
+    try:
+        if path.is_symlink() or path.is_file():
+            path.unlink()
+        else:
+            shutil.rmtree(path)
+    except OSError as exc:
+        record_uninstall_action(actions, action, path, "error", exc)
+        return
+    record_uninstall_action(actions, action, path, "removed")
+
+
+def bootout_launch_agent(label, plist_path, dry_run=False):
+    if dry_run or sys.platform != "darwin" or not shutil.which("launchctl"):
+        return
+    uid = os.getuid()
+    subprocess.run(
+        ["launchctl", "bootout", "gui/{}/{}".format(uid, label)],
+        check=False,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    if plist_path.exists():
+        subprocess.run(
+            ["launchctl", "bootout", "gui/{}".format(uid), str(plist_path)],
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+
+
+def remove_launch_agents_for_uninstall(actions, dry_run=False):
+    for label in uninstall_launch_agent_labels():
+        plist_path = launch_agent_path("{}.plist".format(label))
+        bootout_launch_agent(label, plist_path, dry_run=dry_run)
+        remove_path_for_uninstall(plist_path, "launch_agent", actions, dry_run=dry_run, record_missing=False)
+
+
+def managed_shell_rc_candidates():
+    candidates = [
+        Path.home() / ".zshrc",
+        Path.home() / ".bashrc",
+        Path.home() / ".profile",
+    ]
+    shell_path = os.environ.get("SHELL")
+    if shell_path:
+        shell_name = Path(shell_path).name
+        if shell_name == "zsh":
+            candidates.insert(0, Path.home() / ".zshrc")
+        elif shell_name == "bash":
+            candidates.insert(0, Path.home() / ".bashrc")
+    seen = set()
+    unique = []
+    for candidate in candidates:
+        key = str(candidate.expanduser())
+        if key not in seen:
+            unique.append(candidate.expanduser())
+            seen.add(key)
+    return unique
+
+
+def strip_managed_shell_path_block(text, marker="openrelix"):
+    start = "# >>> {} >>>".format(marker)
+    end = "# <<< {} <<<".format(marker)
+    lines = text.splitlines()
+    output = []
+    removed = False
+    index = 0
+    while index < len(lines):
+        if lines[index].strip() != start:
+            output.append(lines[index])
+            index += 1
+            continue
+        end_index = None
+        for candidate in range(index + 1, len(lines)):
+            if lines[candidate].strip() == end:
+                end_index = candidate
+                break
+        if end_index is None:
+            output.append(lines[index])
+            index += 1
+            continue
+        removed = True
+        index = end_index + 1
+
+    if not removed:
+        return text, False
+    stripped = "\n".join(output).rstrip()
+    return (stripped + "\n" if stripped else ""), True
+
+
+def remove_shell_path_blocks_for_uninstall(actions, dry_run=False):
+    for rc_path in managed_shell_rc_candidates():
+        if not rc_path.exists():
+            continue
+        try:
+            existing = rc_path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError) as exc:
+            record_uninstall_action(actions, "shell_path_block", rc_path, "error", exc)
+            continue
+        updated, removed = strip_managed_shell_path_block(existing)
+        if not removed:
+            continue
+        if dry_run:
+            record_uninstall_action(actions, "shell_path_block", rc_path, "would_remove")
+            continue
+        try:
+            rc_path.write_text(updated, encoding="utf-8")
+        except OSError as exc:
+            record_uninstall_action(actions, "shell_path_block", rc_path, "error", exc)
+            continue
+        record_uninstall_action(actions, "shell_path_block", rc_path, "removed")
+
+
+def openrelix_command_candidates():
+    candidates = []
+    command_path = os.environ.get("AI_ASSET_COMMAND_PATH")
+    if command_path:
+        candidates.append(Path(command_path).expanduser())
+    which_path = shutil.which("openrelix")
+    if which_path:
+        candidates.append(Path(which_path))
+    for directory in (
+        Path("/opt/homebrew/bin"),
+        Path("/usr/local/bin"),
+        Path.home() / ".local" / "bin",
+        Path.home() / "bin",
+    ):
+        candidates.append(directory / "openrelix")
+
+    seen = set()
+    unique = []
+    for candidate in candidates:
+        key = str(candidate.expanduser().resolve(strict=False))
+        if key not in seen:
+            unique.append(candidate.expanduser())
+            seen.add(key)
+    return unique
+
+
+def is_managed_openrelix_command(path):
+    if not path_exists_or_symlink(path) or path.is_dir():
+        return False
+    try:
+        text = path.read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        return False
+    return (
+        "AI_ASSET_COMMAND_PATH" in text
+        and "scripts/openrelix.py" in text
+        and "OPENRELIX_ACTIVITY_SOURCE" in text
+    )
+
+
+def remove_global_commands_for_uninstall(actions, dry_run=False):
+    for command_path in openrelix_command_candidates():
+        if not path_exists_or_symlink(command_path):
+            continue
+        if not is_managed_openrelix_command(command_path):
+            record_uninstall_action(actions, "global_command", command_path, "kept", "not an OpenRelix installer-managed command")
+            continue
+        remove_path_for_uninstall(command_path, "global_command", actions, dry_run=dry_run)
+
+
+def remove_user_skill_for_uninstall(actions, dry_run=False):
+    skill_path = PATHS.user_skill_root / "memory-review"
+    if not path_exists_or_symlink(skill_path):
+        record_uninstall_action(actions, "codex_skill", skill_path, "missing")
+        return
+    expected = PATHS.repo_skill_root / "memory-review"
+    if skill_path.is_symlink() and skill_path.resolve(strict=False) == expected.resolve(strict=False):
+        remove_path_for_uninstall(skill_path, "codex_skill", actions, dry_run=dry_run)
+        return
+    if skill_path.is_symlink():
+        target = skill_path.resolve(strict=False)
+        target_text = str(target)
+        if target_text.endswith("/.agents/skills/memory-review") and "openrelix" in target_text.lower():
+            remove_path_for_uninstall(skill_path, "codex_skill", actions, dry_run=dry_run)
+            return
+    record_uninstall_action(actions, "codex_skill", skill_path, "kept", "not the installer-managed symlink")
+
+
+def is_managed_memory_review_prompt(path):
+    if not path.exists() or path.is_dir():
+        return False
+    try:
+        text = path.read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        return False
+    return "Installed state root:" in text and "installed OpenRelix system" in text
+
+
+def remove_custom_prompt_for_uninstall(actions, dry_run=False):
+    prompt_path = PATHS.codex_home / "prompts" / "memory-review.md"
+    if not path_exists_or_symlink(prompt_path):
+        record_uninstall_action(actions, "codex_prompt", prompt_path, "missing")
+        return
+    if is_managed_memory_review_prompt(prompt_path):
+        remove_path_for_uninstall(prompt_path, "codex_prompt", actions, dry_run=dry_run)
+        return
+    record_uninstall_action(actions, "codex_prompt", prompt_path, "kept", "not the installer-managed prompt")
+
+
+def path_is_relative_to(path, parent):
+    try:
+        Path(path).resolve().relative_to(Path(parent).resolve())
+        return True
+    except ValueError:
+        return False
+
+
+def dangerous_state_root_delete_reason(path):
+    path = Path(path).expanduser().resolve()
+    home = Path.home().resolve()
+    dangerous_exact = {
+        Path("/").resolve(),
+        home,
+        REPO_ROOT.resolve(),
+        PATHS.codex_home.resolve(),
+    }
+    if path in dangerous_exact:
+        return "refusing to delete a protected root"
+    if path_is_relative_to(path, REPO_ROOT):
+        return "refusing to delete a path inside the source repository"
+    if path_is_relative_to(path, PATHS.codex_home):
+        return "refusing to delete a path inside CODEX_HOME"
+    return ""
+
+
+def state_root_for_slug(slug):
+    home = Path.home()
+    if sys.platform == "darwin":
+        return home / "Library" / "Application Support" / slug
+    state_home = Path(os.environ.get("XDG_STATE_HOME", home / ".local" / "state")).expanduser()
+    return state_home / slug
+
+
+def local_memory_roots_for_uninstall():
+    candidates = [PATHS.state_root]
+    candidates.extend(state_root_for_slug(slug) for slug in (APP_SLUG, *LEGACY_APP_SLUGS))
+    seen = set()
+    roots = []
+    for candidate in candidates:
+        key = str(Path(candidate).expanduser().resolve(strict=False))
+        if key in seen:
+            continue
+        seen.add(key)
+        roots.append(Path(candidate).expanduser())
+    return roots
+
+
+def should_delete_local_memory(args):
+    if args.delete_local_memory:
+        return True
+    if args.keep_local_memory or args.yes or args.dry_run:
+        return False
+    if not (sys.stdin.isatty() and sys.stdout.isatty()):
+        return False
+
+    print(localized(
+        "是否同时删除本地记忆？这会删除 state root，并移除 OpenRelix 写入的 Codex memory summary。",
+        "Delete local memory too? This removes the state root and the OpenRelix-written Codex memory summary.",
+    ))
+    print("- state_root: {}".format(PATHS.state_root))
+    print("- codex_summary: {}".format(PATHS.codex_home / "memories" / "memory_summary.md"))
+    answer = input(localized("删除本地记忆？[y/N]: ", "Delete local memory? [y/N]: ")).strip().lower()
+    return answer in {"y", "yes", "是", "是的", "好", "好的", "1"}
+
+
+def remove_local_memory_for_uninstall(actions, dry_run=False):
+    for state_root in local_memory_roots_for_uninstall():
+        blocked_reason = dangerous_state_root_delete_reason(state_root)
+        if blocked_reason:
+            record_uninstall_action(actions, "local_memory", state_root, "blocked", blocked_reason)
+        else:
+            remove_path_for_uninstall(state_root, "local_memory", actions, dry_run=dry_run, record_missing=False)
+
+    summary_path = PATHS.codex_home / "memories" / "memory_summary.md"
+    remove_path_for_uninstall(summary_path, "codex_memory_summary", actions, dry_run=dry_run)
+
+
+def uninstall_status_label(status):
+    labels = {
+        "removed": localized("已删除", "removed"),
+        "missing": localized("不存在", "missing"),
+        "kept": localized("已保留", "kept"),
+        "would_remove": localized("将删除", "would remove"),
+        "blocked": localized("已阻止", "blocked"),
+        "error": localized("失败", "error"),
+    }
+    return labels.get(status, status)
+
+
+def print_uninstall_result(actions, delete_local_memory, dry_run=False):
+    print(localized(
+        "OpenRelix 卸载预览" if dry_run else "OpenRelix 卸载完成",
+        "OpenRelix uninstall preview" if dry_run else "OpenRelix uninstall complete",
+    ))
+    for item in actions:
+        detail = " ({})".format(item["detail"]) if item.get("detail") else ""
+        print("- {} {}: {}{}".format(
+            uninstall_status_label(item["status"]),
+            item["action"],
+            item["target"],
+            detail,
+        ))
+    if not delete_local_memory:
+        print(localized(
+            "本地记忆已保留；需要彻底删除时运行 openrelix uninstall --delete-local-memory。",
+            "Local memory was kept; run openrelix uninstall --delete-local-memory for a full purge.",
+        ))
+
+
+def command_uninstall(args):
+    delete_local_memory = should_delete_local_memory(args)
+    actions = []
+    dry_run = bool(args.dry_run)
+
+    remove_launch_agents_for_uninstall(actions, dry_run=dry_run)
+    if sys.platform == "darwin":
+        remove_path_for_uninstall(default_macos_client_app_path(), "macos_app", actions, dry_run=dry_run)
+    remove_global_commands_for_uninstall(actions, dry_run=dry_run)
+    remove_user_skill_for_uninstall(actions, dry_run=dry_run)
+    remove_custom_prompt_for_uninstall(actions, dry_run=dry_run)
+    remove_shell_path_blocks_for_uninstall(actions, dry_run=dry_run)
+    if delete_local_memory:
+        remove_local_memory_for_uninstall(actions, dry_run=dry_run)
+
+    payload = {
+        "dry_run": dry_run,
+        "delete_local_memory": delete_local_memory,
+        "state_root": str(PATHS.state_root),
+        "codex_home": str(PATHS.codex_home),
+        "actions": actions,
+    }
+    if args.json:
+        print_json(payload)
+    else:
+        print_uninstall_result(actions, delete_local_memory, dry_run=dry_run)
+
+    if any(item["status"] == "error" for item in actions):
+        raise SystemExit(1)
+
+
 def command_app(args):
     if sys.platform != "darwin":
         raise SystemExit(localized(
@@ -2043,9 +2476,10 @@ def command_paths():
 
 
 def main():
-    ensure_state_layout(PATHS)
     parser = build_parser()
     args = parser.parse_args()
+    if args.command != "uninstall":
+        ensure_state_layout(PATHS)
     if args.command in (None, "help"):
         parser.print_help()
         return
@@ -2067,6 +2501,9 @@ def main():
         return
     if args.command == "update":
         command_update(args)
+        return
+    if args.command == "uninstall":
+        command_uninstall(args)
         return
     if args.command == "mode":
         command_mode(args)
