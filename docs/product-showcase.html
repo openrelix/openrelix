@@ -5,7 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
   <title>OpenRelix™ 产品展示</title>
-  <meta name="description" content="OpenRelix™ v0.1.0 预览版是一套开源的个人记忆珍藏系统，面向 AI coding agents / AI CLI，把重复工作沉淀成可复用技能、记忆、模板、复盘和可视化面板。">
+  <meta name="description" content="OpenRelix™ v0.2.0 预览版是一套开源的个人记忆珍藏系统，面向 AI coding agents / AI CLI，把重复工作沉淀成可复用技能、记忆、模板、复盘和可视化面板。">
+  <meta name="openrelix:version" content="0.1.2" data-pkg="openrelix">
   <script>
     (() => {
       try {
@@ -301,12 +302,14 @@
       border-radius: 8px;
       display: grid;
       place-items: center;
-      background: var(--mark-bg);
-      color: var(--mark-fg);
-      font-size: 13px;
-      font-weight: 820;
-      line-height: 1;
       overflow: hidden;
+    }
+
+    .mark img {
+      width: 100%;
+      height: 100%;
+      display: block;
+      object-fit: cover;
     }
 
     .nav-links {
@@ -3117,13 +3120,99 @@
         transform: none;
       }
     }
+
+    .openrelix-update-pill {
+      position: fixed;
+      right: 16px;
+      bottom: 16px;
+      z-index: 9999;
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 7px 8px 7px 14px;
+      border-radius: 999px;
+      max-width: calc(100vw - 32px);
+      background: var(--paper, #ffffff);
+      color: var(--ink, #171717);
+      border: 1px solid var(--line-strong, rgba(15, 23, 42, 0.16));
+      box-shadow: 0 12px 28px rgba(15, 23, 42, 0.14);
+      font: 13px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "PingFang SC", "Microsoft YaHei", sans-serif;
+      transform: translateY(8px);
+      opacity: 0;
+      transition: opacity .25s ease, transform .25s ease;
+    }
+    .openrelix-update-pill.is-visible { transform: none; opacity: 1; }
+    .openrelix-update-pill__dot {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: #34c759;
+      flex-shrink: 0;
+      box-shadow: 0 0 0 3px rgba(52, 199, 89, 0.18);
+    }
+    .openrelix-update-pill__label { white-space: nowrap; font-weight: 500; }
+    .openrelix-update-pill__hint { color: var(--muted, rgba(23, 23, 23, 0.6)); margin-left: 4px; font-weight: 400; }
+    .openrelix-update-pill__button {
+      appearance: none;
+      border: 0;
+      background: var(--ink, #0f172a);
+      color: #fff;
+      font: inherit;
+      font-weight: 500;
+      padding: 6px 14px;
+      border-radius: 999px;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .openrelix-update-pill__button[disabled] { opacity: 0.65; cursor: default; }
+    .openrelix-update-pill__button:hover:not([disabled]) { filter: brightness(1.08); }
+    .openrelix-update-pill__close {
+      appearance: none;
+      border: 0;
+      background: transparent;
+      color: var(--muted, rgba(23, 23, 23, 0.5));
+      font-size: 16px;
+      line-height: 1;
+      cursor: pointer;
+      padding: 4px 6px;
+      margin-right: 2px;
+    }
+    .openrelix-update-pill__close:hover { color: var(--ink, #171717); }
+    [data-theme="dark"] .openrelix-update-pill {
+      background: #1d1f26;
+      color: #f4f5f7;
+      border-color: rgba(255, 255, 255, 0.18);
+      box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
+    }
+    [data-theme="dark"] .openrelix-update-pill__hint { color: rgba(244, 245, 247, 0.6); }
+    [data-theme="dark"] .openrelix-update-pill__button { background: #f4f5f7; color: #0f172a; }
+    [data-theme="dark"] .openrelix-update-pill__close { color: rgba(244, 245, 247, 0.55); }
+    [data-theme="dark"] .openrelix-update-pill__close:hover { color: #f4f5f7; }
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) .openrelix-update-pill {
+        background: #1d1f26;
+        color: #f4f5f7;
+        border-color: rgba(255, 255, 255, 0.18);
+        box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
+      }
+      :root:not([data-theme="light"]) .openrelix-update-pill__hint { color: rgba(244, 245, 247, 0.6); }
+      :root:not([data-theme="light"]) .openrelix-update-pill__button { background: #f4f5f7; color: #0f172a; }
+      :root:not([data-theme="light"]) .openrelix-update-pill__close { color: rgba(244, 245, 247, 0.55); }
+      :root:not([data-theme="light"]) .openrelix-update-pill__close:hover { color: #f4f5f7; }
+    }
+    @media (max-width: 520px) {
+      .openrelix-update-pill { left: 12px; right: 12px; bottom: 12px; max-width: none; flex-wrap: wrap; }
+      .openrelix-update-pill__label { white-space: normal; flex: 1 1 auto; }
+      .openrelix-update-pill__button { flex: 1 1 100%; text-align: center; }
+    }
   </style>
 </head>
 <body>
   <nav class="site-nav" aria-label="页面导航">
     <div class="nav-inner">
       <a class="brand" href="#top" aria-label="OpenRelix 首页">
-        <span class="mark" aria-hidden="true">OR</span>
+        <span class="mark" aria-hidden="true"><img src="openrelix-icon.png" alt=""></span>
         <span>OpenRelix</span>
       </a>
       <div class="nav-actions">
@@ -3135,6 +3224,7 @@
           <a href="#install">安装</a>
           <a href="#tips">快速上手</a>
           <a href="#roadmap">更新计划</a>
+          <a href="changelog/v0.x.html">更新日志</a>
           <a href="#open">开源边界</a>
           <a href="#license">授权</a>
         </div>
@@ -3160,6 +3250,7 @@
       <a href="#install">安装</a>
       <a href="#tips">快速上手</a>
       <a href="#roadmap">更新计划</a>
+      <a href="changelog/v0.x.html">更新日志</a>
       <a href="#open">开源边界</a>
       <a href="#license">授权</a>
     </div>
@@ -3225,7 +3316,7 @@
           <a class="button" href="#tour">查看功能导览</a>
           <a class="button secondary" href="#install">安装方式</a>
         </div>
-        <p class="hero-note">v0.1.0 预览版：产品定位不绑定单一 AI host；当前首个公开适配器是 Codex CLI，Claude Code、Gemini CLI 等其他 AI CLI / coding-agent host 在后续适配计划中。本页预览使用脱敏示例面板，不包含真实项目、账号、路径、日志或工作内容。</p>
+        <p class="hero-note">v0.2.0 预览版：产品定位不绑定单一 AI host；当前首个公开适配器是 Codex CLI 和 Codex app-server，Claude Code、Gemini CLI 等其他 AI CLI / coding-agent host 在后续适配计划中。本页预览使用脱敏示例面板，不包含真实项目、账号、路径、日志或工作内容。</p>
       </div>
     </section>
 
@@ -3316,7 +3407,7 @@
           <article class="tile">
             <span class="chip">默认模式</span>
             <h3>本地记忆 + 轻量上下文</h3>
-            <p>完整记忆账本留在本机；进入 host 的只是压缩摘要，目标 4.2K、上限 5K token，避免长期上下文膨胀。</p>
+            <p>完整记忆账本留在本机；进入 host 的只是压缩摘要，目标 6.7K、上限 8K token，避免长期上下文膨胀。</p>
           </article>
           <article class="tile">
             <span class="chip blue">可追溯</span>
@@ -3476,7 +3567,7 @@
               <li>默认 integrated：完整登记册留在状态目录，压缩摘要进入当前 host 原生上下文。</li>
               <li>`--use-integrated`：显式选择 host 上下文注入模式。</li>
               <li>`--record-memory-only`：只做本地记录和可视化，不注入模型上下文。</li>
-              <li>压缩策略：同签名记忆跨天归并，优先长期和任务记忆，低优先级只留本地；摘要目标 4.2K、上限 5K token。</li>
+              <li>压缩策略：同签名记忆跨天归并，优先长期和任务记忆，低优先级只留本地；摘要目标 6.7K、上限 8K token。</li>
             </ul>
           </div>
           <figure class="shot context-distribution-shot" aria-label="OpenRelix 项目上下文分布预览">
@@ -3575,7 +3666,7 @@
             <h3>一行命令安装。</h3>
               <p>已经有 Node.js 18+ 和 Python 3.10+ 的 macOS 用户，直接跑这一行。它会安装 `openrelix` 命令、创建本地资产账本、开启每 30 分钟的增量学习，并读取 Codex CLI 和 Codex 应用的本地记录。</p>
             <div class="command-row inline-command" aria-label="npx 安装命令">
-              <code class="command-code">npx openrelix install --profile integrated --enable-learning-refresh --read-codex-app</code>
+              <code class="command-code">npx openrelix@latest install --enable-learning-refresh</code>
               <button class="command-copy" type="button" aria-label="复制 npx 安装命令"><span data-copy-label aria-live="polite">复制</span></button>
             </div>
           </article>
@@ -3594,7 +3685,7 @@
             </ol>
             <p class="install-hint">源码安装也一样：执行下面这行，直接启用自动学习并读取 Codex 应用记录。</p>
             <div class="command-row inline-command" aria-label="GitHub 手动下载与安装命令">
-              <code class="command-code">./install/install.sh --profile integrated --enable-learning-refresh --read-codex-app</code>
+              <code class="command-code">./install/install.sh --enable-learning-refresh</code>
               <button class="command-copy" type="button" aria-label="复制安装脚本命令"><span data-copy-label aria-live="polite">复制</span></button>
             </div>
           </article>
@@ -3616,7 +3707,7 @@
             <article class="mode-card">
               <span class="mode-kicker">第一步</span>
               <h3>整理最近 7 天</h3>
-              <p>先手动跑一次终版 review，把最近 7 天的 Codex 记录整理进 OpenRelix 本地账本和面板。安装命令带了 `--read-codex-app` 时，也会纳入 Codex 应用里的对话。</p>
+              <p>先手动跑一次终版 review，把最近 7 天的 Codex 记录整理进 OpenRelix 本地账本和面板。默认 auto 会先尝试 Codex app-server，失败时回退到 Codex CLI history/session。</p>
               <div class="command-row inline-command">
                 <code class="command-code">openrelix review --stage final --learn-window-days 7</code>
                 <button class="command-copy" type="button" aria-label="复制学习窗口命令"><span data-copy-label aria-live="polite">复制</span></button>
@@ -3634,10 +3725,14 @@
             <article class="mode-card">
               <span class="mode-kicker">第二步</span>
               <h3>再打开本地面板</h3>
-              <p>整理完成后打开面板，看今天整理了什么、长期和短期记忆有哪些、同步是否正常。</p>
+              <p>整理完成后打开面板，看今天整理了什么、长期和短期记忆有哪些、同步是否正常。运行命令打开网页端或桌面端，也可以在 macOS 中搜索 OpenRelix 直接启动。</p>
               <div class="command-row inline-command">
                 <code class="command-code">openrelix open panel</code>
-                <button class="command-copy" type="button" aria-label="复制打开面板命令"><span data-copy-label aria-live="polite">复制</span></button>
+                <button class="command-copy" type="button" aria-label="复制打开网页端命令"><span data-copy-label aria-live="polite">复制</span></button>
+              </div>
+              <div class="command-row inline-command">
+                <code class="command-code">openrelix open app</code>
+                <button class="command-copy" type="button" aria-label="复制打开桌面端命令"><span data-copy-label aria-live="polite">复制</span></button>
               </div>
               <div class="step-visual visual-local-panel" aria-hidden="true">
                 <div class="visual-local-shell">
@@ -3663,7 +3758,7 @@
                       <div class="visual-local-metric"><span>低优先</span><b>18</b></div>
                     </div>
                     <div class="visual-local-sync">
-                      <span>Host context 预算 ≤ 5K</span>
+                      <span>Host context 预算 ≤ 8K</span>
                       <strong>受控</strong>
                     </div>
                   </div>
@@ -3673,7 +3768,7 @@
             <article class="mode-card is-wide">
               <span class="mode-kicker">第三步（可选）</span>
               <h3>查看或切换 OpenRelix 记忆模式</h3>
-              <p>`integrated` 同时是推荐安装档位和默认记忆模式；使用 `--profile integrated` 安装后，后续只在需要严格隔离或只做可视化时才用 `openrelix mode` 切换。</p>
+              <p>`integrated` 是默认安装档位和默认记忆模式；后续只在需要严格隔离或只做可视化时才用 `openrelix mode` 切换。</p>
               <div class="mode-options">
                 <div class="mode-option">
                   <strong>OpenRelix 记忆全开模式（默认）</strong>
@@ -3750,7 +3845,7 @@
           <div class="grid">
             <div class="callout">
               <h3>默认轻量注入，不塞原始窗口。</h3>
-              <p>默认上下文模式只写压缩摘要：合并重复记忆，优先长期和任务记忆，低优先只留本地，目标 4.2K、上限 5K token。</p>
+              <p>默认上下文模式只写压缩摘要：合并重复记忆，优先长期和任务记忆，低优先只留本地，目标 6.7K、上限 8K token。</p>
             </div>
             <article class="tile">
               <h3>把“反复出现的做法”升级成技能</h3>
@@ -3772,7 +3867,7 @@
             <div class="section-kicker">更新计划</div>
             <h2>按 AI host 适配和个人记忆系统两条主线推进。</h2>
           </div>
-          <p class="lead">更新计划以 2026/04/28 的 v0.1.0 公开预览版为起点：先把 Codex 体验做深，再扩展到 Claude 生态，最后收口成正式版个人记忆系统。</p>
+          <p class="lead">更新计划从 2026/04/28 v0.1.0 公开预览版起步，2026/04/29 完成 v0.2.0 Codex 深度适配；接下来扩展到 Claude 生态，最后收口成正式版个人记忆系统。</p>
         </div>
         <div class="roadmap-timeline" aria-label="更新计划时间线">
           <article class="roadmap-item is-released">
@@ -3784,11 +3879,11 @@
               <p>跑通本地优先个人 AI 资产系统的最小完整闭环：一键安装、Codex CLI 工作窗口采集、任务复盘、资产登记、记忆分层、面板可视化和 macOS 后台自动化。</p>
             </div>
           </article>
-          <article class="roadmap-item">
+          <article class="roadmap-item is-released">
             <div class="roadmap-marker" aria-hidden="true"></div>
             <div class="roadmap-content">
-              <span class="chip blue">v0.2.0</span>
-              <span class="roadmap-status">预计两日内 · 约 2026/04/30 前</span>
+              <span class="chip">v0.2.0 已发布</span>
+              <span class="roadmap-status">已发布 · 2026/04/29</span>
               <h3>深度适配 Codex 软件</h3>
               <p>把 Codex CLI 与 Codex 软件的活动来源、线程读取、上下文同步和异常回退做得更稳定，同时优化记忆去重、压缩预算、短期/长期分层和面板呈现。</p>
             </div>
@@ -3812,7 +3907,7 @@
             </div>
           </article>
         </div>
-        <p class="roadmap-note">以上时间是基于 2026/04/28 发布节奏的预估，具体范围会随 host 适配验证、隐私边界检查和安装稳定性测试微调。</p>
+        <p class="roadmap-note">以上时间是基于 2026/04/28 - 2026/04/29 两次发布节奏的预估，具体范围会随 host 适配验证、隐私边界检查和安装稳定性测试微调。</p>
       </div>
     </section>
 
@@ -3832,9 +3927,9 @@
             <p>这些是可复用逻辑，适合随 npm 包和 GitHub 仓库一起发布。</p>
           </article>
           <article class="tile">
-            <span class="chip blue">v0.1.0 预览版</span>
+            <span class="chip blue">v0.2.0 预览版</span>
             <h3>AI CLI 优先</h3>
-            <p>当前首个公开适配器是 Codex CLI；Codex app-server 是 opt-in 预览读取，Claude Code、Gemini CLI 等其他 AI CLI / coding-agent host 是后续适配目标。</p>
+            <p>当前首个公开适配器是 Codex CLI 和 Codex app-server；默认 auto 优先读取 Codex app-server，Claude Code、Gemini CLI 等其他 AI CLI / coding-agent host 是后续适配目标。</p>
           </article>
           <article class="tile">
             <span class="chip amber">留在本地</span>
@@ -3888,7 +3983,7 @@
     <div class="inner">
       <div>
         <strong>OpenRelix™</strong>
-        <div class="small">面向 AI coding agents / AI CLI 的本地优先个人 AI 资产系统。当前 v0.1.0 预览版首个适配器是 Codex CLI；非官方项目，与 OpenAI 无官方关联。</div>
+        <div class="small">面向 AI coding agents / AI CLI 的本地优先个人 AI 资产系统。当前 v0.2.0 预览版首个适配器是 Codex CLI；非官方项目，与 OpenAI 无官方关联。</div>
         <div
           class="small"
           data-zh-html='MIT 授权。版权 (c) 2026 <a class="text-link" href="https://www.npmjs.com/~kk_kais" target="_blank" rel="noopener noreferrer">kk_kais</a>。'
@@ -3910,6 +4005,7 @@
         "痛点": "Pain Points",
         "产品": "Product",
         "更新计划": "Update Plan",
+        "更新日志": "Changelog",
         "记忆系统": "Memory System",
         "导览": "Tour",
         "安装": "Install",
@@ -3929,7 +4025,7 @@
         "安装方式": "Install Options",
         "复制安装命令": "Copy Install Commands",
         "GitHub 点星支持": "Star on GitHub",
-        "v0.1.0 预览版：产品定位不绑定单一 AI host；当前首个公开适配器是 Codex CLI，Claude Code、Gemini CLI 等其他 AI CLI / coding-agent host 在后续适配计划中。本页预览使用脱敏示例面板，不包含真实项目、账号、路径、日志或工作内容。": "v0.1.0 preview: the product is not tied to one AI host; the first public adapter is Codex CLI, with Claude Code, Gemini CLI, and other AI CLI / coding-agent hosts on the adapter roadmap. This page uses sanitized sample panels and contains no real projects, accounts, paths, logs, or work content.",
+        "v0.2.0 预览版：产品定位不绑定单一 AI host；当前首个公开适配器是 Codex CLI 和 Codex app-server，Claude Code、Gemini CLI 等其他 AI CLI / coding-agent host 在后续适配计划中。本页预览使用脱敏示例面板，不包含真实项目、账号、路径、日志或工作内容。": "v0.2.0 preview: the product is not tied to one AI host; the first public adapter is Codex CLI and Codex app-server, with Claude Code, Gemini CLI, and other AI CLI / coding-agent hosts on the adapter roadmap. This page uses sanitized sample panels and contains no real projects, accounts, paths, logs, or work content.",
         "AI 编程越来越强，但个人经验和记忆仍然很容易流失。": "AI coding keeps getting stronger, but personal know-how still disappears easily.",
         "一次很有价值的排障、一次高质量代码审查、一次顺手写出的脚本，如果没有结构化沉淀，过几天就只剩“我好像做过”。": "A useful debug session, a good code review, or a quick script is hard to reuse a few days later unless it is captured in a structured way.",
         "聊天碎片": "Chat fragments",
@@ -3959,12 +4055,13 @@
         "资产永远归个人": "Assets remain personal",
         "方法手册、技能、模板、自动化和记忆账本不绑定单一平台，未来可迁移到 Claude Code、其他 CLI 或团队工作流。": "Playbooks, skills, templates, automations, and the memory ledger are not tied to one platform and can move to Claude Code, other CLIs, or team workflows later.",
         "按 AI host 适配和个人记忆系统两条主线推进。": "Advance along two tracks: AI host adapters and the personal memory system.",
-        "更新计划以 2026/04/28 的 v0.1.0 公开预览版为起点：先把 Codex 体验做深，再扩展到 Claude 生态，最后收口成正式版个人记忆系统。": "The update plan starts from the v0.1.0 public preview on 2026/04/28: deepen the Codex experience first, expand into the Claude ecosystem next, then finish the official personal memory system.",
+        "更新计划从 2026/04/28 v0.1.0 公开预览版起步，2026/04/29 完成 v0.2.0 Codex 深度适配；接下来扩展到 Claude 生态，最后收口成正式版个人记忆系统。": "The update plan kicks off with the v0.1.0 public preview on 2026/04/28 and ships v0.2.0 (deep Codex adaptation) on 2026/04/29; next, it expands into the Claude ecosystem and lands the official personal memory system.",
         "v0.1.0 已发布": "v0.1.0 Released",
+        "v0.2.0 已发布": "v0.2.0 Released",
         "已发布 · 2026/04/28": "Released · 2026/04/28",
+        "已发布 · 2026/04/29": "Released · 2026/04/29",
         "预览版闭环发布": "Preview Loop Released",
         "跑通本地优先个人 AI 资产系统的最小完整闭环：一键安装、Codex CLI 工作窗口采集、任务复盘、资产登记、记忆分层、面板可视化和 macOS 后台自动化。": "Delivered the smallest complete loop for a local-first personal AI asset system: one-command install, Codex CLI work-window collection, task reviews, asset registry, memory layering, dashboard visualization, and macOS background automation.",
-        "预计两日内 · 约 2026/04/30 前": "Expected within two days · around 2026/04/30",
         "深度适配 Codex 软件": "Deep Codex App Adaptation",
         "把 Codex CLI 与 Codex 软件的活动来源、线程读取、上下文同步和异常回退做得更稳定，同时优化记忆去重、压缩预算、短期/长期分层和面板呈现。": "Make Codex CLI and the Codex app more stable across activity sources, thread reading, context sync, and fallback behavior, while improving memory deduplication, compression budgets, short/long-term layering, and panel presentation.",
         "预计一周内 · 约 2026/05/05 前": "Expected within one week · around 2026/05/05",
@@ -3973,7 +4070,7 @@
         "预计 1-2 周 · 约 2026/05/05 - 2026/05/12": "Expected in 1-2 weeks · around 2026/05/05 - 2026/05/12",
         "正式版：深度改造个人记忆系统": "Official Release: Deep Personal Memory System Upgrade",
         "围绕个人记忆系统做正式版收口：更清晰的长期/短期/低优先分层、更强的资产升级规则、更稳定的跨 host 记忆同步和正式发布文档。": "Finalize the official release around the personal memory system: clearer long-term / short-term / low-priority layers, stronger asset promotion rules, more stable cross-host memory sync, and official release docs.",
-        "以上时间是基于 2026/04/28 发布节奏的预估，具体范围会随 host 适配验证、隐私边界检查和安装稳定性测试微调。": "These dates are estimates based on the 2026/04/28 release cadence; scope may adjust after host-adapter validation, privacy-boundary checks, and install stability testing.",
+        "以上时间是基于 2026/04/28 - 2026/04/29 两次发布节奏的预估，具体范围会随 host 适配验证、隐私边界检查和安装稳定性测试微调。": "These dates are estimates based on the 2026/04/28 - 2026/04/29 release cadence; scope may adjust after host-adapter validation, privacy-boundary checks, and install stability testing.",
         "先沉淀成本地账本，再把必要摘要交给 AI host。": "First capture a local ledger, then hand only the necessary summary to the AI host.",
         "OpenRelix 不会把所有聊天都塞回上下文。它先把工作记录留在本机，再按固定节奏整理：平时每 30 分钟做小结，深夜做当天总账；需要时也能手动立刻生成。": "OpenRelix does not push every chat back into context. It keeps the work record on your machine first, then organizes it on a steady rhythm: short summaries every 30 minutes, a daily ledger late at night, and manual generation when you need it now.",
         "先把这段工作记下来": "First, Save This Work Session",
@@ -3986,7 +4083,7 @@
         "不想等后台任务时，直接运行 review 或 refresh，就能马上从当前窗口生成记忆；默认只同步压缩摘要，local-only 时只留本地。": "When you do not want to wait for the background job, run review or refresh to generate memory from the current windows right away; by default only the compressed summary syncs, and local-only keeps it on the machine.",
         "默认模式": "Default Mode",
         "本地记忆 + 轻量上下文": "Local memory + light context",
-        "完整记忆账本留在本机；进入 host 的只是压缩摘要，目标 4.2K、上限 5K token，避免长期上下文膨胀。": "The full memory ledger stays on the machine; the host receives only a compressed summary with a 4.2K target and 5K token cap to avoid long-term context bloat.",
+        "完整记忆账本留在本机；进入 host 的只是压缩摘要，目标 6.7K、上限 8K token，避免长期上下文膨胀。": "The full memory ledger stays on the machine; the host receives only a compressed summary with a 6.7K target and 8K token cap to avoid long-term context bloat.",
         "可追溯": "Traceable",
         "每条记忆都有来源": "Every Memory Has A Source",
         "记忆会保留来源窗口、日期、项目上下文和隐私边界，方便之后回看为什么沉淀、是否还值得保留。": "Memory keeps the source window, date, project context, and privacy boundary, making it easier to review why it was captured and whether it still deserves to stay.",
@@ -4001,7 +4098,7 @@
         "日期\u00a0\u00a02026/04/27": "Date  2026/04/27",
         "今天主要整理了 OpenRelix 的发布准备、隐私边界、记忆模式和本地面板展示。": "Today focused on OpenRelix release preparation, privacy boundaries, memory modes, and the local panel presentation.",
         "Host 原生记忆用于模型上下文，OpenRelix 个人记忆用于本地资产账本，两者分层展示。": "Host-native memory serves model context, while OpenRelix personal memory serves the local asset ledger; the two are shown as separate layers.",
-        "默认 integrated：长期可复用内容写入本地 registry，并用 4.2K target / 5K max 的摘要进入当前 host native context。": "Default integrated: long-term reusable content is written to the local registry and summarized into the current host-native context with a 4.2K target / 5K max budget.",
+        "默认 integrated：长期可复用内容写入本地 registry，并用 6.7K target / 8K max 的摘要进入当前 host native context。": "Default integrated: long-term reusable content is written to the local registry and summarized into the current host-native context with a 6.7K target / 8K max budget.",
         "资产使用 Markdown、JSONL 和可视化 panel 保存，未来可迁移到 Claude Code 或其他 CLI。": "Assets are saved as Markdown, JSONL, and visual panels, and can later move to Claude Code or other CLIs.",
         "相关上下文": "Related Context",
         "本地隐私边界": "Local Privacy Boundary",
@@ -4129,7 +4226,7 @@
         "`--record-memory-only`：只做本地记录和可视化，不注入模型上下文。": "`--record-memory-only`: only record and visualize locally, without injecting model context.",
         "`--use-integrated`：显式选择 host 上下文注入模式。": "`--use-integrated`: explicitly select host-context injection mode.",
         "`--disable-personal-memory`：关闭本系统本地 memory registry 写入。": "`--disable-personal-memory`: disable this system's local memory-registry writes.",
-        "压缩策略：同签名记忆跨天归并，优先长期和任务记忆，低优先级只留本地；摘要目标 4.2K、上限 5K token。": "Compression strategy: merge same-signature memories across days, prioritize durable / session, keep low-priority local only, and cap the summary at a 4.2K target / 5K max token budget.",
+        "压缩策略：同签名记忆跨天归并，优先长期和任务记忆，低优先级只留本地；摘要目标 6.7K、上限 8K token。": "Compression strategy: merge same-signature memories across days, prioritize durable / session, keep low-priority local only, and cap the summary at a 6.7K target / 8K max token budget.",
         "低优先级内容只留本地；长期规则和短期跟进分开归档，避免上下文噪声。": "Low-priority content stays local; long-term rules and short-term follow-ups are archived separately to reduce context noise.",
         "窗口二次归类": "Second-level window grouping",
         "多窗口先按项目归并，再按上下文主题展示，避免把历史窗口一次性铺满。": "Many windows are first grouped by project, then by context topic, so history does not flood the page at once.",
@@ -4168,8 +4265,8 @@
         "装完后怎么用。": "What to do after install.",
         "安装后运行顺序。": "Post-install run order.",
         "安装方式。": "Install Options.",
-        "先安装 OpenRelix。推荐命令会开启 30 分钟自动 Codex 学习；如果只想手动整理，可以删掉 `--enable-learning-refresh`。默认只读取 Codex CLI 本地记录；如果也要读取 Codex 应用里的对话，安装命令里额外加 `--read-codex-app`。": "Install OpenRelix first. The recommended command enables 30-minute automatic Codex learning; if you only want manual organization, remove `--enable-learning-refresh`. By default it reads only local Codex CLI records; to include conversations from the Codex app, add `--read-codex-app` to the install command.",
-        "推荐命令会安装 `openrelix`、创建本地资产账本，并开启每 30 分钟的增量学习。只想手动整理时，使用不带自动学习开关的安装命令；需要读取 Codex 应用对话时，再选择带应用读取参数的命令。": "The recommended command installs `openrelix`, creates the local asset ledger, and enables incremental learning every 30 minutes. For manual-only use, install without the automatic-learning option; to include Codex app conversations, choose the command with the app-reading option.",
+        "先安装 OpenRelix。推荐命令会开启 30 分钟自动 Codex 学习；如果只想手动整理，可以删掉 `--enable-learning-refresh`。默认 auto 会先尝试 Codex app-server，失败时回退到 Codex CLI history/session。": "Install OpenRelix first. The recommended command enables 30-minute automatic Codex learning; if you only want manual organization, remove `--enable-learning-refresh`. By default, auto tries Codex app-server first and falls back to Codex CLI history/session.",
+        "推荐命令会安装 `openrelix`、创建本地资产账本，并开启每 30 分钟的增量学习；默认 auto 会纳入 Codex 应用对话，失败时回退 CLI 文件。": "The recommended command installs `openrelix`, creates the local asset ledger, and enables incremental learning every 30 minutes; auto includes Codex app conversations and falls back to CLI files.",
         "推荐命令会安装 `openrelix`、创建本地资产账本，开启每 30 分钟的增量学习，并把 Codex 应用对话也纳入整理。": "The recommended command installs `openrelix`, creates the local asset ledger, enables incremental learning every 30 minutes, and also includes Codex app conversations.",
         "推荐安装": "Recommended",
         "一行命令安装。": "Install with one command.",
@@ -4177,7 +4274,7 @@
         "已经有 Node.js 18+ 和 Python 3.10+ 的 macOS 用户，直接跑这一行。它会安装 `openrelix` 命令、创建本地资产账本，并开启每 30 分钟的增量学习；后台运行可能消耗 token，需要纯手动模式时去掉自动学习开关。": "If you already have Node.js 18+ and Python 3.10+ on macOS, run this line. It installs the `openrelix` command, creates the local asset ledger, and enables incremental learning every 30 minutes; background runs may consume tokens, so remove the automatic-learning option for a manual-only setup.",
         "已经有 Node.js 18+ 和 Python 3.10+ 的 macOS 用户，直接跑这一行。它会安装 `openrelix` 命令、创建本地资产账本、开启每 30 分钟的增量学习，并读取 Codex CLI 和 Codex 应用的本地记录。": "If you already have Node.js 18+ and Python 3.10+ on macOS, run this line. It installs the `openrelix` command, creates the local asset ledger, enables incremental learning every 30 minutes, and reads local records from both Codex CLI and the Codex app.",
         "# npx 快速安装": "# quick npx install",
-        "如果你主要用 Codex 应用，也想把应用里的对话纳入整理，安装时用下面这行；默认仍只读 Codex CLI 的本地记录。": "If you mainly use the Codex app and want those conversations included, use the line below during install; by default OpenRelix still reads only local Codex CLI records.",
+        "如果你想强制只读 Codex CLI 本地记录，安装时加 `--activity-source history`。": "Add `--activity-source history` during install when you want to force Codex CLI local records only.",
         "手动下载": "Manual download",
         "也可以从 GitHub 下载源码。": "You can also download the source from GitHub.",
         "打开 GitHub": "Open GitHub",
@@ -4185,7 +4282,7 @@
         "下载并解压源码。": "Download and extract the source.",
         "进入解压后的仓库目录。": "Enter the extracted repository directory.",
         "执行安装脚本。": "Run the installer script.",
-        "源码安装也一样：只有要读 Codex 应用时，才额外加 `--read-codex-app`。": "Source install works the same way: add `--read-codex-app` only when you want to read the Codex app.",
+        "源码安装也一样：默认会尝试读取 Codex 应用记录；需要只读 CLI 文件时加 `--activity-source history`。": "Source install works the same way: auto reads Codex app records first; add `--activity-source history` to force CLI files only.",
         "源码安装也一样：执行下面这行，直接启用自动学习并读取 Codex 应用记录。": "Source install works the same way: run the line below to enable automatic learning and read Codex app records.",
         "装好以后按这个顺序来：先把最近 7 天的 Codex 记录整理一次；再确认是否开启 30 分钟自动学习；最后打开面板看结果。自动学习会定时调用 Codex，不想消耗 token 时可以跳过。": "After install, use this order: organize the last 7 days of Codex records once; then confirm whether 30-minute automatic learning is enabled; finally open the panel to inspect the result. Automatic learning calls Codex on a schedule, so skip it if you do not want token usage.",
         "安装完成后，先执行一次近 7 天整理，把已有 Codex 窗口写入本地账本；如果安装时保留 `--enable-learning-refresh`，后台会每 30 分钟增量刷新；最后打开面板确认结果。": "After install, run one 7-day organization pass to write existing Codex windows into the local ledger. If you kept `--enable-learning-refresh`, the background job refreshes incrementally every 30 minutes. Then open the panel to verify the result.",
@@ -4193,9 +4290,9 @@
         "第一步": "Step 1",
         "先补齐最近 7 天": "Backfill the last 7 days first",
         "整理最近 7 天": "Organize the last 7 days",
-        "装完后先跑一次，把最近几天的 Codex 记录整理进 OpenRelix 本地记忆和面板。安装时加了 `--read-codex-app` 的话，这里也会读取 Codex 应用里的对话。": "Run this once after install to organize recent Codex records into OpenRelix local memory and the panel. If you installed with `--read-codex-app`, this also reads conversations from the Codex app.",
-        "先手动跑一次，把最近 7 天的 Codex CLI 记录整理进 OpenRelix 本地账本和面板。安装时加了 `--read-codex-app` 的话，也会尝试纳入 Codex 应用里的对话。": "Run this manually once to organize the last 7 days of Codex CLI records into the OpenRelix local ledger and panel. If you installed with `--read-codex-app`, it also tries to include Codex app conversations.",
-        "先手动跑一次终版 review，把最近 7 天的 Codex 记录整理进 OpenRelix 本地账本和面板。安装命令带了 `--read-codex-app` 时，也会纳入 Codex 应用里的对话。": "Run one final review manually to organize the last 7 days of Codex records into the OpenRelix local ledger and panel. When the install command includes `--read-codex-app`, it also includes Codex app conversations.",
+        "装完后先跑一次，把最近几天的 Codex 记录整理进 OpenRelix 本地记忆和面板。默认 auto 会先尝试 Codex app-server，失败时回退到 Codex CLI history/session。": "Run this once after install to organize recent Codex records into OpenRelix local memory and the panel. By default, auto tries Codex app-server first and falls back to Codex CLI history/session.",
+        "先手动跑一次，把最近 7 天的 Codex CLI 记录整理进 OpenRelix 本地账本和面板。默认 auto 会先尝试 Codex app-server，失败时回退到 Codex CLI history/session。": "Run this manually once to organize the last 7 days of Codex CLI records into the OpenRelix local ledger and panel. By default, auto tries Codex app-server first and falls back to Codex CLI history/session.",
+        "先手动跑一次终版 review，把最近 7 天的 Codex 记录整理进 OpenRelix 本地账本和面板。默认 auto 会先尝试 Codex app-server，失败时回退到 Codex CLI history/session。": "Run one final review manually to organize the last 7 days of Codex records into the OpenRelix local ledger and panel. By default, auto tries Codex app-server first and falls back to Codex CLI history/session.",
         "同步正常": "Synced",
         "概览": "Overview",
         "今日 Review": "Today Review",
@@ -4203,7 +4300,7 @@
         "长期": "Long",
         "短期": "Short",
         "低优先": "Low",
-        "Host context 预算 ≤ 5K": "Host context budget ≤ 5K",
+        "Host context 预算 ≤ 8K": "Host context budget ≤ 8K",
         "受控": "Bounded",
         "第二步": "Step 2",
         "开启 30 分钟自动学习（推荐）": "Enable 30-minute automatic learning (recommended)",
@@ -4212,12 +4309,12 @@
         "Codex 学习": "Codex learning",
         "第三步": "Step 3",
         "再打开本地面板": "Then open the local panel",
-        "整理完成后打开面板，看今天整理了什么、长期和短期记忆有哪些、同步是否正常。": "After organizing, open the panel to see what was captured today, which long-term and short-term memories exist, and whether sync is healthy.",
+        "整理完成后打开面板，看今天整理了什么、长期和短期记忆有哪些、同步是否正常。运行命令打开网页端或桌面端，也可以在 macOS 中搜索 OpenRelix 直接启动。": "After organizing, open the panel to see what was captured today, which long-term and short-term memories exist, and whether sync is healthy. Run a command to open the web or desktop client, or search for OpenRelix on macOS to launch it directly.",
         "7 天窗口": "7-day windows",
         "OpenRelix 本地记忆": "OpenRelix local memory",
         "本地面板": "Local panel",
         "查看或切换 OpenRelix 记忆模式": "View or switch OpenRelix memory mode",
-        "`integrated` 同时是推荐安装档位和默认记忆模式；使用 `--profile integrated` 安装后，后续只在需要严格隔离或只做可视化时才用 `openrelix mode` 切换。": "`integrated` is both the recommended install profile and the default memory mode. After installing with `--profile integrated`, use `openrelix mode` later only for strict isolation or visualization-only usage.",
+        "`integrated` 是默认安装档位和默认记忆模式；后续只在需要严格隔离或只做可视化时才用 `openrelix mode` 切换。": "`integrated` is the default install profile and the default memory mode. Use `openrelix mode` later only for strict isolation or visualization-only usage.",
         "全开": "Full",
         "本地记忆 + 上下文注入": "Local memory + context injection",
         "本地存储": "Local storage",
@@ -4275,7 +4372,7 @@
         "已复制": "Copied",
         "复制失败": "Failed",
         "默认轻量注入，不塞原始窗口。": "Lightweight injection by default, without raw windows.",
-        "默认上下文模式只写压缩摘要：合并重复记忆，优先长期和任务记忆，低优先只留本地，目标 4.2K、上限 5K token。": "Default context mode writes only a compressed summary: merge duplicates, prioritize durable / session, keep low-priority local only, with a 4.2K target and 5K token max.",
+        "默认上下文模式只写压缩摘要：合并重复记忆，优先长期和任务记忆，低优先只留本地，目标 6.7K、上限 8K token。": "Default context mode writes only a compressed summary: merge duplicates, prioritize durable / session, keep low-priority local only, with a 6.7K target and 8K token max.",
         "把“反复出现的做法”升级成技能": "Promote repeated practices into skills",
         "当同类复盘、排障或发布动作重复出现时，把步骤固化到 `.agents/skills/`，比继续写长提示词更稳定。": "When the same review, debugging, or release actions repeat, capture the steps in `.agents/skills/` instead of writing another long prompt.",
         "把“固定格式输出”升级成模板": "Promote fixed-format output into templates",
@@ -4285,9 +4382,9 @@
         "可以公开": "Shareable",
         "安装器 / 技能 / 模板": "Installer / Skills / Templates",
         "这些是可复用逻辑，适合随 npm 包和 GitHub 仓库一起发布。": "These are reusable logic and can ship with the npm package and GitHub repo.",
-        "v0.1.0 预览版": "v0.1.0 Preview",
+        "v0.2.0 预览版": "v0.2.0 Preview",
         "AI CLI 优先": "AI CLI First",
-        "当前首个公开适配器是 Codex CLI；Codex app-server 是 opt-in 预览读取，Claude Code、Gemini CLI 等其他 AI CLI / coding-agent host 是后续适配目标。": "The first public adapter is Codex CLI; Codex app-server is an opt-in preview source, while Claude Code, Gemini CLI, and other AI CLI / coding-agent hosts are later adapter targets.",
+        "当前首个公开适配器是 Codex CLI 和 Codex app-server；默认 auto 优先读取 Codex app-server，Claude Code、Gemini CLI 等其他 AI CLI / coding-agent host 是后续适配目标。": "The first public adapter is Codex CLI and Codex app-server; auto uses Codex app-server first, while Claude Code, Gemini CLI, and other AI CLI / coding-agent hosts are later adapter targets.",
         "留在本地": "Keep local",
         "注册表 / 复盘 / 原始库 / 报表": "Registry / Reviews / Raw / Reports",
         "这些包含个人工作轨迹，默认写入状态目录，不进入 npm 包和源码仓库。": "These contain personal work traces, are written to the state root by default, and do not enter the npm tarball or source repo.",
@@ -4304,7 +4401,7 @@
         "无担保": "Warranty",
         "按现状提供": "Provided as is",
         "软件不附带明示或暗示担保，使用、修改和分发时需要自行承担相应风险。": "The software is provided without express or implied warranty; use, modify, and distribute it at your own risk.",
-        "面向 AI coding agents / AI CLI 的本地优先个人 AI 资产系统。当前 v0.1.0 预览版首个适配器是 Codex CLI；非官方项目，与 OpenAI 无官方关联。": "A local-first personal AI asset system for AI coding agents / AI CLI. The first v0.1.0 preview adapter is Codex CLI; unofficial and not affiliated with OpenAI.",
+        "面向 AI coding agents / AI CLI 的本地优先个人 AI 资产系统。当前 v0.2.0 预览版首个适配器是 Codex CLI；非官方项目，与 OpenAI 无官方关联。": "A local-first personal AI asset system for AI coding agents / AI CLI. The first v0.2.0 preview adapter is Codex CLI; unofficial and not affiliated with OpenAI.",
         "MIT 授权。版权 (c) 2026": "MIT License. Copyright (c) 2026",
         "本页产品预览使用脱敏示例数据。": "Product previews on this page use sanitized sample data."
         };
@@ -4347,6 +4444,8 @@
         "复制学习窗口命令": "Copy learning-window command",
         "复制核心命令": "Copy core command",
         "复制打开面板命令": "Copy open-panel command",
+        "复制打开网页端命令": "Copy open-web command",
+        "复制打开桌面端命令": "Copy open-desktop command",
         "OpenRelix 脱敏每日整理结果预览": "OpenRelix sanitized daily synthesis preview",
         "OpenRelix 每日资产账本脱敏预览": "OpenRelix sanitized daily asset ledger preview",
         "OpenRelix 示例概览面板": "OpenRelix sample overview panel",
@@ -4584,6 +4683,248 @@
       }
       applyTheme(initialTheme);
       restoreInitialHashPosition();
+    })();
+  </script>
+  <script>
+    (function () {
+      try {
+        var meta = document.querySelector('meta[name="openrelix:version"]');
+        if (!meta) return;
+        var current = String(meta.content || "").trim();
+        if (!current) return;
+        var pkg = (meta.getAttribute("data-pkg") || "openrelix").trim() || "openrelix";
+        var updateEndpoint = (meta.getAttribute("data-update-endpoint") || "").trim();
+        var statusEndpoint = (meta.getAttribute("data-update-status-endpoint") || "").trim();
+        var DISMISS_KEY = "openrelix-update-dismissed";
+        var LAST_CHECK_KEY = "openrelix-update-last-check";
+        var CHECK_INTERVAL = 6 * 60 * 60 * 1000;
+        var COOLDOWN = 30 * 60 * 1000;
+
+        function semverKey(v) {
+          var parts = String(v || "").split(/[^0-9]+/).filter(Boolean).map(function (n) { return parseInt(n, 10) || 0; });
+          while (parts.length < 3) parts.push(0);
+          return parts.slice(0, 3);
+        }
+        function isNewer(a, b) {
+          var ak = semverKey(a), bk = semverKey(b);
+          for (var i = 0; i < 3; i++) { if (ak[i] !== bk[i]) return ak[i] > bk[i]; }
+          return false;
+        }
+        function ls(key, value) {
+          try {
+            if (value === undefined) return window.localStorage.getItem(key) || "";
+            window.localStorage.setItem(key, String(value));
+          } catch (_) { return ""; }
+        }
+        function detectLanguage() {
+          var d = document.documentElement, b = document.body;
+          if (b && b.dataset && b.dataset.language === "en") return "en";
+          if (d && d.dataset && d.dataset.language === "en") return "en";
+          var lang = (d && d.lang) || (navigator.language || "");
+          return /^en\b/i.test(lang) ? "en" : "zh";
+        }
+        function copyText(text) {
+          try {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+              navigator.clipboard.writeText(text);
+              return true;
+            }
+          } catch (_) {}
+          try {
+            var ta = document.createElement("textarea");
+            ta.value = text;
+            ta.setAttribute("readonly", "");
+            ta.style.position = "fixed";
+            ta.style.opacity = "0";
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand("copy");
+            document.body.removeChild(ta);
+            return true;
+          } catch (_) { return false; }
+        }
+        var STR = {
+          zh: {
+            label: function (latest) { return "OpenRelix " + latest; },
+            hint: "可更新 · 当前 " + current,
+            update: "立即更新",
+            running: "更新中…",
+            done: "已更新 · 重新载入",
+            copy: "复制命令",
+            copied: "已复制到剪贴板",
+            close: "关闭"
+          },
+          en: {
+            label: function (latest) { return "OpenRelix " + latest; },
+            hint: "available · on " + current,
+            update: "Update now",
+            running: "Updating…",
+            done: "Updated · Reload",
+            copy: "Copy command",
+            copied: "Copied",
+            close: "Dismiss"
+          }
+        };
+
+        function buildPill(latest) {
+          var lang = detectLanguage();
+          var s = STR[lang];
+          var cmd = "npm update -g " + pkg;
+          var pill = document.createElement("div");
+          pill.id = "openrelix-update-pill";
+          pill.className = "openrelix-update-pill";
+          pill.setAttribute("role", "status");
+          pill.setAttribute("aria-live", "polite");
+          pill.dataset.latest = latest;
+
+          var dot = document.createElement("span");
+          dot.className = "openrelix-update-pill__dot";
+          pill.appendChild(dot);
+
+          var label = document.createElement("span");
+          label.className = "openrelix-update-pill__label";
+          var ver = document.createElement("span");
+          ver.textContent = s.label(latest);
+          label.appendChild(ver);
+          var hint = document.createElement("span");
+          hint.className = "openrelix-update-pill__hint";
+          hint.textContent = " " + s.hint;
+          label.appendChild(hint);
+          pill.appendChild(label);
+
+          var btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "openrelix-update-pill__button";
+          btn.textContent = s.update;
+          pill.appendChild(btn);
+
+          var close = document.createElement("button");
+          close.type = "button";
+          close.className = "openrelix-update-pill__close";
+          close.setAttribute("aria-label", s.close);
+          close.textContent = "×";
+          close.addEventListener("click", function () { dismiss(); });
+          pill.appendChild(close);
+
+          var mode = "idle";
+          var pollTimer = null;
+
+          function setBtn(text, disabled) {
+            btn.textContent = text;
+            btn.disabled = !!disabled;
+          }
+
+          function flashCopied() {
+            var prev = btn.textContent;
+            btn.textContent = s.copied;
+            setTimeout(function () { if (mode !== "running") btn.textContent = prev; }, 1600);
+          }
+
+          function poll() {
+            if (!statusEndpoint) return;
+            pollTimer = setInterval(function () {
+              fetch(statusEndpoint, { cache: "no-cache" })
+                .then(function (r) { return r && r.ok ? r.json() : null; })
+                .then(function (data) {
+                  if (!data) return;
+                  if (data.status === "completed") {
+                    clearInterval(pollTimer); pollTimer = null;
+                    mode = "done"; setBtn(s.done, false);
+                  } else if (data.status === "failed") {
+                    clearInterval(pollTimer); pollTimer = null;
+                    mode = "copy_fallback"; setBtn(s.copy, false);
+                  }
+                })
+                .catch(function () {});
+            }, 2500);
+          }
+
+          function startServerUpdate() {
+            mode = "running"; setBtn(s.running, true);
+            fetch(updateEndpoint, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ source: "panel" })
+            })
+              .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+              .then(function (data) {
+                if (!data) { throw new Error("empty"); }
+                if (data.status === "completed") { mode = "done"; setBtn(s.done, false); return; }
+                if (data.status === "failed") { mode = "copy_fallback"; setBtn(s.copy, false); return; }
+                poll();
+              })
+              .catch(function () { mode = "copy_fallback"; setBtn(s.copy, false); });
+          }
+
+          btn.addEventListener("click", function () {
+            if (mode === "running") return;
+            if (mode === "done") { window.location.reload(); return; }
+            if (mode === "copy_fallback") {
+              copyText(cmd);
+              flashCopied();
+              return;
+            }
+            if (updateEndpoint) {
+              startServerUpdate();
+            } else {
+              copyText(cmd);
+              flashCopied();
+            }
+          });
+
+          function dismiss() {
+            if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+            ls(DISMISS_KEY, latest);
+            pill.classList.remove("is-visible");
+            setTimeout(function () { if (pill.parentNode) pill.parentNode.removeChild(pill); }, 240);
+          }
+
+          return pill;
+        }
+
+        function show(latest) {
+          if (ls(DISMISS_KEY) === latest) return;
+          var existing = document.getElementById("openrelix-update-pill");
+          if (existing) {
+            if (existing.dataset.latest === latest) return;
+            if (existing.parentNode) existing.parentNode.removeChild(existing);
+          }
+          var pill = buildPill(latest);
+          document.body.appendChild(pill);
+          requestAnimationFrame(function () { pill.classList.add("is-visible"); });
+        }
+
+        function check() {
+          var now = Date.now();
+          var last = Number(ls(LAST_CHECK_KEY) || 0);
+          if (now - last < COOLDOWN) return;
+          ls(LAST_CHECK_KEY, now);
+          var url = "https://registry.npmjs.org/" + encodeURIComponent(pkg) + "/latest";
+          fetch(url, { headers: { Accept: "application/json" }, cache: "no-cache" })
+            .then(function (r) { return r && r.ok ? r.json() : null; })
+            .then(function (data) {
+              if (!data) return;
+              var latest = String(data.version || "").trim();
+              if (!latest) return;
+              if (isNewer(latest, current)) show(latest);
+            })
+            .catch(function () { /* offline / blocked / silent */ });
+        }
+
+        function start() {
+          check();
+          setInterval(check, CHECK_INTERVAL);
+          document.addEventListener("visibilitychange", function () {
+            if (document.visibilityState === "visible") check();
+          });
+        }
+
+        if (document.readyState === "loading") {
+          document.addEventListener("DOMContentLoaded", start);
+        } else {
+          start();
+        }
+      } catch (_) { /* never break the page */ }
     })();
   </script>
 </body>

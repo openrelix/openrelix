@@ -29,7 +29,7 @@ GitHub 项目页：[openrelix/openrelix](https://github.com/openrelix/openrelix)
 - 为什么 repo 不保存真实 registry、reviews、raw history 和 logs？
 - minimal install 和 integrated install 的区别是什么？
 - 默认 memory mode 为什么是 `integrated`，以及什么时候要切到 `record-memory-only`？
-- 为什么 plugin draft 现在不是 v0.1.0 预览版主入口？
+- 为什么 Codex plugin 只承载 skill route，而完整本地集成仍由 installer 负责？
 
 ### 2. 跑一个最小安装
 
@@ -161,7 +161,7 @@ open "$AI_ASSET_STATE_DIR/reports/panel.html"
 
 理解目标：
 
-- 采集阶段只把 Codex history/session 转成结构化 raw JSON。
+- 采集阶段默认先把 Codex app-server threads 转成结构化 raw JSON，不可用时回退 Codex history/session。
 - 整理阶段用 `codex exec --ephemeral` 生成 schema-constrained summary。
 - 失败时会 fallback。
 - 已有 summary 更好时会保留旧结果。
@@ -391,7 +391,7 @@ python3 scripts/build_overview.py
 
 ### 为什么默认只写 bounded summary
 
-默认会接入 Codex native context，但只写压缩后的 bounded summary。完整 registry、reviews、raw windows 和 consolidated summaries 仍留在 state root；压缩策略会合并重复记忆，优先 durable / session，low-priority 默认只留本地，并把摘要控制在 4.2K target / 5K max token 左右。
+默认会接入 Codex native context，但只写压缩后的 bounded summary。完整 registry、reviews、raw windows 和 consolidated summaries 仍留在 state root；压缩策略会合并重复记忆，优先 durable / session，low-priority 默认只留本地，并把摘要控制在 6.7K target / 8K max token 左右。
 
 如果要严格隔离，不往 Codex context 注入摘要，用：
 

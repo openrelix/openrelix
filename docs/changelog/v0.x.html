@@ -1,0 +1,953 @@
+<!doctype html>
+<html lang="zh-CN" data-language="zh">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>OpenRelix™ v0.x 更新日志</title>
+  <meta name="description" content="OpenRelix™ v0.x 预览版系列更新日志：记录 Codex 适配器、个人记忆系统、站点与安装器在每个版本上的具体变化。">
+  <script>
+    (() => {
+      try {
+        if (window.location.hash && "scrollRestoration" in window.history) {
+          window.history.scrollRestoration = "manual";
+        }
+        const theme = window.localStorage.getItem("openrelix-showcase-theme");
+        if (theme === "light" || theme === "dark") {
+          document.documentElement.dataset.theme = theme;
+        }
+        const language = window.localStorage.getItem("openrelix-showcase-language");
+        if (language === "en") {
+          document.documentElement.dataset.language = "en";
+          document.documentElement.lang = "en";
+        }
+      } catch (_) {
+        // Keep defaults when storage is unavailable.
+      }
+    })();
+  </script>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --ink: #171717;
+      --muted: #62626a;
+      --soft: #f5f5f7;
+      --paper: #ffffff;
+      --paper-soft: #f8fafc;
+      --line: #dedee3;
+      --line-strong: #c9c9d1;
+      --accent: #0f766e;
+      --accent-soft: #e8f4f1;
+      --accent-tint: #eefaf6;
+      --accent-line: #cfe7df;
+      --on-accent: #ffffff;
+      --blue: #2563eb;
+      --blue-strong: #1d4ed8;
+      --blue-soft: #eff6ff;
+      --blue-line: #d8e3fb;
+      --amber: #b45309;
+      --amber-soft: #fff7ed;
+      --amber-line: #f1dec2;
+      --rose: #be123c;
+      --rose-soft: #fff1f2;
+      --rose-line: #f5cbd5;
+      --nav-bg: rgba(255, 255, 255, 0.93);
+      --nav-border: rgba(222, 222, 227, 0.82);
+      --button-primary-bg: #111827;
+      --button-primary-fg: #ffffff;
+      --button-secondary-border: #cbd5e1;
+      --button-github-bg: #f7fffd;
+      --button-github-border: #b7d8d2;
+      --shadow-card: 0 10px 28px rgba(15, 23, 42, 0.04);
+      --shadow-card-strong: 0 10px 28px rgba(15, 23, 42, 0.08);
+      --anchor-offset: 92px;
+      --radius: 8px;
+      --max: 1160px;
+    }
+
+    :root[data-theme="dark"] {
+      color-scheme: dark;
+      --ink: #f8fafc;
+      --muted: #a7b0c0;
+      --soft: #0d121a;
+      --paper: #151c26;
+      --paper-soft: #111827;
+      --line: #2b3645;
+      --line-strong: #3f4d61;
+      --accent: #5eead4;
+      --accent-soft: #0e2a29;
+      --accent-tint: #113a36;
+      --accent-line: #24534e;
+      --on-accent: #042f2e;
+      --blue: #8ab4ff;
+      --blue-strong: #93c5fd;
+      --blue-soft: #10233f;
+      --blue-line: #28496f;
+      --amber: #fbbf24;
+      --amber-soft: #33250f;
+      --amber-line: #5c4215;
+      --rose: #fb7185;
+      --rose-soft: #35151d;
+      --rose-line: #693040;
+      --nav-bg: rgba(18, 25, 35, 0.92);
+      --nav-border: rgba(68, 80, 96, 0.76);
+      --button-primary-bg: #f8fafc;
+      --button-primary-fg: #0f172a;
+      --button-secondary-border: #475569;
+      --button-github-bg: #112d2a;
+      --button-github-border: #24534e;
+      --shadow-card: 0 10px 28px rgba(0, 0, 0, 0.24);
+      --shadow-card-strong: 0 10px 28px rgba(0, 0, 0, 0.35);
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) {
+        color-scheme: dark;
+        --ink: #f8fafc;
+        --muted: #a7b0c0;
+        --soft: #0d121a;
+        --paper: #151c26;
+        --paper-soft: #111827;
+        --line: #2b3645;
+        --line-strong: #3f4d61;
+        --accent: #5eead4;
+        --accent-soft: #0e2a29;
+        --accent-tint: #113a36;
+        --accent-line: #24534e;
+        --on-accent: #042f2e;
+        --blue: #8ab4ff;
+        --blue-strong: #93c5fd;
+        --blue-soft: #10233f;
+        --blue-line: #28496f;
+        --amber: #fbbf24;
+        --amber-soft: #33250f;
+        --amber-line: #5c4215;
+        --rose: #fb7185;
+        --rose-soft: #35151d;
+        --rose-line: #693040;
+        --nav-bg: rgba(18, 25, 35, 0.92);
+        --nav-border: rgba(68, 80, 96, 0.76);
+        --button-primary-bg: #f8fafc;
+        --button-primary-fg: #0f172a;
+        --button-secondary-border: #475569;
+        --button-github-bg: #112d2a;
+        --button-github-border: #24534e;
+        --shadow-card: 0 10px 28px rgba(0, 0, 0, 0.24);
+        --shadow-card-strong: 0 10px 28px rgba(0, 0, 0, 0.35);
+      }
+    }
+
+    * { box-sizing: border-box; }
+
+    html {
+      scroll-behavior: smooth;
+      scroll-padding-top: var(--anchor-offset);
+    }
+
+    body {
+      margin: 0;
+      background: var(--soft);
+      color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", sans-serif;
+      letter-spacing: 0;
+      overflow-x: hidden;
+    }
+
+    a { color: inherit; text-decoration: none; }
+
+    .site-nav {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      height: 64px;
+      border-bottom: 1px solid var(--nav-border);
+      background: var(--nav-bg);
+      backdrop-filter: saturate(180%) blur(18px);
+    }
+
+    .nav-inner {
+      width: min(1680px, calc(100% - 44px));
+      height: 100%;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 20px;
+    }
+
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 12px;
+      font-weight: 780;
+      white-space: nowrap;
+    }
+
+    .mark {
+      width: 34px;
+      height: 34px;
+      border-radius: 8px;
+      display: grid;
+      place-items: center;
+      background: var(--accent);
+      color: var(--on-accent);
+      font-size: 13px;
+      font-weight: 820;
+      line-height: 1;
+    }
+
+    .nav-links {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 6px;
+      color: var(--muted);
+      font-size: 14px;
+      white-space: nowrap;
+    }
+
+    .nav-links a {
+      padding: 8px 10px;
+      border-radius: 8px;
+    }
+
+    .nav-links a:hover,
+    .nav-links a.is-active {
+      background: var(--soft);
+      color: var(--ink);
+    }
+
+    .nav-actions {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 14px;
+    }
+
+    .nav-utility {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .lang-switch,
+    .theme-switch {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      padding: 3px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: var(--paper);
+      color: var(--muted);
+      white-space: nowrap;
+    }
+
+    .lang-switch button,
+    .theme-switch button {
+      appearance: none;
+      border: 0;
+      border-radius: 999px;
+      background: transparent;
+      color: inherit;
+      cursor: pointer;
+      font: inherit;
+      font-size: 12px;
+      font-weight: 740;
+      line-height: 1;
+      padding: 7px 9px;
+    }
+
+    .lang-switch button[aria-pressed="true"],
+    .theme-switch button[aria-pressed="true"] {
+      background: var(--accent);
+      color: var(--on-accent);
+    }
+
+    .button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 44px;
+      border-radius: 8px;
+      padding: 0 16px;
+      border: 1px solid var(--line);
+      background: var(--button-primary-bg);
+      color: var(--button-primary-fg);
+      font-weight: 720;
+      font-size: 14px;
+    }
+
+    .button.secondary {
+      background: var(--paper);
+      color: var(--ink);
+      border-color: var(--button-secondary-border);
+    }
+
+    .button.github-button {
+      color: var(--accent);
+      border-color: var(--button-github-border);
+      background: var(--button-github-bg);
+      min-height: 38px;
+      padding: 0 14px;
+      border-radius: 999px;
+    }
+
+    main { display: block; }
+
+    .page-head {
+      padding: 88px 22px 40px;
+      background: linear-gradient(180deg, var(--paper-soft) 0%, var(--soft) 100%);
+      border-bottom: 1px solid var(--line);
+    }
+
+    .page-head .inner {
+      max-width: var(--max);
+      margin: 0 auto;
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border: 1px solid var(--accent-line);
+      border-radius: 999px;
+      background: var(--accent-tint);
+      color: var(--accent);
+      font-size: 13px;
+      font-weight: 680;
+    }
+
+    h1, h2, h3, p { margin-top: 0; }
+
+    .page-head h1 {
+      max-width: 760px;
+      margin: 22px 0 18px;
+      font-size: 48px;
+      line-height: 1.08;
+      font-weight: 820;
+    }
+
+    .page-head .lead {
+      max-width: 720px;
+      margin: 0 0 24px;
+      color: var(--muted);
+      font-size: 17px;
+      line-height: 1.68;
+    }
+
+    .page-head .head-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: center;
+    }
+
+    .section {
+      padding: 64px 22px 96px;
+      scroll-margin-top: var(--anchor-offset);
+    }
+
+    .section .inner {
+      max-width: var(--max);
+      margin: 0 auto;
+    }
+
+    .changelog-list {
+      display: grid;
+      gap: 28px;
+    }
+
+    .changelog-entry {
+      position: relative;
+      display: grid;
+      grid-template-columns: 168px minmax(0, 1fr);
+      gap: 32px;
+      padding: 28px 28px 28px 28px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--paper);
+      box-shadow: var(--shadow-card);
+      scroll-margin-top: var(--anchor-offset);
+    }
+
+    .changelog-entry.is-released::before {
+      content: "";
+      position: absolute;
+      left: 28px;
+      top: 30px;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 0 4px var(--accent-tint);
+    }
+
+    .changelog-entry.is-unreleased::before {
+      content: "";
+      position: absolute;
+      left: 28px;
+      top: 30px;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--blue);
+      box-shadow: 0 0 0 4px var(--blue-soft);
+    }
+
+    .changelog-meta {
+      padding-left: 22px;
+      border-right: 1px dashed var(--line);
+      padding-right: 12px;
+      min-height: 100%;
+    }
+
+    .changelog-version {
+      display: block;
+      color: var(--ink);
+      font-size: 22px;
+      font-weight: 820;
+      letter-spacing: 0;
+    }
+
+    .changelog-date {
+      display: block;
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 720;
+    }
+
+    .changelog-chip {
+      display: inline-flex;
+      align-items: center;
+      height: 24px;
+      padding: 0 10px;
+      margin-top: 12px;
+      border-radius: 999px;
+      border: 1px solid var(--accent-line);
+      background: var(--accent-tint);
+      color: var(--accent);
+      font-size: 12px;
+      font-weight: 680;
+      white-space: nowrap;
+    }
+
+    .changelog-chip.blue {
+      border-color: var(--blue-line);
+      background: var(--blue-soft);
+      color: var(--blue-strong);
+    }
+
+    .changelog-chip.amber {
+      border-color: var(--amber-line);
+      background: var(--amber-soft);
+      color: var(--amber);
+    }
+
+    .changelog-body h3 {
+      margin: 0 0 10px;
+      font-size: 21px;
+      line-height: 1.32;
+      font-weight: 760;
+    }
+
+    .changelog-body > p {
+      margin: 0 0 16px;
+      color: var(--muted);
+      font-size: 15px;
+      line-height: 1.72;
+    }
+
+    .changelog-body ul {
+      margin: 0;
+      padding-left: 18px;
+      color: var(--muted);
+      font-size: 15px;
+      line-height: 1.78;
+    }
+
+    .changelog-body ul li + li {
+      margin-top: 6px;
+    }
+
+    .changelog-body ul li code {
+      font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+      font-size: 12px;
+      padding: 1px 6px;
+      border-radius: 4px;
+      background: var(--paper-soft);
+      border: 1px solid var(--line);
+      color: var(--ink);
+    }
+
+    .changelog-body .group-title {
+      display: block;
+      margin: 18px 0 8px;
+      color: var(--ink);
+      font-size: 13px;
+      font-weight: 760;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .changelog-body .group-title:first-child {
+      margin-top: 0;
+    }
+
+    .footnote {
+      max-width: 760px;
+      margin: 32px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.7;
+    }
+
+    .footnote a {
+      color: var(--accent);
+      text-decoration: underline;
+      text-underline-offset: 3px;
+    }
+
+    .footer {
+      padding: 48px 22px 60px;
+      border-top: 1px solid var(--line);
+      background: var(--paper);
+      color: var(--muted);
+    }
+
+    .footer .inner {
+      max-width: var(--max);
+      margin: 0 auto;
+      display: flex;
+      justify-content: space-between;
+      gap: 20px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .small {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.62;
+    }
+
+    .text-link {
+      color: var(--accent);
+      font-weight: 720;
+      text-decoration: underline;
+      text-underline-offset: 3px;
+    }
+
+    @media (max-width: 1240px) {
+      .nav-links { display: none; }
+      .page-head h1 { font-size: 38px; }
+    }
+
+    @media (max-width: 760px) {
+      .nav-inner { width: calc(100% - 28px); gap: 12px; }
+      .brand > span:last-child { display: none; }
+      .nav-actions { gap: 8px; }
+      .nav-utility { gap: 6px; }
+      .page-head { padding: 56px 18px 32px; }
+      .page-head h1 { font-size: 32px; margin: 18px 0 14px; }
+      .section { padding: 40px 18px 72px; }
+      .changelog-entry {
+        grid-template-columns: 1fr;
+        gap: 16px;
+        padding: 22px;
+      }
+      .changelog-meta {
+        padding: 0 0 14px;
+        border-right: 0;
+        border-bottom: 1px dashed var(--line);
+      }
+      .changelog-entry.is-released::before,
+      .changelog-entry.is-unreleased::before {
+        left: 22px;
+        top: 26px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <nav class="site-nav" aria-label="页面导航">
+    <div class="nav-inner">
+      <a class="brand" href="../index.html" aria-label="OpenRelix 首页">
+        <span class="mark" aria-hidden="true">OR</span>
+        <span>OpenRelix</span>
+      </a>
+      <div class="nav-actions">
+        <div class="nav-links">
+          <a href="../index.html#what">产品</a>
+          <a href="../index.html#tour">导览</a>
+          <a href="../index.html#install">安装</a>
+          <a href="../index.html#roadmap">更新计划</a>
+          <a href="v0.x.html" class="is-active">更新日志</a>
+        </div>
+      </div>
+      <div class="nav-utility" aria-label="页面设置">
+        <div class="theme-switch" aria-label="主题切换">
+          <button type="button" data-theme-option="system" aria-pressed="true">系统</button>
+          <button type="button" data-theme-option="light" aria-pressed="false">浅色</button>
+          <button type="button" data-theme-option="dark" aria-pressed="false">深色</button>
+        </div>
+        <div class="lang-switch" aria-label="语言切换">
+          <button type="button" data-language-option="zh" aria-pressed="true">中文</button>
+          <button type="button" data-language-option="en" aria-pressed="false">EN</button>
+        </div>
+        <a class="button secondary github-button" href="https://github.com/openrelix/openrelix" target="_blank" rel="noopener noreferrer">GitHub 点星支持</a>
+      </div>
+    </div>
+  </nav>
+
+  <main id="top">
+    <section class="page-head">
+      <div class="inner">
+        <span class="eyebrow">v0.x · 预览版</span>
+        <h1>v0.x 预览版更新日志</h1>
+        <p class="lead">v0.x 是 OpenRelix 的公开预览版系列：以 Codex CLI 与 Codex app-server 为首发适配器，跑通本地优先个人 AI 资产系统的最小完整闭环。本页按版本汇总每次发布带来的具体变化，未发布的主线开发会标记为「未发布」直到下一次版本号上调。</p>
+        <div class="head-actions">
+          <a class="button" href="../index.html#roadmap">查看 v1.0 更新计划</a>
+          <a class="button secondary" href="https://github.com/openrelix/openrelix/commits/main" target="_blank" rel="noopener noreferrer">在 GitHub 查看完整提交历史</a>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="inner">
+        <div class="changelog-list">
+          <article class="changelog-entry is-released" id="v0-2-0">
+            <div class="changelog-meta">
+              <span class="changelog-version">v0.2.0</span>
+              <span class="changelog-date">2026-04-29</span>
+              <span class="changelog-chip">已发布</span>
+            </div>
+            <div class="changelog-body">
+              <h3>桌面端来了，面板会自己提醒升级</h3>
+              <p>v0.1 系列之后的第一次 minor 升级。OpenRelix 不再只是命令行——它现在是个能在 Launchpad 里搜到的 macOS app，并且会在右下角小声提醒你「有新版了」。</p>
+              <span class="group-title">新功能</span>
+              <ul>
+                <li>macOS 桌面端：构建产物自动挂到 <code>~/Applications/OpenRelix.app</code>，Launchpad / Spotlight / Finder「应用程序」都能直接搜到，不用再翻终端</li>
+                <li>面板内自动检查新版本：右下角飘个小药丸告诉你有新版可升，客户端面板可以一键执行 <code>openrelix update --yes</code>（走本地 Token 校验 + <code>file://</code> 来源限制，杜绝公网页面摸进来）；浏览器端没有本地权限，降级为帮你把 <code>npm update -g openrelix</code> 复制到剪贴板</li>
+                <li>安装 / 更新结束后会主动问你两句：要不要现在就学一下最近 7 天的记忆（5–15 分钟）？要不要顺手打开客户端？不想被问就加 <code>--no-learn</code> / <code>--no-launch</code>，CI 和非交互终端自动跳过</li>
+              </ul>
+              <span class="group-title">优化</span>
+              <ul>
+                <li>codex-native 中文渲染规则全部搬到 <code>&lt;state_root&gt;/personal_codex_rules.py</code>，仓库引擎不再带任何示例数据；升级后少数原生记忆话题会回退到英文原文，需要的话自己往个人规则文件里加就回来了</li>
+                <li>加了发布前 personal-info 自动检查：CI 卡口 + 可选本地 pre-commit hook，扫描跟踪文件里的用户路径 / 个人邮箱 / 硬编码凭据，以及你自己写的 <code>&lt;state_root&gt;/personal_denylist.txt</code> 模式</li>
+                <li>安装时语言选择的中英文提示都强调了一遍：选完之后 UI、本地记忆、模型生成内容会一起锁定语言，事后想切得重装并清空记忆</li>
+                <li>面板上 Token 账单做了四舍五入，不再拖一长串小数</li>
+                <li>发布流程切到 npm trusted publishing GitHub Actions，少踩一步手动 token 的雷</li>
+              </ul>
+              <span class="group-title">修复</span>
+              <ul>
+                <li>修了一个隐蔽但影响很大的坑：后台 LaunchAgent 跑 nightly 时找不到 <code>codex</code> 二进制，被迫回退到 history 模式，结果 VS Code 扩展和那些只活在 app-server 里的对话整窗口丢失。现在 plist 会注入 <code>CODEX_BIN</code> 和安全 <code>PATH</code>，老用户也兜底，fallback 路径扩展到 volta / bun / nvm</li>
+                <li>review 刷新完面板会跟着更新输出了，不再卡着旧数据</li>
+                <li>Token 实时刷新后账单不再错位</li>
+              </ul>
+            </div>
+          </article>
+
+          <article class="changelog-entry is-released" id="v0-1-2">
+            <div class="changelog-meta">
+              <span class="changelog-version">v0.1.2</span>
+              <span class="changelog-date">2026-04-28</span>
+              <span class="changelog-chip">已发布</span>
+            </div>
+            <div class="changelog-body">
+              <h3>学习刷新可观测性</h3>
+              <p>把 host 鉴权异常从静默失败提升为可见信号，方便用户和开发者快速定位「为什么记忆没刷新」。</p>
+              <ul>
+                <li>学习刷新流程暴露模型认证失败信号，鉴权失效时面板与日志会明确提示，而不是仅静默跳过 (<code>03283eb</code>)</li>
+              </ul>
+            </div>
+          </article>
+
+          <article class="changelog-entry is-released" id="v0-1-1">
+            <div class="changelog-meta">
+              <span class="changelog-version">v0.1.1</span>
+              <span class="changelog-date">2026-04-28</span>
+              <span class="changelog-chip">已发布</span>
+            </div>
+            <div class="changelog-body">
+              <h3>站点、文档与移动端打磨</h3>
+              <p>v0.1.0 发布后第一轮快速跟进：完善 npm 包文档、上线自定义域名、收口产品展示页的入口与导航，并修复移动端可用性问题。</p>
+              <span class="group-title">文档与发布物</span>
+              <ul>
+                <li>新增 npm 中文 README，与英文版同步内容 (<code>7a2ab77</code>)</li>
+              </ul>
+              <span class="group-title">站点与导航</span>
+              <ul>
+                <li>GitHub Pages 启用自定义域名 <a class="text-link" href="https://openrelix.org" target="_blank" rel="noopener noreferrer">openrelix.org</a> (<code>4b521f1</code>)</li>
+                <li>产品展示页移到站点根路径 / (<code>a366c4b</code>)</li>
+                <li>打磨产品展示页导航与入口页面排版 (<code>656b4e0</code>)</li>
+              </ul>
+              <span class="group-title">移动端修复</span>
+              <ul>
+                <li>修复移动端 Hero 区 CTA 按钮重叠问题 (<code>a197281</code>)</li>
+                <li>恢复移动端产品展示页的导航交互 (<code>033e093</code>)</li>
+              </ul>
+            </div>
+          </article>
+
+          <article class="changelog-entry is-released" id="v0-1-0">
+            <div class="changelog-meta">
+              <span class="changelog-version">v0.1.0</span>
+              <span class="changelog-date">2026-04-28</span>
+              <span class="changelog-chip">首发</span>
+            </div>
+            <div class="changelog-body">
+              <h3>OpenRelix 公开预览版首发</h3>
+              <p>跑通本地优先个人 AI 资产系统的最小完整闭环：把每天和 AI CLI 一起做过的工作沉淀成可复用的技能、模板、自动化、记忆和可视化复盘，而不是散落在聊天记录里。</p>
+              <span class="group-title">核心能力</span>
+              <ul>
+                <li>一键 npm 安装与 install 脚本，覆盖 macOS 默认目录布局</li>
+                <li>Codex CLI 与 Codex app-server 工作窗口采集，本地优先</li>
+                <li>任务复盘、资产登记、长期/短期记忆分层</li>
+                <li>面板可视化：日摘要、关键指标、Token 信号</li>
+                <li>macOS LaunchAgent 后台自动化（每 30 分钟刷新、深夜固化）</li>
+              </ul>
+              <span class="group-title">边界与隐私</span>
+              <ul>
+                <li>仓库只放可复用能力（安装器、技能、模板、自动化脚本、文档）</li>
+                <li>个人状态默认写到独立状态目录，不进入 npm 包和源码仓库</li>
+                <li>密钥、Token、Cookie、原始内部日志不进入资产库与公开预览</li>
+              </ul>
+              <span class="group-title">相关提交</span>
+              <ul>
+                <li>初始化 OpenKeepsake 预览版骨架 (<code>4eb4460</code>)</li>
+                <li>整理为 OpenRelix 公开预览版 (<code>bb2e91e</code>)</li>
+              </ul>
+            </div>
+          </article>
+        </div>
+        <p class="footnote">v0.x 系列预计涵盖 v0.1 → v0.9 的预览版迭代；正式 v1.0 与之后的更新会有独立的更新日志页面。完整的版本规划见 <a href="../index.html#roadmap">首页更新计划</a>。</p>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="inner">
+      <div>
+        <strong>OpenRelix™</strong>
+        <div class="small">面向 AI coding agents / AI CLI 的本地优先个人 AI 资产系统。</div>
+        <div class="small" data-zh-html='MIT 授权。版权 (c) 2026 <a class="text-link" href="https://www.npmjs.com/~kk_kais" target="_blank" rel="noopener noreferrer">kk_kais</a>。' data-en-html='MIT License. Copyright (c) 2026 <a class="text-link" href="https://www.npmjs.com/~kk_kais" target="_blank" rel="noopener noreferrer">kk_kais</a>.'>MIT 授权。版权 (c) 2026 <a class="text-link" href="https://www.npmjs.com/~kk_kais" target="_blank" rel="noopener noreferrer">kk_kais</a>。</div>
+      </div>
+      <div class="small">本页内容根据 git 提交历史汇总。</div>
+    </div>
+  </footer>
+
+  <script>
+    (() => {
+      const textTranslations = {
+        "产品": "Product",
+        "导览": "Tour",
+        "安装": "Install",
+        "更新计划": "Update Plan",
+        "更新日志": "Changelog",
+        "系统": "System",
+        "浅色": "Light",
+        "深色": "Dark",
+        "GitHub 点星支持": "Star on GitHub",
+        "v0.x · 预览版": "v0.x · Preview",
+        "v0.x 预览版更新日志": "v0.x Preview Changelog",
+        "v0.x 是 OpenRelix 的公开预览版系列：以 Codex CLI 与 Codex app-server 为首发适配器，跑通本地优先个人 AI 资产系统的最小完整闭环。本页按版本汇总每次发布带来的具体变化，未发布的主线开发会标记为「未发布」直到下一次版本号上调。": "v0.x is the OpenRelix public preview series: it ships with Codex CLI and Codex app-server as the first adapters and proves out the smallest complete loop for a local-first personal AI asset system. This page summarizes the concrete changes in each release; mainline work without a version bump is labeled “Unreleased” until the next version is cut.",
+        "查看 v1.0 更新计划": "View v1.0 Roadmap",
+        "在 GitHub 查看完整提交历史": "Full Commit History on GitHub",
+        "未发布": "Unreleased",
+        "主线开发中 · 候选下一版本": "On main · candidate for next release",
+        "Unreleased": "Unreleased",
+        "主线开发中的改动": "Mainline Changes In Progress",
+        "以下改动已合入 main 分支，但尚未单独发布版本号；下一次版本号上调时这些条目会归入对应版本。": "These changes are merged into main but have not received their own version bump yet; the next release will absorb them.",
+        "桌面端来了，面板会自己提醒升级": "Desktop App Has Arrived — And The Panel Pings You About Updates",
+        "v0.1 系列之后的第一次 minor 升级。OpenRelix 不再只是命令行——它现在是个能在 Launchpad 里搜到的 macOS app，并且会在右下角小声提醒你「有新版了」。": "First minor bump after the v0.1 series. OpenRelix isn't just a CLI anymore — it's a macOS app you can find from Launchpad, and it quietly nudges you in the bottom-right whenever there's a new version waiting.",
+        "新功能": "New Features",
+        "优化": "Improvements",
+        "修复": "Fixes",
+        "macOS 桌面端：构建产物自动挂到 ~/Applications/OpenRelix.app，Launchpad / Spotlight / Finder「应用程序」都能直接搜到，不用再翻终端": "macOS desktop client: the build automatically symlinks itself into ~/Applications/OpenRelix.app, so Launchpad, Spotlight, and Finder's Applications all surface it directly — no more digging through a terminal to launch it.",
+        "面板内自动检查新版本：右下角飘个小药丸告诉你有新版可升，客户端面板可以一键执行 openrelix update --yes（走本地 Token 校验 + file:// 来源限制，杜绝公网页面摸进来）；浏览器端没有本地权限，降级为帮你把 npm update -g openrelix 复制到剪贴板": "In-panel version check: a tiny pill quietly slides up in the bottom-right when a new version is available. From the desktop client, one click runs openrelix update --yes — gated by a persistent X-OpenRelix-Token plus a file:// origin check, so no public site can DNS-rebind its way in. Browsers without that local permission fall back to copying npm update -g openrelix to your clipboard.",
+        "安装 / 更新结束后会主动问你两句：要不要现在就学一下最近 7 天的记忆（5–15 分钟）？要不要顺手打开客户端？不想被问就加 --no-learn / --no-launch，CI 和非交互终端自动跳过": "After install / update finishes, it asks you two things: want it to learn from the last 7 days of memory right now (5–15 min)? want to pop the desktop client open while you're at it? Pass --no-learn / --no-launch to skip; CI and non-interactive terminals skip automatically.",
+        "安装时语言选择的中英文提示都强调了一遍：选完之后 UI、本地记忆、模型生成内容会一起锁定语言，事后想切得重装并清空记忆": "The language picker during install now spells it out in both Chinese and English: your choice locks the UI, the local memory, and the model-generated content together — switching later means reinstalling and wiping the memories you've already built up.",
+        "codex-native 中文渲染规则全部搬到 <state_root>/personal_codex_rules.py，仓库引擎不再带任何示例数据；升级后少数原生记忆话题会回退到英文原文，需要的话自己往个人规则文件里加就回来了": "codex-native CN rendering rules now live in <state_root>/personal_codex_rules.py — the engine no longer ships any sample data. After upgrading, a handful of native-memory topics will fall back to their English originals; add the entries you want to your personal file to bring the CN copy back.",
+        "加了发布前 personal-info 自动检查：CI 卡口 + 可选本地 pre-commit hook，扫描跟踪文件里的用户路径 / 个人邮箱 / 硬编码凭据，以及你自己写的 <state_root>/personal_denylist.txt 模式": "Added a pre-publish personal-info check (CI gate plus an optional local pre-commit hook) that scans tracked files for user-home paths, personal emails, hardcoded credentials, and any patterns you list in <state_root>/personal_denylist.txt.",
+        "面板上 Token 账单做了四舍五入，不再拖一长串小数": "Token bill amounts are now rounded on the panel — no more long fractional tails.",
+        "发布流程切到 npm trusted publishing GitHub Actions，少踩一步手动 token 的雷": "Releases now go through the npm trusted publishing GitHub Actions flow — one fewer manual-token landmine to step on.",
+        "修了一个隐蔽但影响很大的坑：后台 LaunchAgent 跑 nightly 时找不到 codex 二进制，被迫回退到 history 模式，结果 VS Code 扩展和那些只活在 app-server 里的对话整窗口丢失。现在 plist 会注入 CODEX_BIN 和安全 PATH，老用户也兜底，fallback 路径扩展到 volta / bun / nvm": "Quiet but high-impact fix: the background LaunchAgent (nightly organize / overview refresh) couldn't find the codex binary and was silently falling back to CLI history mode — which dropped Codex VS Code extension threads and any conversation living only in app-server (it never writes history.jsonl). plist templates now inject CODEX_BIN plus a safe PATH; for users who haven't re-rendered their plist, the fallback also widens to volta, bun, and ~/.nvm.",
+        "review 刷新完面板会跟着更新输出了，不再卡着旧数据": "review refresh now actually updates the panel output — no more stale data sitting there.",
+        "Token 实时刷新后账单不再错位": "Token bill no longer drifts after a live refresh.",
+        "已发布": "Released",
+        "首发": "Initial",
+        "学习刷新可观测性": "Learning Refresh Observability",
+        "把 host 鉴权异常从静默失败提升为可见信号，方便用户和开发者快速定位「为什么记忆没刷新」。": "Surface host authentication errors instead of silently failing, so it’s easier to diagnose “why didn’t memory refresh.”",
+        "学习刷新流程暴露模型认证失败信号，鉴权失效时面板与日志会明确提示，而不是仅静默跳过": "Learning refresh now exposes model auth failures: when credentials are stale, the panel and logs surface a clear signal instead of silently skipping",
+        "站点、文档与移动端打磨": "Site, Docs & Mobile Polish",
+        "v0.1.0 发布后第一轮快速跟进：完善 npm 包文档、上线自定义域名、收口产品展示页的入口与导航，并修复移动端可用性问题。": "First fast-follow after v0.1.0: round out the npm package docs, ship the custom domain, finalize the entry and navigation of the product showcase, and fix mobile usability issues.",
+        "文档与发布物": "Docs & Release Artifacts",
+        "站点与导航": "Site & Navigation",
+        "移动端修复": "Mobile Fixes",
+        "新增 npm 中文 README，与英文版同步内容": "Add a Chinese README for npm, kept in sync with the English version",
+        "产品展示页移到站点根路径 /": "Move the product showcase page to the site root /",
+        "打磨产品展示页导航与入口页面排版": "Polish the product showcase navigation and entry page layout",
+        "修复移动端 Hero 区 CTA 按钮重叠问题": "Fix overlapping Hero CTA buttons on mobile",
+        "恢复移动端产品展示页的导航交互": "Restore mobile navigation behavior on the product showcase",
+        "OpenRelix 公开预览版首发": "OpenRelix Public Preview Initial Release",
+        "跑通本地优先个人 AI 资产系统的最小完整闭环：把每天和 AI CLI 一起做过的工作沉淀成可复用的技能、模板、自动化、记忆和可视化复盘，而不是散落在聊天记录里。": "Deliver the smallest complete loop for a local-first personal AI asset system: turn daily AI CLI work into reusable skills, templates, automations, memories, and visual reviews instead of leaving it scattered across chat history.",
+        "核心能力": "Core Capabilities",
+        "边界与隐私": "Boundary & Privacy",
+        "相关提交": "Related Commits",
+        "一键 npm 安装与 install 脚本，覆盖 macOS 默认目录布局": "One-command npm install and install scripts covering the macOS default layout",
+        "Codex CLI 与 Codex app-server 工作窗口采集，本地优先": "Local-first work-window collection from Codex CLI and Codex app-server",
+        "任务复盘、资产登记、长期/短期记忆分层": "Task reviews, asset registry, long/short-term memory layering",
+        "面板可视化：日摘要、关键指标、Token 信号": "Dashboard visualization: daily summary, key metrics, Token signals",
+        "macOS LaunchAgent 后台自动化（每 30 分钟刷新、深夜固化）": "macOS LaunchAgent background automation (every 30 minutes refresh, late-night consolidation)",
+        "仓库只放可复用能力（安装器、技能、模板、自动化脚本、文档）": "Repo only ships reusable capabilities (installers, skills, templates, automation scripts, docs)",
+        "个人状态默认写到独立状态目录，不进入 npm 包和源码仓库": "Personal state writes to a dedicated state root by default, not into the npm package or source repo",
+        "密钥、Token、Cookie、原始内部日志不进入资产库与公开预览": "Secrets, tokens, cookies, and raw internal logs never enter the asset library or public preview",
+        "初始化 OpenKeepsake 预览版骨架": "Initialize the OpenKeepsake preview skeleton",
+        "整理为 OpenRelix 公开预览版": "Reshape into the OpenRelix public preview",
+        "v0.x 系列预计涵盖 v0.1 → v0.9 的预览版迭代；正式 v1.0 与之后的更新会有独立的更新日志页面。完整的版本规划见": "The v0.x series covers v0.1 through v0.9 preview iterations; v1.0 and later get their own changelog page. The full release plan lives in the",
+        "首页更新计划": "homepage roadmap",
+        "面向 AI coding agents / AI CLI 的本地优先个人 AI 资产系统。": "A local-first personal AI asset system for AI coding agents / AI CLIs.",
+        "本页内容根据 git 提交历史汇总。": "This page is compiled from git history.",
+        "OpenRelix™ v0.x 更新日志": "OpenRelix™ v0.x Changelog"
+      };
+
+      const ariaTranslations = {
+        "页面导航": "Page Navigation",
+        "OpenRelix 首页": "OpenRelix Home",
+        "页面设置": "Page Settings",
+        "主题切换": "Theme Switch",
+        "语言切换": "Language Switch"
+      };
+
+      const metaDescription = {
+        zh: "OpenRelix™ v0.x 预览版系列更新日志：记录 Codex 适配器、个人记忆系统、站点与安装器在每个版本上的具体变化。",
+        en: "OpenRelix™ v0.x preview series changelog: per-version notes for the Codex adapter, the personal memory system, the site, and the installer."
+      };
+
+      function translatePlainText(language) {
+        document.querySelectorAll("body :not(script):not(style)").forEach((node) => {
+          if (node.children.length || !node.textContent) {
+            return;
+          }
+          const original = node.dataset.zhText || node.textContent.trim();
+          if (!original || !Object.prototype.hasOwnProperty.call(textTranslations, original)) {
+            return;
+          }
+          node.dataset.zhText = original;
+          node.textContent = language === "en" ? textTranslations[original] : original;
+        });
+      }
+
+      function translateHtml(language) {
+        document.querySelectorAll("[data-zh-html][data-en-html]").forEach((node) => {
+          node.innerHTML = language === "en" ? node.dataset.enHtml : node.dataset.zhHtml;
+        });
+      }
+
+      function translateAttributes(language) {
+        document.querySelectorAll("[aria-label]").forEach((node) => {
+          const original = node.dataset.zhAriaLabel || node.getAttribute("aria-label");
+          if (!original || !Object.prototype.hasOwnProperty.call(ariaTranslations, original)) {
+            return;
+          }
+          node.dataset.zhAriaLabel = original;
+          node.setAttribute("aria-label", language === "en" ? ariaTranslations[original] : original);
+        });
+      }
+
+      let activeLanguage = document.documentElement.dataset.language === "en" ? "en" : "zh";
+
+      function setLanguageControls(language) {
+        document.querySelectorAll("[data-language-option]").forEach((button) => {
+          button.setAttribute("aria-pressed", button.dataset.languageOption === language ? "true" : "false");
+        });
+      }
+
+      function applyLanguage(language, options = {}) {
+        const normalized = language === "en" ? "en" : "zh";
+        const shouldTranslate = normalized !== activeLanguage;
+        activeLanguage = normalized;
+        document.documentElement.dataset.language = normalized;
+        document.documentElement.lang = normalized === "en" ? "en" : "zh-CN";
+        document.title = normalized === "en" ? "OpenRelix™ v0.x Changelog" : "OpenRelix™ v0.x 更新日志";
+        const description = document.querySelector('meta[name="description"]');
+        if (description) {
+          description.setAttribute("content", metaDescription[normalized]);
+        }
+        if (shouldTranslate) {
+          translateHtml(normalized);
+          translatePlainText(normalized);
+          translateAttributes(normalized);
+        }
+        setLanguageControls(normalized);
+        if (options.persist !== false) {
+          try {
+            window.localStorage.setItem("openrelix-showcase-language", normalized);
+          } catch (_) {
+            // Ignore storage errors in private browsing or restricted environments.
+          }
+        }
+      }
+
+      const themeOptions = new Set(["system", "light", "dark"]);
+
+      function applyTheme(theme) {
+        const normalized = themeOptions.has(theme) ? theme : "system";
+        if (normalized === "system") {
+          document.documentElement.removeAttribute("data-theme");
+        } else {
+          document.documentElement.dataset.theme = normalized;
+        }
+        document.querySelectorAll("[data-theme-option]").forEach((button) => {
+          button.setAttribute("aria-pressed", button.dataset.themeOption === normalized ? "true" : "false");
+        });
+        try {
+          window.localStorage.setItem("openrelix-showcase-theme", normalized);
+        } catch (_) {
+          // Ignore storage errors in private browsing or restricted environments.
+        }
+      }
+
+      document.addEventListener("click", (event) => {
+        const target = event.target instanceof Element ? event.target : null;
+        if (!target) {
+          return;
+        }
+        const languageButton = target.closest("[data-language-option]");
+        if (languageButton) {
+          applyLanguage(languageButton.dataset.languageOption);
+          return;
+        }
+        const themeButton = target.closest("[data-theme-option]");
+        if (themeButton) {
+          applyTheme(themeButton.dataset.themeOption);
+        }
+      });
+
+      let initialLanguage = "zh";
+      try {
+        initialLanguage = window.localStorage.getItem("openrelix-showcase-language") || initialLanguage;
+      } catch (_) {
+        initialLanguage = "zh";
+      }
+      initialLanguage = initialLanguage === "en" ? "en" : "zh";
+      if (initialLanguage === "en") {
+        applyLanguage(initialLanguage, { persist: false });
+      } else {
+        setLanguageControls("zh");
+      }
+
+      let initialTheme = "system";
+      try {
+        initialTheme = window.localStorage.getItem("openrelix-showcase-theme") || initialTheme;
+      } catch (_) {
+        initialTheme = "system";
+      }
+      applyTheme(initialTheme);
+    })();
+  </script>
+</body>
+</html>

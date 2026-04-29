@@ -207,6 +207,29 @@ class MemorySummaryBuilderTests(unittest.TestCase):
         self.assertEqual(chinese_items[0].title, "默认中文标题")
         self.assertEqual(chinese_items[0].value_note, "默认中文说明")
 
+    def test_personal_memory_context_lines_stay_compact_and_keep_metadata(self):
+        item = build_codex_memory_summary.PersonalMemoryItem(
+            title="Very long personal memory title " * 5,
+            bucket="durable",
+            memory_type="procedural",
+            priority="high",
+            value_note="Important implementation boundary " * 10,
+            occurrence_count=3,
+        )
+
+        lines, used_tokens, _ = build_codex_memory_summary.build_personal_memory_lines(
+            [item],
+            token_budget=240,
+            max_items=0,
+        )
+        text = "\n".join(lines)
+
+        self.assertGreater(used_tokens, 0)
+        self.assertIn("[durable/procedural/high]", text)
+        self.assertIn("(seen 3x)", text)
+        self.assertIn("…", text)
+        self.assertLess(len(text), 260)
+
 
 if __name__ == "__main__":
     unittest.main()

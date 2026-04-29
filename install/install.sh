@@ -5,19 +5,21 @@ SCRIPT_DIR="${0:A:h}"
 REPO_ROOT="${SCRIPT_DIR:h}"
 PYTHON_BIN="${PYTHON_BIN:-}"
 CODEX_HOME="${CODEX_HOME:-$HOME/.codex}"
+CODEX_BIN="${CODEX_BIN:-}"
 STATE_DIR="${AI_ASSET_STATE_DIR:-}"
 LANGUAGE="${AI_ASSET_LANGUAGE:-}"
 MEMORY_MODE="${AI_ASSET_MEMORY_MODE:-}"
-ACTIVITY_SOURCE="${OPENRELIX_ACTIVITY_SOURCE:-${AI_ASSET_ACTIVITY_SOURCE:-history}}"
+ACTIVITY_SOURCE="${OPENRELIX_ACTIVITY_SOURCE:-${AI_ASSET_ACTIVITY_SOURCE:-auto}}"
 STATE_DIR_EXPLICIT=0
 if [[ -n "${AI_ASSET_STATE_DIR:-}" ]]; then
   STATE_DIR_EXPLICIT=1
 fi
 
-INSTALL_PROFILE="minimal"
+INSTALL_PROFILE="integrated"
 INSTALL_GLOBAL_SKILLS=0
 INSTALL_CUSTOM_PROMPTS=0
 INSTALL_GLOBAL_COMMAND=0
+INSTALL_MAC_CLIENT=0
 ENABLE_CODEX_MEMORY_SUMMARY=0
 ENABLE_MEMORIES=0
 DISABLE_CODEX_MEMORIES=0
@@ -25,21 +27,29 @@ ENABLE_HISTORY=0
 CODEX_MEMORY_SUMMARY_EXPLICIT=0
 CODEX_MEMORIES_EXPLICIT=0
 CODEX_HISTORY_EXPLICIT=0
+MAC_CLIENT_EXPLICIT=0
 ENABLE_BACKGROUND_SERVICES=0
 ENABLE_NIGHTLY=0
 ENABLE_LEARNING_REFRESH=0
+ENABLE_UPDATE_CHECK=0
 LEARNING_REFRESH_WINDOW_DAYS="${OPENRELIX_REFRESH_LEARN_WINDOW_DAYS:-7}"
 MEMORY_MODE_EXPLICIT=0
 KEEP_AWAKE="none"
 NIGHTLY_ORGANIZE_TIME="${OPENRELIX_NIGHTLY_ORGANIZE_TIME:-23:00}"
 NIGHTLY_FINALIZE_TIME="${OPENRELIX_NIGHTLY_FINALIZE_TIME:-00:10}"
+UPDATE_CHECK_TIME="${OPENRELIX_UPDATE_CHECK_TIME:-09:30}"
 NIGHTLY_ORGANIZE_HOUR=23
 NIGHTLY_ORGANIZE_MINUTE=0
 NIGHTLY_FINALIZE_HOUR=0
 NIGHTLY_FINALIZE_MINUTE=10
+UPDATE_CHECK_HOUR=9
+UPDATE_CHECK_MINUTE=30
 BIN_DIR="${AI_ASSET_BIN_DIR:-}"
 SHELL_RC_PATH=""
 PATH_EXPORT_ADDED=0
+MAC_CLIENT_INSTALLED=0
+LAUNCH_AFTER_INSTALL=1
+LEARN_AFTER_INSTALL=1
 STEP_INDEX=0
 TOTAL_STEPS=1
 OVERVIEW_RUN_AT_LOAD="<true/>"
@@ -50,12 +60,15 @@ Usage:
   ./install/install.sh [options]
 
 Options:
-  --profile MODE                Install profile: minimal | integrated. Default: minimal
+  --profile MODE                Install profile: minimal | integrated. Default: integrated
   --minimal                     Alias for --profile minimal.
   --integrated                  Alias for --profile integrated.
   --state-dir PATH              Override the runtime state root.
   --codex-home PATH             Override CODEX_HOME. Default: ~/.codex
-  --language CODE               Runtime language: zh | en.
+  --codex-bin PATH              Override the Codex CLI binary used by launchd jobs.
+                                If omitted, resolved from PATH plus common npm/volta/nvm/brew locations.
+  --language CODE               Runtime language: zh | en. Controls panel rendering, local memory
+                                storage, and model-generated summaries/next-actions — not just UI strings.
                                 If omitted, interactive installs prompt; non-interactive installs default to zh.
   --memory-mode MODE            Memory mode: integrated | local-only | off.
                                 Default: integrated.
@@ -75,8 +88,15 @@ Options:
   --install-global-command      Install the global `openrelix` command.
   --no-global-command           Skip global `openrelix` command installation.
   --bin-dir PATH                Override the install location for the `openrelix` command.
+  --install-mac-client          Build the lightweight OpenRelix.app client.
+                                Integrated installs enable this by default on macOS.
+  --no-mac-client               Skip macOS client build.
+  --no-launch                   Skip the post-install prompt to open the macOS client.
+  --no-learn                    Skip the post-install prompt to learn the last 7 days of memory.
   --enable-background-services  Install overview refresh and token-live LaunchAgents.
   --enable-nightly              Install nightly organize/finalize LaunchAgents.
+  --enable-update-check         Install a daily no-mutation npm update check LaunchAgent.
+  --update-check-time HH:MM     Time for the daily update check. Default: 09:30
   --enable-learning-refresh     Make the 30-minute overview refresh call the
                                 Codex adapter and learn memory with a 7-day
                                 window. Implies --enable-background-services.
@@ -93,12 +113,11 @@ Options:
   --enable-history              Enable bounded Codex history config.
   --disable-history             Do not touch Codex history config.
   --activity-source SOURCE      Activity source: history | app-server | auto.
-                                Default: history.
-                                Use app-server or auto only when you explicitly want
-                                to read Codex app/server threads.
+                                Default: auto.
+                                auto tries Codex app-server first and falls back
+                                to history/session files if unavailable.
   --read-codex-app              Alias for --activity-source auto.
-                                This opt-in tries Codex app-server first and falls
-                                back to history/session files if unavailable.
+                                Kept for compatibility with older install commands.
   -h, --help                    Show this help text.
 
 This v0.1.0 preview installer currently supports macOS only.
@@ -198,6 +217,7 @@ apply_install_profile() {
       INSTALL_GLOBAL_SKILLS=1
       INSTALL_CUSTOM_PROMPTS=1
       INSTALL_GLOBAL_COMMAND=1
+      INSTALL_MAC_CLIENT=1
       ENABLE_HISTORY=1
       ENABLE_BACKGROUND_SERVICES=1
       ;;
@@ -293,6 +313,11 @@ select_runtime_language() {
 
   if [[ -t 0 && -z "${CI:-}" ]]; then
     print -r -- "Select runtime language / 选择运行语言:"
+    print -r -- "  此选择决定面板渲染、本地记忆存储以及大模型生成的 summary / next-action 的语言，"
+    print -r -- "  不只是界面文案。安装后切换需要重新跑 installer 并重置已生成的记忆。"
+    print -r -- "  This sets the language used by the panel, the local memory store, and the model-generated"
+    print -r -- "  summaries / next-actions — not just UI strings. Switching later means rerunning the installer"
+    print -r -- "  and re-curating the memory items that were already written."
     print -r -- "  1) 中文 (zh) - default"
     print -r -- "  2) English (en)"
     while true; do
@@ -348,6 +373,11 @@ while [[ $# -gt 0 ]]; do
     --codex-home)
       require_option_value "$1" "${2-}"
       CODEX_HOME="$2"
+      shift 2
+      ;;
+    --codex-bin)
+      require_option_value "$1" "${2-}"
+      CODEX_BIN="$2"
       shift 2
       ;;
     --language)
@@ -429,12 +459,47 @@ while [[ $# -gt 0 ]]; do
       BIN_DIR="$2"
       shift 2
       ;;
+    --install-mac-client)
+      INSTALL_MAC_CLIENT=1
+      MAC_CLIENT_EXPLICIT=1
+      shift
+      ;;
+    --no-mac-client|--skip-mac-client)
+      INSTALL_MAC_CLIENT=0
+      MAC_CLIENT_EXPLICIT=1
+      shift
+      ;;
+    --no-launch|--no-auto-open)
+      LAUNCH_AFTER_INSTALL=0
+      shift
+      ;;
+    --no-learn|--no-learn-7d)
+      LEARN_AFTER_INSTALL=0
+      shift
+      ;;
     --enable-background-services)
       ENABLE_BACKGROUND_SERVICES=1
       shift
       ;;
     --enable-nightly)
       ENABLE_NIGHTLY=1
+      shift
+      ;;
+    --enable-update-check)
+      ENABLE_UPDATE_CHECK=1
+      shift
+      ;;
+    --disable-update-check)
+      ENABLE_UPDATE_CHECK=0
+      shift
+      ;;
+    --update-check-time)
+      require_option_value "$1" "${2-}"
+      UPDATE_CHECK_TIME="$2"
+      shift 2
+      ;;
+    --update-check-time=*)
+      UPDATE_CHECK_TIME="${1#*=}"
       shift
       ;;
     --enable-learning-refresh)
@@ -540,10 +605,13 @@ if [[ "$KEEP_AWAKE" != "none" && "$KEEP_AWAKE" != "during-job" ]]; then
 fi
 validate_time_option "--nightly-organize-time" "$NIGHTLY_ORGANIZE_TIME"
 validate_time_option "--nightly-finalize-time" "$NIGHTLY_FINALIZE_TIME"
+validate_time_option "--update-check-time" "$UPDATE_CHECK_TIME"
 NIGHTLY_ORGANIZE_HOUR="$(time_hour "$NIGHTLY_ORGANIZE_TIME")"
 NIGHTLY_ORGANIZE_MINUTE="$(time_minute "$NIGHTLY_ORGANIZE_TIME")"
 NIGHTLY_FINALIZE_HOUR="$(time_hour "$NIGHTLY_FINALIZE_TIME")"
 NIGHTLY_FINALIZE_MINUTE="$(time_minute "$NIGHTLY_FINALIZE_TIME")"
+UPDATE_CHECK_HOUR="$(time_hour "$UPDATE_CHECK_TIME")"
+UPDATE_CHECK_MINUTE="$(time_minute "$UPDATE_CHECK_TIME")"
 
 case "$ACTIVITY_SOURCE" in
   history|app-server|auto)
@@ -576,6 +644,33 @@ then
   echo "Python must be 3.10+ for this installer: $PYTHON_BIN" >&2
   exit 1
 fi
+
+# Resolve the Codex CLI binary so LaunchAgents (which run with a narrow PATH)
+# can still reach app-server. Falls back to default_codex_binary() candidates,
+# which include npm-global/volta/nvm/brew locations.
+if [[ -z "$CODEX_BIN" ]]; then
+  CODEX_BIN="$(
+    CODEX_BIN="" "$PYTHON_BIN" - "$REPO_ROOT" <<'PY'
+import os
+import sys
+
+repo_root = sys.argv[1]
+sys.path.insert(0, repo_root + "/scripts")
+
+os.environ.pop("CODEX_BIN", None)
+from asset_runtime import default_codex_binary  # noqa: E402
+
+print(default_codex_binary())
+PY
+  )"
+fi
+if [[ -z "$CODEX_BIN" || ! -x "$CODEX_BIN" ]]; then
+  echo "Could not locate the Codex CLI binary." >&2
+  echo "Install Codex CLI (e.g. \`npm install -g @openai/codex\`) or pass --codex-bin /full/path/to/codex." >&2
+  exit 1
+fi
+CODEX_BIN_DIR="${CODEX_BIN:h}"
+SAFE_PATH="$CODEX_BIN_DIR:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 
 if (( ! STATE_DIR_EXPLICIT )); then
   STATE_DIR="$(
@@ -702,10 +797,16 @@ fi
 if (( INSTALL_GLOBAL_COMMAND )); then
   TOTAL_STEPS=$((TOTAL_STEPS + 1))
 fi
+if [[ "$OSTYPE" == darwin* ]] && (( INSTALL_MAC_CLIENT )); then
+  TOTAL_STEPS=$((TOTAL_STEPS + 1))
+fi
 if [[ "$OSTYPE" == darwin* ]] && (( ENABLE_BACKGROUND_SERVICES )); then
   TOTAL_STEPS=$((TOTAL_STEPS + 1))
 fi
 if [[ "$OSTYPE" == darwin* ]] && (( ENABLE_NIGHTLY )); then
+  TOTAL_STEPS=$((TOTAL_STEPS + 1))
+fi
+if [[ "$OSTYPE" == darwin* ]] && (( ENABLE_UPDATE_CHECK )); then
   TOTAL_STEPS=$((TOTAL_STEPS + 1))
 fi
 
@@ -718,7 +819,9 @@ render_plist() {
     --set "REPO_ROOT=$REPO_ROOT" \
     --set "STATE_ROOT=$STATE_DIR" \
     --set "PYTHON_BIN=$PYTHON_BIN" \
+    --set "CODEX_BIN=$CODEX_BIN" \
     --set "CODEX_HOME=$CODEX_HOME" \
+    --set "SAFE_PATH=$SAFE_PATH" \
     --set "ACTIVITY_SOURCE=$ACTIVITY_SOURCE" \
     --set "LEARNING_REFRESH=$ENABLE_LEARNING_REFRESH" \
     --set "LEARNING_REFRESH_WINDOW_DAYS=$LEARNING_REFRESH_WINDOW_DAYS" \
@@ -727,7 +830,9 @@ render_plist() {
     --set "NIGHTLY_ORGANIZE_HOUR=$NIGHTLY_ORGANIZE_HOUR" \
     --set "NIGHTLY_ORGANIZE_MINUTE=$NIGHTLY_ORGANIZE_MINUTE" \
     --set "NIGHTLY_FINALIZE_HOUR=$NIGHTLY_FINALIZE_HOUR" \
-    --set "NIGHTLY_FINALIZE_MINUTE=$NIGHTLY_FINALIZE_MINUTE"
+    --set "NIGHTLY_FINALIZE_MINUTE=$NIGHTLY_FINALIZE_MINUTE" \
+    --set "UPDATE_CHECK_HOUR=$UPDATE_CHECK_HOUR" \
+    --set "UPDATE_CHECK_MINUTE=$UPDATE_CHECK_MINUTE"
 }
 
 bootstrap_launch_agent() {
@@ -906,7 +1011,34 @@ if (( INSTALL_GLOBAL_COMMAND )); then
   step_done
 fi
 
-if [[ "$OSTYPE" == darwin* ]] && (( ENABLE_BACKGROUND_SERVICES || ENABLE_NIGHTLY )); then
+if [[ "$OSTYPE" == darwin* ]] && (( INSTALL_MAC_CLIENT )); then
+  step "Installing the lightweight macOS client..."
+  if [[ ! -x "$REPO_ROOT/scripts/build_macos_client.sh" ]]; then
+    if (( MAC_CLIENT_EXPLICIT )); then
+      echo "Missing macOS client builder: $REPO_ROOT/scripts/build_macos_client.sh" >&2
+      exit 1
+    fi
+    echo "        missing builder; skipped"
+    step_skip
+  elif ! command -v swiftc >/dev/null 2>&1; then
+    if (( MAC_CLIENT_EXPLICIT )); then
+      echo "Missing swiftc. Install Xcode Command Line Tools first: xcode-select --install" >&2
+      exit 1
+    fi
+    echo "        swiftc not found; skipped"
+    step_skip
+  else
+    "$REPO_ROOT/scripts/build_macos_client.sh" \
+      --output "$STATE_DIR/runtime/mac-app/OpenRelix.app" \
+      --state-root "$STATE_DIR"
+    MAC_CLIENT_INSTALLED=1
+    mkdir -p "$HOME/Applications"
+    ln -sfn "$STATE_DIR/runtime/mac-app/OpenRelix.app" "$HOME/Applications/OpenRelix.app"
+    step_done
+  fi
+fi
+
+if [[ "$OSTYPE" == darwin* ]] && (( ENABLE_BACKGROUND_SERVICES || ENABLE_NIGHTLY || ENABLE_UPDATE_CHECK )); then
   mkdir -p "$HOME/Library/LaunchAgents"
 
   if (( ENABLE_BACKGROUND_SERVICES )); then
@@ -945,6 +1077,18 @@ if [[ "$OSTYPE" == darwin* ]] && (( ENABLE_BACKGROUND_SERVICES || ENABLE_NIGHTLY
       "io.github.openrelix.nightly-finalize-previous-day"
     step_done
   fi
+
+  if (( ENABLE_UPDATE_CHECK )); then
+    step "Installing daily update check service..."
+    render_plist \
+      "io.github.openrelix.update-check.plist.tmpl" \
+      "$HOME/Library/LaunchAgents/io.github.openrelix.update-check.plist"
+    bootstrap_launch_agent \
+      "$HOME/Library/LaunchAgents/io.github.openrelix.update-check.plist" \
+      "io.github.openrelix.update-check" \
+      0
+    step_done
+  fi
 fi
 
 learn_memory_command() {
@@ -963,6 +1107,14 @@ learn_memory_command() {
 }
 
 open_panel_command() {
+  if [[ "$OSTYPE" == darwin* ]] && (( INSTALL_MAC_CLIENT )); then
+    if (( INSTALL_GLOBAL_COMMAND )); then
+      printf 'openrelix app\n'
+      return
+    fi
+    printf 'open %q\n' "$STATE_DIR/runtime/mac-app/OpenRelix.app"
+    return
+  fi
   if (( INSTALL_GLOBAL_COMMAND )); then
     printf 'openrelix open panel\n'
     return
@@ -970,8 +1122,35 @@ open_panel_command() {
   printf 'open %q\n' "$STATE_DIR/reports/panel.html"
 }
 
+mac_app_command() {
+  if (( INSTALL_GLOBAL_COMMAND )); then
+    printf 'openrelix app'
+  else
+    printf 'open %q' "$STATE_DIR/runtime/mac-app/OpenRelix.app"
+  fi
+}
+
+web_panel_command() {
+  if (( INSTALL_GLOBAL_COMMAND )); then
+    printf 'openrelix open panel'
+  else
+    printf 'open %q' "$STATE_DIR/reports/panel.html"
+  fi
+}
+
+is_ci_environment() {
+  [[ -n "${CI:-}" && "${CI:-}" != "0" && "${CI:-}" != "false" ]] || \
+    [[ -n "${OPENRELIX_NO_LAUNCH:-}" && "${OPENRELIX_NO_LAUNCH:-}" != "0" && "${OPENRELIX_NO_LAUNCH:-}" != "false" ]]
+}
+
 LEARN_MEMORY_COMMAND="$(learn_memory_command)"
 OPEN_PANEL_COMMAND="$(open_panel_command)"
+MAC_APP_COMMAND="$(mac_app_command)"
+WEB_PANEL_COMMAND="$(web_panel_command)"
+WILL_AUTO_LAUNCH=0
+if [[ "$OSTYPE" == darwin* ]] && (( MAC_CLIENT_INSTALLED )) && (( LAUNCH_AFTER_INSTALL )) && ! is_ci_environment; then
+  WILL_AUTO_LAUNCH=1
+fi
 if [[ "$MEMORY_MODE" == "integrated" ]]; then
   REVIEW_CONTEXT_NOTE_ZH="这一步会显式调用当前 Codex 适配器，学习今日和最近 ${LEARNING_REFRESH_WINDOW_DAYS} 天窗口，随后生成本地 memory / overview。当前 integrated 会同步 bounded summary，但不会把原始窗口写进 Codex 原生 memory。"
   REVIEW_CONTEXT_NOTE_EN="This explicitly calls the current Codex adapter, learns from today plus the last ${LEARNING_REFRESH_WINDOW_DAYS} days of windows, then updates local memory / overview. The current integrated mode syncs a bounded summary, but does not write raw windows into Codex native memory."
@@ -995,21 +1174,31 @@ OpenRelix 已安装完成。
   面板: $STATE_DIR/reports/panel.html
 
 建议下一步：
-  1. 先打开可视化面板：
+EOF
+  if [[ "$OSTYPE" == darwin* ]] && (( INSTALL_MAC_CLIENT )); then
+    cat <<EOF
+  1. 任何时候都可以用这两条指令打开 OpenRelix：
+     $MAC_APP_COMMAND        # 原生 macOS 客户端
+     $WEB_PANEL_COMMAND      # 浏览器中的可视化面板
+EOF
+  else
+    cat <<EOF
+  1. 打开可视化面板：
      $OPEN_PANEL_COMMAND
 EOF
+  fi
 
   if (( ENABLE_LEARNING_REFRESH )); then
     cat <<EOF
   2. 已开启 30 分钟自动学习刷新；首次自动学习会在下一个 30 分钟周期运行。
-     如果要读取 Codex 应用线程，安装时请显式加 --read-codex-app 或 --activity-source auto；默认只读取稳定的 Codex CLI history/session 文件。
+     默认会先尝试 Codex app-server，失败时回退 CLI history/session；如需只读稳定 CLI 文件，安装时加 --activity-source history。
 EOF
   else
     cat <<EOF
   2. 推荐：安装后立刻学习今日和最近 ${LEARNING_REFRESH_WINDOW_DAYS} 天窗口，刷新本地记忆：
      $LEARN_MEMORY_COMMAND
      $REVIEW_CONTEXT_NOTE_ZH
-     如果要读取 Codex 应用线程，安装时请显式加 --read-codex-app 或 --activity-source auto；默认只读取稳定的 Codex CLI history/session 文件。
+     默认会先尝试 Codex app-server，失败时回退 CLI history/session；如需只读稳定 CLI 文件，安装时加 --activity-source history。
 EOF
   fi
 
@@ -1030,7 +1219,7 @@ EOF
 
 Shell 入口：
   $BIN_DIR/openrelix
-  常用命令：openrelix open panel、openrelix core、openrelix refresh --learn-memory
+  常用命令：openrelix open panel、openrelix app、openrelix core、openrelix update --check、openrelix update --yes
 EOF
   fi
 
@@ -1058,6 +1247,15 @@ EOF
 EOF
     fi
   fi
+
+  if [[ "$OSTYPE" == darwin* ]] && (( ENABLE_UPDATE_CHECK )); then
+    cat <<EOF
+
+更新检查：
+  已安装每日更新检查 LaunchAgent：每天 $UPDATE_CHECK_TIME 运行 openrelix update --check。
+  它只检查 npm 最新版本并写入日志，不会自动安装；需要升级时手动运行 openrelix update --yes。
+EOF
+  fi
 else
   cat <<EOF
 Installed OpenRelix.
@@ -1073,21 +1271,31 @@ Install info:
   Panel: $STATE_DIR/reports/panel.html
 
 Recommended next steps:
-  1. Open the visual panel first:
+EOF
+  if [[ "$OSTYPE" == darwin* ]] && (( INSTALL_MAC_CLIENT )); then
+    cat <<EOF
+  1. Use these commands anytime to open OpenRelix:
+     $MAC_APP_COMMAND        # native macOS client
+     $WEB_PANEL_COMMAND      # visual panel in your browser
+EOF
+  else
+    cat <<EOF
+  1. Open the visual panel:
      $OPEN_PANEL_COMMAND
 EOF
+  fi
 
   if (( ENABLE_LEARNING_REFRESH )); then
     cat <<EOF
   2. Automatic learning refresh is enabled; the first learning run will happen on the next 30-minute interval.
-     To read Codex app threads, install with --read-codex-app or --activity-source auto explicitly; by default only the stable Codex CLI history/session files are read.
+     By default, OpenRelix tries Codex app-server first and falls back to CLI history/session; add --activity-source history to force stable CLI files only.
 EOF
   else
     cat <<EOF
   2. Recommended: learn from today plus the last ${LEARNING_REFRESH_WINDOW_DAYS} days of windows and refresh local memory:
      $LEARN_MEMORY_COMMAND
      $REVIEW_CONTEXT_NOTE_EN
-     To read Codex app threads, install with --read-codex-app or --activity-source auto explicitly; by default only the stable Codex CLI history/session files are read.
+     By default, OpenRelix tries Codex app-server first and falls back to CLI history/session; add --activity-source history to force stable CLI files only.
 EOF
   fi
 
@@ -1108,7 +1316,7 @@ EOF
 
 Shell entrypoint:
   $BIN_DIR/openrelix
-  Common commands: openrelix open panel, openrelix core, openrelix refresh --learn-memory
+  Common commands: openrelix open panel, openrelix app, openrelix core, openrelix update --check, openrelix update --yes
 EOF
   fi
 
@@ -1136,6 +1344,15 @@ Background refresh:
 EOF
     fi
   fi
+
+  if [[ "$OSTYPE" == darwin* ]] && (( ENABLE_UPDATE_CHECK )); then
+    cat <<EOF
+
+Update check:
+  Daily update check LaunchAgent installed: openrelix update --check runs at $UPDATE_CHECK_TIME.
+  It only checks the latest npm version and writes logs; run openrelix update --yes manually when you want to upgrade.
+EOF
+  fi
 fi
 
 if (( INSTALL_GLOBAL_COMMAND )) && (( PATH_EXPORT_ADDED )); then
@@ -1159,5 +1376,68 @@ PATH note:
 To use \`openrelix\` in the current shell immediately, run:
   export PATH="$BIN_DIR:\$PATH"
 EOF
+  fi
+fi
+
+INTERACTIVE_TTY=0
+if [[ -t 0 && -t 1 && -z "${CI:-}" ]]; then
+  INTERACTIVE_TTY=1
+fi
+
+is_yes_answer() {
+  local value="${1:l}"
+  case "$value" in
+    y|yes|是|是的|好|好的|1) return 0 ;;
+  esac
+  return 1
+}
+
+is_no_answer() {
+  local value="${1:l}"
+  case "$value" in
+    n|no|否|不|不要|0) return 0 ;;
+  esac
+  return 1
+}
+
+if (( INTERACTIVE_TTY )) && (( LEARN_AFTER_INSTALL )); then
+  if [[ "$LANGUAGE" == "en" ]]; then
+    print -r -- ""
+    print -r -- "Learn the last 7 days of memory now? This calls Codex on your"
+    print -r -- "behalf and may take 5–15 minutes. The command that will run is:"
+    print -r -- "  openrelix review --stage final --learn-window-days 7"
+    printf "Run it now? [y/N]: "
+  else
+    print -r -- ""
+    print -r -- "现在学习最近 7 天的记忆吗？这一步会调用 Codex 生成本地记忆，"
+    print -r -- "预计 5–15 分钟。将要执行的命令是："
+    print -r -- "  openrelix review --stage final --learn-window-days 7"
+    printf "是否执行？[y/N]: "
+  fi
+  LEARN_ANSWER=""
+  IFS= read -r LEARN_ANSWER || LEARN_ANSWER=""
+  if is_yes_answer "$LEARN_ANSWER"; then
+    AI_ASSET_STATE_DIR="$STATE_DIR" \
+      CODEX_HOME="$CODEX_HOME" \
+      AI_ASSET_LANGUAGE="$LANGUAGE" \
+      OPENRELIX_ACTIVITY_SOURCE="$ACTIVITY_SOURCE" \
+      "$PYTHON_BIN" "$REPO_ROOT/scripts/openrelix.py" \
+      review --stage final --learn-window-days 7 || true
+  fi
+fi
+
+if (( INTERACTIVE_TTY )) && (( WILL_AUTO_LAUNCH )); then
+  APP_LAUNCH_PATH="$STATE_DIR/runtime/mac-app/OpenRelix.app"
+  if [[ -d "$APP_LAUNCH_PATH" ]]; then
+    if [[ "$LANGUAGE" == "en" ]]; then
+      printf $'\nOpen the OpenRelix client now? [Y/n]: '
+    else
+      printf $'\n现在打开 OpenRelix 客户端吗？[Y/n]: '
+    fi
+    LAUNCH_ANSWER=""
+    IFS= read -r LAUNCH_ANSWER || LAUNCH_ANSWER=""
+    if [[ -z "$LAUNCH_ANSWER" ]] || is_yes_answer "$LAUNCH_ANSWER"; then
+      open "$APP_LAUNCH_PATH" >/dev/null 2>&1 || true
+    fi
   fi
 fi

@@ -16,10 +16,10 @@ GitHub 项目页：[openrelix/openrelix](https://github.com/openrelix/openrelix)
 
 - `AGENTS.md`：维护本系统本身的仓库级说明。
 - `.agents/skills/`：可复用 agent 工作流的 canonical repo-local skills。
-- `.agents/plugins/`：草案插件市场元数据，不是 v0.1.0 预览版的安装主链路。
+- `.agents/plugins/`：Codex plugin marketplace metadata。
 - `install/`：一键安装器和用户配置辅助脚本。
 - `ops/launchd/`：macOS LaunchAgent 模板。
-- `plugins/`：为后续插件打包保留的草案 bundle。
+- `plugins/`：随包发布共享 skills 的 Codex plugin bundle。
 - `scripts/`：采集、夜间整理、overview 生成、token live server 和 `openrelix` CLI。
 - `templates/`：任务复盘 schema 和资产条目模板。
 - `docs/`：运行模型、技术方案、学习指南、隐私边界和指标说明。
@@ -64,14 +64,15 @@ v0.1.0 预览版仅支持 macOS。公开安装路径假设：
 
 Linux 和 Windows 是后续工作。部分底层 Python 脚本已经把路径做成可配置，但当前公开 installer 和后台自动化应按 macOS-only 理解。
 
-首个公开 adapter 面向 Codex CLI。v0.1.0 预览版的一些能力依赖 Codex 特定表面，包括 `CODEX_HOME`、Codex history/session 文件、Codex native memories、Codex skills 和 Codex custom prompts。产品方向仍然是 AI-agent-first：未来 host 只需要把自己的 history、skill、memory 和 command 表面映射到同一本地资产模型里。
+首个公开 adapter 面向 Codex CLI 和 Codex app-server。v0.1.0 预览版的一些能力依赖 Codex 特定表面，包括 `CODEX_HOME`、Codex app-server threads、Codex history/session 文件、Codex native memories、Codex skills 和 Codex custom prompts。产品方向仍然是 AI-agent-first：未来 host 只需要把自己的 history、skill、memory 和 command 表面映射到同一本地资产模型里。
 
-实验性的 Codex app-server 活动源可用于本地测试。它通过 `codex app-server` 读取 Codex threads，并映射回现有 history/session collector 使用的 raw window 格式。它默认关闭，稳定默认路径仍然读取 `CODEX_HOME/history.jsonl` 和 `CODEX_HOME/sessions/**/*.jsonl`。
+Codex app-server 采集现在是默认 Codex adapter 路径的一部分。默认 `auto` 会先尝试 `codex app-server`，把 Codex threads 映射回现有 collector 使用的 raw window 格式；不可用时再回退到 `CODEX_HOME/history.jsonl` 和 `CODEX_HOME/sessions/**/*.jsonl`。
 
 ```bash
-npx openrelix install --profile integrated --enable-learning-refresh --read-codex-app
-npx openrelix install --profile integrated --activity-source auto
+npx openrelix install --activity-source auto
+npx openrelix install --activity-source history
 python3 scripts/collect_codex_activity.py --date "$(date +%F)" --activity-source app-server
+openrelix doctor --app-server-check
 OPENRELIX_ACTIVITY_SOURCE=app-server openrelix review --date "$(date +%F)"
 ```
 
@@ -132,16 +133,16 @@ npx openrelix install --language en
 推荐完整安装：
 
 ```bash
-npx openrelix install --profile integrated --enable-learning-refresh --enable-nightly --keep-awake=during-job
+npx openrelix install --enable-learning-refresh --enable-nightly --keep-awake=during-job --enable-update-check
 ```
 
 最小安装：
 
 ```bash
-./install/install.sh
+./install/install.sh --minimal
 ```
 
-最小安装会初始化 state root，生成第一份 overview，开启当前 Codex adapter 的 memories/history，并同步一份 bounded memory summary 到 `CODEX_HOME`。它不会安装 shell 命令，不改 shell rc，也不 bootstrap LaunchAgents。需要只在本系统本地记录、不注入 host context 时，使用 `--record-memory-only`。
+默认安装档位是 `integrated`。最小安装会初始化 state root，生成第一份 overview，开启当前 Codex adapter 的 memories/history，并同步一份 bounded memory summary 到 `CODEX_HOME`。它不会安装 shell 命令，不改 shell rc，也不 bootstrap LaunchAgents。需要只在本系统本地记录、不注入 host context 时，使用 `--minimal --record-memory-only`。
 
 installer 会把运行语言和 memory mode 写入 state root 下的 `runtime/config.json`。支持的语言是 `zh` 和 `en`；语言会影响终端输出、overview 文件、夜间 summary prompt、fallback summary、即时 task review、asset / usage event 的展示字段，以及本地 consolidation pipeline 写出的结构化 memory items。稳定 enum keys 保持 canonical，展示层再按语言格式化。
 
@@ -153,14 +154,14 @@ installer 会把运行语言和 memory mode 写入 state root 下的 `runtime/co
 Memory 默认开启。当前 Codex adapter 的默认模式是 `integrated`：系统把可复用记忆记录到 active state root，开启 Codex memories/history，并把 bounded summary 同步进 host-native context。需要严格本地记录时用 `--record-memory-only`，需要关闭本系统本地 memory 写入时用 `--disable-personal-memory`。
 
 ```bash
-./install/install.sh --profile integrated --record-memory-only
-./install/install.sh --profile integrated --disable-personal-memory
+./install/install.sh --record-memory-only
+./install/install.sh --disable-personal-memory
 ```
 
-推荐的 integrated profile 会安装全局 skill symlink、bounded history config、`openrelix` shell command、30 分钟自动学习刷新、夜间整理和任务执行期间防睡眠：
+默认的 integrated profile 会安装全局 skill symlink、bounded history config、`openrelix` shell command 和轻量 macOS 客户端；加上下面这些显式选项后，还会开启 30 分钟自动学习刷新、夜间整理、每日更新检查和任务执行期间防睡眠：
 
 ```bash
-./install/install.sh --profile integrated --enable-learning-refresh --enable-nightly --keep-awake=during-job
+./install/install.sh --enable-learning-refresh --enable-nightly --keep-awake=during-job --enable-update-check
 ```
 
 这个 profile 会：
@@ -170,11 +171,13 @@ Memory 默认开启。当前 Codex adapter 的默认模式是 `integrated`：系
 3. 把 repo 提供的 `memory-review` skill symlink 到 `~/.codex/skills/`。
 4. 把 repo 提供的 custom prompt 安装到 `~/.codex/prompts/memory-review.md` 作为兼容 fallback。
 5. 安装全局 `openrelix` shell command，并确保用户选择的 bin 目录在 `PATH` 中。
-6. 渲染并 bootstrap macOS LaunchAgents：
+6. 如果本机有 `swiftc`，构建轻量 macOS 客户端到 `<state-root>/runtime/mac-app/OpenRelix.app`。
+7. 渲染并 bootstrap macOS LaunchAgents：
    - 每 30 分钟刷新 overview；如果开启 `--enable-learning-refresh`，会调用当前 Codex adapter 并从 7 天窗口学习
    - token live server
    - 每天 `23:00` 生成当日预览
    - 每天 `00:10` 生成前一日终版
+   - 开启 `--enable-update-check` 时，每天 `09:30` 做一次 npm 最新版本检查
 
 在 active AI coding agent 里需要立即做任务复盘时，当前 Codex adapter 暴露的 skill 入口是：
 
@@ -188,20 +191,30 @@ custom prompt 兼容入口是：
 /prompts:memory-review
 ```
 
-安装完成后，首个推荐动作是打开本地面板：
+安装完成后，首个推荐动作是打开本地面板或 macOS 客户端：
 
 ```bash
-openrelix open panel
+openrelix app
 ```
 
 常用命令：
 
 ```bash
 openrelix open panel
+openrelix app
 openrelix core
 openrelix mode
 openrelix review
+openrelix update --check
+openrelix update --yes
 ```
+
+macOS 上可以用 `openrelix app` 构建并打开一个轻量原生客户端，默认位置是
+`<state-root>/runtime/mac-app/OpenRelix.app`。它只是用 AppKit/WebKit 封装同一份本地
+`reports/panel.html`，不引入 Electron，也不依赖托管服务。从 repo checkout 调试时，也可以运行
+`./scripts/build_macos_client.sh --open` 构建本地 `dist/OpenRelix.app`。
+
+发布更新建议拆成两步：自动化里只跑 `openrelix update --check`，真正升级时再手动跑 `openrelix update --yes`。每日校验默认放在 `09:30`，避开 `23:00` 当日预览和 `00:10` 前一日终版整理。
 
 如果所选 bin 目录还不在 `PATH` 中，installer 会向当前 shell rc 文件追加一个受管理的 `PATH` block，并打印当前 shell 可直接执行的一行 `export PATH=...`。
 
@@ -235,7 +248,7 @@ npm publish --access public
 
 ## 运行时命令
 
-以下命令需要通过 `--profile integrated` 或 `--install-global-command` 安装 `openrelix` shell entrypoint。
+以下命令需要通过默认 `integrated` profile 或 `--install-global-command` 安装 `openrelix` shell entrypoint。
 
 刷新 overview snapshot：
 
@@ -253,6 +266,12 @@ openrelix refresh --learn-memory --learn-window-days 7
 
 ```bash
 openrelix open panel
+```
+
+用轻量 macOS 客户端打开同一份面板：
+
+```bash
+openrelix app
 ```
 
 在终端打印核心指标：
@@ -308,7 +327,7 @@ openrelix config
 openrelix config --memory-summary-max-tokens 8000
 ```
 
-`memory_summary_max_tokens` 默认 5000，支持 2000 到 20000。target 和 warning budgets 会自动从 max 派生。更新后默认刷新 summary、overview 和 panel；只想持久化配置时加 `--no-refresh`。
+`memory_summary_max_tokens` 默认 8000，支持 2000 到 20000。target 和 warning budgets 会自动从 max 派生。更新后默认刷新 summary、overview 和 panel；只想持久化配置时加 `--no-refresh`。
 
 底层 fallback：
 
@@ -320,12 +339,12 @@ python3 scripts/migrate_legacy_state.py
 ## 技能如何加载
 
 - 当 active AI host 支持 repo-local skill discovery 时，`.agents/skills/` 下的 skills 会自动被发现。v0.1.0 预览版 adapter 面向 Codex discovery。
-- 如果希望同一个 skill 在任意仓库都可用，需要安装到 active host 的用户级 skill root。v0.1.0 预览版通过 `--profile integrated` 或 `--install-global-skills` 把 Codex symlink 安装到用户级 skill root。
+- 如果希望同一个 skill 在任意仓库都可用，需要安装到 active host 的用户级 skill root。默认 `integrated` profile 会自动安装；自定义 profile 时可用 `--install-global-skills` 安装 Codex symlink。
 - 本仓库不依赖 hooks 实现全局 skill discovery。Hooks 只是可选生命周期自动化；skill 可用性来自 repo-local discovery 或 user-level installation。
 
 ## Plugin 状态
 
-`plugins/` 目录是当前 Codex plugin route 的草案包装层。它保留在仓库里，是为了后续 host-specific packages 可以复用同一套 canonical skills。v0.1.0 预览版应按 installer-first 发布和说明。repo marketplace entry 会保持 not available，直到 public plugin metadata、截图和 policy URLs 准备好。
+`plugins/` 目录是当前 Codex plugin route 的实际包装层。它随包携带 `memory-review` skill 和 repo marketplace metadata；完整的本地配置、LaunchAgents、shell 入口和 custom-prompt fallback 仍由 installer 负责。
 
 ## 隐私边界
 

@@ -19,7 +19,8 @@ SUPPORTED_LANGUAGES = ("zh", "en")
 DEFAULT_MEMORY_MODE = "integrated"
 SUPPORTED_MEMORY_MODES = ("integrated", "local-only", "off")
 SUPPORTED_ACTIVITY_SOURCES = ("history", "app-server", "auto")
-DEFAULT_MEMORY_SUMMARY_MAX_TOKENS = 5000
+DEFAULT_ACTIVITY_SOURCE = "auto"
+DEFAULT_MEMORY_SUMMARY_MAX_TOKENS = 8000
 MIN_MEMORY_SUMMARY_MAX_TOKENS = 2000
 MAX_MEMORY_SUMMARY_MAX_TOKENS = 20000
 LANGUAGE_ALIASES = {
@@ -178,7 +179,7 @@ def normalize_activity_source(value: Optional[str], *, strict: bool = False) -> 
                     ", ".join(SUPPORTED_ACTIVITY_SOURCES),
                 )
             )
-        return "history"
+        return DEFAULT_ACTIVITY_SOURCE
 
     activity_source = ACTIVITY_SOURCE_ALIASES.get(text, text)
     if activity_source in SUPPORTED_ACTIVITY_SOURCES:
@@ -191,7 +192,7 @@ def normalize_activity_source(value: Optional[str], *, strict: bool = False) -> 
                 ", ".join(SUPPORTED_ACTIVITY_SOURCES),
             )
         )
-    return "history"
+    return DEFAULT_ACTIVITY_SOURCE
 
 
 def _round_token_budget(value: float) -> int:
@@ -283,11 +284,19 @@ def default_codex_binary() -> str:
     if explicit:
         return str(_expand_path(explicit))
 
+    home = Path.home()
     candidates = [
         shutil.which("codex"),
+        str(home / ".npm-global/bin/codex"),
+        str(home / ".volta/bin/codex"),
+        str(home / ".bun/bin/codex"),
         "/opt/homebrew/bin/codex",
         "/usr/local/bin/codex",
     ]
+    nvm_root = home / ".nvm" / "versions" / "node"
+    if nvm_root.is_dir():
+        for version_dir in sorted(nvm_root.iterdir(), reverse=True):
+            candidates.append(str(version_dir / "bin" / "codex"))
     for candidate in candidates:
         if candidate and Path(candidate).exists():
             return str(Path(candidate))

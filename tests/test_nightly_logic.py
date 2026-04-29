@@ -130,11 +130,12 @@ class NightlyLogicTests(unittest.TestCase):
         self.assertEqual(asset_runtime.normalize_memory_mode("disabled"), "off")
         with self.assertRaises(ValueError):
             asset_runtime.normalize_memory_mode("cloud", strict=True)
-        self.assertEqual(asset_runtime.normalize_activity_source(None), "history")
+        self.assertEqual(asset_runtime.normalize_activity_source(None), "auto")
         self.assertEqual(asset_runtime.normalize_activity_source("codex_app_server"), "app-server")
         self.assertEqual(asset_runtime.normalize_activity_source("read-codex-app"), "auto")
         with self.assertRaises(ValueError):
             asset_runtime.normalize_activity_source("browser", strict=True)
+        self.assertEqual(asset_runtime.normalize_memory_summary_max_tokens(None), 8000)
         self.assertEqual(asset_runtime.normalize_memory_summary_max_tokens("8000"), 8000)
         with self.assertRaises(ValueError):
             asset_runtime.normalize_memory_summary_max_tokens("1000", strict=True)
@@ -761,17 +762,59 @@ class NightlyLogicTests(unittest.TestCase):
         self.assertIn("OpenRelix", row["context_labels"])
         self.assertEqual(row["source_fact_label"], "来源文件")
 
+    def _use_personal_codex_rules(self, **extras):
+        """Inject test fixtures into build_overview._PERSONAL_CODEX_NATIVE_RULES for one test.
+
+        The engine ships with empty defaults; rule data lives outside the repo.
+        These helpers let us exercise the matching logic with synthetic fixtures
+        that contain no real personal project names.
+        """
+        base = {
+            "title": {},
+            "note": {},
+            "task_body": {},
+            "bullet": {},
+            "topic_rules": [],
+            "bullet_rules": [],
+            "bullet_title_en": {},
+        }
+        base.update(extras)
+        original = build_overview._PERSONAL_CODEX_NATIVE_RULES
+        build_overview._PERSONAL_CODEX_NATIVE_RULES = base
+        self.addCleanup(lambda: setattr(build_overview, "_PERSONAL_CODEX_NATIVE_RULES", original))
+
     def test_codex_native_memory_known_english_topics_get_chinese_display_copy(self):
+        self._use_personal_codex_rules(
+            title={
+                "openrelix fixture topic alpha key": "示例主题 A",
+                "openrelix fixture topic beta key": "示例主题 B",
+            },
+            note={
+                "openrelix fixture topic alpha key": "覆盖示例主题 A 的样例描述。",
+                "openrelix fixture topic beta key": "覆盖示例主题 B 的样例描述。",
+            },
+            topic_rules=[
+                {
+                    "fragments": ["openrelix-fixture-topic-rule", "sample retrieval"],
+                    "title": "示例主题规则",
+                    "body": "通过规则匹配命中的示例主题描述。",
+                },
+            ],
+        )
+
         sample_summary = """## What's in Memory
 
-### OpenRelix + user-level Codex state
+### Sample fixtures
 
-- Local Codex personal asset system, genericization, and LaunchAgent runtime: OpenRelix, AGENTS.md, memories, dashboard
-  - desc: User-level personal asset system design under a openrelix workspace.
-  - learnings: The layered setup separates global rules, repo rules, and local state.
+- OpenRelix fixture topic alpha key: marker-alpha
+  - desc: Sample topic alpha description.
+  - learnings: Sample topic alpha learning.
 
-- Codex local configuration, MCP setup, token usage, and plugin marketplace inspection: ~/.codex/config.toml, codex mcp add
-  - desc: Machine-specific Codex setup facts for MCP configuration and token usage evidence.
+- OpenRelix fixture topic beta key: marker-beta
+  - desc: Sample topic beta description.
+
+- OpenRelix-fixture-topic-rule sample retrieval token: marker-rule
+  - desc: Sample topic exercising rule-based matching.
 
         """
 
@@ -783,23 +826,31 @@ class NightlyLogicTests(unittest.TestCase):
             parsed = build_overview.parse_codex_native_memory_summary(summary_path)
 
         display_by_title = {row["title"]: row for row in parsed["rows"]}
-        local_row = display_by_title["Local Codex personal asset system, genericization, and LaunchAgent runtime"]
-        codex_config_row = display_by_title[
-            "Codex local configuration, MCP setup, token usage, and plugin marketplace inspection"
-        ]
-        self.assertEqual(local_row["display_title"], "本地 OpenRelix 系统、通用化与 LaunchAgent 运行时")
-        self.assertIn("个人资产系统的分层设计", local_row["display_value_note"])
-        self.assertEqual(codex_config_row["display_title"], "Codex 本地配置、MCP、Token 使用与插件市场排查")
-        self.assertIn("本机 Codex 环境", codex_config_row["display_value_note"])
+        alpha_row = display_by_title["OpenRelix fixture topic alpha key"]
+        beta_row = display_by_title["OpenRelix fixture topic beta key"]
+        rule_row = display_by_title["OpenRelix-fixture-topic-rule sample retrieval token"]
+        self.assertEqual(alpha_row["display_title"], "示例主题 A")
+        self.assertIn("覆盖示例主题 A 的样例描述", alpha_row["display_value_note"])
+        self.assertEqual(beta_row["display_title"], "示例主题 B")
+        self.assertIn("覆盖示例主题 B 的样例描述", beta_row["display_value_note"])
+        self.assertEqual(rule_row["display_title"], "示例主题规则")
+        self.assertIn("通过规则匹配命中", rule_row["display_value_note"])
 
     def test_codex_native_memory_summary_bullets_get_chinese_display_body(self):
+        self._use_personal_codex_rules(
+            bullet={
+                "openrelix fixture bullet alpha key default sample exercise": "示例 bullet 文案 A：用于验证 BULLET 直接命中。",
+                "openrelix fixture bullet beta key correct sample exercise": "示例 bullet 文案 B：用于验证 BULLET 直接命中。",
+            },
+        )
+
         sample_summary = """## User preferences
 
-- When runtime behavior depends on the current device state or UI, default to live inspection early.
+- OpenRelix fixture bullet alpha key default sample exercise.
 
 ## General Tips
 
-- Separate repo-code tasks from user-level Codex / OpenRelix tasks early; the correct search surface is different.
+- OpenRelix fixture bullet beta key correct sample exercise.
 """
 
         with TemporaryDirectory() as tmpdir:
@@ -811,13 +862,121 @@ class NightlyLogicTests(unittest.TestCase):
 
         self.assertEqual(
             parsed["preference_rows"][0]["display_body"],
-            "当运行时行为依赖当前设备状态或 UI 时，优先尽早做现场检查。",
+            "示例 bullet 文案 A：用于验证 BULLET 直接命中。",
         )
         self.assertEqual(
             parsed["tip_rows"][0]["display_body"],
-            "先区分 repo 代码任务和用户级 Codex / OpenRelix 任务，两者搜索面不同。",
+            "示例 bullet 文案 B：用于验证 BULLET 直接命中。",
         )
-        self.assertIn("When runtime behavior depends", parsed["preference_rows"][0]["display_body_en"])
+        self.assertIn("OpenRelix fixture bullet alpha", parsed["preference_rows"][0]["display_body_en"])
+
+    def test_codex_native_memory_preferences_get_readable_chinese_explanations(self):
+        self._use_personal_codex_rules(
+            bullet_rules=[
+                {
+                    "fragments": ["openrelix-fixture-default", "sample-keep-moving"],
+                    "title": "示例-默认推进",
+                    "body": "命中第一条规则：示例文案验证默认推进偏好的提取。",
+                },
+                {
+                    "fragments": ["openrelix-fixture-window", "sample-context-binding"],
+                    "title": "示例-上下文绑定",
+                    "body": "命中第二条规则：示例文案验证上下文前缀拼接。",
+                },
+            ],
+            bullet_title_en={
+                "示例-默认推进": "Sample Default Rule",
+                "示例-上下文绑定": "Sample Context-Bound Rule",
+            },
+        )
+
+        sample_summary = """## User preferences
+
+- A bullet that exercises openrelix-fixture-default and sample-keep-moving for default rule matching.
+- In `/path/to/example-project`, openrelix-fixture-window with sample-context-binding exercises context prefix wrapping.
+"""
+
+        with TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            summary_path = tmp / "memory_summary.md"
+            summary_path.write_text(sample_summary, encoding="utf-8")
+
+            parsed = build_overview.parse_codex_native_memory_summary(summary_path, language="zh")
+
+        self.assertEqual(parsed["preference_rows"][0]["display_title"], "示例-默认推进")
+        self.assertEqual(parsed["preference_rows"][0]["display_title_en"], "Sample Default Rule")
+        self.assertIn("命中第一条规则", parsed["preference_rows"][0]["display_body"])
+        self.assertEqual(parsed["preference_rows"][1]["display_title"], "示例-上下文绑定")
+        self.assertEqual(parsed["preference_rows"][1]["display_title_en"], "Sample Context-Bound Rule")
+        self.assertIn("在example-project项目里", parsed["preference_rows"][1]["display_body"])
+        self.assertIn("命中第二条规则", parsed["preference_rows"][1]["display_body"])
+        self.assertEqual(parsed["preference_rows"][0]["title"], "Preference 1")
+
+    def test_codex_native_memory_tips_get_readable_chinese_explanations(self):
+        self._use_personal_codex_rules(
+            bullet_rules=[
+                {
+                    "fragments": ["openrelix-fixture-contracts", "sample-readme-runbook"],
+                    "title": "示例-先读契约",
+                    "body": "命中第一条规则：开始前先读契约文件。",
+                },
+                {
+                    "fragments": ["openrelix-fixture-state-files", "sample-orchestration-layer"],
+                    "title": "示例-状态机",
+                    "body": "命中第二条规则：长流程落到状态文件里，不能靠聊天上下文硬扛。",
+                },
+                {
+                    "fragments": ["openrelix-fixture-text-layer", "sample-pdf-routing"],
+                    "title": "示例-文本层优先",
+                    "body": "命中第三条规则：处理 PDF 时先判断文件有没有可用文本层。",
+                },
+            ],
+        )
+
+        sample_summary = """## General Tips
+
+- In `/path/to/example-project`, openrelix-fixture-contracts emphasises sample-readme-runbook discipline before each run.
+- In that repo, openrelix-fixture-state-files form the sample-orchestration-layer; durable state files keep long runs alive.
+- For sample documents, openrelix-fixture-text-layer with sample-pdf-routing decides whether to OCR.
+"""
+
+        with TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            summary_path = tmp / "memory_summary.md"
+            summary_path.write_text(sample_summary, encoding="utf-8")
+
+            parsed = build_overview.parse_codex_native_memory_summary(summary_path, language="zh")
+
+        self.assertEqual(parsed["tip_rows"][0]["display_title"], "示例-先读契约")
+        self.assertIn("开始前先读契约文件", parsed["tip_rows"][0]["display_body"])
+        self.assertEqual(parsed["tip_rows"][1]["display_title"], "示例-状态机")
+        self.assertIn("在这个仓库里", parsed["tip_rows"][1]["display_body"])
+        self.assertIn("长流程落到状态文件里", parsed["tip_rows"][1]["display_body"])
+        self.assertEqual(parsed["tip_rows"][2]["display_title"], "示例-文本层优先")
+        self.assertIn("先判断文件有没有可用文本层", parsed["tip_rows"][2]["display_body"])
+        self.assertIn("openrelix-fixture-contracts", parsed["tip_rows"][0]["display_body_en"])
+
+    def test_codex_native_brief_cards_are_compact_and_keep_source_text_collapsed(self):
+        rows = [
+            {
+                "display_title": "示例-默认推进",
+                "display_title_en": "Sample Default Rule",
+                "title": "Preference 1",
+                "display_body": "命中第一条规则：示例文案验证默认推进偏好的提取。",
+                "display_body_en": "Sample bullet body for rule-based default fixture.",
+                "source_files": [{"path": "/tmp/memory_summary.md", "label": "memory_summary.md"}],
+            }
+        ]
+
+        html = build_overview.make_codex_native_brief_cards(rows, "preference", language="zh")
+
+        self.assertIn("native-brief-card", html)
+        self.assertIn("示例-默认推进", html)
+        self.assertIn("Sample Default Rule", html)
+        self.assertIn("查看英文原文", html)
+        self.assertIn("Sample bullet body for rule-based default fixture", html)
+        self.assertNotIn("关联上下文", html)
+        self.assertNotIn("最近工作区", html)
 
     def test_codex_native_memory_english_mode_preserves_english_display_copy(self):
         sample_summary = """## What's in Memory
@@ -1406,6 +1565,10 @@ applies_to: cwd=/tmp/OpenRelix
 ### keywords
 
 - OpenRelix, dashboard, memory
+
+## User preferences
+
+- voiceover_template.md should not be parsed as a keyword after the keyword section closes.
 """
 
         with TemporaryDirectory() as tmpdir:
@@ -1426,6 +1589,7 @@ applies_to: cwd=/tmp/OpenRelix
         self.assertEqual(row["task_count"], 1)
         self.assertEqual(row["rollout_reference_count"], 1)
         self.assertIn("dashboard", row["keywords"])
+        self.assertNotIn("voiceover_template.md should not be parsed as a keyword after the keyword section closes.", row["keywords"])
 
     def test_codex_memory_index_task_group_fallback_body_is_bilingual(self):
         sample_index = """# Task Group: Legacy group
@@ -1452,8 +1616,8 @@ applies_to: cwd=/tmp/OpenRelix
             '<p><span data-lang-only="zh">MEMORY.md 中登记的历史任务组。</span><span data-lang-only="en">Historical task group registered in MEMORY.md.</span></p>',
             cards_html,
         )
-        self.assertIn("查看更多 1 条", cards_html)
-        self.assertIn("Show 1 more items", cards_html)
+        self.assertIn("查看更多 5 条", cards_html)
+        self.assertIn("Show 5 more items", cards_html)
         self.assertNotIn("native-brief-heading", cards_html)
 
     def test_invalid_utf8_codex_memory_index_keeps_overview_available(self):
@@ -1653,7 +1817,7 @@ applies_to: cwd=/tmp/OpenRelix
         self.assertIn("中文摘要", markdown)
         self.assertNotIn("English note", markdown)
 
-    def test_summary_term_views_default_to_today_with_three_ranges(self):
+    def test_summary_term_views_default_to_today_and_last_seven_days(self):
         assets = [
             {
                 "title": "今日资产 OpenRelix",
@@ -1716,18 +1880,45 @@ applies_to: cwd=/tmp/OpenRelix
                 latest_nightly=nightly_candidates[0],
             )
 
-        self.assertEqual([view["days"] for view in views], [1, 3, 7])
+        self.assertEqual([view["days"] for view in views], [1, 7])
         self.assertEqual(build_overview.default_summary_term_view(views)["days"], 1)
 
         today_terms = {row["label"] for row in views[0]["terms"]}
-        three_day_terms = {row["label"] for row in views[1]["terms"]}
-        seven_day_terms = {row["label"] for row in views[2]["terms"]}
+        seven_day_terms = {row["label"] for row in views[1]["terms"]}
 
         self.assertIn("OpenRelix", today_terms)
         self.assertNotIn("Douyin", today_terms)
-        self.assertIn("Douyin", three_day_terms)
-        self.assertIn("subreview", three_day_terms)
+        self.assertIn("Douyin", seven_day_terms)
+        self.assertIn("subreview", seven_day_terms)
         self.assertIn("ASR", seven_day_terms)
+
+    def test_summary_term_card_uses_rank_list_instead_of_bubble_map(self):
+        html = build_overview.make_summary_term_card(
+            {
+                "days": 1,
+                "title_zh": "今日热词",
+                "title_en": "Today Hot Terms",
+                "terms": [
+                    {"label": "OpenRelix", "value": 123},
+                    {"label": "AI", "value": 19},
+                    {"label": "Codex", "value": 18},
+                ],
+                "source_dates": ["2026-04-29"],
+                "window_count": 6,
+                "nightly_count": 1,
+                "asset_count": 0,
+                "review_count": 0,
+                "usage_event_count": 0,
+            }
+        )
+
+        self.assertIn('class="term-rank-list"', html)
+        self.assertIn('class="term-rank-item is-primary"', html)
+        self.assertIn("--term-level:1.000", html)
+        self.assertIn("01", html)
+        self.assertIn("OpenRelix", html)
+        self.assertIn("term-rank-track", html)
+        self.assertNotIn("term-bubble-map", html)
 
     def test_build_markdown_zh_empty_mix_rows_use_chinese_placeholder(self):
         markdown = build_overview.build_markdown(
@@ -2178,38 +2369,24 @@ applies_to: cwd=/tmp/OpenRelix
         self.assertIn("任务组", html)
         self.assertIn("Task Groups", html)
         self.assertIn("Local asset system", html)
-        self.assertIn("Codex 原生 · 用户偏好", html)
-        self.assertIn("Codex Native · User Preferences", html)
-        self.assertIn("Codex 原生 · 通用 tips", html)
-        self.assertIn("Codex Native · General Tips", html)
+        self.assertIn("native-brief-card", html)
+        self.assertIn("User Preference", html)
+        self.assertIn("General Tip", html)
         self.assertIn("Codex 原生记忆-任务组", html)
         self.assertIn("关键词：dashboard", html)
         self.assertIn("1 task; 1 source", html)
         self.assertNotIn("1 tasks; 1 sources", html)
-        self.assertIn(
-            '<div class="review-submeta memory-card-submeta"><span data-lang-only="zh"><span class="memory-card-submeta-line">首次添加 2026-04-26</span><span class="memory-card-submeta-line">最近更新 2026-04-26</span>',
-            html,
-        )
-        self.assertIn(
-            '<span data-lang-only="en"><span class="memory-card-submeta-line">First added 2026-04-26</span><span class="memory-card-submeta-line">Updated 2026-04-26</span>',
-            html,
-        )
-        self.assertIn(
-            '<div class="memory-card-label"><span data-lang-only="zh">关联上下文</span><span data-lang-only="en">Related Context</span></div>',
-            html,
-        )
-        self.assertIn(
-            '<div class="memory-card-label"><span data-lang-only="zh">最近工作区</span><span data-lang-only="en">Recent Workspace</span></div>',
-            html,
-        )
-        self.assertIn(
-            '<div class="memory-card-label"><span data-lang-only="zh">来源窗口</span><span data-lang-only="en">Source Window</span></div>',
-            html,
-        )
+        self.assertIn("查看来源与上下文", html)
+        self.assertIn("Show context and source", html)
+        self.assertIn("首次添加 2026-04-26", html)
+        self.assertIn("First added 2026-04-26", html)
+        self.assertIn("关联上下文", html)
+        self.assertIn("最近工作区", html)
+        self.assertIn("来源窗口", html)
         self.assertIn("Preference 1", html)
 
     def test_personal_memory_token_widget_shows_bounded_context_budget(self):
-        test_summary_budget = asset_runtime.memory_summary_budget_from_max(5000)
+        test_summary_budget = asset_runtime.memory_summary_budget_from_max(None)
         usage = build_overview.build_personal_memory_token_usage(
             [
                 {
@@ -2230,8 +2407,8 @@ applies_to: cwd=/tmp/OpenRelix
         self.assertTrue(usage["enabled"])
         self.assertEqual(usage["item_count"], 1)
         self.assertGreater(usage["estimated_tokens"], 20)
-        self.assertEqual(usage["max_tokens"], 5000)
-        self.assertEqual(usage["max_tokens_display"], "5K")
+        self.assertEqual(usage["max_tokens"], 8000)
+        self.assertEqual(usage["max_tokens_display"], "8K")
         self.assertTrue(usage["value_display_zh"].startswith("≈ "))
         self.assertLess(usage["meter_percent"], 10)
         self.assertIn("Integrated", usage["mode_label"])
@@ -2240,7 +2417,7 @@ applies_to: cwd=/tmp/OpenRelix
         self.assertIn("memory-token-widget", widget)
         self.assertIn("Codex context 预算", widget)
         self.assertIn("≈ ", widget)
-        self.assertIn("摘要目标 4.2K / 警戒 4.6K / 上限 5K", widget)
+        self.assertIn("摘要目标 6.7K / 警戒 7.4K / 上限 8K", widget)
         self.assertIn("1 条留本地，约 1 条进摘要（候选不设条数上限）", widget)
 
         many_usage = build_overview.build_personal_memory_token_usage(
@@ -2766,6 +2943,25 @@ applies_to: cwd=/tmp/OpenRelix
         self.assertIn(".review-grid.content-more-grid {{", source)
         self.assertIn("grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));", source)
 
+    def test_dashboard_clamps_root_horizontal_overflow(self):
+        source = (ROOT / "scripts" / "build_overview.py").read_text(encoding="utf-8")
+
+        self.assertIn("overflow-x: clip;", source)
+        self.assertIn("overscroll-behavior-x: none;", source)
+        self.assertIn("width: min(1280px, calc(100vw - 48px));", source)
+        self.assertIn("width: min(1280px, calc(100vw - 304px));", source)
+        self.assertIn("width: min(1280px, calc(100vw - 28px));", source)
+        mobile_nav_css = source[source.index("@media (max-width: 1120px)") : source.index("@media (max-width: 1040px)")]
+        self.assertIn(".hero-topline {{", mobile_nav_css)
+        self.assertIn("flex-direction: column;", mobile_nav_css)
+        self.assertIn(".hero-actions {{", mobile_nav_css)
+        self.assertIn("width: 100%;", mobile_nav_css)
+        self.assertIn("overscroll-behavior-x: contain;", mobile_nav_css)
+        self.assertIn("padding: 24px 0 calc(128px + env(safe-area-inset-bottom));", mobile_nav_css)
+        self.assertIn("top: auto;", mobile_nav_css)
+        self.assertIn("bottom: max(12px, env(safe-area-inset-bottom));", mobile_nav_css)
+        self.assertIn("scroll-margin-bottom: 128px;", mobile_nav_css)
+
     def test_top_assets_and_recent_reviews_use_requested_layouts(self):
         source = (ROOT / "scripts" / "build_overview.py").read_text(encoding="utf-8")
         main_start = source.index("{nightly_summary_panel}")
@@ -2808,7 +3004,7 @@ applies_to: cwd=/tmp/OpenRelix
         self.assertLess(cards_html.index("Review 7"), cards_html.index("查看更多 1 篇复盘"))
         self.assertGreater(cards_html.index("Review 8"), cards_html.index("查看更多 1 篇复盘"))
 
-    def test_memory_sections_stack_and_cards_use_four_columns_with_two_visible_rows(self):
+    def test_memory_sections_stack_and_cards_use_two_column_brief_cards(self):
         source = (ROOT / "scripts" / "build_overview.py").read_text(encoding="utf-8")
         main_start = source.index("{nightly_summary_panel}")
         main_template = source[
@@ -2822,20 +3018,27 @@ applies_to: cwd=/tmp/OpenRelix
         self.assertIn("{durable_memory_header}", memory_stack)
         self.assertIn("{session_memory_header}", memory_stack)
         self.assertNotIn('class="grid two-up"', memory_stack)
+        self.assertIn('class="memory-group-list"', memory_stack)
+        self.assertNotIn('class="review-grid memory-grid"', memory_stack)
         self.assertIn("{low_priority_memory_header}", main_template)
         self.assertNotIn("{memory_registry_header}", main_template)
         self.assertNotIn("{memory_registry_cards}", main_template)
 
         stack_css = source[source.index(".memory-stack {{") : source.index(".review-card {{")]
         self.assertIn("grid-template-columns: 1fr;", stack_css)
+        self.assertIn(".memory-group-list {{", stack_css)
         self.assertIn(".memory-stack .memory-grid,", stack_css)
-        self.assertIn("grid-template-columns: repeat(4, minmax(0, 1fr));", stack_css)
+        self.assertIn("grid-template-columns: repeat(2, minmax(0, 1fr));", stack_css)
 
         cards_html = build_overview.make_memory_cards(
             [
                 {
                     "title": "Memory {}".format(index),
-                    "value_note": "demo",
+                    "value_note": (
+                        "demo " * 50
+                        if index == 0
+                        else "demo"
+                    ),
                     "bucket": "durable",
                     "memory_type": "semantic",
                     "priority": "high",
@@ -2843,10 +3046,12 @@ applies_to: cwd=/tmp/OpenRelix
                 for index in range(9)
             ]
         )
-        self.assertEqual(cards_html.count('<article class="review-card memory-card">'), 9)
-        self.assertIn("查看更多 1 条", cards_html)
-        self.assertLess(cards_html.index("Memory 7"), cards_html.index("查看更多 1 条"))
-        self.assertGreater(cards_html.index("Memory 8"), cards_html.index("查看更多 1 条"))
+        self.assertEqual(cards_html.count('<article class="native-brief-card memory-brief-card">'), 9)
+        self.assertIn("查看更多 5 条", cards_html)
+        self.assertIn("完整说明", cards_html)
+        self.assertIn("Full Note", cards_html)
+        self.assertLess(cards_html.index("Memory 3"), cards_html.index("查看更多 5 条"))
+        self.assertGreater(cards_html.index("Memory 4"), cards_html.index("查看更多 5 条"))
 
     def test_build_html_keeps_requested_dashboard_section_order(self):
         source = (ROOT / "scripts" / "build_overview.py").read_text(encoding="utf-8")
@@ -2962,7 +3167,7 @@ applies_to: cwd=/tmp/OpenRelix
                         "project_label": "OpenRelix",
                         "activity_source": "app-server",
                         "thread_source": "cli",
-                        "activity_source_label": "采集：Codex app-server（预览） · 线程来源：cli",
+                        "activity_source_label": "采集：Codex app-server · 线程来源：cli",
                         "question_count": 1,
                         "conclusion_count": 1,
                         "question_summary": "问题",
@@ -2978,7 +3183,7 @@ applies_to: cwd=/tmp/OpenRelix
         )
 
         self.assertIn("OpenRelix · 窗口 1", html)
-        self.assertIn("采集：Codex app-server（预览） · 线程来源：cli", html)
+        self.assertIn("采集：Codex app-server · 线程来源：cli", html)
         self.assertNotIn('<p class="window-card-path"><a', html)
 
     def test_window_overview_display_index_counts_down_from_latest_window(self):
@@ -3063,7 +3268,7 @@ applies_to: cwd=/tmp/OpenRelix
                         "project_label": "OpenRelix",
                         "activity_source": "app-server",
                         "thread_source": "cli",
-                        "activity_source_label": "采集：Codex app-server（预览） · 线程来源：cli",
+                        "activity_source_label": "采集：Codex app-server · 线程来源：cli",
                         "question_count": 1,
                         "conclusion_count": 1,
                         "question_summary": "窗口编号应该倒序",
@@ -3080,7 +3285,7 @@ applies_to: cwd=/tmp/OpenRelix
         )
 
         self.assertIn("OpenRelix · Window 2", html)
-        self.assertIn("Collection: Codex app-server (preview) · thread source: cli", html)
+        self.assertIn("Collection: Codex app-server · thread source: cli", html)
         self.assertIn("Takeaway: Window.", html)
         self.assertIn(">Window<", html)
         self.assertNotIn("采集：", html)
@@ -3387,6 +3592,58 @@ applies_to: cwd=/tmp/OpenRelix
         self.assertIn("latest_learning_run", stdout.getvalue())
         self.assertIn("codex login", stdout.getvalue())
 
+    def test_openrelix_doctor_can_probe_codex_app_server(self):
+        old_paths = openrelix.PATHS
+        old_consolidated_daily_dir = openrelix.CONSOLIDATED_DAILY_DIR
+        try:
+            with TemporaryDirectory() as tmpdir:
+                root = Path(tmpdir)
+                codex_home = root / "codex-home"
+                consolidated_daily_dir = root / "consolidated" / "daily"
+                codex_home.mkdir(parents=True)
+                consolidated_daily_dir.mkdir(parents=True)
+                openrelix.PATHS = replace(
+                    openrelix.PATHS,
+                    state_root=root,
+                    codex_home=codex_home,
+                    codex_bin=sys.executable,
+                    consolidated_daily_dir=consolidated_daily_dir,
+                    nightly_runner_dir=root / "runtime" / "nightly-runner",
+                    nightly_codex_home=root / "runtime" / "codex-nightly-home",
+                )
+                openrelix.CONSOLIDATED_DAILY_DIR = consolidated_daily_dir
+                args = argparse.Namespace(model_check=False, app_server_check=True, json=True)
+                with mock.patch.object(
+                    openrelix,
+                    "run_codex_app_server_help_check",
+                    return_value=subprocess.CompletedProcess(
+                        ["codex", "app-server", "--help"],
+                        0,
+                        stdout="[experimental] Run the app server or related tooling\n",
+                        stderr="",
+                    ),
+                ), mock.patch.object(
+                    openrelix,
+                    "run_doctor_app_server_check",
+                    return_value=subprocess.CompletedProcess(
+                        ["collect_codex_activity.py"],
+                        0,
+                        stdout="",
+                        stderr="",
+                    ),
+                ), mock.patch("sys.stdout", new_callable=io.StringIO) as stdout:
+                    openrelix.command_doctor(args)
+
+        finally:
+            openrelix.PATHS = old_paths
+            openrelix.CONSOLIDATED_DAILY_DIR = old_consolidated_daily_dir
+
+        payload = json.loads(stdout.getvalue())
+        checks = {check["name"]: check for check in payload["checks"]}
+        self.assertTrue(payload["ok"])
+        self.assertEqual(checks["codex_app_server_command"]["status"], "ok")
+        self.assertEqual(checks["codex_app_server_probe"]["status"], "ok")
+
     def test_refresh_overview_learn_memory_forwards_env_to_nightly_pipeline(self):
         with TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -3543,18 +3800,20 @@ applies_to: cwd=/tmp/OpenRelix
             ROOT / "ops" / "launchd" / "io.github.openrelix.overview-refresh.plist.tmpl"
         ).read_text(encoding="utf-8")
 
-        self.assertIn("npx openrelix install --profile integrated --enable-learning-refresh --read-codex-app", showcase)
+        self.assertIn("npx openrelix@latest install --enable-learning-refresh", showcase)
+        self.assertNotIn("npx openrelix install --profile integrated --enable-learning-refresh", showcase)
+        self.assertNotIn("npx openrelix install --profile integrated --enable-learning-refresh --read-codex-app", showcase)
         self.assertIn("openrelix review --stage final --learn-window-days 7", showcase)
-        self.assertNotIn(
-            '<code class="command-code">npx openrelix install --profile integrated --enable-learning-refresh</code>',
-            showcase,
-        )
         self.assertNotIn(
             '<code class="command-code">openrelix refresh --learn-memory --learn-window-days 7</code>',
             showcase,
         )
         self.assertNotIn("<h3>开启 30 分钟自动学习（推荐）</h3>", showcase)
         self.assertIn("--enable-learning-refresh", installer)
+        self.assertIn('INSTALL_PROFILE="integrated"', installer)
+        self.assertIn("Default: integrated", installer)
+        self.assertIn('ACTIVITY_SOURCE="${OPENRELIX_ACTIVITY_SOURCE:-${AI_ASSET_ACTIVITY_SOURCE:-auto}}"', installer)
+        self.assertIn("Default: auto.", installer)
         self.assertIn("OPENRELIX_REFRESH_LEARN_MEMORY", launchd_template)
         self.assertIn("OPENRELIX_REFRESH_LEARN_WINDOW_DAYS", launchd_template)
         self.assertIn("OPENRELIX_REFRESH_SKIP_UNCHANGED", launchd_template)
@@ -4244,6 +4503,23 @@ applies_to: cwd=/tmp/OpenRelix
         self.assertIn("Resolve runtime language", skill_text)
         self.assertIn("asset `title` / `source_task` / `value_note` / `notes`", skill_text)
         self.assertIn("usage-event `task` / `note`", prompt_text)
+
+    def test_codex_plugin_packaging_includes_memory_review_skill(self):
+        canonical_skill = (ROOT / ".agents" / "skills" / "memory-review" / "SKILL.md").read_text(encoding="utf-8")
+        plugin_skill_path = ROOT / "plugins" / "openrelix" / "skills" / "memory-review" / "SKILL.md"
+        plugin_skill = plugin_skill_path.read_text(encoding="utf-8")
+        marketplace = json.loads((ROOT / ".agents" / "plugins" / "marketplace.json").read_text(encoding="utf-8"))
+        package_json = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))
+
+        self.assertFalse(plugin_skill_path.is_symlink())
+        self.assertEqual(plugin_skill, canonical_skill)
+        self.assertEqual(marketplace["plugins"][0]["policy"]["installation"], "AVAILABLE")
+        self.assertEqual(marketplace["plugins"][0]["source"]["path"], "./plugins/openrelix")
+        self.assertIn("plugins/openrelix/", package_json["files"])
+        self.assertIn(".agents/plugins/marketplace.json", package_json["files"])
+        self.assertNotIn("install/", package_json["files"])
+        self.assertIn("install/*.py", package_json["files"])
+        self.assertIn("install/templates/", package_json["files"])
 
     def test_asset_value_estimation_uses_events_and_recent_windows(self):
         asset = {

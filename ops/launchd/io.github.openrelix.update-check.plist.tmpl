@@ -3,41 +3,35 @@
 <plist version="1.0">
 <dict>
   <key>Label</key>
-  <string>io.github.openrelix.nightly-organize</string>
+  <string>io.github.openrelix.update-check</string>
   <key>ProgramArguments</key>
   <array>
-    <string>/bin/zsh</string>
-    <string>__REPO_ROOT__/scripts/run_with_optional_caffeinate.sh</string>
-    <string>/bin/zsh</string>
-    <string>__REPO_ROOT__/scripts/nightly_organize_today.sh</string>
+    <string>__PYTHON_BIN__</string>
+    <string>__REPO_ROOT__/scripts/openrelix.py</string>
+    <string>update</string>
+    <string>--check</string>
   </array>
   <key>EnvironmentVariables</key>
   <dict>
     <key>AI_ASSET_STATE_DIR</key>
     <string>__STATE_ROOT__</string>
-    <key>AI_ASSET_KEEP_AWAKE</key>
-    <string>__KEEP_AWAKE__</string>
-    <key>CODEX_BIN</key>
-    <string>__CODEX_BIN__</string>
     <key>CODEX_HOME</key>
     <string>__CODEX_HOME__</string>
     <key>OPENRELIX_ACTIVITY_SOURCE</key>
     <string>__ACTIVITY_SOURCE__</string>
-    <key>PATH</key>
-    <string>__SAFE_PATH__</string>
     <key>PYTHON_BIN</key>
     <string>__PYTHON_BIN__</string>
   </dict>
   <key>StartCalendarInterval</key>
   <dict>
     <key>Hour</key>
-    <integer>__NIGHTLY_ORGANIZE_HOUR__</integer>
+    <integer>__UPDATE_CHECK_HOUR__</integer>
     <key>Minute</key>
-    <integer>__NIGHTLY_ORGANIZE_MINUTE__</integer>
+    <integer>__UPDATE_CHECK_MINUTE__</integer>
   </dict>
   <key>StandardErrorPath</key>
-  <string>__STATE_ROOT__/log/nightly-organize.err.log</string>
+  <string>__STATE_ROOT__/log/update-check.err.log</string>
   <key>StandardOutPath</key>
-  <string>__STATE_ROOT__/log/nightly-organize.log</string>
+  <string>__STATE_ROOT__/log/update-check.log</string>
 </dict>
 </plist>

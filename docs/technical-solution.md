@@ -10,12 +10,12 @@ GitHub 项目页：[openrelix/openrelix](https://github.com/openrelix/openrelix)
 
 - 仓库保存可开源的能力层：skills、installer、templates、scripts、docs、launchd 模板。
 - 用户运行数据默认保存在仓库外的 state root。
-- 当前 v0.1.0 预览版首个适配器是 Codex CLI；Codex 原生 memory 归 Codex 管，本项目默认只写一份 bounded summary 供上下文读取，完整个人记忆仍留在 state root。
+- 当前 v0.1.0 预览版首个适配器是 Codex CLI / Codex app-server；Codex 原生 memory 归 Codex 管，本项目默认只写一份 bounded summary 供上下文读取，完整个人记忆仍留在 state root。
 - Linux / Windows 不作为 `v0.1.0 预览版` 对外承诺。
 
 ## 设计原则
 
-1. **本地优先**：原始 AI host history、复盘、registry、夜间整理产物、日志和面板默认都留在本机 state root；当前 v0.1.0 预览版采集 Codex history / sessions。
+1. **本地优先**：原始 AI host history、复盘、registry、夜间整理产物、日志和面板默认都留在本机 state root；当前 v0.1.0 预览版默认通过 Codex app-server 采集 threads，并在不可用时回退到 Codex history / sessions。
 2. **源码和状态分离**：repo 是 source of truth，state root 是 runtime data，不把个人运行数据提交进仓库。
 3. **安装器是主链路**：npm 只做 bootstrapper，真正安装逻辑仍在 `install/install.sh`。
 4. **skill 不靠 hook 挂载**：repo 内启动时发现 `.agents/skills/`，全局可用时由 adapter / installer 把 canonical skill 暴露到对应 host 的用户级 skill root；当前 v0.1.0 预览版使用 Codex skill root。
@@ -84,11 +84,11 @@ build_overview.py
 
 ### 1. Host adapter 层
 
-AI host 自己的用户级目录、history、session 和 native memory 由各 host adapter 负责映射。当前 v0.1.0 预览版 Codex 适配器由 `CODEX_HOME` 决定用户级目录，默认是 `~/.codex`，并读取其中的 `history.jsonl` 和 `sessions/**/*.jsonl` 来识别当天窗口、问题和最终结论。
+AI host 自己的用户级目录、history、session 和 native memory 由各 host adapter 负责映射。当前 v0.1.0 预览版 Codex 适配器由 `CODEX_HOME` 决定用户级目录，默认是 `~/.codex`；默认 `auto` 先通过 `codex app-server` 读取 threads，失败时再读取其中的 `history.jsonl` 和 `sessions/**/*.jsonl` 来识别当天窗口、问题和最终结论。
 
 默认安装开启本地个人记忆，并在当前 Codex 适配器下把压缩后的 bounded summary 写入 `CODEX_HOME`，让 host native context 能读取轻量摘要。完整结构化记录仍保留在 state root；需要严格隔离时使用 `--record-memory-only` 或 `--no-memory-summary`。
 
-压缩策略保持轻量：同签名记忆跨天归并，durable / session 优先进上下文，low-priority 默认只留本地；默认 token budget 是 target 4.2K、warn 4.6K、max 5K，不把原始窗口明细塞进 host context。
+压缩策略保持轻量：同签名记忆跨天归并，durable / session 优先进上下文，low-priority 默认只留本地；默认 token budget 是 target 6.7K、warn 7.4K、max 8K，不把原始窗口明细塞进 host context。
 
 ### 2. Repo 源码层
 
@@ -432,10 +432,10 @@ LaunchAgent
 
 - GitHub 仓库提供源码、模板、skills、docs 和 launchd 模板。
 - npm 包提供 `npx openrelix install` 入口。
-- 项目定位是 AI-agent-first；当前 v0.1.0 预览版安装器先交付 Codex CLI 适配器。
+- 项目定位是 AI-agent-first；当前 v0.1.0 预览版安装器先交付 Codex CLI / Codex app-server 适配器。
 - npm 通过 `files` 白名单携带必要源码，不携带个人运行数据。
 - 发布前用 `npm pack --dry-run` 检查包内容。
-- plugin draft 暂时是草案包装层，不作为 `v0.1.0 预览版` 主安装入口。
+- Codex plugin 作为已打包的 skill route 随仓库/包发布；完整本地集成仍由 installer 负责。
 
 ## 开发与验证
 
@@ -461,7 +461,7 @@ npm pack --dry-run
 当前不承诺：
 
 - Linux / Windows 一键安装。
-- Codex plugin 作为 v0.1.0 预览版主入口。
+- Codex plugin 单独替代 installer 成为完整本地集成入口。
 - 除 Codex CLI 外的 host adapter。
 - 云端 memory 同步。
 - 对 token 使用量的强依赖。`ccusage` 不可用时，面板应降级展示已有快照。

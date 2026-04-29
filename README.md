@@ -16,10 +16,10 @@ GitHub project page: [openrelix/openrelix](https://github.com/openrelix/openreli
 
 - `AGENTS.md`: repo instructions for maintaining the system itself.
 - `.agents/skills/`: canonical repo-local skills for reusable agent workflows.
-- `.agents/plugins/`: draft plugin marketplace metadata, not part of the v0.1.0 preview install path.
+- `.agents/plugins/`: Codex plugin marketplace metadata.
 - `install/`: one-command installer and user config helpers.
 - `ops/launchd/`: macOS LaunchAgent templates.
-- `plugins/`: draft plugin bundles for future packaging work.
+- `plugins/`: packaged Codex plugin bundles for shared skills.
 - `scripts/`: collectors, nightly consolidation, overview generation, and token live server.
 - `templates/`: review schema and asset entry templates.
 - `docs/`: operating model, technical design, learning guide, privacy boundary, and reporting notes.
@@ -67,20 +67,21 @@ v0.1.0 preview is macOS-only. The supported install path assumes:
 
 Linux and Windows support are future work. Some lower-level Python scripts are written to keep paths configurable, but the public installer and background automation should be treated as macOS-only for this release.
 
-The first public adapter targets Codex CLI. Several v0.1.0 preview capabilities depend on Codex-specific surfaces, including `CODEX_HOME`, Codex history/session files, Codex native memories, Codex skills, and Codex custom prompts. The product direction remains AI-agent-first: future hosts should plug in by mapping their own history, skill, memory, and command surfaces into the same local asset model.
+The first public adapter targets Codex CLI and Codex app-server. Several v0.1.0 preview capabilities depend on Codex-specific surfaces, including `CODEX_HOME`, Codex app-server threads, Codex history/session files, Codex native memories, Codex skills, and Codex custom prompts. The product direction remains AI-agent-first: future hosts should plug in by mapping their own history, skill, memory, and command surfaces into the same local asset model.
 
 Expected adapter work after v0.1.0 preview includes Claude Code, Gemini CLI, and other AI CLI / coding-agent hosts that expose local history, command, skill, or memory surfaces. These are roadmap targets, not current support guarantees.
 
-An experimental Codex app-server activity source is available for local testing. It reads Codex threads through `codex app-server` and maps them back into the same raw window format used by the existing history/session collector. It is opt-in only; the default collector still reads `CODEX_HOME/history.jsonl` and `CODEX_HOME/sessions/**/*.jsonl`.
+Codex app-server collection is now part of the default Codex adapter path. By default, OpenRelix uses `auto`: it tries `codex app-server` first, maps Codex threads back into the same raw window format used by the existing collector, and falls back to `CODEX_HOME/history.jsonl` plus `CODEX_HOME/sessions/**/*.jsonl` when app-server is unavailable.
 
 ```bash
-npx openrelix install --profile integrated --enable-learning-refresh --read-codex-app
-npx openrelix install --profile integrated --activity-source auto
+npx openrelix install --activity-source auto
+npx openrelix install --activity-source history
 python3 scripts/collect_codex_activity.py --date "$(date +%F)" --activity-source app-server
+openrelix doctor --app-server-check
 OPENRELIX_ACTIVITY_SOURCE=app-server openrelix review --date "$(date +%F)"
 ```
 
-Use `--read-codex-app` during install when you want installed `openrelix` commands and LaunchAgents to try app-server first and fall back to the stable history/session collector. Use `OPENRELIX_ACTIVITY_SOURCE=app-server` for a one-off strict app-server run, or `OPENRELIX_ACTIVITY_SOURCE=auto` for one-off fallback behavior.
+Use `--activity-source history` only when you want to force the stable CLI history/session collector. Use `--activity-source app-server` or `OPENRELIX_ACTIVITY_SOURCE=app-server` for a one-off strict app-server run. `--read-codex-app` remains accepted as a compatibility alias for `--activity-source auto`.
 
 ## Dependency notes
 
@@ -135,19 +136,19 @@ English `npx` install:
 npx openrelix install --language en
 ```
 
-Integrated `npx` install:
+Recommended full `npx` install:
 
 ```bash
-npx openrelix install --profile integrated --enable-learning-refresh --enable-nightly --keep-awake=during-job
+npx openrelix install --enable-learning-refresh --enable-nightly --keep-awake=during-job --enable-update-check
 ```
 
 Minimal install:
 
 ```bash
-./install/install.sh
+./install/install.sh --minimal
 ```
 
-Minimal install initializes the state root, generates the first overview, enables the current Codex adapter's memories/history, and syncs a bounded memory summary into `CODEX_HOME`. It still does not install shell commands, change shell rc files, or bootstrap LaunchAgents. Use `--record-memory-only` when you want a minimal install that records only to this system's local state root without host-context injection.
+The default install profile is `integrated`. Minimal install initializes the state root, generates the first overview, enables the current Codex adapter's memories/history, and syncs a bounded memory summary into `CODEX_HOME`. It still does not install shell commands, change shell rc files, or bootstrap LaunchAgents. Use `--minimal --record-memory-only` when you want a minimal install that records only to this system's local state root without host-context injection.
 
 The installer stores the selected runtime language and memory mode in the state root under `runtime/config.json`. Supported language values are `zh` and `en`; interactive installs prompt when no language is passed, and non-interactive installs default to `zh`. The language controls local terminal output, generated overview files, nightly summary prompts, fallback summaries, immediate task reviews, asset / usage-event human-facing fields, and the structured memory items written by the local consolidation pipeline. Stable enum keys stay canonical so automation can still classify records, while the visible fields follow the selected language.
 
@@ -158,19 +159,19 @@ The installer stores the selected runtime language and memory mode in the state 
 
 Memory is on by default. In the current Codex adapter, the default mode is `integrated`: the system records reusable memory into the active state root, enables Codex memories/history, and syncs a bounded summary into host-native context. Use `--record-memory-only` when you want strict local recording without context injection, or `--disable-personal-memory` to disable this system's local memory writes.
 
-The context sync is intentionally compressed: duplicate personal memories are merged by signature, durable / session items are prioritized, low-priority items stay local-only, and the injected summary targets about 4.2K tokens with a 5K hard budget.
+The context sync is intentionally compressed: duplicate personal memories are merged by signature, durable / session items are prioritized, low-priority items stay local-only, and the injected summary targets about 6.7K tokens with an 8K hard budget.
 
 ```bash
-./install/install.sh --profile integrated --record-memory-only
-./install/install.sh --profile integrated --disable-personal-memory
+./install/install.sh --record-memory-only
+./install/install.sh --disable-personal-memory
 ```
 
 `--record-memory-only` keeps the personal memory system on, enables enough Codex history for local collection, disables Codex native memory context, and keeps bounded memory-summary sync off. `--disable-personal-memory` records the mode as `off` and skips local memory-registry writes. `--use-integrated` is the explicit alias for the default mode.
 
-Recommended integrated install with global skill symlinks, bounded history config, the `openrelix` shell command, 30-minute automatic learning refresh, nightly organization, and sleep protection while nightly jobs are running:
+Recommended integrated install with global skill symlinks, bounded history config, the `openrelix` shell command, the lightweight macOS client, 30-minute automatic learning refresh, nightly organization, a daily update check, and sleep protection while nightly jobs are running:
 
 ```bash
-./install/install.sh --profile integrated --enable-learning-refresh --enable-nightly --keep-awake=during-job
+./install/install.sh --enable-learning-refresh --enable-nightly --keep-awake=during-job --enable-update-check
 ```
 
 The integrated profile does this:
@@ -180,11 +181,13 @@ The integrated profile does this:
 3. Installs the repo-provided `memory-review` skill globally by symlinking it into `~/.codex/skills/`.
 4. Installs the repo-provided custom prompt into `~/.codex/prompts/memory-review.md` as a compatibility fallback.
 5. Installs the global `openrelix` shell command and ensures the chosen user bin directory is on `PATH`.
-6. Renders and bootstraps macOS LaunchAgents for:
+6. Builds the lightweight macOS client at `<state-root>/runtime/mac-app/OpenRelix.app` when `swiftc` is available.
+7. Renders and bootstraps macOS LaunchAgents for:
    - overview refresh every 30 minutes; with `--enable-learning-refresh`, this calls the current Codex adapter and learns from a 7-day window
    - token live server
    - nightly preview at `23:00`
    - nightly finalize for the previous day at `00:10`
+   - optional npm update check at `09:30` when `--enable-update-check` is passed
 
 When you need an immediate task review inside the active AI coding agent, the current Codex adapter exposes this skill entrypoint:
 
@@ -198,16 +201,16 @@ The custom prompt compatibility route is:
 /prompts:memory-review
 ```
 
-After the installer finishes, it prints recommended next steps. The first action is to open the local panel:
+After the installer finishes, it prints recommended next steps. The first action is to open the local panel or the macOS client:
 
 ```bash
-openrelix open panel
+openrelix app
 ```
 
 Recommended after install: the installer can enable automatic learning refresh every 30 minutes:
 
 ```bash
-npx openrelix install --profile integrated --enable-learning-refresh
+npx openrelix install --enable-learning-refresh
 ```
 
 This option is intentionally explicit: the default background `overview-refresh` stays no-model, while `--enable-learning-refresh` makes that 30-minute LaunchAgent call the current Codex adapter, learn from recent AI host windows, update this system's local memory and overview, and keep host-context injection bounded. If the global `openrelix` command was not installed, the installer prints a direct `python3 scripts/openrelix.py ...` fallback command with the selected state root and host home.
@@ -216,10 +219,21 @@ The integrated installer also provides a shell entrypoint:
 
 ```bash
 openrelix open panel
+openrelix app
 openrelix core
 openrelix mode
 openrelix review
+openrelix update --check
+openrelix update --yes
 ```
+
+On macOS, `openrelix app` builds and opens a lightweight native client at
+`<state-root>/runtime/mac-app/OpenRelix.app`. It is an AppKit/WebKit shell over
+the same local `reports/panel.html`, so it adds no Electron runtime or hosted
+service. From a repo checkout, you can also run `./scripts/build_macos_client.sh
+--open` to build a local `dist/OpenRelix.app`.
+
+For release updates, use `openrelix update --check` in automation and `openrelix update --yes` when you actually want to reinstall the latest npm package. The daily check is intentionally no-mutation; `09:30` is the default because it avoids the `23:00` nightly preview and `00:10` previous-day finalize windows.
 
 If the chosen bin directory is not already on `PATH`, the installer appends a managed `PATH` block to your active shell rc file and prints the one-line `export PATH=...` command for the current shell.
 
@@ -273,16 +287,16 @@ The license allows free personal use, copying, modification, distribution, and s
 ## How skills load
 
 - When the active AI host supports repo-local skills, skills under `.agents/skills/` are discoverable automatically. The v0.1.0 preview adapter targets Codex discovery.
-- If you want the same skill to be available from any repo, install it into the user-level skill root for the active host. Use `--profile integrated` or `--install-global-skills` to do this with Codex symlinks in v0.1.0 preview.
+- If you want the same skill to be available from any repo, install it into the user-level skill root for the active host. The default `integrated` profile does this automatically; use `--install-global-skills` when building a custom profile.
 - This repository does not rely on hooks to make skills discoverable globally. Hooks are optional lifecycle automation; skill availability comes from repo-local discovery or user-level installation.
 
 ## Plugin status
 
-The plugin draft directory is a packaging surface for the current Codex plugin route. It is kept in the repo so future host-specific packages can reuse the same canonical skills, but v0.1.0 preview should be published and documented as installer-first. The repo marketplace entry marks the plugin as not available until the public plugin metadata, screenshots, and policy URLs are ready.
+The Codex plugin directory is the packaged Codex route for shared OpenRelix skills. It includes the `memory-review` skill and repo marketplace metadata, while the installer remains the full user-local integration path for config, LaunchAgents, shell commands, and custom-prompt fallback.
 
 ## Runtime commands
 
-These commands require the `openrelix` shell entrypoint from `--profile integrated` or `--install-global-command`.
+These commands require the `openrelix` shell entrypoint from the default `integrated` profile or `--install-global-command`.
 
 Refresh the overview snapshot:
 
@@ -300,6 +314,12 @@ Open the generated panel:
 
 ```bash
 openrelix open panel
+```
+
+Open the same panel in the lightweight macOS client:
+
+```bash
+openrelix app
 ```
 
 Print the current core metrics in the terminal:
@@ -359,7 +379,7 @@ openrelix config
 openrelix config --memory-summary-max-tokens 8000
 ```
 
-`memory_summary_max_tokens` defaults to 5000 and accepts values from 2000 to 20000. Target and warning budgets are derived automatically from that max. Updating it refreshes the summary, overview, and panel by default; add `--no-refresh` when you only want to persist the config.
+`memory_summary_max_tokens` defaults to 8000 and accepts values from 2000 to 20000. Target and warning budgets are derived automatically from that max. Updating it refreshes the summary, overview, and panel by default; add `--no-refresh` when you only want to persist the config.
 
 Advanced fallback:
 

@@ -60,6 +60,15 @@ def parse_args():
     return parser.parse_args()
 
 
+def app_server_unavailable_message(error, timeout_seconds):
+    return (
+        "app-server unavailable via {} after up to {}s: {}. "
+        "Run `openrelix doctor --app-server-check` for a protocol probe, "
+        "or set OPENRELIX_ACTIVITY_SOURCE=history to force the stable "
+        "CODEX_HOME history/session collector."
+    ).format(PATHS.codex_bin, timeout_seconds, error)
+
+
 def load_history_for_date(target_date):
     prompts_by_session = {}
     if not HISTORY_PATH.exists():
@@ -601,9 +610,10 @@ def main():
             )
             collection_source = "app-server"
         except (AppServerError, OSError, subprocess.SubprocessError) as exc:
+            message = app_server_unavailable_message(exc, args.app_server_timeout)
             if args.activity_source == "app-server":
-                raise
-            collection_errors.append("app-server unavailable: {}".format(exc))
+                raise AppServerError(message) from exc
+            collection_errors.append(message)
             windows = load_history_windows_for_date(target_date, stage)
             collection_source = "history_fallback"
     else:

@@ -1,16 +1,16 @@
-# OpenRelix Plugin Draft
+# OpenRelix Codex Plugin
 
-This repo-local plugin is a draft packaging surface for the reusable OpenRelix workflow. OpenRelix is not meant to be tied to one AI host; this directory is the current Codex plugin adapter draft.
+This repo-local plugin is the packaged Codex route for the reusable OpenRelix workflow. OpenRelix is not meant to be tied to one AI host; this directory is the current Codex plugin adapter.
 
 Project page: [openrelix/openrelix](https://github.com/openrelix/openrelix). Stars are welcome if this workflow is useful.
 
-The v0.1.0 preview public route is installer-first. Use:
+For full local integration, including config, LaunchAgents, shell commands, and custom-prompt fallback, use the installer:
 
 ```bash
 ./install/install.sh --profile integrated
 ```
 
-The marketplace entry intentionally marks this plugin as `NOT_AVAILABLE` until public plugin metadata, screenshots, policy URLs, and release flow are ready.
+The marketplace entry marks this plugin as `AVAILABLE`, and the npm package includes this plugin directory plus repo marketplace metadata.
 
 What it includes:
 
@@ -44,5 +44,5 @@ And the user-level custom prompt compatibility route is:
 
 That split is intentional:
 
-- repo plugin = draft Codex packaging layer for shared capabilities
+- repo plugin = Codex packaging layer for shared capabilities
 - installer = user-local adapter integration layer and custom-prompt fallback

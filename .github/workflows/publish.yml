@@ -25,6 +25,9 @@ jobs:
       - name: Use latest npm
         run: npm install -g npm@latest
 
+      - name: Block personal-info leaks
+        run: python3 scripts/check_personal_info.py
+
       - name: Verify package contents
         run: npm pack --dry-run --json
 

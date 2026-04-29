@@ -62,6 +62,16 @@ class CollectCodexActivityTests(unittest.TestCase):
         self.assertEqual(window["conclusions"][0]["text"], "已完成复盘并更新面板。")
         self.assertEqual(window["app_server"]["thread_id"], "thread-1")
 
+    def test_app_server_unavailable_message_points_to_doctor_and_history_override(self):
+        message = collect_codex_activity.app_server_unavailable_message(
+            RuntimeError("connection closed"),
+            8,
+        )
+
+        self.assertIn("openrelix doctor --app-server-check", message)
+        self.assertIn("OPENRELIX_ACTIVITY_SOURCE=history", message)
+        self.assertIn("connection closed", message)
+
 
 if __name__ == "__main__":
     unittest.main()

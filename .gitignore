@@ -12,6 +12,7 @@ log/
 
 # Local scratch artifacts.
 .tmp/
+dist/
 test-results/
 .DS_Store
 .playwright-mcp/
@@ -19,6 +20,7 @@ test-results/
 *.jpg
 *.jpeg
 *.webp
+!macos/OpenRelixClient/AppIcon.png
 
 # Keep the sanitized product showcase screenshots publishable.
 !docs/product-showcase-assets/

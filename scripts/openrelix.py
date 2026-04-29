@@ -4,12 +4,16 @@ import argparse
 import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
 import time
+import urllib.error
+import urllib.request
 from datetime import date, datetime, timedelta
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -44,6 +48,10 @@ NIGHTLY_PIPELINE_SCRIPT = REPO_ROOT / "scripts" / "nightly_pipeline.sh"
 BUILD_OVERVIEW_SCRIPT = REPO_ROOT / "scripts" / "build_overview.py"
 BUILD_CODEX_MEMORY_SUMMARY_SCRIPT = REPO_ROOT / "scripts" / "build_codex_memory_summary.py"
 CONFIGURE_CODEX_USER_SCRIPT = REPO_ROOT / "install" / "configure_codex_user.py"
+BUILD_MACOS_CLIENT_SCRIPT = REPO_ROOT / "scripts" / "build_macos_client.sh"
+MACOS_CLIENT_APP_NAME = "OpenRelix.app"
+NPM_PACKAGE_NAME = "openrelix"
+NPM_LATEST_SPEC = "{}@latest".format(NPM_PACKAGE_NAME)
 
 
 def current_language(language=None):
@@ -245,6 +253,14 @@ def build_parser():
         ),
     )
     doctor.add_argument(
+        "--app-server-check",
+        action="store_true",
+        help=localized(
+            "实际启动一次 codex app-server 并读取一个线程页，验证 Codex 客户端采集链路。",
+            "Start codex app-server and read one thread page to verify Codex app collection.",
+        ),
+    )
+    doctor.add_argument(
         "--json",
         action="store_true",
         help=localized(
@@ -303,6 +319,63 @@ def build_parser():
         ),
     )
 
+    update = subparsers.add_parser(
+        "update",
+        help=localized(
+            "检查或安装最新 OpenRelix npm 包。",
+            "Check for or install the latest OpenRelix npm package.",
+        ),
+    )
+    update.add_argument(
+        "--check",
+        action="store_true",
+        help=localized(
+            "只检查 npm 最新版本，不安装。",
+            "Only check the latest npm version; do not install.",
+        ),
+    )
+    update.add_argument(
+        "--print-command",
+        action="store_true",
+        help=localized(
+            "只打印将要执行的更新命令。",
+            "Only print the update command that would be run.",
+        ),
+    )
+    update.add_argument(
+        "--recommended",
+        action="store_true",
+        help=localized(
+            "使用推荐完整后台配置：学习刷新、夜间整理和每日更新检查。",
+            "Use the recommended full background setup: learning refresh, nightly organization, and daily update check.",
+        ),
+    )
+    update.add_argument(
+        "--force",
+        action="store_true",
+        help=localized(
+            "即使当前版本已是最新，也重新运行安装器。",
+            "Run the installer even when the current version appears up to date.",
+        ),
+    )
+    update.add_argument(
+        "-y",
+        "--yes",
+        action="store_true",
+        help=localized(
+            "不交互确认，直接执行更新命令。",
+            "Run the update command without an interactive confirmation.",
+        ),
+    )
+    update.add_argument(
+        "--json",
+        action="store_true",
+        help=localized(
+            "以 JSON 打印更新检查结果。",
+            "Print update check results as JSON.",
+        ),
+    )
+
     mode = subparsers.add_parser(
         "mode",
         help=localized(
@@ -346,8 +419,8 @@ def build_parser():
         "--memory-summary-max-tokens",
         type=int,
         help=localized(
-            "设置注入 host context 的 bounded summary 最大 token，默认 5000，范围 2000-20000；target / warn 自动派生。",
-            "Set the bounded summary max tokens injected into host context. Default 5000, range 2000-20000; target / warning are derived automatically.",
+            "设置注入 host context 的 bounded summary 最大 token，默认 8000，范围 2000-20000；target / warn 自动派生。",
+            "Set the bounded summary max tokens injected into host context. Default 8000, range 2000-20000; target / warning are derived automatically.",
         ),
     )
     config.add_argument(
@@ -362,8 +435,8 @@ def build_parser():
         "--read-codex-app",
         action="store_true",
         help=localized(
-            "等价于 --activity-source auto，启用 Codex 客户端窗口预览读取。",
-            "Equivalent to --activity-source auto; enables preview reading from Codex app windows.",
+            "等价于 --activity-source auto；保留为旧安装命令的兼容别名。",
+            "Equivalent to --activity-source auto; kept as a compatibility alias for older install commands.",
         ),
     )
     config.add_argument(
@@ -388,7 +461,7 @@ def build_parser():
         "target",
         nargs="?",
         default="panel",
-        choices=["panel", "overview", "review"],
+        choices=["panel", "overview", "review", "app"],
         help=localized("要打开的产物。", "Artifact to open."),
     )
     open_cmd.add_argument(
@@ -397,6 +470,45 @@ def build_parser():
         help=localized(
             "open review 使用的目标日期。默认今天。",
             "Target date for 'open review'. Default: today.",
+        ),
+    )
+
+    app_cmd = subparsers.add_parser(
+        "app",
+        help=localized(
+            "构建或打开轻量 macOS 客户端。",
+            "Build or open the lightweight macOS client.",
+        ),
+    )
+    app_cmd.add_argument(
+        "--build",
+        action="store_true",
+        help=localized(
+            "即使客户端已存在，也重新构建。",
+            "Rebuild the client even when it already exists.",
+        ),
+    )
+    app_cmd.add_argument(
+        "--no-open",
+        action="store_true",
+        help=localized(
+            "只构建并打印路径，不打开客户端。",
+            "Only build and print the path; do not open the client.",
+        ),
+    )
+    app_cmd.add_argument(
+        "--output",
+        help=localized(
+            "客户端 .app 输出路径；默认写入 state root 的 runtime/mac-app。",
+            "Output path for the .app bundle; default is runtime/mac-app under the state root.",
+        ),
+    )
+    app_cmd.add_argument(
+        "--print-path",
+        action="store_true",
+        help=localized(
+            "只打印默认客户端路径。",
+            "Only print the default client path.",
         ),
     )
 
@@ -615,6 +727,139 @@ def run_checked_with_progress(cmd, progress_messages, interval_seconds=20, remin
         )
 
 
+def read_local_package_version():
+    package_json = REPO_ROOT / "package.json"
+    try:
+        payload = json.loads(package_json.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return ""
+    return str(payload.get("version") or "").strip()
+
+
+def fetch_latest_npm_version(package_name=NPM_PACKAGE_NAME, timeout=8):
+    url = "https://registry.npmjs.org/{}/latest".format(package_name)
+    request = urllib.request.Request(
+        url,
+        headers={"Accept": "application/json", "User-Agent": "openrelix-update-check"},
+    )
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+        payload = json.loads(response.read().decode("utf-8"))
+    return str(payload.get("version") or "").strip()
+
+
+def semantic_version_key(version):
+    parts = re.split(r"[^0-9]+", str(version or ""))
+    numeric = [int(part) for part in parts if part != ""]
+    return tuple((numeric + [0, 0, 0])[:3])
+
+
+def compare_versions(current, latest):
+    current_key = semantic_version_key(current)
+    latest_key = semantic_version_key(latest)
+    if current_key < latest_key:
+        return -1
+    if current_key > latest_key:
+        return 1
+    return 0
+
+
+def launch_agent_path(filename):
+    return Path.home() / "Library" / "LaunchAgents" / filename
+
+
+def read_launch_agent(filename):
+    path = launch_agent_path(filename)
+    try:
+        return path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return ""
+
+
+def launch_agent_exists(filename):
+    return launch_agent_path(filename).exists()
+
+
+def plist_string_value(text, key):
+    pattern = r"<key>{}</key>\s*<string>(.*?)</string>".format(re.escape(key))
+    match = re.search(pattern, text, flags=re.DOTALL)
+    return match.group(1).strip() if match else ""
+
+
+def plist_calendar_time(text):
+    hour_match = re.search(r"<key>Hour</key>\s*<integer>(\d+)</integer>", text)
+    minute_match = re.search(r"<key>Minute</key>\s*<integer>(\d+)</integer>", text)
+    if not hour_match or not minute_match:
+        return ""
+    return "{:02d}:{:02d}".format(int(hour_match.group(1)), int(minute_match.group(1)))
+
+
+def detected_update_install_flags():
+    flags = []
+    overview_text = read_launch_agent("io.github.openrelix.overview-refresh.plist")
+    if overview_text:
+        if plist_string_value(overview_text, "OPENRELIX_REFRESH_LEARN_MEMORY") == "1":
+            flags.append("--enable-learning-refresh")
+        else:
+            flags.append("--enable-background-services")
+
+    nightly_text = read_launch_agent("io.github.openrelix.nightly-organize.plist")
+    if nightly_text:
+        flags.append("--enable-nightly")
+        keep_awake = plist_string_value(nightly_text, "AI_ASSET_KEEP_AWAKE")
+        if keep_awake in {"none", "during-job"}:
+            flags.extend(["--keep-awake", keep_awake])
+        nightly_time = plist_calendar_time(nightly_text)
+        if nightly_time:
+            flags.extend(["--nightly-organize-time", nightly_time])
+
+    nightly_finalize_text = read_launch_agent("io.github.openrelix.nightly-finalize-previous-day.plist")
+    nightly_finalize_time = plist_calendar_time(nightly_finalize_text)
+    if nightly_finalize_time:
+        flags.extend(["--nightly-finalize-time", nightly_finalize_time])
+
+    update_check_text = read_launch_agent("io.github.openrelix.update-check.plist")
+    if update_check_text:
+        flags.append("--enable-update-check")
+        update_check_time = plist_calendar_time(update_check_text)
+        if update_check_time:
+            flags.extend(["--update-check-time", update_check_time])
+    return flags
+
+
+def build_update_install_command(recommended=False):
+    cmd = [
+        "npx",
+        "-y",
+        NPM_LATEST_SPEC,
+        "install",
+        "--state-dir",
+        str(PATHS.state_root),
+        "--codex-home",
+        str(PATHS.codex_home),
+        "--language",
+        LANGUAGE,
+        "--memory-mode",
+        MEMORY_MODE,
+        "--activity-source",
+        ACTIVITY_SOURCE,
+    ]
+    if recommended:
+        cmd.extend(
+            [
+                "--enable-learning-refresh",
+                "--enable-nightly",
+                "--keep-awake",
+                "during-job",
+                "--enable-update-check",
+                "--update-check-time",
+                "09:30",
+            ]
+        )
+    else:
+        cmd.extend(detected_update_install_flags())
+    return cmd
+
+
 def ensure_overview_snapshot():
     overview_path = REPORTS_DIR / "overview-data.json"
     if overview_path.exists():
@@ -830,6 +1075,44 @@ def run_doctor_model_check():
     )
 
 
+def run_codex_app_server_help_check():
+    return subprocess.run(
+        [PATHS.codex_bin, "app-server", "--help"],
+        text=True,
+        capture_output=True,
+        timeout=10,
+    )
+
+
+def run_doctor_app_server_check():
+    with TemporaryDirectory(prefix="openrelix-app-server-check-") as tmpdir:
+        env = dict(os.environ)
+        env["AI_ASSET_STATE_DIR"] = tmpdir
+        env["CODEX_HOME"] = str(PATHS.codex_home)
+        env["CODEX_BIN"] = str(PATHS.codex_bin)
+        env["PYTHONDONTWRITEBYTECODE"] = "1"
+        return subprocess.run(
+            [
+                sys.executable,
+                str(REPO_ROOT / "scripts" / "collect_codex_activity.py"),
+                "--date",
+                current_date_str(),
+                "--stage",
+                "manual",
+                "--activity-source",
+                "app-server",
+                "--app-server-max-threads",
+                "1",
+                "--app-server-timeout",
+                "8",
+            ],
+            text=True,
+            capture_output=True,
+            timeout=15,
+            env=env,
+        )
+
+
 def command_doctor(args):
     checks = []
 
@@ -854,6 +1137,94 @@ def command_doctor(args):
         str(PATHS.codex_bin),
         localized("安装 Codex CLI，或通过 CODEX_BIN 指向可执行文件。", "Install Codex CLI, or point CODEX_BIN to the executable."),
     )
+    append_doctor_check(
+        checks,
+        "activity_source",
+        "ok",
+        ACTIVITY_SOURCE,
+        localized(
+            "默认 auto 会优先读取 Codex 客户端 app-server，失败时回退 CLI history/session。",
+            "Default auto reads Codex app-server first, then falls back to CLI history/session.",
+        ),
+    )
+
+    if command_exists(PATHS.codex_bin):
+        try:
+            result = run_codex_app_server_help_check()
+            output = "\n".join(part for part in (result.stdout, result.stderr) if part).strip()
+            if result.returncode == 0:
+                append_doctor_check(checks, "codex_app_server_command", "ok", output.splitlines()[0] if output else "available")
+            else:
+                append_doctor_check(
+                    checks,
+                    "codex_app_server_command",
+                    "warn",
+                    output[-600:] or "codex app-server --help failed with exit code {}".format(result.returncode),
+                    localized(
+                        "升级 Codex CLI，或把 activity source 固定为 history。",
+                        "Upgrade Codex CLI, or pin the activity source to history.",
+                    ),
+                )
+        except (subprocess.TimeoutExpired, OSError) as exc:
+            append_doctor_check(
+                checks,
+                "codex_app_server_command",
+                "warn",
+                str(exc),
+                localized(
+                    "升级 Codex CLI，或把 activity source 固定为 history。",
+                    "Upgrade Codex CLI, or pin the activity source to history.",
+                ),
+            )
+
+    if getattr(args, "app_server_check", False):
+        if not command_exists(PATHS.codex_bin):
+            append_doctor_check(
+                checks,
+                "codex_app_server_probe",
+                "fail",
+                str(PATHS.codex_bin),
+                localized("先修复 codex_bin，再运行 --app-server-check。", "Fix codex_bin first, then rerun --app-server-check."),
+            )
+        else:
+            try:
+                result = run_doctor_app_server_check()
+                output = "\n".join(part for part in (result.stdout, result.stderr) if part).strip()
+                if result.returncode == 0:
+                    append_doctor_check(checks, "codex_app_server_probe", "ok", "app-server protocol probe completed")
+                else:
+                    append_doctor_check(
+                        checks,
+                        "codex_app_server_probe",
+                        "fail",
+                        output[-900:] or "app-server probe failed with exit code {}".format(result.returncode),
+                        localized(
+                            "升级 Codex CLI；或运行 `openrelix config --activity-source history` 强制使用 CLI history/session。",
+                            "Upgrade Codex CLI, or run `openrelix config --activity-source history` to force CLI history/session.",
+                        ),
+                    )
+            except subprocess.TimeoutExpired:
+                append_doctor_check(
+                    checks,
+                    "codex_app_server_probe",
+                    "fail",
+                    "app-server probe timed out after 15 seconds",
+                    localized(
+                        "先确认 `codex app-server --listen stdio://` 在终端可启动。",
+                        "Confirm `codex app-server --listen stdio://` can start in a terminal.",
+                    ),
+                )
+    else:
+        append_doctor_check(
+            checks,
+            "codex_app_server_probe",
+            "warn",
+            localized("未执行 app-server 协议探测。", "App-server protocol probe was not run."),
+            localized(
+                "需要验证 Codex 客户端采集时运行 openrelix doctor --app-server-check。",
+                "Run openrelix doctor --app-server-check to verify Codex app collection.",
+            ),
+        )
 
     auth_path = PATHS.codex_home / "auth.json"
     append_doctor_check(
@@ -1235,6 +1606,84 @@ def command_refresh(args):
         raise SystemExit(1)
 
 
+def prompt_confirm_update(command_text):
+    if not sys.stdin.isatty():
+        return False
+    answer = input(localized("执行更新命令？[y/N] ", "Run the update command? [y/N] ")).strip().lower()
+    return answer in {"y", "yes"}
+
+
+def command_update(args):
+    local_version = read_local_package_version()
+    latest_version = ""
+    update_error = ""
+    try:
+        latest_version = fetch_latest_npm_version()
+    except (OSError, urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
+        update_error = str(exc)
+
+    comparison = compare_versions(local_version, latest_version) if latest_version else 0
+    update_available = bool(latest_version and comparison < 0)
+    status = "unknown"
+    if latest_version:
+        status = "update_available" if update_available else "up_to_date"
+    command = build_update_install_command(recommended=args.recommended)
+    command_text = shlex.join(command)
+    payload = {
+        "package": NPM_PACKAGE_NAME,
+        "current_version": local_version,
+        "latest_version": latest_version,
+        "status": status,
+        "update_available": update_available,
+        "error": update_error,
+        "command": command_text,
+    }
+
+    if args.json:
+        print_json(payload)
+    else:
+        print(localized("OpenRelix 更新检查", "OpenRelix Update Check"))
+        print("- {}: {}".format(localized("当前版本", "Current version"), local_version or "unknown"))
+        print("- {}: {}".format(localized("最新版本", "Latest version"), latest_version or "unknown"))
+        if update_error:
+            print("- {}: {}".format(localized("检查失败", "Check failed"), update_error))
+        elif update_available:
+            print("- {}".format(localized("发现可用更新。", "An update is available.")))
+        else:
+            print("- {}".format(localized("当前已是最新版本。", "Already up to date.")))
+        print("- {}: {}".format(localized("更新命令", "Update command"), command_text))
+
+    if args.check or args.print_command:
+        return
+
+    if not latest_version and not args.force:
+        if not args.json:
+            print(localized(
+                "未能确认 npm 最新版本；如需强制重装，请加 --force --yes。",
+                "Could not confirm the latest npm version; add --force --yes to reinstall anyway.",
+            ))
+        return
+
+    if latest_version and not update_available and not args.force:
+        return
+
+    if not shutil.which("npx"):
+        raise SystemExit(localized(
+            "未找到 npx；请先安装 Node.js/npm，或手动运行上面的更新命令。",
+            "npx was not found; install Node.js/npm first, or run the update command above manually.",
+        ))
+
+    if not args.yes and not prompt_confirm_update(command_text):
+        if not args.json:
+            print(localized(
+                "已取消。需要无人值守更新时使用 openrelix update --yes。",
+                "Cancelled. Use openrelix update --yes for unattended updates.",
+            ))
+        return
+
+    subprocess.run(command, cwd=str(REPO_ROOT), check=True)
+
+
 def memory_mode_label(memory_mode):
     labels = {
         "integrated": localized(
@@ -1438,7 +1887,61 @@ def open_path(path):
     subprocess.run([cmd, str(path)], check=True)
 
 
+def default_macos_client_app_path():
+    return PATHS.runtime_dir / "mac-app" / MACOS_CLIENT_APP_NAME
+
+
+def command_app(args):
+    if sys.platform != "darwin":
+        raise SystemExit(localized(
+            "macOS 客户端只能在 macOS 上构建和打开。",
+            "The macOS client can only be built and opened on macOS.",
+        ))
+
+    app_path = Path(args.output).expanduser() if args.output else default_macos_client_app_path()
+    if not app_path.is_absolute():
+        app_path = Path.cwd() / app_path
+    app_path = app_path.resolve()
+
+    if getattr(args, "print_path", False):
+        print(app_path)
+        return
+
+    should_build = getattr(args, "build", False) or not app_path.exists()
+    if should_build:
+        if not BUILD_MACOS_CLIENT_SCRIPT.exists():
+            raise SystemExit(localized(
+                "缺少 macOS 客户端构建脚本: {}".format(BUILD_MACOS_CLIENT_SCRIPT),
+                "missing macOS client build script: {}".format(BUILD_MACOS_CLIENT_SCRIPT),
+            ))
+        env = os.environ.copy()
+        env.setdefault("AI_ASSET_STATE_DIR", str(PATHS.state_root))
+        subprocess.run(
+            [
+                str(BUILD_MACOS_CLIENT_SCRIPT),
+                "--output",
+                str(app_path),
+                "--state-root",
+                str(PATHS.state_root),
+            ],
+            check=True,
+            env=env,
+        )
+
+    if not getattr(args, "no_open", False):
+        open_path(app_path)
+    print(app_path)
+
+
 def command_open(args):
+    if args.target == "app":
+        command_app(argparse.Namespace(
+            build=False,
+            no_open=False,
+            output=None,
+            print_path=False,
+        ))
+        return
     target_path = resolve_open_target(args.target, args.date)
     open_path(target_path)
     print(target_path)
@@ -1483,6 +1986,9 @@ def main():
     if args.command == "refresh":
         command_refresh(args)
         return
+    if args.command == "update":
+        command_update(args)
+        return
     if args.command == "mode":
         command_mode(args)
         return
@@ -1491,6 +1997,9 @@ def main():
         return
     if args.command == "open":
         command_open(args)
+        return
+    if args.command == "app":
+        command_app(args)
         return
     if args.command == "paths":
         command_paths()

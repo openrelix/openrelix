@@ -65,12 +65,30 @@ PROJECT_CONTEXT_VISIBLE_COUNT = 4
 PROJECT_CONTEXT_DEFAULT_DAYS = 1
 PROJECT_CONTEXT_MAX_DAYS = 7
 SUMMARY_TERM_DEFAULT_DAYS = 1
-SUMMARY_TERM_RANGE_DAYS = (1, 3, 7)
+SUMMARY_TERM_RANGE_DAYS = (1, 7)
 MEMORY_USAGE_WINDOW_DAYS = 7
 PROJECT_CONTEXT_TOPIC_VISIBLE_COUNT = 4
 TOKEN_METRIC_KEYS = {"today_token", "seven_day_token"}
+MEMORY_BRIEF_TITLE_LIMIT = 42
+MEMORY_BRIEF_BODY_LIMIT = 132
+MEMORY_BRIEF_FULL_TEXT_LIMIT = 520
 PANEL_PATH_LABEL = render_path(REPORTS_DIR / "panel.html")
 OVERVIEW_JSON_PATH_LABEL = render_path(REPORTS_DIR / "overview-data.json")
+
+
+def _load_brand_icon_data_uri():
+    candidate = ROOT / "docs" / "openrelix-icon.png"
+    if not candidate.exists():
+        return ""
+    import base64
+    try:
+        encoded = base64.b64encode(candidate.read_bytes()).decode("ascii")
+    except OSError:
+        return ""
+    return "data:image/png;base64," + encoded
+
+
+BRAND_ICON_DATA_URI = _load_brand_icon_data_uri()
 LOCAL_PATH_TRAILING_PUNCTUATION = ".,;!?)]}\"'"
 LOCAL_PATH_TOKEN_RE = re.compile(
     r"(file://[^\s<>\"']+|~/[^\s<>\"']+|/[^\s<>\"']+)"
@@ -218,7 +236,6 @@ SUMMARY_TERM_LABEL_EN = {
     "资产库": "Asset library",
     "个人资产自动化": "Personal asset automation",
     "今日热词": "Today Hot Terms",
-    "近 3 日热词": "Last 3 Days Hot Terms",
     "近 7 日热词": "Last 7 Days Hot Terms",
     "新人必备": "Newcomer essentials",
     "常用工具": "Common tools",
@@ -671,7 +688,6 @@ PANEL_I18N_EN = {
     "结构信号": "Structure Signals",
     "本期摘要词": "Summary Terms",
     "今日热词": "Today Hot Terms",
-    "近 3 日热词": "Last 3 Days Hot Terms",
     "近 7 日热词": "Last 7 Days Hot Terms",
     "热词时间范围": "Hot terms date range",
     "本期小结": "Current Summary",
@@ -942,10 +958,17 @@ PANEL_I18N_EN = {
     "不是固定最近几天；这里是当前 state root 里已登记内容的全量快照。": (
         "This is not a fixed recent-day window; it is the full current snapshot of registered content in the state root."
     ),
-    "默认展示今日热词，可切换近 3 日和近 7 日。": (
-        "Shows today by default and can switch to the last 3 or 7 days."
+    "今日和近 7 日并排展示，左边看当天热点，右边看一周趋势。": (
+        "Today and the last 7 days are shown side by side: today on the left, weekly trend on the right."
     ),
-    "默认今日，可切换近 3 日 / 近 7 日": "Today by default; switch to last 3 / 7 days",
+    "今日 / 近 7 日并排对照": "Today / Last 7 days side by side",
+    "左边是当天热词，右边是滚动近 7 日热词。": (
+        "The left card shows today's terms; the right card shows the rolling last 7 days."
+    ),
+    "并排看今日焦点和近 7 日趋势。": "Compare today's focus with the last 7-day trend side by side.",
+    "主热词是当前范围内权重最高的词，横条越长代表出现频次越高。": (
+        "The primary term is the highest-weighted term in the range; longer bars mean higher frequency."
+    ),
     "它会随资产、复盘或复用记录新增、修改而变化；每日整理请看“今日摘要 / 每日窗口概览”。": (
         "It changes as assets, reviews, or usage records are added or updated; use Today Summary / Daily Window Overview for daily synthesis."
     ),
@@ -2005,7 +2028,7 @@ def build_personal_memory_token_usage(
 
     method_note_zh = (
         "面板展示的是 bounded summary 预算状态，不是完整登记册体积；"
-        "默认上限 5K；当前 target {}、warn {}、max {} 会随配置的 max 自动派生，个人记忆分区预算 {}。"
+        "默认上限 8K；当前 target {}、warn {}、max {} 会随配置的 max 自动派生，个人记忆分区预算 {}。"
     ).format(
         target_tokens_display,
         warn_tokens_display,
@@ -2014,7 +2037,7 @@ def build_personal_memory_token_usage(
     )
     method_note_en = (
         "This card shows bounded-summary budget status, not the full registry footprint; "
-        "the default max is 5K; current target {}, warning {}, and max {} are derived from the configured max, with {} for personal memories."
+        "the default max is 8K; current target {}, warning {}, and max {} are derived from the configured max, with {} for personal memories."
     ).format(
         target_tokens_display,
         warn_tokens_display,
@@ -2928,12 +2951,12 @@ def panel_english_text(value):
             lambda match: "Snapshot time {}".format(match.group(1)),
         ),
         (
-            r"采集：Codex app-server（预览） · 线程来源：(.+)",
-            lambda match: "Collection: Codex app-server (preview) · thread source: {}".format(match.group(1)),
+            r"采集：Codex app-server · 线程来源：(.+)",
+            lambda match: "Collection: Codex app-server · thread source: {}".format(match.group(1)),
         ),
         (
-            r"采集：Codex app-server（预览）",
-            lambda match: "Collection: Codex app-server (preview)",
+            r"采集：Codex app-server",
+            lambda match: "Collection: Codex app-server",
         ),
         (
             r"采集：Codex CLI history/session",
@@ -3744,7 +3767,7 @@ def summary_term_title(days, language=None):
         return localized("今日热词", "Today Hot Terms", language)
     return localized(
         "近 {} 日热词".format(days),
-        "Last {} Hot Terms".format(plural_en(days, "day")),
+        "Last {} Hot Terms".format(plural_en(days, "day").title()),
         language,
     )
 
@@ -5014,44 +5037,171 @@ def classify_codex_native_memory_type(title, desc="", learnings=""):
     return "semantic"
 
 
-CODEX_NATIVE_TITLE_ZH = {
-    "local codex personal asset system genericization and launchagent runtime": "本地 OpenRelix 系统、通用化与 LaunchAgent 运行时",
-    "codex local configuration mcp setup token usage and plugin marketplace inspection": "Codex 本地配置、MCP、Token 使用与插件市场排查",
-    "subreview run live contract and independent codex review loop": "/subreview:run 现场契约与 Codex 独立评审循环",
-}
-CODEX_NATIVE_NOTE_ZH = {
-    "local codex personal asset system genericization and launchagent runtime": "个人资产系统的分层设计，覆盖通用化、外部 state root 和 LaunchAgent 运行边界。",
-    "codex local configuration mcp setup token usage and plugin marketplace inspection": "本机 Codex 环境的 MCP 配置、Token 使用证据和插件市场排查方法。",
-    "subreview run live contract and independent codex review loop": "Codex 独立评审循环的现场契约，包含 /subreview:run、临时 git snapshot 和复核路径。",
-}
-CODEX_NATIVE_TASK_BODY_ZH = {
-    "local codex personal asset system genericization and launchagent runtime": "用户级个人资产系统，覆盖 dashboard、本地记忆运行时、state root 和 LaunchAgent 行为。",
-}
-CODEX_NATIVE_BULLET_ZH = {
-    "when runtime behavior depends on the current device state or ui default to live inspection early": "当运行时行为依赖当前设备状态或 UI 时，优先尽早做现场检查。",
-    "separate repo code tasks from user level codex ai personal assets tasks early the correct search surface is different": "先区分 repo 代码任务和用户级 Codex / OpenRelix 任务，两者搜索面不同。",
-}
+# All codex-native rule data ships empty by default. Per-user matching rules
+# live at <state_root>/personal_codex_rules.py — that path is outside the
+# git repo and the npm package, so personal project names cannot leak in.
+# See _load_personal_codex_native_rules() below for the supported keys.
+CODEX_NATIVE_TITLE_ZH = {}
+CODEX_NATIVE_NOTE_ZH = {}
+CODEX_NATIVE_TASK_BODY_ZH = {}
+CODEX_NATIVE_BULLET_ZH = {}
+CODEX_NATIVE_TOPIC_RULES_ZH = []
+CODEX_NATIVE_BULLET_RULES_ZH = []
+CODEX_NATIVE_BULLET_TITLE_EN_BY_ZH = {}
+
+
+def _load_personal_codex_native_rules():
+    extras = {
+        "title": {},
+        "note": {},
+        "task_body": {},
+        "bullet": {},
+        "topic_rules": [],
+        "bullet_rules": [],
+        "bullet_title_en": {},
+    }
+    try:
+        path = PATHS.state_root / "personal_codex_rules.py"
+    except Exception:
+        return extras
+    if not path.is_file():
+        return extras
+    try:
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("openrelix_personal_codex_rules", path)
+        if spec is None or spec.loader is None:
+            return extras
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+    except Exception:
+        return extras
+    extras["title"] = dict(getattr(module, "EXTRA_TITLE_ZH", {}) or {})
+    extras["note"] = dict(getattr(module, "EXTRA_NOTE_ZH", {}) or {})
+    extras["task_body"] = dict(getattr(module, "EXTRA_TASK_BODY_ZH", {}) or {})
+    extras["bullet"] = dict(getattr(module, "EXTRA_BULLET_ZH", {}) or {})
+    extras["topic_rules"] = list(getattr(module, "EXTRA_TOPIC_RULES_ZH", []) or [])
+    extras["bullet_rules"] = list(getattr(module, "EXTRA_BULLET_RULES_ZH", []) or [])
+    extras["bullet_title_en"] = dict(getattr(module, "EXTRA_BULLET_TITLE_EN_BY_ZH", {}) or {})
+    return extras
+
+
+_PERSONAL_CODEX_NATIVE_RULES = _load_personal_codex_native_rules()
+
+
+def _codex_native_title(key):
+    return CODEX_NATIVE_TITLE_ZH.get(key) or _PERSONAL_CODEX_NATIVE_RULES["title"].get(key)
+
+
+def _codex_native_note(key):
+    return CODEX_NATIVE_NOTE_ZH.get(key) or _PERSONAL_CODEX_NATIVE_RULES["note"].get(key)
+
+
+def _codex_native_task_body(key):
+    return CODEX_NATIVE_TASK_BODY_ZH.get(key) or _PERSONAL_CODEX_NATIVE_RULES["task_body"].get(key)
+
+
+def _codex_native_task_body_has_key(key):
+    return key in CODEX_NATIVE_TASK_BODY_ZH or key in _PERSONAL_CODEX_NATIVE_RULES["task_body"]
+
+
+def _codex_native_bullet(key):
+    return CODEX_NATIVE_BULLET_ZH.get(key) or _PERSONAL_CODEX_NATIVE_RULES["bullet"].get(key)
+
+
+def _codex_native_bullet_items():
+    yield from CODEX_NATIVE_BULLET_ZH.items()
+    yield from _PERSONAL_CODEX_NATIVE_RULES["bullet"].items()
 
 
 def codex_native_translation_key(title):
     return normalize_context_match_text(title)
 
 
-def build_codex_native_display_body(title, body, language=None):
+def find_codex_native_topic_rule(title, keyword_blob="", desc="", learnings="", detail_heading=""):
+    haystack = normalize_brand_display_text(
+        " ".join(
+            str(part or "")
+            for part in (title, keyword_blob, desc, learnings, detail_heading)
+            if part
+        )
+    ).lower()
+    compact_haystack = normalize_context_match_text(haystack)
+    for rule in list(CODEX_NATIVE_TOPIC_RULES_ZH) + list(_PERSONAL_CODEX_NATIVE_RULES["topic_rules"]):
+        fragments = [str(fragment).lower() for fragment in rule.get("fragments", [])]
+        if all(fragment in haystack or fragment in compact_haystack for fragment in fragments):
+            return rule
+    return None
+
+
+def display_codex_native_context_reference(raw_context):
+    context = normalize_brand_display_text(str(raw_context or "").strip().strip("`"))
+    if not context:
+        return ""
+    if context.lower() == "that repo":
+        return "这个仓库"
+    if "/" in context:
+        name = context.rstrip("/").split("/")[-1] or context
+        return "{}项目".format(name)
+    return context
+
+
+def split_codex_native_context_prefix(body):
+    text = normalize_brand_display_text(str(body or "").strip())
+    match = re.match(r"^In\s+(.+?),\s+(.+)$", text, flags=re.IGNORECASE)
+    if not match:
+        return "", text
+    return display_codex_native_context_reference(match.group(1)), match.group(2).strip()
+
+
+def find_codex_native_bullet_rule(body):
+    body_text = normalize_brand_display_text(str(body or ""))
+    _, rest = split_codex_native_context_prefix(body_text)
+    haystack = "{} {}".format(body_text, rest).lower()
+    for rule in list(CODEX_NATIVE_BULLET_RULES_ZH) + list(_PERSONAL_CODEX_NATIVE_RULES["bullet_rules"]):
+        if all(str(fragment).lower() in haystack for fragment in rule.get("fragments", [])):
+            return rule
+    return None
+
+
+def build_codex_native_bullet_title_en(body, kind, index):
+    rule = find_codex_native_bullet_rule(body)
+    if rule:
+        title = rule["title"]
+        return (
+            CODEX_NATIVE_BULLET_TITLE_EN_BY_ZH.get(title)
+            or _PERSONAL_CODEX_NATIVE_RULES["bullet_title_en"].get(title)
+            or title
+        )
+    return "{} {}".format("Preference" if kind == "preference" else "General tip", index)
+
+
+def build_codex_native_bullet_title(body, kind, index, language=None):
+    if is_english(language):
+        return build_codex_native_bullet_title_en(body, kind, index)
+    rule = find_codex_native_bullet_rule(body)
+    if rule:
+        return rule["title"]
+    default_prefix = "偏好" if kind == "preference" else "通用 tips"
+    return "{} {}".format(default_prefix, index)
+
+
+def build_codex_native_display_body(title, body, language=None, kind=None):
     body = normalize_brand_display_text(body)
     if is_english(language):
         return body
 
     key = codex_native_translation_key(title)
-    if key in CODEX_NATIVE_TASK_BODY_ZH:
-        return CODEX_NATIVE_TASK_BODY_ZH[key]
+    task_body_translation = _codex_native_task_body(key)
+    if task_body_translation:
+        return task_body_translation
 
     bullet_key = codex_native_translation_key(body)
-    if bullet_key in CODEX_NATIVE_BULLET_ZH:
-        return CODEX_NATIVE_BULLET_ZH[bullet_key]
+    direct_bullet = _codex_native_bullet(bullet_key)
+    if direct_bullet:
+        return direct_bullet
     bullet_tokens = set(bullet_key.split())
     if bullet_tokens:
-        for candidate_key, translated in CODEX_NATIVE_BULLET_ZH.items():
+        for candidate_key, translated in _codex_native_bullet_items():
             candidate_tokens = set(candidate_key.split())
             if not candidate_tokens:
                 continue
@@ -5060,14 +5210,38 @@ def build_codex_native_display_body(title, body, language=None):
             if body_coverage >= 0.86 and candidate_coverage >= 0.72:
                 return translated
 
+    rule = find_codex_native_bullet_rule(body)
+    if rule:
+        context, _ = split_codex_native_context_prefix(body)
+        if context:
+            return "在{}里，{}".format(context, rule["body"])
+        return rule["body"]
+
+    if kind in {"preference", "tip"} and not contains_cjk(body):
+        label = "偏好" if kind == "preference" else "通用提示"
+        return "这条{}来自 Codex 原生记忆，目前没有结构化中文解释；请展开英文原文核对执行边界。".format(label)
+
     return normalize_brand_display_text(body)
 
 
-def build_codex_native_display_title(title, language=None):
+def build_codex_native_display_title(title, language=None, keyword_blob="", desc="", learnings="", detail_heading=""):
     title = normalize_brand_display_text(title)
     if is_english(language):
         return title
-    return normalize_brand_display_text(CODEX_NATIVE_TITLE_ZH.get(codex_native_translation_key(title), title))
+    key = codex_native_translation_key(title)
+    title_translation = _codex_native_title(key)
+    if title_translation:
+        return normalize_brand_display_text(title_translation)
+    rule = find_codex_native_topic_rule(
+        title,
+        keyword_blob=keyword_blob,
+        desc=desc,
+        learnings=learnings,
+        detail_heading=detail_heading,
+    )
+    if rule:
+        return normalize_brand_display_text(rule["title"])
+    return title
 
 
 def build_codex_native_display_note(
@@ -5095,8 +5269,24 @@ def build_codex_native_display_note(
         return normalize_brand_display_text("; ".join(part for part in note_parts if part) or "Native memory summary")
 
     key = codex_native_translation_key(title)
-    if key in CODEX_NATIVE_NOTE_ZH:
-        note = CODEX_NATIVE_NOTE_ZH[key]
+    note_translation = _codex_native_note(key)
+    if note_translation:
+        note = note_translation
+        if keyword_blob:
+            note = "{} 关键词：{}。".format(note.rstrip("。"), keyword_blob)
+        if detail_heading:
+            note = "{} 分组：{}。".format(note.rstrip("。"), detail_heading)
+        return normalize_brand_display_text(note)
+
+    rule = find_codex_native_topic_rule(
+        title,
+        keyword_blob=keyword_blob,
+        desc=desc,
+        learnings=learnings,
+        detail_heading=detail_heading,
+    )
+    if rule:
+        note = rule["body"]
         if keyword_blob:
             note = "{} 关键词：{}。".format(note.rstrip("。"), keyword_blob)
         if detail_heading:
@@ -5176,21 +5366,20 @@ def parse_codex_native_memory_summary(
             "Preference" if kind == "preference" else "General tip",
             language,
         )
-        display_body = build_codex_native_display_body("", body, language=language)
+        display_title = build_codex_native_bullet_title(body, kind, index, language=language)
+        english_title = "{} {}".format(
+            "Preference" if kind == "preference" else "General tip",
+            index,
+        )
+        display_title_en = build_codex_native_bullet_title_en(body, kind, index)
+        display_body = build_codex_native_display_body("", body, language=language, kind=kind)
         display_body_en = normalize_brand_display_text(body)
         return {
             "kind": kind,
             "display_kind": display_kind,
-            "title": localized(
-                "{} {}".format(display_kind, index),
-                "{} {}".format(display_kind, index),
-                language,
-            ),
-            "display_title": localized(
-                "{} {}".format(display_kind, index),
-                "{} {}".format(display_kind, index),
-                language,
-            ),
+            "title": english_title,
+            "display_title": display_title,
+            "display_title_en": display_title_en,
             "body": compact_preview_text(normalize_brand_display_text(body), limit=220),
             "display_body": compact_preview_text(display_body, limit=220),
             "display_body_en": compact_preview_text(display_body_en, limit=220),
@@ -5257,7 +5446,14 @@ def parse_codex_native_memory_summary(
             value_note_en = current_item.get("section_heading", "") or "Native memory summary"
             value_note = normalize_brand_display_text(value_note)
             value_note_en = normalize_brand_display_text(value_note_en)
-        display_title = build_codex_native_display_title(title, language=language)
+        display_title = build_codex_native_display_title(
+            title,
+            language=language,
+            keyword_blob=keyword_blob,
+            desc=desc,
+            learnings=learnings,
+            detail_heading=current_item.get("detail_heading", ""),
+        )
         display_value_note = build_codex_native_display_note(
             title,
             keyword_blob=keyword_blob,
@@ -5482,12 +5678,31 @@ def load_codex_memory_index_stats(memory_index_path, language=None):
         if not body:
             body = "MEMORY.md 中登记的历史任务组。"
             body_en = "Historical task group registered in MEMORY.md."
-        display_title = build_codex_native_display_title(current_group.get("title", ""), language=language)
+        display_title = build_codex_native_display_title(
+            current_group.get("title", ""),
+            language=language,
+            keyword_blob=", ".join(keywords),
+            desc=body,
+        )
         display_body = build_codex_native_display_body(
             current_group.get("title", ""),
             body,
             language=language,
         )
+        topic_body = build_codex_native_display_note(
+            current_group.get("title", ""),
+            keyword_blob=", ".join(keywords[:3]),
+            desc=body,
+            language=language,
+        )
+        title_key = codex_native_translation_key(current_group.get("title", ""))
+        if (
+            not _codex_native_task_body_has_key(title_key)
+            and not is_english(language)
+            and topic_body
+            and not topic_body.startswith("摘要：")
+        ):
+            display_body = topic_body
         task_groups.append(
             {
                 "title": compact_preview_text(normalize_brand_display_text(current_group.get("title", "")), limit=120),
@@ -5533,6 +5748,9 @@ def load_codex_memory_index_stats(memory_index_path, language=None):
                 continue
             if line.startswith("## Task "):
                 current_group["task_count"] += 1
+                current_section = ""
+                continue
+            if line.startswith("## "):
                 current_section = ""
                 continue
             if line.startswith("### "):
@@ -5992,14 +6210,14 @@ def window_activity_source_label(activity_source, language=None, thread_source="
     thread_source = str(thread_source or "").strip()
     if activity_source == "app-server" and thread_source:
         return localized(
-            "采集：Codex app-server（预览） · 线程来源：{}".format(thread_source),
-            "Collection: Codex app-server (preview) · thread source: {}".format(thread_source),
+            "采集：Codex app-server · 线程来源：{}".format(thread_source),
+            "Collection: Codex app-server · thread source: {}".format(thread_source),
             language,
         )
     labels = {
         "app-server": (
-            "采集：Codex app-server（预览）",
-            "Collection: Codex app-server (preview)",
+            "采集：Codex app-server",
+            "Collection: Codex app-server",
         ),
         "history_fallback": (
             "采集：Codex app-server 不可用，已回退 CLI history/session",
@@ -6850,7 +7068,7 @@ def build_summary_term_markdown_lines(data, language=None):
         lines = [
             "## Today Hot Terms",
             "",
-            "Note: the default panel view is today; the panel can switch to the last 3 or 7 days. Terms come from the selected date range's window synthesis, assets, reviews, and usage records.",
+            "Note: the panel compares today with the rolling last 7 days. Terms come from each date range's window synthesis, assets, reviews, and usage records.",
             "",
         ]
         for days in SUMMARY_TERM_RANGE_DAYS:
@@ -6867,7 +7085,7 @@ def build_summary_term_markdown_lines(data, language=None):
     lines = [
         "## 今日热词",
         "",
-        "说明：默认展示今日；面板可切换近 3 日和近 7 日。热词来自对应日期范围内的窗口整理、资产、复盘和复用记录。",
+        "说明：面板并排对照今日和滚动近 7 日。热词来自对应日期范围内的窗口整理、资产、复盘和复用记录。",
         "",
     ]
     for days in SUMMARY_TERM_RANGE_DAYS:
@@ -9067,12 +9285,139 @@ def make_term_cloud(rows):
     return "".join(chips)
 
 
-def make_summary_term_view_meta(view):
-    registered_count = (
+def summary_term_registered_count(view):
+    return (
         safe_int(view.get("asset_count", 0))
         + safe_int(view.get("review_count", 0))
         + safe_int(view.get("usage_event_count", 0))
     )
+
+
+def make_summary_term_source_line(view):
+    source_dates = view.get("source_dates", []) or []
+    if source_dates:
+        source_zh = "、".join(source_dates[:3])
+        source_en = ", ".join(source_dates[:3])
+        if len(source_dates) > 3:
+            source_zh = "{} 等 {} 天".format(source_zh, len(source_dates))
+            source_en = "{}, and {}".format(source_en, plural_en(len(source_dates), "source date"))
+        return panel_language_text_html(
+            "来源日期 {}".format(source_zh),
+            "Source dates {}".format(source_en),
+        )
+    return panel_language_text_html("暂无来源日期", "No source dates")
+
+
+def make_summary_term_stat_pills(view):
+    stats = [
+        ("窗口", "Windows", view.get("window_count", 0)),
+        ("整理", "Syntheses", view.get("nightly_count", 0)),
+        ("登记", "Records", summary_term_registered_count(view)),
+    ]
+    return "".join(
+        """
+        <span class="term-stat-pill">
+          <span>{label}</span>
+          <strong>{value}</strong>
+        </span>
+        """.format(
+            label=panel_language_text_html(label_zh, label_en),
+            value=escape(str(value)),
+        )
+        for label_zh, label_en, value in stats
+    )
+
+
+def make_term_rank_list(rows, limit=8):
+    rows = rows or []
+    if not rows:
+        return '<p class="term-empty empty">{}</p>'.format(
+            panel_language_text_html("暂无摘要词。", "No summary terms.")
+        )
+
+    max_value = max(safe_int(row.get("value", 0)) for row in rows) or 1
+    items = []
+    for row in rows[:limit]:
+        index = len(items)
+        value = safe_int(row.get("value", 0))
+        weight = value / max_value if max_value else 0
+        label = normalize_brand_display_text(str(row.get("label", "")))
+        label_en = english_summary_term_label(label)
+        prominence = " is-primary" if index == 0 else ""
+        items.append(
+            """
+            <div class="term-rank-item{prominence}" role="listitem" aria-label="{aria_label}" style="--term-level:{level};">
+              <span class="term-rank-index">{rank}</span>
+              <span class="term-rank-copy">
+                <span class="term-rank-label">{label}</span>
+                <span class="term-rank-track" aria-hidden="true"></span>
+              </span>
+              <span class="term-rank-value">{value}</span>
+            </div>
+            """.format(
+                aria_label=escape("{} {} {}".format(label_en or label, value, "weight"), quote=True),
+                prominence=prominence,
+                level="{:.3f}".format(max(weight, 0.04)),
+                rank="{:02d}".format(index + 1),
+                label=panel_language_text_html(label, label_en),
+                value=escape(str(value)),
+            )
+        )
+    return """
+      <div class="term-rank-list" role="list">
+        {items}
+      </div>
+    """.format(
+        items="".join(items),
+    )
+
+
+def make_summary_term_card(view):
+    days = safe_int(view.get("days", 0))
+    rows = view.get("terms", []) or []
+    tone_class = "is-today" if days == 1 else "is-weekly"
+    kicker_html = (
+        panel_language_text_html("今日焦点", "Today focus")
+        if days == 1
+        else panel_language_text_html("7 日趋势", "7-day trend")
+    )
+    title_html = panel_language_text_html(
+        view.get("title_zh") or view.get("title") or summary_term_title(days, language="zh"),
+        view.get("title_en") or summary_term_title(days, language="en"),
+    )
+    return """
+      <article class="term-insight-card {tone}">
+        <div class="term-card-head">
+          <div class="term-card-title-block">
+            <div class="term-card-kicker">{kicker}</div>
+            <h3>{title}</h3>
+          </div>
+          <div class="term-card-count" aria-label="{term_count_label}">
+            <strong>{term_count}</strong>
+            <span>{term_count_text}</span>
+          </div>
+        </div>
+        {rank_list}
+        <div class="term-stat-row">
+          {stats}
+        </div>
+        <div class="term-source-line">{source_line}</div>
+      </article>
+    """.format(
+        tone=tone_class,
+        kicker=kicker_html,
+        title=title_html,
+        term_count_label=escape("{} {}".format(len(rows), "terms"), quote=True),
+        term_count=escape(str(len(rows))),
+        term_count_text=panel_language_text_html("热词", "terms"),
+        stats=make_summary_term_stat_pills(view),
+        rank_list=make_term_rank_list(rows),
+        source_line=make_summary_term_source_line(view),
+    )
+
+
+def make_summary_term_view_meta(view):
+    registered_count = summary_term_registered_count(view)
     source_dates = view.get("source_dates", []) or []
     if source_dates:
         source_zh = "、".join(source_dates[:3])
@@ -9101,57 +9446,28 @@ def make_summary_term_view_meta(view):
 def make_summary_term_cloud_views(summary_term_views, default_days=SUMMARY_TERM_DEFAULT_DAYS, language=None):
     views = summary_term_views or []
     if not views:
-        return '<div class="term-cloud">{}</div>'.format(make_term_cloud([]))
+        return '<div class="term-insight-grid"><p class="empty">暂无摘要词。</p></div>'
 
-    default_days = safe_int(default_days) or SUMMARY_TERM_DEFAULT_DAYS
-    if all(safe_int(view.get("days", 0)) != default_days for view in views):
-        default_days = safe_int(views[0].get("days", SUMMARY_TERM_DEFAULT_DAYS))
+    day_order = {days: index for index, days in enumerate(SUMMARY_TERM_RANGE_DAYS)}
+    ordered_views = [
+        view
+        for view in sorted(
+            views,
+            key=lambda item: day_order.get(safe_int(item.get("days", 0)), len(day_order)),
+        )
+        if safe_int(view.get("days", 0)) in day_order
+    ]
+    if not ordered_views:
+        ordered_views = views[:2]
 
-    controls = []
-    view_html = []
-    for view in views:
-        days = safe_int(view.get("days", 0))
-        is_active = days == default_days
-        controls.append(
-            """
-            <button class="term-range-button{active}" type="button" data-term-days="{days}" aria-pressed="{pressed}">
-              {label}
-            </button>
-            """.format(
-                active=" is-active" if is_active else "",
-                days=escape(str(days)),
-                pressed="true" if is_active else "false",
-                label=summary_term_range_label_html(days),
-            )
-        )
-        view_html.append(
-            """
-            <div class="term-cloud-view{active}" data-term-view="{days}"{hidden}>
-              <div class="term-cloud-meta">{meta}</div>
-              <div class="term-cloud">
-                {cloud}
-              </div>
-            </div>
-            """.format(
-                active=" is-active" if is_active else "",
-                days=escape(str(days)),
-                hidden="" if is_active else " hidden",
-                meta=make_summary_term_view_meta(view),
-                cloud=make_term_cloud(view.get("terms", [])),
-            )
-        )
+    cards = [make_summary_term_card(view) for view in ordered_views]
 
     return """
-      <div class="term-range-control" role="group" aria-label="{aria_label}">
-        {controls}
-      </div>
-      <div class="term-cloud-views">
-        {views}
+      <div class="term-insight-grid">
+        {cards}
       </div>
     """.format(
-        aria_label=escape(panel_display_text("热词时间范围", language)),
-        controls="".join(controls),
-        views="".join(view_html),
+        cards="".join(cards),
     )
 
 
@@ -9386,7 +9702,7 @@ def make_memory_family_header(title_zh, title_en, note_zh, note_en, extra_html="
     )
 
 
-def make_memory_cards(items, include_bucket_meta=True):
+def make_memory_cards(items, include_bucket_meta=True, visible_count=4):
     if not items:
         return '<p class="empty">暂无。</p>'
 
@@ -9418,7 +9734,9 @@ def make_memory_cards(items, include_bucket_meta=True):
         }
         return text not in unknown_markers and lowered not in unknown_markers and "未知" not in text
 
-    def render_fact(title, body_html, en_title=""):
+    def render_detail(title, body_html, en_title=""):
+        if not body_html:
+            return ""
         return """
             <div class="memory-card-fact">
               <div class="memory-card-label">{title}</div>
@@ -9553,6 +9871,30 @@ def make_memory_cards(items, include_bucket_meta=True):
             )
         return "".join(links)
 
+    def source_summary_html(item):
+        source_files = item.get("source_files") or []
+        if source_files:
+            label = ui_text(source_files[0].get("label") or Path(str(source_files[0].get("path", ""))).name)
+            if label:
+                return escape(label)
+        source_windows = item.get("source_windows") or []
+        if source_windows:
+            label = ui_text(source_windows[0].get("project_label") or source_windows[0].get("cwd_display") or "")
+            if label:
+                label_en = ui_text(localized_context_label(label, language="en"))
+                return panel_language_text_html(label, label_en) if label_en != label else escape(label)
+        context = ui_text(item.get("display_context") or "")
+        if context:
+            context_en = ui_text(localized_context_label(context, language="en"))
+            return panel_language_text_html(context, context_en) if context_en != context else escape(context)
+        return panel_language_text_html("本地记忆", "Local memory")
+
+    def brief_ui_text(value, limit):
+        return compact_preview_text(ui_text(value), limit=limit)
+
+    def text_was_compacted(full_text, brief_text):
+        return bool(ui_text(full_text)) and ui_text(full_text) != ui_text(brief_text)
+
     def render_card(item):
         context_labels = item.get("context_labels", [])
         if not context_labels and item.get("display_context"):
@@ -9570,24 +9912,21 @@ def make_memory_cards(items, include_bucket_meta=True):
         )
         meta_parts = [part for part in meta_parts if part]
         meta_parts_en = [english_for_ui_text(part) for part in meta_parts]
+        meta_html = panel_language_variant_html(
+            escape(" · ".join(meta_parts)),
+            escape(" · ".join(meta_parts_en)) if meta_parts_en != meta_parts else "",
+        )
+
         created_display = item.get("created_at_display") or display_memory_date(item.get("created_at", ""))
         updated_display = item.get("updated_at_display") or display_memory_date(item.get("updated_at", ""))
         submeta_parts_zh = []
         submeta_parts_en = []
         if has_known_date_display(created_display):
-            submeta_parts_zh.append(
-                "首次添加 {}".format(format_date_for_language(created_display, "zh"))
-            )
-            submeta_parts_en.append(
-                "First added {}".format(format_date_for_language(created_display, "en"))
-            )
+            submeta_parts_zh.append("首次添加 {}".format(format_date_for_language(created_display, "zh")))
+            submeta_parts_en.append("First added {}".format(format_date_for_language(created_display, "en")))
         if has_known_date_display(updated_display):
-            submeta_parts_zh.append(
-                "最近更新 {}".format(format_date_for_language(updated_display, "zh"))
-            )
-            submeta_parts_en.append(
-                "Updated {}".format(format_date_for_language(updated_display, "en"))
-            )
+            submeta_parts_zh.append("最近更新 {}".format(format_date_for_language(updated_display, "zh")))
+            submeta_parts_en.append("Updated {}".format(format_date_for_language(updated_display, "en")))
         if item.get("usage_frequency_display"):
             window_days = item.get("usage_frequency_window_days", MEMORY_USAGE_WINDOW_DAYS)
             frequency_value = item.get("usage_frequency_display", "0")
@@ -9596,12 +9935,7 @@ def make_memory_cards(items, include_bucket_meta=True):
         if item.get("occurrence_count", 0) > 1:
             occurrence_label = ui_text(item.get("occurrence_label", "整理命中"))
             occurrence_label_en = english_for_ui_text(occurrence_label)
-            submeta_parts_zh.append(
-                "{} {} 次".format(
-                    occurrence_label,
-                    item.get("occurrence_count", 0),
-                )
-            )
+            submeta_parts_zh.append("{} {} 次".format(occurrence_label, item.get("occurrence_count", 0)))
             submeta_parts_en.append("{} {} times".format(occurrence_label_en, item.get("occurrence_count", 0)))
         if item.get("submeta_zh") or item.get("submeta_en"):
             submeta_html = panel_language_text_html(
@@ -9610,19 +9944,65 @@ def make_memory_cards(items, include_bucket_meta=True):
             )
         else:
             submeta_html = render_submeta_lines(submeta_parts_zh, submeta_parts_en)
-        submeta_block = (
-            '<div class="review-submeta memory-card-submeta">{}</div>'.format(submeta_html)
-            if submeta_html
-            else ""
+
+        full_display_title = ui_text(item.get("display_title") or item.get("title", ""))
+        full_raw_title = ui_text(item.get("display_title_en") or item.get("title", ""))
+        display_title = brief_ui_text(full_display_title, MEMORY_BRIEF_TITLE_LIMIT)
+        raw_title = brief_ui_text(full_raw_title, MEMORY_BRIEF_TITLE_LIMIT)
+        title_html = panel_language_text_html(display_title, raw_title if raw_title != display_title else "")
+        full_title_detail = ""
+        if text_was_compacted(full_display_title, display_title) or text_was_compacted(full_raw_title, raw_title):
+            full_title_detail = render_detail(
+                "完整标题",
+                panel_language_text_html(
+                    full_display_title,
+                    full_raw_title if full_raw_title != full_display_title else "",
+                ),
+                "Full Title",
+            )
+
+        full_display_value_note = ui_text(item.get("display_value_note") or item.get("value_note", ""))
+        full_raw_value_note = ui_text(
+            item.get("display_value_note_en") or item.get("value_note_en") or item.get("value_note", "")
         )
+        display_value_note = brief_ui_text(full_display_value_note, MEMORY_BRIEF_BODY_LIMIT)
+        raw_value_note = brief_ui_text(full_raw_value_note, MEMORY_BRIEF_BODY_LIMIT)
+        value_note_html = panel_language_variant_html(
+            linkify_local_paths_html(display_value_note),
+            linkify_local_paths_html(raw_value_note) if raw_value_note != display_value_note else "",
+        )
+        full_note_detail = ""
+        if text_was_compacted(full_display_value_note, display_value_note) or text_was_compacted(
+            full_raw_value_note,
+            raw_value_note,
+        ):
+            full_note_detail = render_detail(
+                "完整说明",
+                panel_language_variant_html(
+                    linkify_local_paths_html(
+                        compact_preview_text(full_display_value_note, limit=MEMORY_BRIEF_FULL_TEXT_LIMIT)
+                    ),
+                    (
+                        linkify_local_paths_html(
+                            compact_preview_text(full_raw_value_note, limit=MEMORY_BRIEF_FULL_TEXT_LIMIT)
+                        )
+                        if full_raw_value_note != full_display_value_note
+                        else ""
+                    ),
+                ),
+                "Full Note",
+            )
 
         source_fact_label = ui_text(item.get("source_fact_label", "来源窗口"))
         source_fact_label_en = english_for_ui_text(source_fact_label)
-        facts = "".join(
+        details = "".join(
             (
-                render_fact("关联上下文", render_context_chips(context_labels), "Related Context"),
-                render_fact("最近工作区", render_cwd_links(item.get("source_windows", [])), "Recent Workspace"),
-                render_fact(
+                full_title_detail,
+                full_note_detail,
+                render_detail("更新记录", submeta_html, "Update History") if submeta_html else "",
+                render_detail("关联上下文", render_context_chips(context_labels), "Related Context"),
+                render_detail("最近工作区", render_cwd_links(item.get("source_windows", [])), "Recent Workspace"),
+                render_detail(
                     source_fact_label,
                     render_source_file_links(item.get("source_files", []))
                     if item.get("source_files")
@@ -9631,51 +10011,42 @@ def make_memory_cards(items, include_bucket_meta=True):
                 ),
             )
         )
-        display_value_note = ui_text(item.get("display_value_note") or item.get("value_note", ""))
-        raw_value_note = (
-            item.get("display_value_note_en")
-            or item.get("value_note_en")
-            or item.get("value_note", "")
-        )
-        raw_value_note = ui_text(raw_value_note)
-        value_note_html = panel_language_variant_html(
-            linkify_local_paths_html(display_value_note),
-            linkify_local_paths_html(raw_value_note) if raw_value_note != display_value_note else "",
-        )
-        display_title = ui_text(item.get("display_title") or item.get("title", ""))
-        raw_title = ui_text(item.get("title", ""))
-        title_html = panel_language_text_html(display_title, raw_title if raw_title != display_title else "")
-        card_class = "review-card memory-card"
-        return """
-            <article class="{card_class}">
-              <div class="review-meta">{meta}</div>
-              {submeta_block}
-              <h3>{title}</h3>
-              <p>{value_note}</p>
-              <div class="memory-card-facts">
-                {facts}
-              </div>
-            </article>
-            """.format(
-            card_class=escape(card_class, quote=True),
-            meta=panel_language_variant_html(
-                escape(" · ".join(meta_parts)),
-                escape(" · ".join(meta_parts_en)) if meta_parts_en != meta_parts else "",
-            ),
-            submeta_block=submeta_block,
-            title=title_html or panel_language_text_html("未命名记忆"),
-            value_note=value_note_html,
-            facts=facts,
+        details_html = """
+          <details class="native-brief-raw memory-brief-details">
+            <summary>{label}</summary>
+            <div class="memory-card-facts">{details}</div>
+          </details>
+        """.format(
+            label=panel_language_text_html("查看来源与上下文", "Show context and source"),
+            details=details,
         )
 
-    primary_cards = "".join(render_card(item) for item in items[:8])
-    extra_cards = "".join(render_card(item) for item in items[8:])
+        return """
+          <article class="native-brief-card memory-brief-card">
+            <div class="native-brief-topline">
+              <span>{meta}</span>
+              <span>{source_label}</span>
+            </div>
+            <h3>{title}</h3>
+            <p>{value_note}</p>
+            {details}
+          </article>
+        """.format(
+            meta=meta_html,
+            source_label=source_summary_html(item),
+            title=title_html or panel_language_text_html("未命名记忆"),
+            value_note=value_note_html,
+            details=details_html,
+        )
+
+    primary_cards = "".join(render_card(item) for item in items[:visible_count])
+    extra_cards = "".join(render_card(item) for item in items[visible_count:])
     return wrap_expandable_block(
         primary_cards,
         extra_cards,
-        len(items) - 8,
+        len(items) - visible_count,
         "条",
-        "review-grid memory-grid content-more-grid",
+        "native-brief-grid memory-grid content-more-grid",
         expanded_label="收起额外条目",
         item_label_en="items",
         expanded_label_en="Collapse extra items",
@@ -9725,14 +10096,18 @@ def make_memory_type_grouped_cards(items, include_bucket_meta=False):
                 <h3>{title}</h3>
                 <span>{count}</span>
               </div>
-              <div class="review-grid memory-grid">
+              <div class="native-brief-grid memory-grid">
                 {cards}
               </div>
             </section>
             """.format(
                 title=title_html,
                 count=count_html,
-                cards=make_memory_cards(sorted_rows, include_bucket_meta=include_bucket_meta),
+                cards=make_memory_cards(
+                    sorted_rows,
+                    include_bucket_meta=include_bucket_meta,
+                    visible_count=4,
+                ),
             )
         )
     return "".join(sections)
@@ -9807,6 +10182,9 @@ def make_codex_native_brief_memory_items(rows, kind, language=None):
             kind_config.get("title_prefix_zh", "条目"),
             index,
         ))
+        display_title_en = normalize_brand_display_text(
+            row.get("display_title_en") or row.get("title_en") or ""
+        )
         raw_title = normalize_brand_display_text(row.get("title") or "")
         if not raw_title or raw_title == display_title:
             raw_title = "{} {}".format(kind_config.get("title_prefix_en", "Item"), index)
@@ -9847,6 +10225,7 @@ def make_codex_native_brief_memory_items(rows, kind, language=None):
                 "display_priority": localized("中优先", "Medium Priority", language),
                 "title": raw_title,
                 "display_title": display_title,
+                "display_title_en": display_title_en,
                 "value_note": body_en,
                 "value_note_en": body_en,
                 "display_value_note": display_body,
@@ -9861,6 +10240,180 @@ def make_codex_native_brief_memory_items(rows, kind, language=None):
             }
         )
     return items
+
+
+def make_codex_native_brief_cards(rows, kind, language=None):
+    language = current_language(language)
+    rows = rows or []
+    if not rows:
+        return '<p class="empty">{}</p>'.format(
+            escape(localized("暂无。", "None yet.", language))
+        )
+
+    kind_config = {
+        "preference": {
+            "kicker_zh": "用户偏好",
+            "kicker_en": "User Preference",
+            "default_title_zh": "偏好",
+            "default_title_en": "Preference",
+            "empty_body_zh": "暂无偏好说明。",
+            "empty_body_en": "No preference text.",
+        },
+        "tip": {
+            "kicker_zh": "通用 tips",
+            "kicker_en": "General Tip",
+            "default_title_zh": "通用 tips",
+            "default_title_en": "General tip",
+            "empty_body_zh": "暂无通用提示。",
+            "empty_body_en": "No general tip text.",
+        },
+        "task_group": {
+            "kicker_zh": "任务组",
+            "kicker_en": "Task Group",
+            "default_title_zh": "任务组",
+            "default_title_en": "Task group",
+            "empty_body_zh": "MEMORY.md 中登记的历史任务组。",
+            "empty_body_en": "Historical task group registered in MEMORY.md.",
+        },
+    }.get(kind, {})
+
+    def row_source_label(row):
+        source_files = row.get("source_files") or []
+        for source_file in source_files:
+            label = source_file.get("label") or Path(str(source_file.get("path", ""))).name
+            if label:
+                return normalize_brand_display_text(label)
+        return "MEMORY.md" if kind == "task_group" else "memory_summary.md"
+
+    def row_keywords(row):
+        return [
+            normalize_brand_display_text(str(keyword))
+            for keyword in row.get("keywords", [])[:5]
+            if normalize_brand_display_text(str(keyword))
+        ]
+
+    def render_keywords(row):
+        keywords = row_keywords(row)
+        if not keywords:
+            return ""
+        keyword_html = "".join(
+            '<span class="native-brief-chip">{}</span>'.format(escape(keyword))
+            for keyword in keywords
+        )
+        return '<div class="native-brief-chip-row">{}</div>'.format(keyword_html)
+
+    def render_meta(row):
+        meta = normalize_brand_display_text(row.get("meta") or "")
+        if not meta or kind != "task_group":
+            return ""
+        meta_zh = native_meta_to_chinese(meta)
+        meta_en = native_meta_to_english(meta_zh)
+        return '<div class="native-brief-meta">{}</div>'.format(
+            panel_language_text_html(meta_zh, meta_en)
+        )
+
+    def render_raw_details(raw_text, display_text, brief_text=""):
+        raw_text = normalize_brand_display_text(raw_text)
+        display_text = normalize_brand_display_text(display_text)
+        brief_text = normalize_brand_display_text(brief_text)
+        if not raw_text and not display_text:
+            return ""
+        if raw_text == display_text and (not brief_text or display_text == brief_text):
+            return ""
+        detail_text = raw_text if raw_text and raw_text != display_text else display_text
+        label_zh = "查看英文原文" if raw_text and raw_text != display_text else "查看完整说明"
+        label_en = "Show source text" if raw_text and raw_text != display_text else "Show full note"
+        return """
+          <details class="native-brief-raw">
+            <summary>{label}</summary>
+            <p>{raw_text}</p>
+          </details>
+        """.format(
+            label=panel_language_text_html(label_zh, label_en),
+            raw_text=escape(compact_preview_text(detail_text, limit=MEMORY_BRIEF_FULL_TEXT_LIMIT)),
+        )
+
+    def render_card(row, index):
+        fallback_title_zh = "{} {}".format(kind_config.get("default_title_zh", "条目"), index)
+        fallback_title_en = "{} {}".format(kind_config.get("default_title_en", "Item"), index)
+        display_title_full = normalize_brand_display_text(row.get("display_title") or fallback_title_zh)
+        display_title_en = normalize_brand_display_text(row.get("display_title_en") or "")
+        raw_title = normalize_brand_display_text(row.get("title") or fallback_title_en)
+        display_body_full = normalize_brand_display_text(
+            row.get("display_body")
+            or row.get("body")
+            or row.get("scope")
+            or kind_config.get("empty_body_zh", "")
+        )
+        raw_body_full = normalize_brand_display_text(
+            row.get("display_body_en")
+            or row.get("body_en")
+            or row.get("body")
+            or row.get("scope")
+            or row.get("display_body")
+            or kind_config.get("empty_body_en", "")
+        )
+        keywords = row_keywords(row)
+        if keywords:
+            keyword_text = "、".join(keywords)
+            display_body_full = "{}；关键词：{}".format(display_body_full, keyword_text) if display_body_full else "关键词：{}".format(keyword_text)
+            raw_body_full = "{}; keywords: {}".format(raw_body_full, ", ".join(keywords)) if raw_body_full else "Keywords: {}".format(", ".join(keywords))
+
+        display_title = compact_preview_text(display_title_full, limit=MEMORY_BRIEF_TITLE_LIMIT)
+        raw_title_brief = compact_preview_text(raw_title, limit=MEMORY_BRIEF_TITLE_LIMIT)
+        title_en = compact_preview_text(display_title_en, limit=MEMORY_BRIEF_TITLE_LIMIT) or (
+            raw_title_brief if raw_title_brief != display_title else ""
+        )
+        title_html = panel_language_text_html(display_title, title_en)
+        display_body = compact_preview_text(display_body_full, limit=MEMORY_BRIEF_BODY_LIMIT)
+        raw_body = compact_preview_text(raw_body_full, limit=MEMORY_BRIEF_BODY_LIMIT)
+        body_html = panel_language_variant_html(
+            linkify_local_paths_html(display_body),
+            linkify_local_paths_html(raw_body) if raw_body != display_body else "",
+        )
+        source_label = row_source_label(row)
+        return """
+          <article class="native-brief-card" data-native-kind="{kind}">
+            <div class="native-brief-topline">
+              <span>{kicker}</span>
+              <span>{source_label}</span>
+            </div>
+            <h3>{title}</h3>
+            <p>{body}</p>
+            {meta}
+            {keywords}
+            {raw_details}
+          </article>
+        """.format(
+            kind=escape(kind, quote=True),
+            kicker=panel_language_text_html(
+                kind_config.get("kicker_zh", "原生记忆"),
+                kind_config.get("kicker_en", "Native Memory"),
+            ),
+            source_label=escape(source_label),
+            title=title_html,
+            body=body_html,
+            meta=render_meta(row),
+            keywords=render_keywords(row),
+            raw_details=render_raw_details(raw_body_full, display_body_full, display_body),
+        )
+
+    visible_count = 4
+    primary_cards = "".join(render_card(row, index) for index, row in enumerate(rows[:visible_count], start=1))
+    extra_cards = "".join(
+        render_card(row, index)
+        for index, row in enumerate(rows[visible_count:], start=visible_count + 1)
+    )
+    return wrap_expandable_block(
+        primary_cards,
+        extra_cards,
+        len(rows) - visible_count,
+        "条",
+        "native-brief-grid content-more-grid",
+        expanded_label="收起额外条目",
+        item_label_en="items",
+        expanded_label_en="Collapse extra items",
+    )
 
 
 def derive_nightly_window_title(nightly_title):
@@ -10804,6 +11357,49 @@ def build_metric_help_sections(metric):
     return sections
 
 
+def read_panel_package_version():
+    package_json = PATHS.repo_root / "package.json"
+    try:
+        payload = json.loads(package_json.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return ""
+    return str(payload.get("version") or "").strip()
+
+
+def update_token_path():
+    return PATHS.runtime_dir / "update-token.txt"
+
+
+def read_or_create_update_token():
+    """Persistent shared secret for the local /run-update endpoint.
+
+    Stored under runtime_dir with 0600 perms; both the panel template and
+    token_live_server read it. Generated on first call.
+    """
+    import secrets
+
+    path = update_token_path()
+    try:
+        text = path.read_text(encoding="utf-8").strip()
+        if text:
+            return text
+    except (OSError, UnicodeDecodeError):
+        pass
+    token = secrets.token_urlsafe(32)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(".tmp")
+        tmp.write_text(token, encoding="utf-8")
+        try:
+            os.chmod(tmp, 0o600)
+        except OSError:
+            pass
+        os.replace(str(tmp), str(path))
+    except OSError:
+        pass
+    return token
+
+
 def build_html(data):
     language = current_language(data.get("language"))
     base_make_help_popover = globals()["make_help_popover"]
@@ -11059,12 +11655,12 @@ def build_html(data):
             },
             {
                 "label": "时间范围",
-                "body": "默认展示今日热词，可切换近 3 日和近 7 日。",
+                "body": "左边是当天热词，右边是滚动近 7 日热词。",
             },
             {
                 "label": "怎么看",
                 "body": [
-                    "字越大代表出现频次越高。这是主题提示，不代表严格的主题建模结果。",
+                    "主热词是当前范围内权重最高的词，横条越长代表出现频次越高。",
                     "它会随当天窗口整理、资产、复盘或复用记录新增、修改而变化。",
                 ],
             },
@@ -11085,7 +11681,7 @@ def build_html(data):
     )
     term_cloud_header_html = make_panel_header(
         "今日热词",
-        "默认今日，可切换近 3 日 / 近 7 日",
+        "今日 / 近 7 日并排对照",
         term_cloud_help,
     )
     term_cloud_html = make_summary_term_cloud_views(
@@ -11312,26 +11908,20 @@ def build_html(data):
             },
         ],
     )
-    codex_native_preference_cards = make_memory_cards(
-        make_codex_native_brief_memory_items(
-            codex_native_preference_rows,
-            "preference",
-            language=language,
-        )
+    codex_native_preference_cards = make_codex_native_brief_cards(
+        codex_native_preference_rows,
+        "preference",
+        language=language,
     )
-    codex_native_tip_cards = make_memory_cards(
-        make_codex_native_brief_memory_items(
-            codex_native_tip_rows,
-            "tip",
-            language=language,
-        )
+    codex_native_tip_cards = make_codex_native_brief_cards(
+        codex_native_tip_rows,
+        "tip",
+        language=language,
     )
-    codex_native_task_group_cards = make_memory_cards(
-        make_codex_native_brief_memory_items(
-            codex_native_task_groups,
-            "task_group",
-            language=language,
-        )
+    codex_native_task_group_cards = make_codex_native_brief_cards(
+        codex_native_task_groups,
+        "task_group",
+        language=language,
     )
     recent_assets_help = make_help_popover(
         "最近更新的资产",
@@ -11466,6 +12056,7 @@ def build_html(data):
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="openrelix:version" content="{current_version}" data-pkg="{npm_package}" data-update-endpoint="{update_endpoint}" data-update-status-endpoint="{update_status_endpoint}" data-update-token="{update_token}">
   <title>{document_title}</title>
   <style>
     :root {{
@@ -11570,11 +12161,50 @@ def build_html(data):
       box-sizing: border-box;
     }}
 
+    a,
+    button,
+    summary,
+    [role="button"] {{
+      -webkit-tap-highlight-color: transparent;
+    }}
+
+    html {{
+      min-height: 100%;
+      width: 100%;
+      max-width: 100%;
+      overflow-x: hidden;
+      overflow-x: clip;
+      overscroll-behavior-x: none;
+      scroll-behavior: smooth;
+      background: #171a21;
+    }}
+
+    html[data-theme="light"] {{
+      background: #f5f5f7;
+    }}
+
+    html[data-theme="dark"] {{
+      background: #171a21;
+    }}
+
+    @media (prefers-color-scheme: dark) {{
+      html:not([data-theme="light"]) {{
+        background: #171a21;
+      }}
+    }}
+
     body {{
+      position: relative;
+      width: 100%;
+      max-width: 100%;
+      min-height: 100vh;
       margin: 0;
       color: var(--ink);
       font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Hiragino Sans GB", "Noto Sans SC", "Microsoft YaHei", sans-serif;
       background: linear-gradient(180deg, var(--canvas-top) 0%, var(--bg) 100%);
+      overflow-x: hidden;
+      overflow-x: clip;
+      overscroll-behavior-x: none;
       -webkit-font-smoothing: antialiased;
       text-rendering: geometricPrecision;
     }}
@@ -11584,15 +12214,13 @@ def build_html(data):
       display: none !important;
     }}
 
-    html {{
-      scroll-behavior: smooth;
-    }}
-
     .app-shell {{
       position: relative;
-      width: min(1280px, calc(100% - 48px));
+      width: min(1280px, calc(100vw - 48px));
+      max-width: calc(100vw - 48px);
       margin: 0 auto;
       padding: 36px 0 56px;
+      overflow-x: clip;
     }}
 
     .page {{
@@ -11609,9 +12237,11 @@ def build_html(data):
       left: max(20px, calc((100vw - 1280px) / 2 - 232px));
       z-index: 40;
       width: 212px;
+      max-width: calc(100vw - 28px);
       max-height: calc(100vh - 36px);
       padding: 14px;
       overflow: auto;
+      overscroll-behavior-x: contain;
       border: 1px solid var(--line);
       border-radius: 22px;
       background: var(--paper);
@@ -11630,6 +12260,7 @@ def build_html(data):
     .side-nav-list {{
       display: grid;
       gap: 4px;
+      justify-items: start;
     }}
 
     .side-nav-group {{
@@ -11647,17 +12278,24 @@ def build_html(data):
 
     .side-nav-link {{
       position: relative;
-      display: grid;
-      grid-template-columns: minmax(0, 1fr);
+      display: inline-flex;
       align-items: center;
+      justify-self: start;
+      width: max-content;
+      inline-size: max-content;
+      max-width: 100%;
+      max-inline-size: 100%;
       padding: 9px 10px 9px 14px;
       border-radius: 12px;
+      background: transparent;
       color: var(--muted);
       font-size: 13px;
       font-weight: 700;
       line-height: 1.25;
       text-decoration: none;
       transition: background 160ms ease, color 160ms ease;
+      -webkit-user-select: none;
+      user-select: none;
     }}
 
     .side-nav-link::before {{
@@ -11682,8 +12320,24 @@ def build_html(data):
       color: var(--teal);
     }}
 
+    .side-nav-link:active {{
+      background: var(--accent-soft-strong);
+      color: var(--teal);
+    }}
+
+    .side-nav-link:focus {{
+      outline: none;
+    }}
+
+    .side-nav-link:focus-visible {{
+      color: var(--teal);
+      box-shadow: inset 0 0 0 1px var(--line-strong);
+    }}
+
     .side-nav-link.is-child {{
       margin-left: 12px;
+      max-width: calc(100% - 12px);
+      max-inline-size: calc(100% - 12px);
       padding: 7px 9px 7px 14px;
       border-radius: 10px;
       color: var(--subtle);
@@ -11701,6 +12355,10 @@ def build_html(data):
     .side-nav-link.is-active {{
       background: var(--accent-soft-strong);
       color: var(--teal);
+    }}
+
+    .side-nav-link.is-active:focus-visible {{
+      background: var(--accent-soft-strong);
     }}
 
     .side-nav-link.is-active::before {{
@@ -11862,6 +12520,23 @@ def build_html(data):
       min-width: 0;
     }}
 
+    .hero-mark {{
+      width: 44px;
+      height: 44px;
+      flex: 0 0 auto;
+      border-radius: 10px;
+      overflow: hidden;
+      align-self: center;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.18);
+    }}
+
+    .hero-mark img {{
+      width: 100%;
+      height: 100%;
+      display: block;
+      object-fit: cover;
+    }}
+
     h1 {{
       font-size: 36px;
       line-height: 1.12;
@@ -11979,6 +12654,14 @@ def build_html(data):
 
     .memory-stack {{
       grid-template-columns: 1fr;
+    }}
+
+    .memory-group-list {{
+      display: grid;
+      gap: 16px;
+      grid-template-columns: 1fr;
+      align-items: start;
+      min-width: 0;
     }}
 
     .memory-family {{
@@ -13335,25 +14018,171 @@ def build_html(data):
     }}
 
     .memory-grid {{
-      grid-template-columns: repeat(4, minmax(0, 1fr));
+      grid-template-columns: repeat(2, minmax(0, 1fr));
       align-items: start;
     }}
 
     .memory-grid.content-more-grid {{
-      grid-template-columns: repeat(4, minmax(0, 1fr));
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }}
+
+    .native-brief-grid {{
+      display: grid;
+      gap: 12px;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      align-items: stretch;
+    }}
+
+    .native-brief-grid.content-more-grid {{
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }}
+
+    .native-brief-card {{
+      display: grid;
+      gap: 10px;
+      min-width: 0;
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: var(--card);
+      overflow: hidden;
+    }}
+
+    .native-brief-topline {{
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.35;
+    }}
+
+    .native-brief-topline span {{
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }}
+
+    .native-brief-card h3 {{
+      margin: 0;
+      color: var(--ink);
+      font-size: 18px;
+      line-height: 1.35;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }}
+
+    .native-brief-card p {{
+      margin: 0;
+      color: var(--ink);
+      font-size: 14px;
+      line-height: 1.7;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }}
+
+    .native-brief-chip-row {{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      min-width: 0;
+    }}
+
+    .native-brief-meta {{
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }}
+
+    .native-brief-chip {{
+      display: inline-flex;
+      min-width: 0;
+      max-width: 100%;
+      padding: 5px 9px;
+      border-radius: 999px;
+      border: 1px solid var(--line-strong);
+      background: var(--chip-muted-bg);
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.3;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }}
+
+    .native-brief-raw {{
+      margin-top: 2px;
+      border-top: 1px solid var(--line);
+      padding-top: 8px;
+    }}
+
+    .native-brief-raw summary {{
+      cursor: pointer;
+      color: var(--teal);
+      font-size: 12px;
+      font-weight: 700;
+      list-style: none;
+    }}
+
+    .native-brief-raw summary::-webkit-details-marker {{
+      display: none;
+    }}
+
+    .native-brief-raw summary::before {{
+      content: "+";
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 16px;
+      height: 16px;
+      margin-right: 6px;
+      border-radius: 999px;
+      border: 1px solid rgba(0, 113, 227, 0.22);
+      background: rgba(0, 113, 227, 0.08);
+      line-height: 1;
+      font-size: 12px;
+    }}
+
+    .memory-brief-details .memory-card-facts {{
+      margin-top: 10px;
+      gap: 10px;
+    }}
+
+    .memory-brief-details .memory-card-value {{
+      flex-wrap: wrap;
+      overflow: visible;
+    }}
+
+    .native-brief-raw[open] summary::before {{
+      content: "−";
+    }}
+
+    .native-brief-raw p {{
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.6;
     }}
 
     .memory-type-group {{
-      grid-column: 1 / -1;
+      grid-column: auto;
       display: grid;
       gap: 12px;
       min-width: 0;
     }}
 
     .memory-type-group + .memory-type-group {{
-      margin-top: 4px;
-      padding-top: 14px;
-      border-top: 1px solid var(--line);
+      margin-top: 0;
+      padding-top: 0;
+      border-top: 0;
+    }}
+
+    .memory-type-group .native-brief-grid,
+    .memory-type-group .native-brief-grid.content-more-grid {{
+      grid-template-columns: repeat(2, minmax(0, 1fr));
     }}
 
     .memory-type-head {{
@@ -13384,7 +14213,7 @@ def build_html(data):
 
     .memory-stack .memory-grid,
     .memory-stack .memory-grid.content-more-grid {{
-      grid-template-columns: repeat(4, minmax(0, 1fr));
+      grid-template-columns: repeat(2, minmax(0, 1fr));
     }}
 
     .review-card {{
@@ -14156,68 +14985,252 @@ def build_html(data):
     }}
 
     .term-cloud-area {{
+      min-width: 0;
+    }}
+
+    .term-insight-grid {{
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 16px;
+      align-items: stretch;
+    }}
+
+    .term-insight-card {{
+      --term-accent-rgb: 0, 113, 227;
+      position: relative;
+      min-width: 0;
+      overflow: hidden;
+      padding: 18px;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.42), rgba(255, 255, 255, 0.08)),
+        var(--card);
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.44),
+        0 12px 28px rgba(15, 23, 42, 0.07);
+    }}
+
+    .term-insight-card.is-weekly {{
+      --term-accent-rgb: 52, 199, 89;
+    }}
+
+    body[data-theme="dark"] .term-insight-card {{
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0)),
+        var(--card);
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.07),
+        0 16px 30px rgba(0, 0, 0, 0.24);
+    }}
+
+    .term-insight-card::before {{
+      content: "";
+      position: absolute;
+      inset: 0 0 auto;
+      height: 2px;
+      background: linear-gradient(90deg, rgba(var(--term-accent-rgb), 0.76), rgba(var(--term-accent-rgb), 0));
+    }}
+
+    .term-card-head {{
+      position: relative;
       display: flex;
-      flex-direction: column;
+      justify-content: space-between;
+      align-items: flex-start;
       gap: 14px;
     }}
 
-    .term-range-control {{
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
+    .term-card-title-block {{
+      min-width: 0;
     }}
 
-    .term-range-button {{
-      border: 1px solid var(--line-strong);
-      border-radius: 999px;
-      background: var(--control);
+    .term-card-kicker {{
       color: var(--muted);
-      padding: 8px 12px;
-      font: inherit;
       font-size: 12px;
-      font-weight: 700;
-      cursor: pointer;
+      font-weight: 760;
+      line-height: 1.2;
     }}
 
-    .term-range-button.is-active {{
-      background: var(--accent-soft-strong);
-      border-color: rgba(0, 113, 227, 0.28);
-      color: var(--teal);
+    .term-card-head h3 {{
+      margin: 5px 0 0;
+      color: var(--ink);
+      font-size: 22px;
+      font-weight: 780;
+      line-height: 1.15;
+      letter-spacing: 0;
+      overflow-wrap: anywhere;
     }}
 
-    .term-cloud-view[hidden] {{
-      display: none;
+    .term-card-count {{
+      flex: 0 0 auto;
+      min-width: 54px;
+      padding: 8px 9px;
+      border: 1px solid rgba(var(--term-accent-rgb), 0.16);
+      border-radius: 13px;
+      background: rgba(var(--term-accent-rgb), 0.08);
+      text-align: center;
     }}
 
-    .term-cloud-meta {{
-      margin: 0 0 12px;
-      color: var(--muted);
-      font-size: 13px;
-    }}
-
-    .term-cloud {{
-      display: flex;
-      flex-wrap: wrap;
-      gap: 12px;
-      align-items: flex-start;
-    }}
-
-    .term-chip {{
-      display: inline-flex;
-      align-items: baseline;
-      gap: 8px;
-      padding: 10px 14px;
-      border-radius: 999px;
-      background: var(--control);
-      border: 1px solid var(--line-strong);
+    .term-card-count strong {{
+      display: block;
+      color: var(--ink);
+      font-size: 22px;
+      font-weight: 780;
       line-height: 1;
+      font-variant-numeric: tabular-nums;
+    }}
+
+    .term-card-count span {{
+      display: block;
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 700;
+      line-height: 1;
+    }}
+
+    .term-rank-list {{
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      margin-top: 18px;
+    }}
+
+    .term-rank-item {{
+      --term-level: 0.1;
+      min-width: 0;
+      display: grid;
+      grid-template-columns: 34px minmax(0, 1fr) minmax(42px, auto);
+      align-items: start;
+      gap: 10px;
+    }}
+
+    .term-rank-item.is-primary {{
+      background: transparent;
+    }}
+
+    .term-rank-index {{
+      padding-top: 1px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 760;
+      line-height: 1.35;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: 0;
+    }}
+
+    .term-rank-item.is-primary .term-rank-index {{
+      color: rgba(var(--term-accent-rgb), 0.88);
+    }}
+
+    .term-rank-copy {{
+      min-width: 0;
+      display: grid;
+      gap: 8px;
+    }}
+
+    .term-rank-label {{
+      min-width: 0;
+      max-width: 100%;
+      color: var(--ink);
+      font-size: 14px;
+      font-weight: 700;
+      line-height: 1.35;
+      letter-spacing: 0;
+      overflow-wrap: anywhere;
+    }}
+
+    .term-rank-item.is-primary .term-rank-label {{
+      font-size: 14px;
+      font-weight: 760;
+      line-height: 1.35;
+    }}
+
+    .term-rank-track {{
+      position: relative;
+      display: block;
+      width: 100%;
+      height: 8px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: var(--track);
+    }}
+
+    .term-rank-track::after {{
+      content: "";
+      position: absolute;
+      inset: 0;
+      border-radius: inherit;
+      background: linear-gradient(90deg, rgba(var(--term-accent-rgb), 0.98), rgba(90, 200, 250, 0.88));
+      box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.06);
+      transform: scaleX(var(--term-level));
+      transform-origin: left center;
+    }}
+
+    .term-rank-value {{
+      display: inline-flex;
+      align-items: center;
+      justify-content: flex-end;
+      min-width: 42px;
+      padding-top: 1px;
+      color: var(--ink);
+      font-size: 14px;
+      font-weight: 780;
+      line-height: 1.35;
+      font-variant-numeric: tabular-nums;
+    }}
+
+    body[data-theme="dark"] .term-rank-value {{
       color: var(--ink);
     }}
 
-    .term-chip em {{
-      font-style: normal;
-      font-size: 0.7em;
+    .term-stat-row {{
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+      margin-top: 12px;
+    }}
+
+    .term-stat-pill {{
+      min-width: 0;
+      padding: 9px 10px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: var(--control);
+    }}
+
+    .term-stat-pill span {{
+      display: block;
       color: var(--muted);
+      font-size: 11px;
+      font-weight: 700;
+      line-height: 1.15;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }}
+
+    .term-stat-pill strong {{
+      display: block;
+      margin-top: 5px;
+      color: var(--ink);
+      font-size: 18px;
+      font-weight: 780;
+      line-height: 1;
+      font-variant-numeric: tabular-nums;
+    }}
+
+    .term-source-line {{
+      margin-top: 14px;
+      padding-top: 12px;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.35;
+    }}
+
+    .term-empty {{
+      margin: 14px 0 0;
     }}
 
     .highlight-list {{
@@ -14270,7 +15283,8 @@ def build_html(data):
 
     @media (max-width: 1784px) {{
       .app-shell {{
-        width: min(1280px, calc(100% - 304px));
+        width: min(1280px, calc(100vw - 304px));
+        max-width: calc(100vw - 304px);
         margin-left: 264px;
         margin-right: 24px;
       }}
@@ -14292,7 +15306,7 @@ def build_html(data):
       }}
 
       .side-nav-link {{
-        grid-template-columns: minmax(0, 1fr);
+        display: inline-flex;
         justify-items: start;
         padding: 9px 9px 9px 13px;
         border-radius: 11px;
@@ -14327,27 +15341,40 @@ def build_html(data):
 
     @media (max-width: 1120px) {{
       .app-shell {{
-        width: min(1280px, calc(100% - 28px));
+        width: min(1280px, calc(100vw - 28px));
+        max-width: calc(100vw - 28px);
         margin: 0 auto;
-        padding-top: 14px;
+        padding: 24px 0 calc(128px + env(safe-area-inset-bottom));
       }}
 
       .side-nav {{
-        position: sticky;
-        top: 0;
-        left: auto;
-        right: auto;
-        width: min(1280px, calc(100% - 28px));
+        position: fixed;
+        top: auto;
+        bottom: max(12px, env(safe-area-inset-bottom));
+        left: 14px;
+        right: 14px;
+        width: auto;
         max-height: none;
-        margin: 14px auto -6px;
+        margin: 0;
         padding: 10px;
         border-radius: 18px;
         overflow-x: auto;
+        overflow-y: hidden;
+        z-index: 90;
+        -webkit-overflow-scrolling: touch;
+        overscroll-behavior-x: contain;
+        box-shadow: 0 18px 48px rgba(0, 0, 0, 0.22);
+      }}
+
+      .side-nav-title {{
+        display: none;
       }}
 
       .side-nav-list {{
         display: flex;
+        align-items: center;
         gap: 6px;
+        min-width: max-content;
         white-space: nowrap;
       }}
 
@@ -14357,13 +15384,19 @@ def build_html(data):
 
       .side-nav-link {{
         flex: 0 0 auto;
-        grid-template-columns: auto;
+        display: inline-flex;
         justify-items: start;
+        width: auto;
+        inline-size: auto;
+        max-width: none;
+        max-inline-size: none;
         padding: 9px 10px;
       }}
 
       .side-nav-link.is-child {{
         margin-left: 0;
+        max-width: none;
+        max-inline-size: none;
         font-size: 12px;
       }}
 
@@ -14383,10 +15416,21 @@ def build_html(data):
         opacity: 1;
         pointer-events: auto;
         transform: none;
+        white-space: nowrap;
       }}
 
       .page [id] {{
-        scroll-margin-top: 82px;
+        scroll-margin-top: 24px;
+        scroll-margin-bottom: 128px;
+      }}
+
+      .hero-topline {{
+        flex-direction: column;
+      }}
+
+      .hero-actions {{
+        width: 100%;
+        justify-content: flex-start;
       }}
     }}
 
@@ -14416,6 +15460,15 @@ def build_html(data):
         grid-template-columns: repeat(2, minmax(0, 1fr));
       }}
 
+      .native-brief-grid,
+      .native-brief-grid.content-more-grid {{
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }}
+
+      .memory-group-list {{
+        grid-template-columns: 1fr;
+      }}
+
       .review-panel-grid,
       .review-panel-grid.content-more-grid {{
         grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -14433,12 +15486,16 @@ def build_html(data):
 
     @media (max-width: 720px) {{
       .app-shell {{
-        width: min(1280px, calc(100% - 28px));
-        padding: 20px 0 40px;
+        width: min(1280px, calc(100vw - 28px));
+        max-width: calc(100vw - 28px);
+        padding: 20px 0 calc(126px + env(safe-area-inset-bottom));
       }}
 
       .side-nav {{
-        width: min(1280px, calc(100% - 28px));
+        bottom: max(10px, env(safe-area-inset-bottom));
+        left: 14px;
+        right: 14px;
+        width: auto;
       }}
 
       .hero {{
@@ -14449,21 +15506,39 @@ def build_html(data):
         font-size: 30px;
       }}
 
-      .hero-topline {{
-        flex-direction: column;
-      }}
-
-      .hero-actions {{
-        width: 100%;
-        justify-content: flex-start;
-      }}
-
       .panel {{
         padding: 18px;
       }}
 
       .panel h2 {{
         font-size: 21px;
+      }}
+
+      .term-insight-grid {{
+        grid-template-columns: 1fr;
+      }}
+
+      .term-insight-card {{
+        padding: 16px;
+        border-radius: 18px;
+      }}
+
+      .term-card-head h3 {{
+        font-size: 20px;
+      }}
+
+      .term-rank-list {{
+        margin-top: 14px;
+        gap: 12px;
+      }}
+
+      .term-rank-item {{
+        grid-template-columns: 30px minmax(0, 1fr) minmax(40px, auto);
+        gap: 8px;
+      }}
+
+      .term-rank-item.is-primary .term-rank-label {{
+        font-size: 14px;
       }}
 
       .nightly-panel {{
@@ -14597,6 +15672,20 @@ def build_html(data):
         grid-template-columns: 1fr;
       }}
 
+      .native-brief-grid,
+      .native-brief-grid.content-more-grid {{
+        grid-template-columns: 1fr;
+      }}
+
+      .memory-type-group .native-brief-grid,
+      .memory-type-group .native-brief-grid.content-more-grid {{
+        grid-template-columns: 1fr;
+      }}
+
+      .memory-group-list {{
+        grid-template-columns: 1fr;
+      }}
+
       .review-panel-grid,
       .review-panel-grid.content-more-grid {{
         grid-template-columns: 1fr;
@@ -14618,6 +15707,72 @@ def build_html(data):
         justify-content: flex-start;
       }}
     }}
+
+    .openrelix-update-pill {{
+      position: fixed;
+      right: 16px;
+      bottom: 16px;
+      z-index: 9999;
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 7px 8px 7px 14px;
+      border-radius: 999px;
+      max-width: calc(100vw - 32px);
+      background: var(--elevated, #ffffff);
+      color: var(--ink, #1d1d1f);
+      border: 1px solid var(--line-strong, rgba(0, 0, 0, 0.16));
+      box-shadow: var(--shadow, 0 12px 28px rgba(0, 0, 0, 0.14));
+      font: 13px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "PingFang SC", "Microsoft YaHei", sans-serif;
+      transform: translateY(8px);
+      opacity: 0;
+      transition: opacity .25s ease, transform .25s ease;
+      backdrop-filter: blur(18px) saturate(140%);
+      -webkit-backdrop-filter: blur(18px) saturate(140%);
+    }}
+    .openrelix-update-pill.is-visible {{ transform: none; opacity: 1; }}
+    .openrelix-update-pill__dot {{
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: var(--green, #34c759);
+      flex-shrink: 0;
+      box-shadow: 0 0 0 3px rgba(52, 199, 89, 0.18);
+    }}
+    .openrelix-update-pill__label {{ white-space: nowrap; font-weight: 500; }}
+    .openrelix-update-pill__hint {{ color: var(--muted, rgba(29, 29, 31, 0.6)); margin-left: 4px; font-weight: 400; }}
+    .openrelix-update-pill__button {{
+      appearance: none;
+      border: 0;
+      background: var(--teal, #0071e3);
+      color: #ffffff;
+      font: inherit;
+      font-weight: 500;
+      padding: 6px 14px;
+      border-radius: 999px;
+      cursor: pointer;
+      white-space: nowrap;
+    }}
+    .openrelix-update-pill__button[disabled] {{ opacity: 0.65; cursor: default; }}
+    .openrelix-update-pill__button:hover:not([disabled]) {{ filter: brightness(1.08); }}
+    .openrelix-update-pill__close {{
+      appearance: none;
+      border: 0;
+      background: transparent;
+      color: var(--muted, rgba(29, 29, 31, 0.55));
+      font-size: 16px;
+      line-height: 1;
+      cursor: pointer;
+      padding: 4px 6px;
+      margin-right: 2px;
+    }}
+    .openrelix-update-pill__close:hover {{ color: var(--ink, #1d1d1f); }}
+    @media (max-width: 520px) {{
+      .openrelix-update-pill {{ left: 12px; right: 12px; bottom: 12px; max-width: none; flex-wrap: wrap; }}
+      .openrelix-update-pill__label {{ white-space: normal; flex: 1 1 auto; }}
+      .openrelix-update-pill__button {{ flex: 1 1 100%; text-align: center; }}
+    }}
   </style>
 </head>
 <body data-language="{default_language}" data-theme-choice="system">
@@ -14629,6 +15784,7 @@ def build_html(data):
         <div class="hero-title-block">
           <p class="eyebrow">{hero_eyebrow}</p>
           <div class="hero-heading-row">
+            {hero_mark}
             <h1>{hero_title}</h1>
             <span class="hero-brand-line">{hero_brand_line}</span>
           </div>
@@ -14671,14 +15827,14 @@ def build_html(data):
       <section class="grid memory-stack">
         <section class="panel" id="personal-memory-durable-section">
           {durable_memory_header}
-          <div class="review-grid memory-grid">
+          <div class="memory-group-list">
             {durable_memory_cards}
           </div>
         </section>
 
         <section class="panel" id="personal-memory-session-section">
           {session_memory_header}
-          <div class="review-grid memory-grid">
+          <div class="memory-group-list">
             {session_memory_cards}
           </div>
         </section>
@@ -14686,7 +15842,7 @@ def build_html(data):
 
       <section class="panel" id="personal-memory-low-priority-section">
         {low_priority_memory_header}
-        <div class="review-grid memory-grid">
+        <div class="memory-group-list">
           {low_priority_memory_cards}
         </div>
       </section>
@@ -14697,28 +15853,28 @@ def build_html(data):
       {codex_native_memory_family_header}
       <section class="panel" id="codex-native-topic-section">
         {codex_native_topic_header}
-        <div class="review-grid memory-grid">
+        <div class="native-brief-grid memory-grid">
           {codex_native_topic_cards}
         </div>
       </section>
 
       <section class="panel" id="codex-native-preference-section">
         {codex_native_preference_header}
-        <div class="review-grid memory-grid">
+        <div class="native-brief-grid">
           {codex_native_preference_cards}
         </div>
       </section>
 
       <section class="panel" id="codex-native-tip-section">
         {codex_native_tip_header}
-        <div class="review-grid memory-grid">
+        <div class="native-brief-grid">
           {codex_native_tip_cards}
         </div>
       </section>
 
       <section class="panel" id="codex-native-task-group-section">
         {codex_native_task_group_header}
-        <div class="review-grid memory-grid">
+        <div class="native-brief-grid">
           {codex_native_task_group_cards}
         </div>
       </section>
@@ -15511,6 +16667,25 @@ def build_html(data):
         const targets = elements.sideNavLinks.map(function (link) {{
           return document.getElementById(link.getAttribute("data-nav-target") || "");
         }}).filter(Boolean);
+        function getHashTargetId() {{
+          const rawHash = window.location.hash || "";
+          if (!rawHash || rawHash.length < 2) {{
+            return "";
+          }}
+          try {{
+            return decodeURIComponent(rawHash.slice(1));
+          }} catch (error) {{
+            return rawHash.slice(1);
+          }}
+        }}
+        function syncActiveFromHash() {{
+          const targetId = getHashTargetId();
+          if (!targetId || !document.getElementById(targetId)) {{
+            return false;
+          }}
+          setActiveSideNav(targetId);
+          return true;
+        }}
         function updateActiveTarget() {{
           if (!targets.length) {{
             return;
@@ -15525,14 +16700,73 @@ def build_html(data):
           setActiveSideNav(activeTarget.id);
         }}
         elements.sideNavLinks.forEach(function (link) {{
-          link.addEventListener("click", function () {{
-            setActiveSideNav(link.getAttribute("data-nav-target") || "");
-            window.setTimeout(updateActiveTarget, 120);
+          link.addEventListener("click", function (event) {{
+            const targetId = link.getAttribute("data-nav-target") || "";
+            const target = document.getElementById(targetId);
+            if (!target) {{
+              return;
+            }}
+            event.preventDefault();
+            setActiveSideNav(targetId);
+            target.scrollIntoView({{ behavior: "smooth", block: "start" }});
+            try {{
+              window.history.replaceState(null, "", "#" + targetId);
+            }} catch (error) {{
+              window.location.hash = targetId;
+            }}
+            window.setTimeout(function () {{
+              setActiveSideNav(targetId);
+              updateActiveTarget();
+            }}, 220);
           }});
         }});
         window.addEventListener("scroll", updateActiveTarget, {{ passive: true }});
         window.addEventListener("resize", updateActiveTarget);
-        updateActiveTarget();
+        window.addEventListener("hashchange", function () {{
+          syncActiveFromHash();
+          window.setTimeout(updateActiveTarget, 220);
+        }});
+        if (!syncActiveFromHash()) {{
+          updateActiveTarget();
+        }}
+      }}
+
+      function resetPageHorizontalScroll() {{
+        const currentX = window.scrollX || document.documentElement.scrollLeft || document.body.scrollLeft || 0;
+        if (!currentX) {{
+          return;
+        }}
+        const currentY = window.scrollY || document.documentElement.scrollTop || document.body.scrollTop || 0;
+        window.scrollTo(0, currentY);
+        document.documentElement.scrollLeft = 0;
+        document.body.scrollLeft = 0;
+      }}
+
+      function wireHorizontalScrollLock() {{
+        let resetQueued = false;
+        function queueReset() {{
+          if (resetQueued) {{
+            return;
+          }}
+          resetQueued = true;
+          window.requestAnimationFrame(function () {{
+            resetQueued = false;
+            resetPageHorizontalScroll();
+          }});
+        }}
+        resetPageHorizontalScroll();
+        window.setTimeout(resetPageHorizontalScroll, 0);
+        window.setTimeout(resetPageHorizontalScroll, 160);
+        window.addEventListener("resize", queueReset);
+        window.addEventListener("hashchange", function () {{
+          window.setTimeout(resetPageHorizontalScroll, 0);
+        }});
+        window.addEventListener("scroll", function () {{
+          const currentX = window.scrollX || document.documentElement.scrollLeft || document.body.scrollLeft || 0;
+          if (currentX) {{
+            queueReset();
+          }}
+        }}, {{ passive: true }});
       }}
 
       function wireContentMoreButtons() {{
@@ -15569,26 +16803,6 @@ def build_html(data):
             }});
             views.forEach(function (view) {{
               const isActive = view.getAttribute("data-context-view") === selectedDays;
-              view.hidden = !isActive;
-              view.classList.toggle("is-active", isActive);
-            }});
-          }});
-        }});
-      }}
-
-      function wireSummaryTermRangeButtons() {{
-        const buttons = Array.from(document.querySelectorAll(".term-range-button"));
-        const views = Array.from(document.querySelectorAll("[data-term-view]"));
-        buttons.forEach(function (button) {{
-          button.addEventListener("click", function () {{
-            const selectedDays = button.getAttribute("data-term-days");
-            buttons.forEach(function (candidate) {{
-              const isActive = candidate.getAttribute("data-term-days") === selectedDays;
-              candidate.classList.toggle("is-active", isActive);
-              candidate.setAttribute("aria-pressed", isActive ? "true" : "false");
-            }});
-            views.forEach(function (view) {{
-              const isActive = view.getAttribute("data-term-view") === selectedDays;
               view.hidden = !isActive;
               view.classList.toggle("is-active", isActive);
             }});
@@ -16211,13 +17425,13 @@ def build_html(data):
 
       wireContentMoreButtons();
       wireProjectContextRangeButtons();
-      wireSummaryTermRangeButtons();
       wireThemeButtons();
       wireLanguageButtons();
       wireNightlyDateInput();
       wireWindowOverviewDateInput();
       wireBackfillCopyButtons();
       wireSideNav();
+      wireHorizontalScrollLock();
       applyTheme(readStoredTheme(), false);
       applyLanguage(defaultLanguage);
       if (elements.refreshButton) {{
@@ -16240,14 +17454,287 @@ def build_html(data):
       }}, config.autoReloadMs);
     }})();
   </script>
+  <script>
+    (function () {{
+      try {{
+        var meta = document.querySelector('meta[name="openrelix:version"]');
+        if (!meta) return;
+        var current = String(meta.content || "").trim();
+        if (!current) return;
+        var pkg = (meta.getAttribute("data-pkg") || "openrelix").trim() || "openrelix";
+        var updateEndpoint = (meta.getAttribute("data-update-endpoint") || "").trim();
+        var statusEndpoint = (meta.getAttribute("data-update-status-endpoint") || "").trim();
+        var updateToken = (meta.getAttribute("data-update-token") || "").trim();
+        var DISMISS_KEY = "openrelix-update-dismissed";
+        var LAST_CHECK_KEY = "openrelix-update-last-check";
+        var CHECK_INTERVAL = 6 * 60 * 60 * 1000;
+        var COOLDOWN = 30 * 60 * 1000;
+        var searchParams = new URLSearchParams(window.location.search || "");
+        var hashParams = new URLSearchParams(String(window.location.hash || "").replace(/^#/, ""));
+        var demoLatest = String(
+          searchParams.get("openrelix-update-demo") ||
+          hashParams.get("openrelix-update-demo") ||
+          ""
+        ).trim();
+        var demoMode = !!demoLatest;
+        if (demoLatest === "1" || demoLatest.toLowerCase() === "true") {{
+          demoLatest = "9.9.9";
+        }}
+
+        function semverKey(v) {{
+          var parts = String(v || "").split(/[^0-9]+/).filter(Boolean).map(function (n) {{ return parseInt(n, 10) || 0; }});
+          while (parts.length < 3) parts.push(0);
+          return parts.slice(0, 3);
+        }}
+        function isNewer(a, b) {{
+          var ak = semverKey(a), bk = semverKey(b);
+          for (var i = 0; i < 3; i++) {{ if (ak[i] !== bk[i]) return ak[i] > bk[i]; }}
+          return false;
+        }}
+        function ls(key, value) {{
+          try {{
+            if (value === undefined) return window.localStorage.getItem(key) || "";
+            window.localStorage.setItem(key, String(value));
+          }} catch (_) {{ return ""; }}
+        }}
+        function detectLanguage() {{
+          var b = document.body, d = document.documentElement;
+          if (b && b.dataset && b.dataset.language === "en") return "en";
+          if (d && d.dataset && d.dataset.language === "en") return "en";
+          var lang = (d && d.lang) || (navigator.language || "");
+          return /^en\b/i.test(lang) ? "en" : "zh";
+        }}
+        function copyText(text) {{
+          try {{
+            if (navigator.clipboard && navigator.clipboard.writeText) {{
+              navigator.clipboard.writeText(text);
+              return true;
+            }}
+          }} catch (_) {{}}
+          try {{
+            var ta = document.createElement("textarea");
+            ta.value = text;
+            ta.setAttribute("readonly", "");
+            ta.style.position = "fixed";
+            ta.style.opacity = "0";
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand("copy");
+            document.body.removeChild(ta);
+            return true;
+          }} catch (_) {{ return false; }}
+        }}
+        var STR = {{
+          zh: {{
+            label: function (latest) {{ return "OpenRelix " + latest; }},
+            hint: "可更新 · 当前 " + current,
+            update: "立即更新",
+            running: "更新中…",
+            done: "已更新 · 重新载入",
+            copy: "复制命令",
+            copied: "已复制到剪贴板",
+            close: "关闭"
+          }},
+          en: {{
+            label: function (latest) {{ return "OpenRelix " + latest; }},
+            hint: "available · on " + current,
+            update: "Update now",
+            running: "Updating…",
+            done: "Updated · Reload",
+            copy: "Copy command",
+            copied: "Copied",
+            close: "Dismiss"
+          }}
+        }};
+
+        function buildPill(latest) {{
+          var lang = detectLanguage();
+          var s = STR[lang];
+          var cmd = "npm update -g " + pkg;
+          var pill = document.createElement("div");
+          pill.id = "openrelix-update-pill";
+          pill.className = "openrelix-update-pill";
+          pill.setAttribute("role", "status");
+          pill.setAttribute("aria-live", "polite");
+          pill.dataset.latest = latest;
+
+          var dot = document.createElement("span");
+          dot.className = "openrelix-update-pill__dot";
+          pill.appendChild(dot);
+
+          var label = document.createElement("span");
+          label.className = "openrelix-update-pill__label";
+          var ver = document.createElement("span");
+          ver.textContent = s.label(latest);
+          label.appendChild(ver);
+          var hint = document.createElement("span");
+          hint.className = "openrelix-update-pill__hint";
+          hint.textContent = " " + s.hint;
+          label.appendChild(hint);
+          pill.appendChild(label);
+
+          var btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "openrelix-update-pill__button";
+          btn.textContent = s.update;
+          pill.appendChild(btn);
+
+          var close = document.createElement("button");
+          close.type = "button";
+          close.className = "openrelix-update-pill__close";
+          close.setAttribute("aria-label", s.close);
+          close.textContent = "×";
+          close.addEventListener("click", function () {{ dismiss(); }});
+          pill.appendChild(close);
+
+          var mode = "idle";
+          var pollTimer = null;
+
+          function setBtn(text, disabled) {{
+            btn.textContent = text;
+            btn.disabled = !!disabled;
+          }}
+
+          function flashCopied() {{
+            var prev = btn.textContent;
+            btn.textContent = s.copied;
+            setTimeout(function () {{ if (mode !== "running") btn.textContent = prev; }}, 1600);
+          }}
+
+          function poll() {{
+            if (!statusEndpoint) return;
+            pollTimer = setInterval(function () {{
+              fetch(statusEndpoint, {{ cache: "no-cache" }})
+                .then(function (r) {{ return r && r.ok ? r.json() : null; }})
+                .then(function (data) {{
+                  if (!data) return;
+                  if (data.status === "completed") {{
+                    clearInterval(pollTimer); pollTimer = null;
+                    mode = "done"; setBtn(s.done, false);
+                  }} else if (data.status === "failed") {{
+                    clearInterval(pollTimer); pollTimer = null;
+                    mode = "copy_fallback"; setBtn(s.copy, false);
+                  }}
+                }})
+                .catch(function () {{}});
+            }}, 2500);
+          }}
+
+          function startServerUpdate() {{
+            mode = "running"; setBtn(s.running, true);
+            var headers = {{ "Content-Type": "application/json" }};
+            if (updateToken) {{ headers["X-OpenRelix-Token"] = updateToken; }}
+            fetch(updateEndpoint, {{
+              method: "POST",
+              headers: headers,
+              body: JSON.stringify({{ source: "panel" }})
+            }})
+              .then(function (r) {{ if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); }})
+              .then(function (data) {{
+                if (!data) {{ throw new Error("empty"); }}
+                if (data.status === "completed") {{ mode = "done"; setBtn(s.done, false); return; }}
+                if (data.status === "failed") {{ mode = "copy_fallback"; setBtn(s.copy, false); return; }}
+                poll();
+              }})
+              .catch(function () {{ mode = "copy_fallback"; setBtn(s.copy, false); }});
+          }}
+
+          btn.addEventListener("click", function () {{
+            if (mode === "running") return;
+            if (mode === "done") {{ window.location.reload(); return; }}
+            if (mode === "copy_fallback") {{
+              copyText(cmd);
+              flashCopied();
+              return;
+            }}
+            if (updateEndpoint) {{
+              startServerUpdate();
+            }} else {{
+              copyText(cmd);
+              flashCopied();
+            }}
+          }});
+
+          function dismiss() {{
+            if (pollTimer) {{ clearInterval(pollTimer); pollTimer = null; }}
+            ls(DISMISS_KEY, latest);
+            pill.classList.remove("is-visible");
+            setTimeout(function () {{ if (pill.parentNode) pill.parentNode.removeChild(pill); }}, 240);
+          }}
+
+          return pill;
+        }}
+
+        function show(latest, options) {{
+          var force = options && options.force;
+          if (!force && ls(DISMISS_KEY) === latest) return;
+          var existing = document.getElementById("openrelix-update-pill");
+          if (existing) {{
+            if (existing.dataset.latest === latest) return;
+            if (existing.parentNode) existing.parentNode.removeChild(existing);
+          }}
+          var pill = buildPill(latest);
+          document.body.appendChild(pill);
+          requestAnimationFrame(function () {{ pill.classList.add("is-visible"); }});
+        }}
+
+        function check() {{
+          var now = Date.now();
+          var last = Number(ls(LAST_CHECK_KEY) || 0);
+          if (now - last < COOLDOWN) return;
+          ls(LAST_CHECK_KEY, now);
+          var url = "https://registry.npmjs.org/" + encodeURIComponent(pkg) + "/latest";
+          fetch(url, {{ headers: {{ Accept: "application/json" }}, cache: "no-cache" }})
+            .then(function (r) {{ return r && r.ok ? r.json() : null; }})
+            .then(function (data) {{
+              if (!data) return;
+              var latest = String(data.version || "").trim();
+              if (!latest) return;
+              if (isNewer(latest, current)) show(latest);
+            }})
+            .catch(function () {{ /* offline / blocked / silent */ }});
+        }}
+
+        function start() {{
+          if (demoMode && demoLatest) {{
+            show(demoLatest, {{ force: true }});
+            return;
+          }}
+          check();
+          setInterval(check, CHECK_INTERVAL);
+          document.addEventListener("visibilitychange", function () {{
+            if (document.visibilityState === "visible") check();
+          }});
+        }}
+
+        if (document.readyState === "loading") {{
+          document.addEventListener("DOMContentLoaded", start);
+        }} else {{
+          start();
+        }}
+      }} catch (_) {{ /* never break the page */ }}
+    }})();
+  </script>
 </body>
 </html>
 """.format(
         default_language=language,
         html_language="en" if language == "en" else "zh-CN",
         document_title=escape(localized("OpenRelix 工作台", "OpenRelix Workbench", language)),
+        current_version=escape(read_panel_package_version(), quote=True),
+        npm_package=escape("openrelix", quote=True),
+        update_endpoint=escape("http://{}:{}/run-update".format(LIVE_TOKEN_HOST, LIVE_TOKEN_PORT), quote=True),
+        update_status_endpoint=escape("http://{}:{}/update-status".format(LIVE_TOKEN_HOST, LIVE_TOKEN_PORT), quote=True),
+        update_token=escape(read_or_create_update_token(), quote=True),
         generated_at=escape(data["generated_at"]),
         hero_eyebrow=panel_language_text_html("OpenRelix"),
+        hero_mark=(
+            '<span class="hero-mark" aria-hidden="true"><img src="{}" alt=""></span>'.format(
+                escape(BRAND_ICON_DATA_URI, quote=True)
+            )
+            if BRAND_ICON_DATA_URI
+            else ""
+        ),
         hero_title=panel_language_text_html("OpenRelix 工作台"),
         hero_brand_line=panel_language_variant_html(
             escape("你的专属AI记忆珍藏"),
