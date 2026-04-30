@@ -1262,6 +1262,42 @@ class NightlyLogicTests(unittest.TestCase):
         self.assertEqual(payload["missing_keys"], ["tip:two"])
         self.assertEqual(payload["items"]["preference:one"]["title_zh"], "直接改动")
 
+    def test_codex_native_display_cache_reuses_existing_items(self):
+        entries = [
+            {
+                "key": "preference:one",
+                "kind": "preference",
+                "source_label": "User preferences",
+                "source_title": "Prefer direct edits",
+                "source_body": "Prefer direct edits.",
+            }
+        ]
+        existing_payload = {
+            "version": 1,
+            "items": {
+                "preference:one": {
+                    "title_zh": "直接改动",
+                    "body_zh": "目标明确时直接给出改动。",
+                }
+            },
+        }
+
+        missing_entries = build_codex_native_display_cache.entries_missing_display(
+            entries,
+            existing_payload,
+        )
+        payload = build_codex_native_display_cache.merge_display_payload(
+            entries,
+            existing_payload,
+            {},
+            "/tmp/memory_summary.md",
+        )
+
+        self.assertEqual(missing_entries, [])
+        self.assertEqual(payload["status"], "ok")
+        self.assertEqual(payload["missing_keys"], [])
+        self.assertEqual(payload["items"]["preference:one"]["title_zh"], "直接改动")
+
     def test_codex_native_memory_topic_cache_key_matches_compacted_title(self):
         long_title = "OpenRelix release validation package website checklist " * 4
         body = "Sample release validation note."
@@ -4874,6 +4910,70 @@ scope: Release checklist, package manifest, and public website validation.
             ["2026-04-28", "preliminary", "--learn-window-days", "7", "--skip-if-unchanged"],
         )
 
+    def test_refresh_overview_native_display_polish_defaults_for_chinese_integrated_mode(self):
+        with TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            scripts_dir = root / "scripts"
+            scripts_dir.mkdir(parents=True)
+            refresh_script = scripts_dir / "refresh_overview.sh"
+            marker_path = root / "native-display-polish-called"
+            refresh_script.write_text(
+                (ROOT / "scripts" / "refresh_overview.sh").read_text(encoding="utf-8"),
+                encoding="utf-8",
+            )
+            (scripts_dir / "asset_runtime.py").write_text(
+                "\n".join(
+                    [
+                        "import os",
+                        "def get_memory_mode(*args, **kwargs):",
+                        "    return os.environ.get('OPENRELIX_TEST_MEMORY_MODE', 'integrated')",
+                        "def get_runtime_language(*args, **kwargs):",
+                        "    return os.environ.get('OPENRELIX_TEST_LANGUAGE', 'zh')",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            (scripts_dir / "collect_codex_activity.py").write_text("", encoding="utf-8")
+            (scripts_dir / "build_overview.py").write_text("", encoding="utf-8")
+            (scripts_dir / "build_codex_memory_summary.py").write_text("", encoding="utf-8")
+            (scripts_dir / "build_codex_native_display_cache.py").write_text(
+                "\n".join(
+                    [
+                        "import os",
+                        "from pathlib import Path",
+                        "Path(os.environ['OPENRELIX_TEST_NATIVE_DISPLAY_MARKER']).write_text('called', encoding='utf-8')",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            env = dict(os.environ)
+            env["OPENRELIX_TEST_NATIVE_DISPLAY_MARKER"] = str(marker_path)
+            env["OPENRELIX_TEST_LANGUAGE"] = "zh"
+            env["OPENRELIX_TEST_MEMORY_MODE"] = "integrated"
+            env.pop("OPENRELIX_ENABLE_NATIVE_DISPLAY_POLISH", None)
+
+            default_result = subprocess.run(
+                ["/bin/zsh", str(refresh_script)],
+                cwd=str(root),
+                env=env,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(default_result.returncode, 0, default_result.stderr)
+            self.assertEqual(marker_path.read_text(encoding="utf-8"), "called")
+
+            marker_path.unlink()
+            env["OPENRELIX_ENABLE_NATIVE_DISPLAY_POLISH"] = "0"
+            disabled_result = subprocess.run(
+                ["/bin/zsh", str(refresh_script)],
+                cwd=str(root),
+                env=env,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(disabled_result.returncode, 0, disabled_result.stderr)
+            self.assertFalse(marker_path.exists())
+
     def test_nightly_pipeline_returns_nonzero_when_latest_model_run_failed(self):
         with TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -4940,7 +5040,7 @@ scope: Release checklist, package manifest, and public website validation.
         self.assertIn("model summarization failed", result.stderr)
         self.assertIn("login required", result.stderr)
 
-    def test_nightly_pipeline_native_display_polish_requires_explicit_opt_in(self):
+    def test_nightly_pipeline_native_display_polish_defaults_for_chinese_integrated_mode(self):
         with TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             scripts_dir = root / "scripts"
@@ -4963,6 +5063,8 @@ scope: Release checklist, package manifest, and public website validation.
                         "    return RuntimePaths()",
                         "def get_memory_mode(*args, **kwargs):",
                         "    return os.environ.get('OPENRELIX_TEST_MEMORY_MODE', 'integrated')",
+                        "def get_runtime_language(*args, **kwargs):",
+                        "    return os.environ.get('OPENRELIX_TEST_LANGUAGE', 'zh')",
                     ]
                 ),
                 encoding="utf-8",
@@ -5005,6 +5107,8 @@ scope: Release checklist, package manifest, and public website validation.
             env["OPENRELIX_TEST_CONSOLIDATED_DAILY_DIR"] = str(consolidated_daily_dir)
             env["OPENRELIX_TEST_NATIVE_DISPLAY_MARKER"] = str(marker_path)
             env.pop("OPENRELIX_ENABLE_NATIVE_DISPLAY_POLISH", None)
+            env["OPENRELIX_TEST_LANGUAGE"] = "zh"
+            env["OPENRELIX_TEST_MEMORY_MODE"] = "integrated"
 
             default_result = subprocess.run(
                 ["/bin/zsh", str(pipeline_script), "2026-04-28", "manual"],
@@ -5014,20 +5118,21 @@ scope: Release checklist, package manifest, and public website validation.
                 text=True,
             )
             self.assertEqual(default_result.returncode, 0, default_result.stderr)
-            self.assertFalse(marker_path.exists())
+            self.assertEqual(marker_path.read_text(encoding="utf-8"), "called")
 
-            env["OPENRELIX_ENABLE_NATIVE_DISPLAY_POLISH"] = "1"
-            opt_in_result = subprocess.run(
+            marker_path.unlink()
+            env["OPENRELIX_ENABLE_NATIVE_DISPLAY_POLISH"] = "0"
+            disabled_result = subprocess.run(
                 ["/bin/zsh", str(pipeline_script), "2026-04-28", "manual"],
                 cwd=str(root),
                 env=env,
                 capture_output=True,
                 text=True,
             )
-            self.assertEqual(opt_in_result.returncode, 0, opt_in_result.stderr)
-            self.assertEqual(marker_path.read_text(encoding="utf-8"), "called")
+            self.assertEqual(disabled_result.returncode, 0, disabled_result.stderr)
+            self.assertFalse(marker_path.exists())
 
-            marker_path.unlink()
+            env["OPENRELIX_ENABLE_NATIVE_DISPLAY_POLISH"] = "1"
             env["OPENRELIX_TEST_MEMORY_MODE"] = "local-only"
             local_only_result = subprocess.run(
                 ["/bin/zsh", str(pipeline_script), "2026-04-28", "manual"],

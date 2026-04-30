@@ -128,7 +128,9 @@ Options:
   --enable-learning-refresh     Make the 30-minute overview refresh call the
                                 Codex adapter and learn memory with a 7-day
                                 window. Implies --enable-background-services.
-  --disable-learning-refresh    Keep the 30-minute overview refresh no-model.
+  --disable-learning-refresh    Keep the 30-minute overview refresh from learning
+                                recent windows. Chinese display polish can still
+                                run unless OPENRELIX_ENABLE_NATIVE_DISPLAY_POLISH=0.
   --learning-refresh-window-days N
                                 Window days for --enable-learning-refresh.
                                 Default: 7.
@@ -1294,7 +1296,7 @@ EOF
       cat <<EOF
 
 后台刷新：
-  overview-refresh 已安装为每 30 分钟刷新一次；当前保持 no-model。如需自动学习刷新，重新安装时加 --enable-learning-refresh。
+  overview-refresh 已安装为每 30 分钟刷新一次；当前不会从最近窗口自动学习。中文展示润色仍会按需维护缓存；如需自动学习刷新，重新安装时加 --enable-learning-refresh。
 EOF
     fi
   fi
@@ -1391,7 +1393,7 @@ EOF
       cat <<EOF
 
 Background refresh:
-  overview-refresh is installed to refresh every 30 minutes in no-model mode. Reinstall with --enable-learning-refresh for automatic learning refresh.
+  overview-refresh is installed to refresh every 30 minutes without learning from recent windows. Chinese display polish still maintains its cache as needed. Reinstall with --enable-learning-refresh for automatic learning refresh.
 EOF
     fi
   fi

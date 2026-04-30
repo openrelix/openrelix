@@ -229,7 +229,7 @@ The integrated profile does this:
    - nightly finalize for the previous day at `00:10`
    - optional npm update check at `09:30` when `--enable-update-check` is passed
 
-Set `OPENRELIX_ENABLE_NATIVE_DISPLAY_POLISH=1` for the nightly/manual pipeline when you want an extra Codex pass to polish Codex-native memory card titles and summaries for display. The generated display cache stays in the local state root.
+For Chinese runtime language, the manual refresh and nightly pipelines automatically maintain a local Codex-native display cache so memory cards get readable Chinese titles and summaries by default. Set `OPENRELIX_ENABLE_NATIVE_DISPLAY_POLISH=0` to keep those pipelines strictly source-text only. The generated display cache stays in the local state root.
 
 When you need an immediate task review inside the active AI coding agent, the current Codex adapter exposes this skill entrypoint:
 
@@ -255,7 +255,7 @@ Recommended after install: the installer can enable automatic learning refresh e
 npx openrelix install --enable-learning-refresh
 ```
 
-This option is intentionally explicit: the default background `overview-refresh` stays no-model, while `--enable-learning-refresh` makes that 30-minute LaunchAgent call the current Codex adapter, learn from recent AI host windows, update this system's local memory and overview, and keep host-context injection bounded. If the global `openrelix` command was not installed, the installer prints a direct `python3 scripts/openrelix.py ...` fallback command with the selected state root and host home.
+This option is intentionally explicit: the default background `overview-refresh` does not learn memory from recent windows, while `--enable-learning-refresh` makes that 30-minute LaunchAgent call the current Codex adapter, learn from recent AI host windows, update this system's local memory and overview, and keep host-context injection bounded. Chinese runtime language may still maintain the small Codex-native display cache described above. If the global `openrelix` command was not installed, the installer prints a direct `python3 scripts/openrelix.py ...` fallback command with the selected state root and host home.
 
 The integrated installer also provides a shell entrypoint:
 

@@ -331,7 +331,7 @@ openrelix core
 openrelix open panel
 ```
 
-推荐安装时加 `--enable-learning-refresh`，让 30 分钟 overview-refresh 自动调用当前 Codex 适配器，用今日窗口和最近 7 天上下文生成本地记忆与 overview；默认后台 `overview-refresh` 不调模型。`openrelix refresh --learn-memory --learn-window-days 7` 仍可用于手动立即跑一次。如果需要完整补齐缺失或非 final 的日报，再使用 `openrelix review --date "$(date +%F)" --learn-window-days 7`。
+推荐安装时加 `--enable-learning-refresh`，让 30 分钟 overview-refresh 自动调用当前 Codex 适配器，用今日窗口和最近 7 天上下文生成本地记忆与 overview；默认后台 `overview-refresh` 不会从最近窗口学习，中文运行语言下只会按需维护 Codex 原生记忆展示缓存。`openrelix refresh --learn-memory --learn-window-days 7` 仍可用于手动立即跑一次。如果需要完整补齐缺失或非 final 的日报，再使用 `openrelix review --date "$(date +%F)" --learn-window-days 7`。
 
 多日回溯检查：
 

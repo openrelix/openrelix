@@ -179,6 +179,63 @@ def empty_payload(memory_summary_path, status="empty", error=""):
     }
 
 
+def normalize_cache_items(raw_items):
+    if isinstance(raw_items, list):
+        raw_items = {
+            item.get("key"): item
+            for item in raw_items
+            if isinstance(item, dict) and item.get("key")
+        }
+    if not isinstance(raw_items, dict):
+        return {}
+
+    items = {}
+    for key, item in raw_items.items():
+        if not isinstance(item, dict):
+            continue
+        title_zh = build_overview.normalize_brand_display_text(item.get("title_zh", ""))
+        body_zh = build_overview.normalize_brand_display_text(item.get("body_zh", ""))
+        if not title_zh and not body_zh:
+            continue
+        items[str(key)] = {
+            "title_zh": title_zh,
+            "body_zh": body_zh,
+        }
+    return items
+
+
+def load_existing_payload(output_path):
+    try:
+        payload = json.loads(Path(output_path).read_text(encoding="utf-8"))
+    except (FileNotFoundError, OSError, json.JSONDecodeError, UnicodeDecodeError):
+        return {"version": 1, "items": {}}
+    if not isinstance(payload, dict) or payload.get("version") != 1:
+        return {"version": 1, "items": {}}
+    payload = dict(payload)
+    payload["items"] = normalize_cache_items(payload.get("items"))
+    return payload
+
+
+def entries_missing_display(entries, existing_payload):
+    existing_items = normalize_cache_items((existing_payload or {}).get("items"))
+    return [entry for entry in entries if entry.get("key") not in existing_items]
+
+
+def merge_display_payload(entries, existing_payload, generated_payload, memory_summary_path):
+    expected_keys = {entry["key"] for entry in entries}
+    items = normalize_cache_items((existing_payload or {}).get("items"))
+    items.update(normalize_cache_items((generated_payload or {}).get("items")))
+    missing_keys = sorted(expected_keys - set(items))
+    return {
+        "version": 1,
+        "language": "zh",
+        "status": "ok" if not missing_keys else "partial",
+        "source": str(memory_summary_path),
+        "items": items,
+        "missing_keys": missing_keys,
+    }
+
+
 def run_codex_display_generation(entries, output_path):
     schema_path = display_schema_path()
     raw_output_path = PATHS.runtime_dir / "codex-native-display-cache.raw.json"
@@ -266,15 +323,24 @@ def main():
         if not entries:
             payload = empty_payload(memory_summary_path)
         else:
+            existing_payload = load_existing_payload(output_path)
+            missing_entries = entries_missing_display(entries, existing_payload)
+            if not missing_entries:
+                payload = merge_display_payload(entries, existing_payload, {}, memory_summary_path)
+                payload["status"] = "ok_cached"
+                if args.print_only:
+                    print(json.dumps(payload, ensure_ascii=False, indent=2))
+                    return 0
+                output_path.parent.mkdir(parents=True, exist_ok=True)
+                atomic_write_json(output_path, payload)
+                return 0
             try:
-                payload = run_codex_display_generation(entries, output_path)
-                payload["source"] = str(memory_summary_path)
+                generated_payload = run_codex_display_generation(missing_entries, output_path)
+                payload = merge_display_payload(entries, existing_payload, generated_payload, memory_summary_path)
             except Exception as exc:
-                payload = empty_payload(
-                    memory_summary_path,
-                    status="model_failed",
-                    error=str(exc),
-                )
+                payload = merge_display_payload(entries, existing_payload, {}, memory_summary_path)
+                payload["status"] = "model_failed"
+                payload["error"] = str(exc)
 
     if args.print_only:
         print(json.dumps(payload, ensure_ascii=False, indent=2))

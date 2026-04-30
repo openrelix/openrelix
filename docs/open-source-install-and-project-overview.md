@@ -435,7 +435,7 @@ openrelix open panel
 npx openrelix install --profile integrated --enable-learning-refresh
 ```
 
-这个选项是显式指令：默认后台 `overview-refresh` 仍不调模型；加 `--enable-learning-refresh` 后，30 分钟 LaunchAgent 会调用当前 Codex 适配器，读取最近 Codex 窗口，更新本系统本地 memory 和 overview。默认 `integrated` 会同步 bounded summary 到 Codex native context，但不会写入原始窗口或完整 registry；如果使用 `--record-memory-only`，则只更新本地 state root。如果没有安装全局 `openrelix` 命令，installer 会打印一条带 `AI_ASSET_STATE_DIR` / `CODEX_HOME` 的 `python3 scripts/openrelix.py ...` fallback 命令。
+这个选项是显式指令：默认后台 `overview-refresh` 不会从最近窗口学习；加 `--enable-learning-refresh` 后，30 分钟 LaunchAgent 会调用当前 Codex 适配器，读取最近 Codex 窗口，更新本系统本地 memory 和 overview。中文运行语言下，默认刷新仍会按需维护 Codex 原生记忆展示缓存。默认 `integrated` 会同步 bounded summary 到 Codex native context，但不会写入原始窗口或完整 registry；如果使用 `--record-memory-only`，则只更新本地 state root。如果没有安装全局 `openrelix` 命令，installer 会打印一条带 `AI_ASSET_STATE_DIR` / `CODEX_HOME` 的 `python3 scripts/openrelix.py ...` fallback 命令。
 
 其中：
 

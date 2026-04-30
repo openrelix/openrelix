@@ -89,6 +89,58 @@ PY
   fi
 }
 
+build_codex_native_display_cache_if_enabled() {
+  local display_polish="${OPENRELIX_ENABLE_NATIVE_DISPLAY_POLISH:-auto}"
+  case "${display_polish:l}" in
+    0|false|no|off|disabled)
+      return 0
+      ;;
+    1|true|yes|on|enabled)
+      ;;
+    auto|"")
+      local runtime_language=""
+      runtime_language="$(
+        "$PYTHON_BIN" - "$REPO_ROOT" <<'PY'
+import sys
+
+repo_root = sys.argv[1]
+sys.path.insert(0, repo_root + "/scripts")
+
+from asset_runtime import get_runtime_language  # noqa: E402
+
+print(get_runtime_language())
+PY
+      )" || runtime_language=""
+      if [[ "$runtime_language" != "zh" ]]; then
+        return 0
+      fi
+      ;;
+    *)
+      return 0
+      ;;
+  esac
+
+  local memory_mode=""
+  memory_mode="$(
+    "$PYTHON_BIN" - "$REPO_ROOT" <<'PY'
+import sys
+
+repo_root = sys.argv[1]
+sys.path.insert(0, repo_root + "/scripts")
+
+from asset_runtime import get_memory_mode  # noqa: E402
+
+print(get_memory_mode())
+PY
+  )"
+  if [[ "$memory_mode" != "integrated" ]]; then
+    return 0
+  fi
+  if ! "$PYTHON_BIN" "$REPO_ROOT/scripts/build_codex_native_display_cache.py"; then
+    echo "refresh_overview: codex native display polish failed; using source-text fallback." >&2
+  fi
+}
+
 rebuild_sqlite_index_if_available() {
   if [[ "${OPENRELIX_DISABLE_SQLITE_INDEX_REBUILD:-0}" == "1" ]]; then
     return 0
@@ -119,5 +171,6 @@ esac
 
 "$PYTHON_BIN" "$REPO_ROOT/scripts/collect_codex_activity.py" --date "$target_date" --stage manual
 sync_codex_memory_summary_if_enabled
+build_codex_native_display_cache_if_enabled
 "$PYTHON_BIN" "$REPO_ROOT/scripts/build_overview.py"
 rebuild_sqlite_index_if_available
