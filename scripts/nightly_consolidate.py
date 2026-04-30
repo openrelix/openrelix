@@ -16,6 +16,7 @@ from asset_runtime import (
     atomic_write_json,
     atomic_write_text,
     ensure_state_layout,
+    get_codex_model,
     get_memory_mode,
     get_runtime_language,
     get_runtime_paths,
@@ -27,6 +28,7 @@ from asset_runtime import (
 PATHS = get_runtime_paths()
 LANGUAGE = get_runtime_language(PATHS)
 MEMORY_MODE = get_memory_mode(PATHS)
+CODEX_MODEL = get_codex_model(PATHS)
 PERSONAL_MEMORY_ENABLED = personal_memory_enabled(PATHS)
 MAIN_CODEX_HOME = PATHS.codex_home
 RAW_DIR = PATHS.raw_dir
@@ -980,6 +982,7 @@ def build_learning_input_fingerprint(raw_payload, learning_context, learn_window
         "language": current_language(language),
         "memory_mode": MEMORY_MODE,
         "personal_memory_enabled": PERSONAL_MEMORY_ENABLED,
+        "codex_model": CODEX_MODEL,
         "learn_window_days": max(learn_window_days, 0),
         "daily_compact_payload": build_compact_payload(raw_payload, language=language),
         "learning_context": fingerprint_learning_context,
@@ -1055,6 +1058,8 @@ def run_codex_consolidation(prompt, output_path, language=None):
         "memories",
         "--disable",
         "codex_hooks",
+        "--model",
+        CODEX_MODEL,
         "-c",
         'approval_policy="never"',
         "-c",
@@ -1476,6 +1481,7 @@ def main():
             "date": date_str,
             "language": language,
             "stage": stage,
+            "codex_model": CODEX_MODEL,
             "day_summary": localized(
                 "当日没有可整理的主窗口内容。",
                 "No main-window content was available to organize for the day.",
@@ -1514,6 +1520,7 @@ def main():
                 "candidate_quality": empty_summary["quality"],
                 "selected_quality": empty_summary["quality"],
                 "raw_window_count": raw_payload["window_count"],
+                "codex_model": CODEX_MODEL,
                 "learn_window_days": learn_window_days,
             }
         )
@@ -1551,6 +1558,7 @@ def main():
         )
     candidate_summary["language"] = language
     candidate_summary["stage"] = stage
+    candidate_summary["codex_model"] = CODEX_MODEL
     candidate_summary["generated_at"] = datetime.now().astimezone().isoformat()
     candidate_summary = apply_memory_mode(candidate_summary)
     candidate_summary["learning_input_fingerprint"] = learning_input_fingerprint
@@ -1581,6 +1589,7 @@ def main():
         "candidate_run_json_path": candidate_run["json_path"],
         "learn_window_days": learn_window_days,
         "candidate_model_status": candidate_summary.get("model_status", "completed"),
+        "codex_model": candidate_summary.get("codex_model", CODEX_MODEL),
     }
     if candidate_summary.get("model_status") == "failed":
         selected_summary["selection_decision"]["candidate_model_error"] = candidate_summary.get("model_error", "")
@@ -1604,6 +1613,7 @@ def main():
             "candidate_quality": decision["candidate_quality"],
             "selected_quality": decision["selected_quality"],
             "raw_window_count": raw_payload["window_count"],
+            "codex_model": selected_summary.get("codex_model", CODEX_MODEL),
             "learn_window_days": learn_window_days,
             "candidate_run_json_path": candidate_run["json_path"],
             "selected_summary_path": str(output_json_path),

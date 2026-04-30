@@ -9,6 +9,7 @@ import re
 import shlex
 import shutil
 import subprocess
+import uuid
 from collections import Counter, defaultdict
 from decimal import Decimal, ROUND_HALF_UP
 from datetime import datetime, timedelta
@@ -23,10 +24,12 @@ from asset_runtime import (
     ensure_state_layout,
     get_memory_mode,
     get_memory_summary_budget,
+    get_project_version,
     get_runtime_language,
     get_runtime_paths,
     normalize_language,
     PREVIOUS_PUBLIC_APP_SLUG,
+    PROJECT_PACKAGE_NAME,
     render_path,
 )
 from build_codex_memory_summary import (
@@ -141,6 +144,22 @@ def redact_personal_text(value):
     if not isinstance(value, str):
         return value
     text = value
+
+    protected_file_hrefs = []
+
+    def protect_file_href(match):
+        placeholder = "\x00OPENRELIX_FILE_HREF_{}_{}\x00".format(
+            len(protected_file_hrefs),
+            uuid.uuid4().hex,
+        )
+        protected_file_hrefs.append((placeholder, match.group(0)))
+        return placeholder
+
+    # Keep local file links clickable in the generated local panel while still
+    # redacting visible text and title attributes around those links.
+    text = re.sub(r"href=([\"'])file://[^\"']+\1", protect_file_href, text)
+    text = re.sub(r"href=\\([\"'])file://[^\\]+?\\\1", protect_file_href, text)
+
     text = re.sub(r"file:///(?:Users|home)/[^/\\\s<>\"']+", "file://~", text)
     text = re.sub(r"(?:/Users|/home)/[^/\\\s<>\"']+", "~", text)
 
@@ -159,6 +178,8 @@ def redact_personal_text(value):
     text = re.sub(r"https?://[^\\\s<>\"']+", redact_url, text)
     for pattern in personal_redaction_patterns():
         text = pattern.sub(PERSONAL_REDACTION_LABEL, text)
+    for placeholder, original in protected_file_hrefs:
+        text = text.replace(placeholder, original)
     return text
 
 
@@ -588,6 +609,9 @@ PANEL_I18N_EN = {
     "本地 token 服务没有返回可用数据": "The local token service returned no usable data.",
     "ccusage 当前不可用": "ccusage is currently unavailable.",
     "实时 Token 暂时不可用，先展示最近一次成功缓存。": "Live Token data is unavailable. Showing the latest successful cache.",
+    "本地 Token 服务未启动。请运行 openrelix open panel 后再点实时刷新。": (
+        "The local Token service is not running. Run openrelix open panel, then refresh Token again."
+    ),
     "实时 Token 不可用，当前展示": "Live Token data is unavailable. Showing",
     "的本地快照。": "local snapshot.",
     "Token 已刷新，": "Token refreshed, ",
@@ -652,16 +676,20 @@ PANEL_I18N_EN = {
     "7 日账单": "7-day Bill",
     "7 日均值": "7-day Average",
     "峰值日": "Peak Day",
-    "缓存占输入": "Cached / Input",
+    "缓存占输入": "Cache Read / Input",
+    "缓存占总输入": "Cache Read / Total Input",
+    "缓存读取占总输入": "Cache Read / Total Input",
     "输入": "Input",
-    "缓存输入": "Cached Input",
+    "缓存输入": "Cache Read",
+    "缓存读取": "Cache Read",
     "输出": "Output",
     "推理输出": "Reasoning Output",
     "输入详情": "Input Details",
-    "缓存详情": "Cache Details",
+    "缓存详情": "Cache Read Details",
     "输出详情": "Output Details",
     "推理详情": "Reasoning Details",
     "总输入 Token": "Total input tokens",
+    "无缓存输入 Token": "Uncached input tokens",
     "暂无可比较日期": "No comparable day yet",
     "长期记忆": "Long-term Memory",
     "短期记忆": "Short-term Memory",
@@ -804,13 +832,12 @@ PANEL_I18N_EN = {
     "最近活动": "Recent Activity",
     "点开看详情": "Open details",
     "收起详情": "Collapse details",
+    "更多记录见": "More records in",
     "原始窗口 JSON": "Raw Window JSON",
-    "会话 JSONL": "Session JSONL",
     "原始窗口 ID": "Raw Window ID",
     "当前目录": "Current Directory",
     "启动时间": "Started At",
     "原始窗口": "Raw Window",
-    "会话文件": "Session File",
     "最近工作区": "Recent Workspace",
     "代表问题": "Representative Question",
     "最近结论": "Recent Takeaway",
@@ -919,8 +946,8 @@ PANEL_I18N_EN = {
         "These assets are usually tied to a repo, module, or fixed work scenario."
     ),
     "ccusage 最新一天的总 Token 消耗。": "Total Token usage on the latest ccusage day.",
-    "输入、缓存输入、输出和推理输出都会计入总量。": (
-        "Input, cached input, output, and reasoning output are all included in the total."
+    "总量按总输入和输出计算；缓存读取是总输入里命中缓存的部分，推理输出是输出子集。": (
+        "Totals are calculated from total input and output; Cache Read is the cached portion of total input, and reasoning output is a subset of output."
     ),
     "ccusage 最近 7 天每日总 Token 的累计值。": "Sum of ccusage daily total Tokens over the last 7 days.",
     "这是滚动 7 日窗口，不是自然周。": "This is a rolling 7-day window, not a calendar week.",
@@ -928,14 +955,14 @@ PANEL_I18N_EN = {
     "优先来自 daily capture；原始明细缺失时会退回最近一次 nightly summary。": (
         "Uses daily capture first; if raw details are missing, it falls back to the latest nightly summary."
     ),
-    "把 ccusage 的日维度数据再加工成 7 日账单、7 日均值、峰值日和缓存占输入等快速判断信号。": (
-        "Turns ccusage daily data into quick signals like 7-day estimated bill, 7-day average, peak day, and cached/input ratio."
+    "把 ccusage 的日维度数据再加工成 7 日账单、7 日均值、峰值日和缓存读取占总输入等快速判断信号。": (
+        "Turns ccusage daily data into quick signals like 7-day estimated bill, 7-day average, peak day, and Cache Read / total-input ratio."
     ),
     "上方两张大卡看总量，速览区看变化和结构，下面的每日 / 今日柱条可以 hover 到具体构成。": (
         "Use the two large cards for totals, the overview for change and structure, and hover the daily/today bars for breakdowns."
     ),
-    "缓存输入是输入 Token 的子集，不应和输入、输出直接相加。": (
-        "Cached input is a subset of input tokens and should not be added directly to input and output."
+    "今日输入柱条对齐 ccusage 表格里的无缓存 Input；缓存读取单独展示为总输入的缓存命中部分。": (
+        "The Today input bar matches the uncached Input column in ccusage; Cache Read is shown separately as the cache-hit portion of total input."
     ),
     "来自资产注册表的稳定条目": "Stable entries from the asset registry",
     "统计来自 assets.jsonl 的全部稳定资产，不限当前仓库；只有已登记的条目会进入这里，raw、log、report 和单次对话不会计入。": (
@@ -1049,8 +1076,8 @@ PANEL_I18N_EN = {
         "Shows recent Token usage by date; the page shows a snapshot first, then tries to refresh live values."
     ),
     "ccusage 最新一天的 breakdown。": "The latest daily breakdown from ccusage.",
-    "把最新一天的总 Token 拆成输入、缓存输入、输出和推理输出。": (
-        "Breaks the latest day's total Token usage into input, cached input, output, and reasoning output."
+    "把最新一天的 Token 指标拆成无缓存输入、缓存读取、输出和推理输出。": (
+        "Breaks the latest day's Token metrics into uncached input, Cache Read, output, and reasoning output."
     ),
     "最近捕获到的窗口，会先按项目 / 上下文聚合，再展示每组的窗口数、问题数和结论数。": (
         "Recent captured windows are grouped by project/context, then shown with window, question, and conclusion counts."
@@ -2616,29 +2643,35 @@ def make_token_breakdown_detail(label, value, meta="", language=None):
     }
 
 
+def split_ccusage_input_tokens(row):
+    total_input_tokens = safe_int(row.get("inputTokens", 0))
+    cached_input_tokens = safe_int(row.get("cachedInputTokens", 0))
+    uncached_input_tokens = max(total_input_tokens - cached_input_tokens, 0)
+    return total_input_tokens, cached_input_tokens, uncached_input_tokens
+
+
 def build_token_breakdown_details(row, language=None):
     language = current_language(language)
     total_tokens = row.get("totalTokens", 0)
-    input_tokens = row.get("inputTokens", 0)
-    cached_input_tokens = row.get("cachedInputTokens", 0)
+    total_input_tokens, cached_input_tokens, input_tokens = split_ccusage_input_tokens(row)
     output_tokens = row.get("outputTokens", 0)
     reasoning_output_tokens = row.get("reasoningOutputTokens", 0)
-    cached_share = percent_of(cached_input_tokens, input_tokens)
+    cached_share = percent_of(cached_input_tokens, total_input_tokens)
     output_share = percent_of(output_tokens, total_tokens)
     reasoning_share = percent_of(reasoning_output_tokens, total_tokens)
     details = [
         make_token_breakdown_detail(
             localized("输入", "Input", language),
             input_tokens,
-            localized("总输入 Token", "Total input tokens", language),
+            localized("无缓存输入 Token", "Uncached input tokens", language),
             language=language,
         ),
         make_token_breakdown_detail(
-            localized("缓存输入", "Cached input", language),
+            localized("缓存读取", "Cache Read", language),
             cached_input_tokens,
             localized(
-                "占输入 {}".format(format_percent(cached_share)),
-                "{} of input".format(format_percent(cached_share)),
+                "占总输入 {}".format(format_percent(cached_share)),
+                "{} of total input".format(format_percent(cached_share)),
                 language,
             ),
             language=language,
@@ -2753,19 +2786,20 @@ def build_token_summary_cards(parsed_rows, trailing_rows, latest, language=None)
             )
         )
 
-    cached_share = percent_of(latest["cachedInputTokens"], latest["inputTokens"])
+    total_input_tokens, cached_input_tokens, _ = split_ccusage_input_tokens(latest)
+    cached_share = percent_of(cached_input_tokens, total_input_tokens)
     summary_cards.append(
         make_token_summary_card(
-            localized("缓存占输入", "Cached / input", language),
+            localized("缓存读取占总输入", "Cache Read / total input", language),
             format_percent(cached_share),
             localized(
-                "缓存 {} / 输入 {}".format(
-                    compact_token(latest["cachedInputTokens"], language=language),
-                    compact_token(latest["inputTokens"], language=language),
+                "缓存读取 {} / 总输入 {}".format(
+                    compact_token(cached_input_tokens, language=language),
+                    compact_token(total_input_tokens, language=language),
                 ),
-                "Cached {} / input {}".format(
-                    compact_token(latest["cachedInputTokens"], language=language),
-                    compact_token(latest["inputTokens"], language=language),
+                "Cache Read {} / total input {}".format(
+                    compact_token(cached_input_tokens, language=language),
+                    compact_token(total_input_tokens, language=language),
                 ),
                 language,
             ),
@@ -2836,13 +2870,18 @@ def build_token_usage_view(ccusage_result, language=None):
         except ValueError:
             parsed_date = None
             label = raw_date
+        total_input_tokens = safe_int(row.get("inputTokens", 0))
+        cached_input_tokens = safe_int(row.get("cachedInputTokens", 0))
+        uncached_input_tokens = max(total_input_tokens - cached_input_tokens, 0)
         parsed_rows.append(
             {
                 "raw_date": raw_date,
                 "date_label": label,
                 "sort_key": parsed_date.isoformat() if parsed_date else raw_date,
-                "inputTokens": safe_int(row.get("inputTokens", 0)),
-                "cachedInputTokens": safe_int(row.get("cachedInputTokens", 0)),
+                "inputTokens": total_input_tokens,
+                "totalInputTokens": total_input_tokens,
+                "uncachedInputTokens": uncached_input_tokens,
+                "cachedInputTokens": cached_input_tokens,
                 "outputTokens": safe_int(row.get("outputTokens", 0)),
                 "reasoningOutputTokens": safe_int(row.get("reasoningOutputTokens", 0)),
                 "totalTokens": safe_int(row.get("totalTokens", 0)),
@@ -2874,38 +2913,39 @@ def build_token_usage_view(ccusage_result, language=None):
 
     today_breakdown = []
     if latest:
-        cached_share = percent_of(latest["cachedInputTokens"], latest["inputTokens"])
+        total_input_tokens, cached_input_tokens, uncached_input_tokens = split_ccusage_input_tokens(latest)
+        cached_share = percent_of(cached_input_tokens, total_input_tokens)
         output_share = percent_of(latest["outputTokens"], latest["totalTokens"])
         reasoning_share = percent_of(latest["reasoningOutputTokens"], latest["totalTokens"])
         today_breakdown = [
             {
                 "label": localized("输入", "Input", language),
-                "value": latest["inputTokens"],
-                "display": compact_token(latest["inputTokens"], language=language),
+                "value": uncached_input_tokens,
+                "display": compact_token(uncached_input_tokens, language=language),
                 "tone": token_breakdown_tone("input"),
                 "details": [
                     {
                         "label": localized("输入", "Input", language),
-                        "value": latest["inputTokens"],
-                        "title": localized("输入：{}".format(compact_token(latest["inputTokens"], language=language)), "Input: {}".format(compact_token(latest["inputTokens"], language=language)), language),
-                        "meta": localized("总输入 Token", "Total input tokens", language),
+                        "value": uncached_input_tokens,
+                        "title": localized("输入：{}".format(compact_token(uncached_input_tokens, language=language)), "Input: {}".format(compact_token(uncached_input_tokens, language=language)), language),
+                        "meta": localized("无缓存输入 Token", "Uncached input tokens", language),
                     },
                 ],
                 "details_heading": localized("输入详情", "Input details", language),
             },
             {
-                "label": localized("缓存输入", "Cached input", language),
+                "label": localized("缓存读取", "Cache Read", language),
                 "value": latest["cachedInputTokens"],
                 "display": compact_token(latest["cachedInputTokens"], language=language),
                 "tone": token_breakdown_tone("cached_input"),
                 "details": [
                     {
-                        "label": localized("缓存输入", "Cached input", language),
+                        "label": localized("缓存读取", "Cache Read", language),
                         "value": latest["cachedInputTokens"],
-                        "title": localized("缓存输入：{}".format(compact_token(latest["cachedInputTokens"], language=language)), "Cached input: {}".format(compact_token(latest["cachedInputTokens"], language=language)), language),
+                        "title": localized("缓存读取：{}".format(compact_token(latest["cachedInputTokens"], language=language)), "Cache Read: {}".format(compact_token(latest["cachedInputTokens"], language=language)), language),
                         "meta": localized(
-                            "占输入 {}".format(format_percent(cached_share)),
-                            "{} of input".format(format_percent(cached_share)),
+                            "占总输入 {}".format(format_percent(cached_share)),
+                            "{} of total input".format(format_percent(cached_share)),
                             language,
                         ),
                     },
@@ -3127,6 +3167,10 @@ def panel_english_text(value):
             lambda match: "Examples: {}".format(match.group(1)),
         ),
         (
+            r"占总输入 (.+)",
+            lambda match: "{} of total input".format(match.group(1)),
+        ),
+        (
             r"占输入 (.+)",
             lambda match: "{} of input".format(match.group(1)),
         ),
@@ -3151,8 +3195,16 @@ def panel_english_text(value):
             lambda match: "Peak on {}".format(match.group(1)),
         ),
         (
+            r"缓存 (.+) / 总输入 (.+)",
+            lambda match: "Cache Read {} / total input {}".format(match.group(1), match.group(2)),
+        ),
+        (
+            r"缓存读取 (.+) / 总输入 (.+)",
+            lambda match: "Cache Read {} / total input {}".format(match.group(1), match.group(2)),
+        ),
+        (
             r"缓存 (.+) / 输入 (.+)",
-            lambda match: "Cached {} / input {}".format(match.group(1), match.group(2)),
+            lambda match: "Cache Read {} / input {}".format(match.group(1), match.group(2)),
         ),
         (
             r"近 7 天中 (\d+) 天有记录 · (.+)",
@@ -3968,7 +4020,7 @@ def default_summary_term_view(summary_term_views):
     return (summary_term_views or [{}])[0] if summary_term_views else {}
 
 
-def compact_preview_text(text, limit=220):
+def compact_preview_text(text, limit=220, strip_markdown=True):
     normalized = str(text or "")
     if not normalized:
         return ""
@@ -3989,8 +4041,9 @@ def compact_preview_text(text, limit=220):
 
     # Strip markdown-only noise so compact previews read like UI copy instead of raw transcripts.
     normalized = re.sub(r"\[Image #\d+\]", "", normalized)
-    normalized = re.sub(r"\[([^\]]+)\]\(([^)]+)\)", r"\1", normalized)
-    normalized = re.sub(r"`([^`]+)`", r"\1", normalized)
+    if strip_markdown:
+        normalized = re.sub(r"\[([^\]]+)\]\(([^)]+)\)", r"\1", normalized)
+        normalized = re.sub(r"`([^`]+)`", r"\1", normalized)
     normalized = re.sub(
         r"file://[^\s)]+",
         lambda match: shorten_preview_path(match.group(0)),
@@ -6827,13 +6880,9 @@ def build_window_items_from_daily_capture(daily_capture, latest_nightly=None, la
         conclusions = raw_window.get("conclusions", [])
         first_prompt = prompts[0] if prompts else {}
         last_conclusion = conclusions[-1] if conclusions else {}
-        question_summary = nightly_item.get("question_summary") or compact_preview_text(
-            first_prompt.get("text", ""),
-            limit=180,
-        )
-        main_takeaway = nightly_item.get("main_takeaway") or compact_preview_text(
-            last_conclusion.get("text", "") or first_prompt.get("text", ""),
-            limit=200,
+        question_summary = nightly_item.get("question_summary") or first_prompt.get("text", "")
+        main_takeaway = nightly_item.get("main_takeaway") or (
+            last_conclusion.get("text", "") or first_prompt.get("text", "")
         )
         question_summary = normalize_brand_display_text(question_summary)
         main_takeaway = normalize_brand_display_text(main_takeaway)
@@ -11717,7 +11766,7 @@ def make_window_summary_cards(window_overview, language=None):
                     escape(item["time"])
                 )
             text = localize_window_preview_text(
-                compact_preview_text(item.get("text", "")),
+                compact_preview_text(item.get("text", ""), strip_markdown=False),
                 language=language,
                 keywords=keywords,
                 label=label,
@@ -11775,10 +11824,19 @@ def make_window_summary_cards(window_overview, language=None):
             open_button=open_button,
         )
 
+    def strip_preview_prefix(text):
+        return re.sub(
+            r"^\s*(?:\*\*)?(问题|结论|Question|Conclusion|Focus|Takeaway)(?:\*\*)?\s*[:：]\s*",
+            "",
+            str(text or "").strip(),
+            flags=re.IGNORECASE,
+        )
+
     cards = []
     for item in window_overview.get("windows", []):
         cwd_raw = item.get("cwd", "")
         window_id = item.get("window_id", "")
+        window_id_display = window_id or localized("暂无", "None", language)
         anchor_id = build_window_anchor_id(window_id)
         cwd_display = item.get("cwd_display", cwd_raw)
         activity_source_label = window_activity_source_label(
@@ -11817,38 +11875,54 @@ def make_window_summary_cards(window_overview, language=None):
         resume_id = item.get("resume_id", "") or window_id
         resume_command = item.get("resume_command", "") or codex_resume_command(resume_id)
         resume_url = item.get("resume_url", "") or codex_resume_url(resume_id)
-        question_summary_html = render_markdown_text(question_summary) or "<p>{}</p>".format(
-            escape(question_summary)
-        )
-        main_takeaway_html = render_markdown_text(main_takeaway) or "<p>{}</p>".format(
-            escape(main_takeaway)
-        )
         resume_actions = render_resume_actions(resume_command, resume_url)
+        main_takeaway_preview = strip_preview_prefix(main_takeaway)
+        main_takeaway_preview_html = render_markdown_inline(main_takeaway_preview) or (
+            escape(main_takeaway_preview)
+        )
         raw_window = load_window_record(window_date, window_id)
         raw_window_html = escape(localized("暂无", "None", language))
-        session_file_html = escape(localized("暂无", "None", language))
+        raw_window_link_html = ""
         if raw_window and raw_window.get("_path"):
-            raw_window_html = render_local_path_link(
+            raw_window_link_html = render_local_path_link(
                 raw_window.get("_path", ""),
                 label=localized("原始窗口 JSON", "Raw Window JSON", language),
             )
-        if raw_window and raw_window.get("session_file"):
-            session_file_html = render_local_path_link(
-                raw_window.get("session_file", ""),
-                label=localized("会话 JSONL", "Session JSONL", language),
-            )
+            raw_window_html = raw_window_link_html
         cwd_detail_label = cwd_raw or cwd_display
         cwd_detail_html = render_local_path_link(cwd_raw, label=cwd_detail_label)
+        recent_prompt_items = item.get("recent_prompts", [])
+        recent_conclusion_items = item.get("recent_conclusions", [])
+        recent_prompts_html = render_preview_items(
+            recent_prompt_items,
+            "Question",
+            keywords=item.get("keywords", []),
+        )
+        recent_conclusions_html = render_preview_items(
+            recent_conclusion_items,
+            "Conclusion",
+            keywords=item.get("keywords", []),
+        )
+        raw_window_source_html = ""
+        if raw_window_link_html:
+            raw_window_source_html = """
+                    <p class="window-detail-source">{more_records_label} {raw_window_html}</p>
+            """.format(
+                more_records_label=escape(localized("更多记录见", "More records in", language)),
+                raw_window_html=raw_window_html,
+            )
         cards.append(
             """
             <details class="window-card" id="{anchor_id}">
               <summary class="window-card-trigger">
                 <div class="window-card-head">
                   <div class="window-card-copy">
-                    <div class="window-card-title-label">{window_summary_label}</div>
+                    <div class="window-card-label">{project_label} · {window_label}{window_id_separator}{window_id_full}</div>
                     <h3 class="window-card-window-summary">{window_summary}</h3>
-                    <div class="window-card-label">{project_label} · {window_label} {display_index}</div>
-                    <p class="window-card-path">{activity_source_label}</p>
+                    <div class="window-card-subline">
+                      <span class="window-card-path">{activity_source_label}</span>
+                      <span class="window-card-cwd">{cwd_label} {cwd_detail_html}</span>
+                    </div>
                   </div>
                   <div class="window-card-stats">
                     <div class="window-stat">
@@ -11861,7 +11935,9 @@ def make_window_summary_cards(window_overview, language=None):
                     </div>
                   </div>
                 </div>
-                <div class="window-card-summary window-markdown">{main_takeaway}</div>
+                <div class="window-card-takeaway window-markdown">
+                  <span class="window-card-pair-text">{main_takeaway_preview}</span>
+                </div>
                 <div class="window-card-meta">
                   <span class="window-card-time">{recent_activity} {latest_activity}</span>
                   {resume_actions}
@@ -11870,39 +11946,14 @@ def make_window_summary_cards(window_overview, language=None):
                     <span class="window-card-action-expanded">{collapse_details}</span>
                   </span>
                 </div>
+                <div class="window-card-keywords">
+                  <div class="window-card-summary-label">{keywords_label}</div>
+                  <div class="window-keyword-row">
+                    {keyword_chips}
+                  </div>
+                </div>
               </summary>
               <div class="window-card-detail">
-                <div class="window-detail-grid">
-                  <section class="window-detail-block">
-                    <div class="window-detail-label">{question_summary_label}</div>
-                    <div class="window-markdown">{question_summary}</div>
-                  </section>
-                  <section class="window-detail-block">
-                    <div class="window-detail-label">{conclusion_summary_label}</div>
-                    <div class="window-markdown">{main_takeaway}</div>
-                  </section>
-                </div>
-                <div class="window-detail-grid compact">
-                  <section class="window-detail-block">
-                    <div class="window-detail-label">{window_info_label}</div>
-                    <ul class="window-detail-list">
-                      <li class="window-detail-item"><span>{raw_window_id_label} {window_id_full}</span></li>
-                      <li class="window-detail-item"><span>{project_workspace_label} {project_label}</span></li>
-                      <li class="window-detail-item"><span>{activity_source_detail_label} {activity_source_label}</span></li>
-                      <li class="window-detail-item"><span>{cwd_label} {cwd_detail_html}</span></li>
-                      <li class="window-detail-item"><span>{started_at_label} {started_at}</span></li>
-                      <li class="window-detail-item"><span>{recent_activity} {latest_activity}</span></li>
-                      <li class="window-detail-item"><span>{raw_window_label} {raw_window_html}</span></li>
-                      <li class="window-detail-item"><span>{session_file_label} {session_file_html}</span></li>
-                    </ul>
-                  </section>
-                  <section class="window-detail-block">
-                    <div class="window-detail-label">{keywords_label}</div>
-                    <div class="window-keyword-row">
-                      {keyword_chips}
-                    </div>
-                  </section>
-                </div>
                 <div class="window-detail-grid">
                   <section class="window-detail-block">
                     <div class="window-detail-label">{recent_questions_label}</div>
@@ -11915,17 +11966,17 @@ def make_window_summary_cards(window_overview, language=None):
                     <ul class="window-detail-list">
                       {recent_conclusions}
                     </ul>
+                    {raw_window_source_html}
                   </section>
                 </div>
               </div>
             </details>
             """.format(
                 anchor_id=escape(anchor_id, quote=True),
-                display_index=escape(str(item.get("display_index", ""))),
-                window_label=escape(localized("窗口", "Window", language)),
-                window_summary_label=escape(localized("窗口摘要", "Window Summary", language)),
                 window_summary=escape(window_summary),
-                window_id_full=escape(item.get("window_id", "")),
+                window_label=escape(localized("原始窗口 ID", "Raw Window ID", language)),
+                window_id_separator=escape(localized("：", ": ", language)),
+                window_id_full=escape(window_id_display),
                 project_label=escape(project_label),
                 activity_source_label=escape(activity_source_label),
                 cwd_detail_html=cwd_detail_html,
@@ -11937,33 +11988,15 @@ def make_window_summary_cards(window_overview, language=None):
                 latest_activity=escape(item.get("latest_activity_display", localized("时间未知", "Unknown time", language))),
                 started_at=escape(item.get("started_at_display", localized("时间未知", "Unknown time", language))),
                 raw_window_html=raw_window_html,
-                session_file_html=session_file_html,
-                question_summary=question_summary_html,
-                main_takeaway=main_takeaway_html,
                 resume_actions=resume_actions,
+                main_takeaway_preview=main_takeaway_preview_html,
                 keyword_chips=render_keyword_chips(item.get("keywords", [])),
-                recent_prompts=render_preview_items(
-                    item.get("recent_prompts", []),
-                    "Question",
-                    keywords=item.get("keywords", []),
-                ),
-                recent_conclusions=render_preview_items(
-                    item.get("recent_conclusions", []),
-                    "Conclusion",
-                    keywords=item.get("keywords", []),
-                ),
+                recent_prompts=recent_prompts_html,
+                recent_conclusions=recent_conclusions_html,
+                raw_window_source_html=raw_window_source_html,
                 open_details=escape(localized("点开看详情", "Open details", language)),
                 collapse_details=escape(localized("收起详情", "Collapse details", language)),
-                question_summary_label=escape(localized("问题摘要", "Question Summary", language)),
-                conclusion_summary_label=escape(localized("结论摘要", "Conclusion Summary", language)),
-                window_info_label=escape(localized("窗口信息", "Window Info", language)),
-                raw_window_id_label=escape(localized("原始窗口 ID", "Raw Window ID", language)),
-                project_workspace_label=escape(localized("项目 / 工作区", "Project / Workspace", language)),
-                activity_source_detail_label=escape(localized("活动来源", "Activity Source", language)),
                 cwd_label=escape(localized("当前目录", "Current Directory", language)),
-                started_at_label=escape(localized("启动时间", "Started At", language)),
-                raw_window_label=escape(localized("原始窗口", "Raw Window", language)),
-                session_file_label=escape(localized("会话文件", "Session File", language)),
                 keywords_label=escape(localized("关键词", "Keywords", language)),
                 recent_questions_label=escape(localized("最近问题", "Recent Questions", language)),
                 recent_conclusions_label=escape(localized("最近结论", "Recent Conclusions", language)),
@@ -12119,7 +12152,7 @@ def build_metric_help_sections(metric):
             },
             {
                 "label": "怎么算",
-                "body": "输入、缓存输入、输出和推理输出都会计入总量。",
+                "body": "总量按总输入和输出计算；缓存读取是总输入里命中缓存的部分，推理输出是输出子集。",
             },
         ],
         "seven_day_token": [
@@ -12183,12 +12216,14 @@ def build_metric_help_sections(metric):
 
 
 def read_panel_package_version():
-    package_json = PATHS.repo_root / "package.json"
-    try:
-        payload = json.loads(package_json.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+    return get_project_version(PATHS.repo_root, fallback="")
+
+
+def make_project_version_badge():
+    version = read_panel_package_version()
+    if not version:
         return ""
-    return str(payload.get("version") or "").strip()
+    return '<span class="hero-version-line">v{}</span>'.format(escape(version))
 
 
 def update_token_path():
@@ -12531,7 +12566,7 @@ def build_html(data):
         [
             {
                 "label": "统计什么",
-                "body": "把 ccusage 的日维度数据再加工成 7 日账单、7 日均值、峰值日和缓存占输入等快速判断信号。",
+                "body": "把 ccusage 的日维度数据再加工成 7 日账单、7 日均值、峰值日和缓存读取占总输入等快速判断信号。",
             },
             {
                 "label": "怎么看",
@@ -12539,7 +12574,7 @@ def build_html(data):
             },
             {
                 "label": "注意",
-                "body": "缓存输入是输入 Token 的子集，不应和输入、输出直接相加。",
+                "body": "今日输入柱条对齐 ccusage 表格里的无缓存 Input；缓存读取单独展示为总输入的缓存命中部分。",
             },
         ],
     )
@@ -12565,7 +12600,7 @@ def build_html(data):
             },
             {
                 "label": "统计什么",
-                "body": "把最新一天的总 Token 拆成输入、缓存输入、输出和推理输出。",
+                "body": "把最新一天的 Token 指标拆成无缓存输入、缓存读取、输出和推理输出。",
             },
         ],
     )
@@ -13423,6 +13458,23 @@ def build_html(data):
       font-weight: 700;
       line-height: 1.2;
       overflow-wrap: anywhere;
+    }}
+
+    .hero-version-line {{
+      display: inline-flex;
+      align-items: center;
+      width: fit-content;
+      max-width: 100%;
+      margin: 0;
+      padding: 6px 10px;
+      border: 1px solid rgba(52, 199, 89, 0.24);
+      border-radius: 999px;
+      background: rgba(52, 199, 89, 0.08);
+      color: var(--green);
+      font-size: 12px;
+      font-weight: 700;
+      line-height: 1.2;
+      white-space: nowrap;
     }}
 
     .hero-copy {{
@@ -14699,7 +14751,7 @@ def build_html(data):
     .token-overview-panel {{
       display: grid;
       gap: 18px;
-      overflow: hidden;
+      overflow: visible;
       transition: border-color 180ms ease, transform 180ms ease;
     }}
 
@@ -14863,7 +14915,7 @@ def build_html(data):
     .value-score {{
       display: inline-block;
       color: var(--teal);
-      font-size: 18px;
+      font-size: 16px;
       line-height: 1.1;
       font-variant-numeric: tabular-nums;
     }}
@@ -15673,13 +15725,6 @@ def build_html(data):
       flex: 1 1 auto;
     }}
 
-    .window-card-title-label {{
-      color: var(--muted);
-      font-size: 11px;
-      line-height: 1.2;
-      margin-bottom: 6px;
-    }}
-
     .window-card-window-summary {{
       margin: 0 0 8px;
       color: var(--ink);
@@ -15695,25 +15740,47 @@ def build_html(data):
       text-transform: none;
       letter-spacing: 0;
       margin-bottom: 8px;
+      overflow-wrap: anywhere;
     }}
 
-    .window-card-path {{
-      margin: 0;
+    .window-card-subline {{
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      min-width: 0;
       color: var(--muted);
       line-height: 1.5;
       font-size: 13px;
+    }}
+
+    .window-card-path {{
+      min-width: 0;
       word-break: break-all;
     }}
 
+    .window-card-cwd {{
+      flex: 0 1 auto;
+      min-width: 0;
+      text-align: right;
+      overflow-wrap: anywhere;
+    }}
+
+    .window-card-cwd .path-link {{
+      font-weight: 600;
+    }}
+
     .window-card-stats {{
-      display: flex;
-      flex-wrap: wrap;
+      display: grid;
+      grid-template-columns: repeat(2, 76px);
       gap: 10px;
       justify-content: flex-end;
+      flex: 0 0 auto;
     }}
 
     .window-stat {{
-      min-width: 76px;
+      width: 76px;
+      min-height: 76px;
       padding: 10px 12px;
       border-radius: 16px;
       border: 1px solid var(--line);
@@ -15742,6 +15809,29 @@ def build_html(data):
 
     .window-card-summary p:last-child {{
       margin-bottom: 0;
+    }}
+
+    .window-card-takeaway.window-markdown {{
+      margin-top: 16px;
+      color: var(--ink);
+      line-height: 1.62;
+      font-size: 16px;
+      overflow-wrap: anywhere;
+      display: -webkit-box;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 4;
+      overflow: hidden;
+    }}
+
+    .window-card-pair-text {{
+      color: var(--ink);
+    }}
+
+    .window-card-summary-label {{
+      margin-bottom: 7px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.35;
     }}
 
     .window-card-meta {{
@@ -15821,6 +15911,16 @@ def build_html(data):
 
     .window-card[open] .window-card-action-expanded {{
       display: inline;
+    }}
+
+    .window-card-keywords {{
+      margin-top: 14px;
+      padding-top: 12px;
+      border-top: 1px solid var(--line);
+    }}
+
+    .window-card-keywords .window-card-summary-label {{
+      margin-bottom: 8px;
     }}
 
     .window-card-detail {{
@@ -15949,12 +16049,91 @@ def build_html(data):
       color: var(--ink);
       font-size: 13px;
       line-height: 1.55;
+      overflow-wrap: anywhere;
     }}
 
     .window-detail-time {{
       color: var(--muted);
       font-size: 11px;
       letter-spacing: 0;
+    }}
+
+    .window-detail-item.empty {{
+      color: var(--muted);
+    }}
+
+    .window-detail-source {{
+      margin: 12px 0 0;
+      padding-top: 10px;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+    }}
+
+    .window-subdetail {{
+      margin-top: 12px;
+      padding-top: 10px;
+      border-top: 1px solid var(--line);
+    }}
+
+    .window-subdetail:first-child {{
+      margin-top: 0;
+      padding-top: 0;
+      border-top: 0;
+    }}
+
+    .window-subdetail > summary {{
+      list-style: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      color: var(--teal);
+      font-size: 12px;
+      font-weight: 650;
+      line-height: 1.35;
+    }}
+
+    .window-subdetail > summary::-webkit-details-marker {{
+      display: none;
+    }}
+
+    .window-subdetail > summary::after {{
+      content: "+";
+      flex: 0 0 auto;
+      width: 18px;
+      height: 18px;
+      border-radius: 999px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid var(--line);
+      color: var(--muted);
+      background: var(--control);
+      font-size: 13px;
+      line-height: 1;
+    }}
+
+    .window-subdetail[open] > summary::after {{
+      content: "-";
+    }}
+
+    .window-subdetail p,
+    .window-subdetail .window-detail-list {{
+      margin-top: 10px;
+    }}
+
+    .window-subdetail-count {{
+      margin-left: auto;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: var(--control);
+      color: var(--muted);
+      padding: 2px 7px;
+      font-size: 11px;
+      font-weight: 500;
     }}
 
     .window-keyword-row {{
@@ -16706,6 +16885,11 @@ def build_html(data):
         flex-direction: column;
       }}
 
+      .window-card-subline {{
+        align-items: flex-start;
+        flex-direction: column;
+      }}
+
       .window-card-action {{
         margin-left: 0;
       }}
@@ -16713,6 +16897,11 @@ def build_html(data):
       .window-resume-actions {{
         width: 100%;
       }}
+
+      .window-card-cwd {{
+        text-align: left;
+      }}
+
     }}
 
     .openrelix-update-pill {{
@@ -16794,6 +16983,7 @@ def build_html(data):
             {hero_mark}
             <h1>{hero_title}</h1>
             <span class="hero-brand-line">{hero_brand_line}</span>
+            {hero_version_badge}
           </div>
           <p class="hero-copy">
             {hero_copy}
@@ -17093,6 +17283,10 @@ def build_html(data):
         if (match) {{
           return match[1] + " of input";
         }}
+        match = text.match(/^占总输入 (.+)$/);
+        if (match) {{
+          return match[1] + " of total input";
+        }}
         match = text.match(/^占总量 (.+)$/);
         if (match) {{
           return match[1] + " of total";
@@ -17217,7 +17411,7 @@ def build_html(data):
       function tokenBreakdownLabel(rawLabel) {{
         const normalized = String(rawLabel || "").toLowerCase();
         if (normalized.includes("缓存") || normalized.includes("cached")) {{
-          return currentLanguage === "en" ? "Cached Input" : "缓存输入";
+          return currentLanguage === "en" ? "Cache Read" : "缓存读取";
         }}
         if (normalized.includes("推理") || normalized.includes("reasoning")) {{
           return currentLanguage === "en" ? "Reasoning Output" : "推理输出";
@@ -17959,6 +18153,9 @@ def build_html(data):
         if (messageKey === "warn_stale") {{
           return t("实时 Token 暂时不可用，先展示最近一次成功缓存。");
         }}
+        if (messageKey === "offline_service") {{
+          return t("本地 Token 服务未启动。请运行 openrelix open panel 后再点实时刷新。");
+        }}
         if (messageKey === "live_refreshed") {{
           return currentLanguage === "en"
             ? "Token refreshed " + describeRelativeTime(state.tokenRefreshedAt, "") + "."
@@ -18148,6 +18345,79 @@ def build_html(data):
         return "token-input";
       }}
 
+      function tokenRowContainsText(row, needles) {{
+        const haystackParts = [
+          row && row.label,
+          row && row.title,
+          row && row.meta,
+          row && row.details_heading,
+        ];
+        if (row && Array.isArray(row.details)) {{
+          row.details.forEach(function (detail) {{
+            haystackParts.push(detail && detail.label);
+            haystackParts.push(detail && detail.title);
+            haystackParts.push(detail && detail.meta);
+          }});
+        }}
+        const haystack = haystackParts
+          .filter(function (value) {{ return value !== null && value !== undefined; }})
+          .join(" ")
+          .toLowerCase();
+        return needles.some(function (needle) {{
+          return haystack.includes(String(needle).toLowerCase());
+        }});
+      }}
+
+      function normalizeTodayTokenBreakdown(rows) {{
+        const normalized = (Array.isArray(rows) ? rows : []).map(function (row) {{
+          const next = Object.assign({{}}, row);
+          if (Array.isArray(row.details)) {{
+            next.details = row.details.map(function (detail) {{
+              return Object.assign({{}}, detail);
+            }});
+          }}
+          return next;
+        }});
+        const inputIndex = normalized.findIndex(function (row) {{
+          const label = String(row.label || "").toLowerCase();
+          return (label.includes("输入") || label.includes("input")) &&
+            !label.includes("缓存") &&
+            !label.includes("cached");
+        }});
+        const cachedRow = normalized.find(function (row) {{
+          const label = String(row.label || "").toLowerCase();
+          return label.includes("缓存") || label.includes("cached");
+        }});
+        if (inputIndex < 0 || !cachedRow) {{
+          return normalized;
+        }}
+        const inputRow = normalized[inputIndex];
+        const inputValue = Number(inputRow.value) || 0;
+        const cachedValue = Number(cachedRow.value) || 0;
+        const rowAlreadyUncached = tokenRowContainsText(inputRow, ["无缓存", "uncached"]);
+        const rowLooksTotalInput = tokenRowContainsText(inputRow, ["总输入", "total input"]);
+        if (!rowAlreadyUncached && rowLooksTotalInput && inputValue >= cachedValue && cachedValue > 0) {{
+          const uncachedInput = Math.max(inputValue - cachedValue, 0);
+          inputRow.value = uncachedInput;
+          inputRow.display = compactTokenValue(uncachedInput);
+          if (Array.isArray(inputRow.details) && inputRow.details.length) {{
+            inputRow.details[0].value = uncachedInput;
+            inputRow.details[0].title = (currentLanguage === "en" ? "Input: " : "输入：") + compactTokenValue(uncachedInput);
+            inputRow.details[0].meta = currentLanguage === "en" ? "Uncached input tokens" : "无缓存输入 Token";
+          }}
+          const cachedShare = inputValue > 0 ? (cachedValue / inputValue) * 100 : null;
+          if (Array.isArray(cachedRow.details) && cachedRow.details.length) {{
+            cachedRow.label = currentLanguage === "en" ? "Cache Read" : "缓存读取";
+            cachedRow.details[0].label = currentLanguage === "en" ? "Cache Read" : "缓存读取";
+            cachedRow.details[0].title = (currentLanguage === "en" ? "Cache Read: " : "缓存读取：") + compactTokenValue(cachedValue);
+            cachedRow.details[0].meta = currentLanguage === "en"
+              ? formatPercentValue(cachedShare, 0, false) + " of total input"
+              : "占总输入 " + formatPercentValue(cachedShare, 0, false);
+          }}
+        }}
+        return normalized;
+      }}
+
       function deriveTokenSummaryCards(tokenUsage) {{
         const dailyRows = Array.isArray(tokenUsage.daily_rows) ? tokenUsage.daily_rows : [];
         const trailingRows = dailyRows.slice(-7).filter(function (row) {{
@@ -18208,13 +18478,14 @@ def build_html(data):
 
         const inputTokens = findTokenBreakdownValue(tokenUsage.today_breakdown, ["输入", "input"]);
         const cachedInputTokens = findTokenBreakdownValue(tokenUsage.today_breakdown, ["缓存", "cached"]);
-        const cachedShare = inputTokens > 0 ? (cachedInputTokens / inputTokens) * 100 : null;
+        const totalInputTokens = inputTokens + cachedInputTokens;
+        const cachedShare = totalInputTokens > 0 ? (cachedInputTokens / totalInputTokens) * 100 : null;
         cards.push({{
-          label: currentLanguage === "en" ? "Cached / Input" : "缓存占输入",
+          label: currentLanguage === "en" ? "Cache Read / Total Input" : "缓存读取占总输入",
           value: formatPercentValue(cachedShare, 0, false),
           caption: currentLanguage === "en"
-            ? "Cached " + compactTokenValue(cachedInputTokens) + " / input " + compactTokenValue(inputTokens)
-            : "缓存 " + compactTokenValue(cachedInputTokens) + " / 输入 " + compactTokenValue(inputTokens),
+            ? "Cache Read " + compactTokenValue(cachedInputTokens) + " / total input " + compactTokenValue(totalInputTokens)
+            : "缓存读取 " + compactTokenValue(cachedInputTokens) + " / 总输入 " + compactTokenValue(totalInputTokens),
           tone: "neutral",
         }});
         return cards;
@@ -18236,7 +18507,7 @@ def build_html(data):
             tone: row.tone || deriveDailyTokenTone(row.value, dailyMax),
           }});
         }});
-        const todayRows = Array.isArray(prepared.today_breakdown) ? prepared.today_breakdown : [];
+        const todayRows = normalizeTodayTokenBreakdown(prepared.today_breakdown);
         prepared.today_breakdown = todayRows.map(function (row) {{
           return Object.assign({{}}, row, {{
             label: tokenBreakdownLabel(row.label),
@@ -18447,6 +18718,16 @@ def build_html(data):
         }});
       }}
 
+      function isLikelyTokenServiceUnavailable(error) {{
+        const name = String((error && error.name) || "");
+        const message = String((error && error.message) || "").toLowerCase();
+        return name === "TypeError" ||
+          name === "AbortError" ||
+          message.includes("failed to fetch") ||
+          message.includes("load failed") ||
+          message.includes("networkerror");
+      }}
+
       async function refreshTokenUsage(forceRefresh) {{
         setLoading(true);
         setStatus(
@@ -18482,7 +18763,11 @@ def build_html(data):
           }}
         }} catch (error) {{
           updateTokenVisuals(snapshot.token_usage, "snapshot");
-          setStatus("offline", "", "offline_snapshot");
+          setStatus(
+            "offline",
+            "",
+            isLikelyTokenServiceUnavailable(error) ? "offline_service" : "offline_snapshot"
+          );
         }} finally {{
           setLoading(false);
         }}
@@ -18788,7 +19073,7 @@ def build_html(data):
         html_language="en" if language == "en" else "zh-CN",
         document_title=escape(localized("OpenRelix 工作台", "OpenRelix Workbench", language)),
         current_version=escape(read_panel_package_version(), quote=True),
-        npm_package=escape("openrelix", quote=True),
+        npm_package=escape(PROJECT_PACKAGE_NAME, quote=True),
         update_endpoint=escape("http://{}:{}/run-update".format(LIVE_TOKEN_HOST, LIVE_TOKEN_PORT), quote=True),
         update_status_endpoint=escape("http://{}:{}/update-status".format(LIVE_TOKEN_HOST, LIVE_TOKEN_PORT), quote=True),
         update_token=escape(read_or_create_update_token(), quote=True),
@@ -18806,6 +19091,7 @@ def build_html(data):
             escape("你的专属AI记忆珍藏"),
             escape("Your personal AI memory keepsake"),
         ),
+        hero_version_badge=make_project_version_badge(),
         hero_copy=panel_language_text_html(
             "只保留当前有效的复用信号：最近整理、核心指标，以及可继续下钻的窗口、记忆和资产明细。"
         ),

@@ -9,7 +9,13 @@ import subprocess
 import time
 from datetime import datetime, timedelta
 
-from asset_runtime import atomic_write_json, ensure_state_layout, get_activity_source, get_runtime_paths
+from asset_runtime import (
+    atomic_write_json,
+    ensure_state_layout,
+    get_activity_source,
+    get_project_version,
+    get_runtime_paths,
+)
 
 PATHS = get_runtime_paths()
 CODEX_HOME = PATHS.codex_home
@@ -126,7 +132,7 @@ class CodexAppServerClient:
                 {
                     "clientInfo": {
                         "name": "openrelix",
-                        "version": "0.1.0",
+                        "version": get_project_version(PATHS.repo_root),
                     },
                     "capabilities": {
                         "experimentalApi": True,

@@ -23,6 +23,8 @@ function printHelp() {
   npx openrelix update [--check | --recommended | --print-command]
   npx openrelix uninstall [--delete-local-memory | --keep-local-memory]
   npx openrelix app [--build | --no-open]
+  npx openrelix models [--json | --bundled | --all]
+  npx openrelix index status|rebuild|search-memory|search-window
   openrelix install [install-options]
   openrelix uninstall [--delete-local-memory | --keep-local-memory]
   openrelix --version
@@ -42,6 +44,9 @@ Examples:
   npx openrelix uninstall --delete-local-memory
   npx openrelix update --print-command
   npx openrelix app
+  npx openrelix models
+  npx openrelix index status
+  npx openrelix index search-memory sqlite
   npx openrelix install --enable-nightly --nightly-organize-time 22:30 --nightly-finalize-time 01:00
 
 This npm command is a thin wrapper around install/install.sh.
@@ -191,6 +196,14 @@ if (command === "uninstall" || command === "remove") {
 
 if (command === "app" || command === "client" || command === "mac") {
   runPythonCli(["app", ...args.slice(1)]);
+}
+
+if (command === "models") {
+  runPythonCli(["models", ...args.slice(1)]);
+}
+
+if (command === "index") {
+  runPythonCli(["index", ...args.slice(1)]);
 }
 
 if (command.startsWith("-")) {

@@ -180,7 +180,7 @@ if [[ -z "$STATE_ROOT" ]]; then
 fi
 
 APP_VERSION="$(
-  "$PYTHON_BIN" -c 'import json, sys; print(json.load(open(sys.argv[1], encoding="utf-8")).get("version", "0.0.0"))' "$REPO_ROOT/package.json" 2>/dev/null || true
+  PYTHONPATH="$REPO_ROOT/scripts" "$PYTHON_BIN" -c 'from asset_runtime import get_project_version; print(get_project_version())' 2>/dev/null || true
 )"
 if [[ -z "$APP_VERSION" ]]; then
   APP_VERSION="0.0.0"

@@ -22,18 +22,23 @@ if str(SCRIPT_DIR) not in sys.path:
 
 from asset_runtime import (
     APP_SLUG,
+    DEFAULT_CODEX_MODEL,
     LEGACY_APP_SLUGS,
     ensure_state_layout,
+    get_codex_model,
     get_memory_mode,
     get_memory_summary_budget,
+    get_project_version,
     get_activity_source,
     get_runtime_language,
     get_runtime_paths,
     load_runtime_config,
     normalize_activity_source,
+    normalize_codex_model,
     normalize_language,
     normalize_memory_summary_max_tokens,
     normalize_memory_mode,
+    PROJECT_PACKAGE_NAME,
     sync_codex_exec_home,
     write_runtime_config,
 )
@@ -52,9 +57,16 @@ BUILD_OVERVIEW_SCRIPT = REPO_ROOT / "scripts" / "build_overview.py"
 BUILD_CODEX_MEMORY_SUMMARY_SCRIPT = REPO_ROOT / "scripts" / "build_codex_memory_summary.py"
 CONFIGURE_CODEX_USER_SCRIPT = REPO_ROOT / "install" / "configure_codex_user.py"
 BUILD_MACOS_CLIENT_SCRIPT = REPO_ROOT / "scripts" / "build_macos_client.sh"
+RENDER_TEMPLATE_SCRIPT = REPO_ROOT / "install" / "render_template.py"
 MACOS_CLIENT_APP_NAME = "OpenRelix.app"
-NPM_PACKAGE_NAME = "openrelix"
+NPM_PACKAGE_NAME = PROJECT_PACKAGE_NAME
 NPM_LATEST_SPEC = "{}@latest".format(NPM_PACKAGE_NAME)
+TOKEN_LIVE_LABEL = "io.github.openrelix.token-live"
+TOKEN_LIVE_PLIST_NAME = "{}.plist".format(TOKEN_LIVE_LABEL)
+TOKEN_LIVE_TEMPLATE = REPO_ROOT / "ops" / "launchd" / "{}.tmpl".format(TOKEN_LIVE_PLIST_NAME)
+TOKEN_LIVE_HEALTH_URL = "http://127.0.0.1:8765/healthz"
+TOKEN_LIVE_STARTUP_TIMEOUT_SECONDS = 8.0
+STAGE_PRIORITY = {"manual": 0, "preliminary": 1, "final": 2}
 
 
 def current_language(language=None):
@@ -474,6 +486,13 @@ def build_parser():
         ),
     )
     config.add_argument(
+        "--codex-model",
+        help=localized(
+            "设置 OpenRelix 内部 codex exec 使用的模型；默认 {}。接受未来模型 ID，也支持 gpt5.4mini 这类常见简写。".format(DEFAULT_CODEX_MODEL),
+            "Set the model used by OpenRelix internal codex exec calls. Default: {}. Future model IDs are accepted; common shorthands like gpt5.4mini are also accepted.".format(DEFAULT_CODEX_MODEL),
+        ),
+    )
+    config.add_argument(
         "--activity-source",
         choices=["history", "app-server", "auto"],
         help=localized(
@@ -501,6 +520,71 @@ def build_parser():
         "--json",
         action="store_true",
         help=localized("以 JSON 打印配置。", "Print config as JSON."),
+    )
+
+    models = subparsers.add_parser(
+        "models",
+        help=localized(
+            "列出当前 Codex CLI 可见的模型 catalog。",
+            "List the model catalog currently visible to Codex CLI.",
+        ),
+    )
+    models.add_argument(
+        "--all",
+        action="store_true",
+        help=localized(
+            "包含隐藏模型条目。",
+            "Include hidden model entries.",
+        ),
+    )
+    models.add_argument(
+        "--bundled",
+        action="store_true",
+        help=localized(
+            "只读取当前 Codex CLI 随包 catalog，不尝试刷新。",
+            "Read only the catalog bundled with the current Codex CLI; do not refresh.",
+        ),
+    )
+    models.add_argument(
+        "--json",
+        action="store_true",
+        help=localized("以 JSON 打印模型列表。", "Print the model list as JSON."),
+    )
+
+    index = subparsers.add_parser(
+        "index",
+        help=localized(
+            "管理本地 SQLite 检索索引。",
+            "Manage the local SQLite search index.",
+        ),
+    )
+    index.add_argument(
+        "action",
+        choices=["status", "rebuild", "search-memory", "search-window"],
+        help=localized(
+            "索引操作。",
+            "Index action.",
+        ),
+    )
+    index.add_argument(
+        "query",
+        nargs="?",
+        default="",
+        help=localized(
+            "search-memory / search-window 的查询文本。",
+            "Query text for search-memory / search-window.",
+        ),
+    )
+    index.add_argument("--bucket", help=localized("按 memory bucket 过滤。", "Filter by memory bucket."))
+    index.add_argument("--priority", help=localized("按 memory priority 过滤。", "Filter by memory priority."))
+    index.add_argument("--project", help=localized("按窗口项目名或 cwd 过滤。", "Filter windows by project label or cwd."))
+    index.add_argument("--date-from", help=localized("起始日期 YYYY-MM-DD。", "Start date YYYY-MM-DD."))
+    index.add_argument("--date-to", help=localized("结束日期 YYYY-MM-DD。", "End date YYYY-MM-DD."))
+    index.add_argument("--limit", type=int, default=20, help=localized("最多返回条数。", "Maximum result count."))
+    index.add_argument(
+        "--json",
+        action="store_true",
+        help=localized("以 JSON 打印结果。", "Print results as JSON."),
     )
 
     open_cmd = subparsers.add_parser(
@@ -673,7 +757,8 @@ def resolve_learning_backfill_dates(date_str, learn_window_days):
     history_dates = codex_history_dates_for_targets(dates)
     missing_dates = []
     for candidate_date in dates:
-        if review_summary_stage(candidate_date) == "final":
+        needs_run, _, _ = review_summary_needs_run(candidate_date, "final")
+        if not needs_run:
             continue
         raw_daily_path = PATHS.raw_daily_dir / "{}.json".format(candidate_date)
         if raw_daily_path.exists() or candidate_date in history_dates:
@@ -690,6 +775,32 @@ def review_summary_stage(date_str):
     except (OSError, json.JSONDecodeError):
         return ""
     return str(payload.get("stage") or "")
+
+
+def stage_rank(stage):
+    return STAGE_PRIORITY.get(str(stage or ""), -1)
+
+
+def review_summary_needs_run(date_str, requested_stage, force=False):
+    summary_json_path, summary_md_path = review_summary_paths(date_str)
+    info = {
+        "summary_json": str(summary_json_path),
+        "summary_md": str(summary_md_path),
+        "exists": summary_json_path.exists(),
+        "stage": "",
+    }
+    if force:
+        return True, "force", info
+    if not summary_json_path.exists():
+        return True, "missing_summary", info
+    try:
+        payload = load_json(summary_json_path)
+    except (OSError, json.JSONDecodeError):
+        return True, "invalid_summary", info
+    info["stage"] = str(payload.get("stage") or "")
+    if stage_rank(info["stage"]) < stage_rank(requested_stage):
+        return True, "existing_stage_below_requested", info
+    return False, "existing_stage_satisfies_request", info
 
 
 def run_checked(cmd):
@@ -778,12 +889,7 @@ def run_checked_with_progress(cmd, progress_messages, interval_seconds=20, remin
 
 
 def read_local_package_version():
-    package_json = REPO_ROOT / "package.json"
-    try:
-        payload = json.loads(package_json.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
-        return ""
-    return str(payload.get("version") or "").strip()
+    return get_project_version(REPO_ROOT, fallback="")
 
 
 def fetch_latest_npm_version(package_name=NPM_PACKAGE_NAME, timeout=8):
@@ -827,6 +933,118 @@ def read_launch_agent(filename):
 
 def launch_agent_exists(filename):
     return launch_agent_path(filename).exists()
+
+
+def resolve_python_bin_for_launch_agent():
+    return os.environ.get("PYTHON_BIN") or shutil.which("python3") or sys.executable
+
+
+def token_live_health_ok(timeout=0.75):
+    request = urllib.request.Request(
+        TOKEN_LIVE_HEALTH_URL,
+        headers={"Accept": "application/json", "User-Agent": "openrelix-cli"},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            body = response.read().decode("utf-8")
+    except (OSError, TimeoutError, UnicodeDecodeError, urllib.error.URLError):
+        return False
+    try:
+        payload = json.loads(body)
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return False
+    return bool(payload.get("ok")) and payload.get("service") == "token-live"
+
+
+def render_token_live_launch_agent():
+    if not RENDER_TEMPLATE_SCRIPT.exists() or not TOKEN_LIVE_TEMPLATE.exists():
+        raise FileNotFoundError("missing token-live launchd template")
+
+    python_bin = resolve_python_bin_for_launch_agent()
+    plist_path = launch_agent_path(TOKEN_LIVE_PLIST_NAME)
+    plist_path.parent.mkdir(parents=True, exist_ok=True)
+    PATHS.log_dir.mkdir(parents=True, exist_ok=True)
+    subprocess.run(
+        [
+            python_bin,
+            str(RENDER_TEMPLATE_SCRIPT),
+            "--template",
+            str(TOKEN_LIVE_TEMPLATE),
+            "--output",
+            str(plist_path),
+            "--set",
+            "REPO_ROOT={}".format(REPO_ROOT),
+            "--set",
+            "STATE_ROOT={}".format(PATHS.state_root),
+            "--set",
+            "PYTHON_BIN={}".format(python_bin),
+            "--set",
+            "CODEX_HOME={}".format(PATHS.codex_home),
+        ],
+        check=True,
+    )
+    subprocess.run(
+        ["/usr/bin/plutil", "-lint", str(plist_path)],
+        check=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    return plist_path
+
+
+def bootstrap_token_live_launch_agent(plist_path):
+    uid = os.getuid()
+    subprocess.run(
+        ["launchctl", "bootout", "gui/{}/{}".format(uid, TOKEN_LIVE_LABEL)],
+        check=False,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    subprocess.run(
+        ["launchctl", "bootout", "gui/{}".format(uid), str(plist_path)],
+        check=False,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    subprocess.run(["launchctl", "bootstrap", "gui/{}".format(uid), str(plist_path)], check=True)
+    subprocess.run(
+        ["launchctl", "kickstart", "-k", "gui/{}/{}".format(uid, TOKEN_LIVE_LABEL)],
+        check=False,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+
+
+def wait_for_token_live_health(timeout_seconds=TOKEN_LIVE_STARTUP_TIMEOUT_SECONDS):
+    deadline = time.monotonic() + max(float(timeout_seconds or 0), 0.0)
+    while time.monotonic() <= deadline:
+        if token_live_health_ok(timeout=0.5):
+            return True
+        time.sleep(0.25)
+    return token_live_health_ok(timeout=0.5)
+
+
+def ensure_token_live_service(verbose=True):
+    if token_live_health_ok():
+        return True
+    if sys.platform != "darwin" or not shutil.which("launchctl"):
+        return False
+    try:
+        plist_path = render_token_live_launch_agent()
+        bootstrap_token_live_launch_agent(plist_path)
+        if wait_for_token_live_health():
+            return True
+    except (OSError, subprocess.SubprocessError):
+        pass
+    if verbose:
+        print(
+            localized(
+                "本地 Token 服务未启动；已保留离线快照。可运行 openrelix install --enable-background-services 修复后台服务。",
+                "The local Token service is not running; the panel will keep using the offline snapshot. Run openrelix install --enable-background-services to repair background services.",
+            ),
+            file=sys.stderr,
+        )
+    return False
 
 
 def plist_string_value(text, key):
@@ -1115,6 +1333,8 @@ def run_doctor_model_check():
             "memories",
             "--disable",
             "codex_hooks",
+            "--model",
+            get_codex_model(PATHS),
             "-c",
             'approval_policy="never"',
             "-c",
@@ -1169,6 +1389,75 @@ def run_doctor_app_server_check():
         )
 
 
+def sqlite_index_status_payload():
+    import openrelix_index
+
+    return openrelix_index.index_status(PATHS)
+
+
+def append_sqlite_index_doctor_check(checks):
+    try:
+        status = sqlite_index_status_payload()
+    except Exception as exc:
+        append_doctor_check(
+            checks,
+            "sqlite_index",
+            "warn",
+            str(exc),
+            localized(
+                "运行 `openrelix index rebuild` 重建本地检索索引；JSONL/raw 仍是权威数据。",
+                "Run `openrelix index rebuild` to rebuild the local search index; JSONL/raw remains authoritative.",
+            ),
+        )
+        return
+
+    detail = "path={db_path} exists={exists} schema={schema_version} memories={memory_rows} windows={window_rows} stale={stale}".format(
+        **status
+    )
+    if status.get("error"):
+        append_doctor_check(
+            checks,
+            "sqlite_index",
+            "warn",
+            "{} error={}".format(detail, status["error"]),
+            localized(
+                "索引库可删除重建：运行 `openrelix index rebuild`。",
+                "The index database is rebuildable: run `openrelix index rebuild`.",
+            ),
+        )
+        return
+    if not status.get("exists"):
+        append_doctor_check(
+            checks,
+            "sqlite_index",
+            "warn",
+            detail,
+            localized(
+                "尚未生成检索索引；运行 `openrelix index rebuild`。",
+                "Search index has not been generated; run `openrelix index rebuild`.",
+            ),
+        )
+        return
+    if not status.get("ok") or status.get("stale"):
+        append_doctor_check(
+            checks,
+            "sqlite_index",
+            "warn",
+            detail,
+            localized(
+                "索引已过期或 schema 不匹配；运行 `openrelix index rebuild`。",
+                "Index is stale or schema mismatched; run `openrelix index rebuild`.",
+            ),
+        )
+        return
+    append_doctor_check(
+        checks,
+        "sqlite_index",
+        "ok",
+        detail,
+    )
+
+
 def command_doctor(args):
     checks = []
 
@@ -1195,6 +1484,16 @@ def command_doctor(args):
     )
     append_doctor_check(
         checks,
+        "codex_model",
+        "ok",
+        get_codex_model(PATHS),
+        localized(
+            "OpenRelix 内部模型调用会通过 codex exec --model 显式指定；不改你的全局 Codex 默认模型。",
+            "OpenRelix internal model calls pass codex exec --model explicitly; your global Codex default model is not changed.",
+        ),
+    )
+    append_doctor_check(
+        checks,
         "activity_source",
         "ok",
         ACTIVITY_SOURCE,
@@ -1203,6 +1502,7 @@ def command_doctor(args):
             "Default auto reads Codex app-server first, then falls back to CLI history/session.",
         ),
     )
+    append_sqlite_index_doctor_check(checks)
 
     if command_exists(PATHS.codex_bin):
         try:
@@ -1416,52 +1716,66 @@ def command_doctor(args):
         raise SystemExit(1)
 
 
-def command_review(args):
-    if args.learn_window_days > 0:
-        backfill_dates = resolve_learning_backfill_dates(args.date, args.learn_window_days)
-        if backfill_dates:
-            if not args.json:
-                print(
-                    localized(
-                        "同步回溯: 近 {} 天有 {} 天缺失或非 final，先按 final 生成；该阶段不递归扩展学习窗口。".format(
-                            args.learn_window_days,
-                            len(backfill_dates),
-                        ),
-                        "Backfill sync: {} daily reports are missing or non-final in the last {} days; generating them as final first without recursively expanding the learning window.".format(
-                            len(backfill_dates),
-                            args.learn_window_days,
-                        ),
-                    )
-                )
-                print("{}: {}".format(localized("日期", "Dates"), ", ".join(backfill_dates)))
-            sync_results = run_backfill_dates(
-                backfill_dates,
-                "final",
-                learn_window_days=0,
-                force=True,
-                verbose=not args.json,
-            )
-            if not args.json:
-                completed = sum(1 for item in sync_results if item["status"] == "completed")
-                skipped = sum(1 for item in sync_results if item["status"] == "skipped_existing")
-                print(
-                    localized(
-                        "同步回溯完成: 完成 {} 天 | 跳过 {} 天".format(completed, skipped),
-                        "Backfill sync completed: completed {} | skipped {}".format(completed, skipped),
-                    )
-                )
-                print("")
-        elif not args.json:
+def pipeline_command(date_str, stage, learn_window_days=0):
+    cmd = ["/bin/zsh", str(NIGHTLY_PIPELINE_SCRIPT), date_str, stage]
+    if learn_window_days > 0:
+        cmd.extend(["--learn-window-days", str(learn_window_days)])
+    return cmd
+
+
+def ensure_learning_window_final(date_str, learn_window_days, verbose=True):
+    if learn_window_days <= 0:
+        return []
+    backfill_dates = resolve_learning_backfill_dates(date_str, learn_window_days)
+    if not backfill_dates:
+        if verbose:
             print(
                 localized(
-                    "同步回溯: 近 {} 天 final 日报已齐，或没有可回溯窗口。".format(args.learn_window_days),
-                    "Backfill sync: final daily reports for the last {} days are already complete, or no source windows are available.".format(args.learn_window_days),
+                    "同步回溯: 近 {} 天 final 日报已齐，或没有可回溯窗口。".format(learn_window_days),
+                    "Backfill sync: final daily reports for the last {} days are already complete, or no source windows are available.".format(learn_window_days),
                 )
             )
+        return []
+    if verbose:
+        print(
+            localized(
+                "同步回溯: 近 {} 天有 {} 天缺失或非 final，先按 final 生成；该阶段不递归扩展学习窗口。".format(
+                    learn_window_days,
+                    len(backfill_dates),
+                ),
+                "Backfill sync: {} daily reports are missing or non-final in the last {} days; generating them as final first without recursively expanding the learning window.".format(
+                    len(backfill_dates),
+                    learn_window_days,
+                ),
+            )
+        )
+        print("{}: {}".format(localized("日期", "Dates"), ", ".join(backfill_dates)))
+    sync_results = run_backfill_dates(
+        backfill_dates,
+        "final",
+        learn_window_days=0,
+        force=False,
+        ensure_learning_final=False,
+        verbose=verbose,
+    )
+    if verbose:
+        completed = sum(1 for item in sync_results if item["status"] == "completed")
+        skipped = sum(1 for item in sync_results if item["status"] == "skipped_existing")
+        print(
+            localized(
+                "同步回溯完成: 完成 {} 天 | 跳过 {} 天".format(completed, skipped),
+                "Backfill sync completed: completed {} | skipped {}".format(completed, skipped),
+            )
+        )
+        print("")
+    return sync_results
 
-    cmd = ["/bin/zsh", str(NIGHTLY_PIPELINE_SCRIPT), args.date, args.stage]
+
+def command_review(args):
     if args.learn_window_days > 0:
-        cmd.extend(["--learn-window-days", str(args.learn_window_days)])
+        ensure_learning_window_final(args.date, args.learn_window_days, verbose=not args.json)
+
+    cmd = pipeline_command(args.date, args.stage, args.learn_window_days)
     if args.json:
         run_checked_with_progress(cmd, [])
     else:
@@ -1561,27 +1875,49 @@ def command_review(args):
         raise SystemExit(1)
 
 
-def run_backfill_dates(dates, stage, learn_window_days=0, force=False, verbose=True):
+def run_backfill_dates(
+    dates,
+    stage,
+    learn_window_days=0,
+    force=False,
+    ensure_learning_final=True,
+    verbose=True,
+):
     results = []
 
     for index, date_str in enumerate(dates, start=1):
+        if ensure_learning_final and learn_window_days > 0:
+            ensure_learning_window_final(date_str, learn_window_days, verbose=verbose)
+
         summary_json_path, summary_md_path = review_summary_paths(date_str)
-        if summary_json_path.exists() and not force:
+        needs_run, skip_reason, summary_info = review_summary_needs_run(date_str, stage, force=force)
+        if not needs_run:
             results.append(
                 {
                     "date": date_str,
                     "status": "skipped_existing",
+                    "reason": skip_reason,
+                    "existing_stage": summary_info.get("stage", ""),
+                    "requested_stage": stage,
                     "summary_json": str(summary_json_path),
                     "summary_md": str(summary_md_path),
                 }
             )
             if verbose:
-                print("[{}/{}] {} {}".format(index, len(dates), date_str, localized("已存在，跳过。", "exists; skipped.")))
+                print(
+                    "[{}/{}] {} {}".format(
+                        index,
+                        len(dates),
+                        date_str,
+                        localized(
+                            "已有 {} summary，跳过。".format(summary_info.get("stage") or stage),
+                            "existing {} summary; skipped.".format(summary_info.get("stage") or stage),
+                        ),
+                    )
+                )
             continue
 
-        cmd = ["/bin/zsh", str(NIGHTLY_PIPELINE_SCRIPT), date_str, stage]
-        if learn_window_days > 0:
-            cmd.extend(["--learn-window-days", str(learn_window_days)])
+        cmd = pipeline_command(date_str, stage, learn_window_days)
 
         if verbose:
             print("[{}/{}] {} {}".format(index, len(dates), date_str, localized("开始回溯。", "started.")))
@@ -1603,6 +1939,8 @@ def run_backfill_dates(dates, stage, learn_window_days=0, force=False, verbose=T
             {
                 "date": date_str,
                 "status": "completed",
+                "reason": skip_reason,
+                "requested_stage": stage,
                 "summary_json": str(summary_json_path),
                 "summary_md": str(summary_md_path),
             }
@@ -1627,6 +1965,7 @@ def command_backfill(args):
         args.stage,
         learn_window_days=args.learn_window_days,
         force=args.force,
+        ensure_learning_final=True,
         verbose=not args.json,
     )
 
@@ -1876,11 +2215,13 @@ def memory_summary_budget_payload(config=None):
     budget = get_memory_summary_budget(PATHS)
     return {
         "activity_source": normalize_activity_source(config.get("activity_source")),
+        "codex_model": get_codex_model(PATHS),
         "memory_summary_max_tokens": budget["max_tokens"],
         "memory_summary_target_tokens": budget["target_tokens"],
         "memory_summary_warn_tokens": budget["warn_tokens"],
         "personal_memory_budget_tokens": budget["personal_memory_tokens"],
         "config_path": str(PATHS.runtime_dir / "config.json"),
+        "configured_codex_model": config.get("codex_model"),
         "configured_memory_summary_max_tokens": config.get("memory_summary_max_tokens"),
     }
 
@@ -1888,13 +2229,15 @@ def memory_summary_budget_payload(config=None):
 def command_config(args):
     requested_max_tokens = args.memory_summary_max_tokens
     requested_activity_source = "auto" if args.read_codex_app else args.activity_source
-    if requested_max_tokens is None and requested_activity_source is None:
+    requested_codex_model = getattr(args, "codex_model", None)
+    if requested_max_tokens is None and requested_activity_source is None and requested_codex_model is None:
         payload = memory_summary_budget_payload()
         if args.json:
             print_json(payload)
             return
         print(localized("OpenRelix 运行配置", "OpenRelix runtime config"))
         print("- activity_source: {}".format(payload["activity_source"]))
+        print("- codex_model: {}".format(payload["codex_model"]))
         print("- memory_summary_max_tokens: {}".format(payload["memory_summary_max_tokens"]))
         print("- memory_summary_target_tokens: {}".format(payload["memory_summary_target_tokens"]))
         print("- memory_summary_warn_tokens: {}".format(payload["memory_summary_warn_tokens"]))
@@ -1916,8 +2259,16 @@ def command_config(args):
         except ValueError as exc:
             raise SystemExit(str(exc)) from exc
 
+    normalized_codex_model = None
+    if requested_codex_model is not None:
+        try:
+            normalized_codex_model = normalize_codex_model(requested_codex_model, strict=True)
+        except ValueError as exc:
+            raise SystemExit(str(exc)) from exc
+
     config = write_runtime_config(
         activity_source=normalized_activity_source,
+        codex_model=normalized_codex_model,
         memory_summary_max_tokens=normalized_max_tokens,
         paths=PATHS,
     )
@@ -1934,6 +2285,7 @@ def command_config(args):
 
     print(localized("OpenRelix 运行配置已更新", "OpenRelix runtime config updated"))
     print("- activity_source: {}".format(payload["activity_source"]))
+    print("- codex_model: {}".format(payload["codex_model"]))
     print("- memory_summary_max_tokens: {}".format(payload["memory_summary_max_tokens"]))
     print("- memory_summary_target_tokens: {}".format(payload["memory_summary_target_tokens"]))
     print("- memory_summary_warn_tokens: {}".format(payload["memory_summary_warn_tokens"]))
@@ -1943,6 +2295,204 @@ def command_config(args):
         print(localized("- summary、overview 和面板已刷新。", "- Summary, overview, and panel refreshed."))
     else:
         print(localized("- 未刷新；需要时运行 openrelix refresh。", "- Not refreshed; run openrelix refresh when needed."))
+
+
+def sanitize_codex_model_entry(model):
+    reasoning_levels = []
+    for item in model.get("supported_reasoning_levels") or []:
+        if isinstance(item, dict):
+            effort = item.get("effort")
+        else:
+            effort = item
+        if effort:
+            reasoning_levels.append(str(effort))
+    return {
+        "slug": str(model.get("slug") or ""),
+        "display_name": str(model.get("display_name") or model.get("slug") or ""),
+        "description": str(model.get("description") or ""),
+        "default_reasoning_level": str(model.get("default_reasoning_level") or ""),
+        "supported_reasoning_levels": reasoning_levels,
+        "supported_in_api": bool(model.get("supported_in_api")),
+        "visibility": str(model.get("visibility") or ""),
+        "priority": model.get("priority"),
+    }
+
+
+def load_codex_model_catalog(include_hidden=False, bundled=False):
+    cmd = [PATHS.codex_bin, "debug", "models"]
+    if bundled:
+        cmd.append("--bundled")
+    env = dict(os.environ)
+    env["CODEX_HOME"] = str(PATHS.codex_home)
+    result = subprocess.run(
+        cmd,
+        text=True,
+        capture_output=True,
+        timeout=20,
+        env=env,
+    )
+    output = "\n".join(part for part in (result.stdout, result.stderr) if part).strip()
+    if result.returncode != 0:
+        raise SystemExit(output[-1200:] or "codex debug models failed with exit code {}".format(result.returncode))
+    try:
+        payload = json.loads(result.stdout)
+    except json.JSONDecodeError as exc:
+        raise SystemExit("codex debug models returned invalid JSON: {}".format(exc)) from exc
+
+    models = []
+    for model in payload.get("models") or []:
+        if not isinstance(model, dict):
+            continue
+        entry = sanitize_codex_model_entry(model)
+        if not entry["slug"]:
+            continue
+        if not include_hidden and entry["visibility"] != "list":
+            continue
+        models.append(entry)
+    models.sort(key=lambda item: (item["priority"] is None, item["priority"] or 0, item["slug"]))
+    return {
+        "source": "codex debug models --bundled" if bundled else "codex debug models",
+        "configured_model": get_codex_model(PATHS),
+        "recommended_default": DEFAULT_CODEX_MODEL,
+        "models": models,
+    }
+
+
+def command_models(args):
+    payload = load_codex_model_catalog(include_hidden=args.all, bundled=args.bundled)
+    if args.json:
+        print_json(payload)
+        return
+
+    print(localized("Codex 模型 catalog", "Codex model catalog"))
+    print("- source: {}".format(payload["source"]))
+    print("- configured_model: {}".format(payload["configured_model"]))
+    print("- recommended_default: {}".format(payload["recommended_default"]))
+    print(localized("- 提示: 可用性以本机 Codex 登录和 provider 为准；切换命令是 openrelix config --codex-model <model>。", "- Note: availability depends on the local Codex login and provider; switch with openrelix config --codex-model <model>."))
+    for model in payload["models"]:
+        label = model["display_name"] or model["slug"]
+        description = model["description"]
+        reasoning = ",".join(model["supported_reasoning_levels"])
+        suffix_parts = []
+        if model["default_reasoning_level"]:
+            suffix_parts.append("default_reasoning={}".format(model["default_reasoning_level"]))
+        if reasoning:
+            suffix_parts.append("reasoning={}".format(reasoning))
+        if model["visibility"] and model["visibility"] != "list":
+            suffix_parts.append("visibility={}".format(model["visibility"]))
+        suffix = " [{}]".format(" | ".join(suffix_parts)) if suffix_parts else ""
+        print("- {} ({}){}".format(model["slug"], label, suffix))
+        if description:
+            print("  {}".format(description))
+
+
+def print_index_results(kind, rows):
+    if not rows:
+        print(localized("未找到结果。", "No results."))
+        return
+    for row in rows:
+        if kind == "memory":
+            title = row.get("title") or row.get("title_zh") or row.get("title_en") or row.get("memory_key") or "(untitled)"
+            note = row.get("value_note") or row.get("value_note_zh") or row.get("value_note_en") or ""
+            print("- {} [{} / {} / {}]".format(
+                title,
+                row.get("bucket") or "-",
+                row.get("memory_type") or "-",
+                row.get("priority") or "-",
+            ))
+            if row.get("date"):
+                print("  date: {}".format(row["date"]))
+            if note:
+                print("  note: {}".format(note))
+            if row.get("keywords"):
+                print("  keywords: {}".format(", ".join(str(item) for item in row["keywords"])))
+            if row.get("source_window_ids"):
+                print("  windows: {}".format(", ".join(str(item) for item in row["source_window_ids"])))
+        else:
+            title = row.get("question_summary") or row.get("main_takeaway") or row.get("window_id") or "(window)"
+            print("- {} [{}]".format(title, row.get("window_id") or "-"))
+            print("  date: {} cwd: {}".format(row.get("date") or "-", row.get("cwd") or "-"))
+            if row.get("main_takeaway"):
+                print("  takeaway: {}".format(row["main_takeaway"]))
+            if row.get("keywords"):
+                print("  keywords: {}".format(", ".join(str(item) for item in row["keywords"])))
+
+
+def command_index(args):
+    import openrelix_index
+
+    if args.action == "status":
+        payload = openrelix_index.index_status(PATHS)
+        if args.json:
+            print_json(payload)
+            return
+        print(localized("OpenRelix SQLite 检索索引", "OpenRelix SQLite search index"))
+        print("- db_path: {}".format(payload["db_path"]))
+        print("- exists: {}".format(payload["exists"]))
+        print("- ok: {}".format(payload["ok"]))
+        print("- stale: {}".format(payload["stale"]))
+        print("- schema_version: {}".format(payload["schema_version"]))
+        print("- fts_enabled: {}".format(payload["fts_enabled"]))
+        print("- memory_rows: {}".format(payload["memory_rows"]))
+        print("- window_rows: {}".format(payload["window_rows"]))
+        print("- daily_summary_rows: {}".format(payload["daily_summary_rows"]))
+        print("- rebuilt_at: {}".format(payload["rebuilt_at"] or "-"))
+        if payload.get("error"):
+            print("- error: {}".format(payload["error"]))
+        return
+
+    if args.action == "rebuild":
+        payload = openrelix_index.rebuild_index(PATHS)
+        if args.json:
+            print_json(payload)
+            return
+        print(localized("已重建 OpenRelix SQLite 检索索引", "Rebuilt the OpenRelix SQLite search index"))
+        print("- db_path: {}".format(payload["db_path"]))
+        print("- fts_enabled: {}".format(payload["fts_enabled"]))
+        print("- memory_rows: {}".format(payload["memory_rows"]))
+        print("- window_rows: {}".format(payload["window_rows"]))
+        print("- daily_summary_rows: {}".format(payload["daily_summary_rows"]))
+        print("- source_file_rows: {}".format(payload["source_file_rows"]))
+        return
+
+    if args.limit <= 0:
+        raise SystemExit(localized("--limit 必须大于 0。", "--limit must be greater than 0."))
+
+    if args.action == "search-memory":
+        rows = openrelix_index.search_memories(
+            args.query,
+            bucket=args.bucket,
+            priority=args.priority,
+            date_from=args.date_from,
+            date_to=args.date_to,
+            limit=args.limit,
+            paths=PATHS,
+        )
+        if args.json:
+            print_json({"results": rows})
+            return
+        print_index_results("memory", rows)
+        return
+
+    if args.action == "search-window":
+        rows = openrelix_index.search_windows(
+            args.query,
+            project=args.project,
+            date_from=args.date_from,
+            date_to=args.date_to,
+            limit=args.limit,
+            paths=PATHS,
+        )
+        if args.json:
+            print_json({"results": rows})
+            return
+        print_index_results("window", rows)
+        return
+
+    raise SystemExit(localized(
+        "不支持的索引操作: {}".format(args.action),
+        "unsupported index action: {}".format(args.action),
+    ))
 
 
 def resolve_open_target(target, date_str):
@@ -2441,6 +2991,7 @@ def command_app(args):
             sync_macos_client_app(build_output_path, app_path)
 
     if not getattr(args, "no_open", False):
+        ensure_token_live_service()
         open_path(app_path)
     print(app_path)
 
@@ -2454,12 +3005,16 @@ def command_open(args):
             print_path=False,
         ))
         return
+    if args.target == "panel":
+        ensure_token_live_service()
     target_path = resolve_open_target(args.target, args.date)
     open_path(target_path)
     print(target_path)
 
 
 def command_paths():
+    import openrelix_index
+
     today_summary_json, today_summary_md = review_summary_paths(current_date_str())
     command_path = os.environ.get("AI_ASSET_COMMAND_PATH")
     print(localized("运行路径", "Runtime paths"))
@@ -2471,6 +3026,7 @@ def command_paths():
     print("- command: {}".format(Path(command_path).resolve() if command_path else Path(sys.argv[0]).resolve()))
     print("- panel: {}".format(REPORTS_DIR / "panel.html"))
     print("- overview: {}".format(REPORTS_DIR / "overview.md"))
+    print("- index_db: {}".format(openrelix_index.default_db_path(PATHS)))
     print("- today_review_json: {}".format(today_summary_json))
     print("- today_review_md: {}".format(today_summary_md))
 
@@ -2478,7 +3034,9 @@ def command_paths():
 def main():
     parser = build_parser()
     args = parser.parse_args()
-    if args.command != "uninstall":
+    read_only_index_status = args.command == "index" and getattr(args, "action", None) == "status"
+    read_only_model_catalog = args.command == "models"
+    if args.command != "uninstall" and not read_only_index_status and not read_only_model_catalog:
         ensure_state_layout(PATHS)
     if args.command in (None, "help"):
         parser.print_help()
@@ -2510,6 +3068,12 @@ def main():
         return
     if args.command == "config":
         command_config(args)
+        return
+    if args.command == "models":
+        command_models(args)
+        return
+    if args.command == "index":
+        command_index(args)
         return
     if args.command == "open":
         command_open(args)

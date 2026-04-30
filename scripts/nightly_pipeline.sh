@@ -74,6 +74,18 @@ PY
   fi
 }
 
+rebuild_sqlite_index_if_available() {
+  if [[ "${OPENRELIX_DISABLE_SQLITE_INDEX_REBUILD:-0}" == "1" ]]; then
+    return 0
+  fi
+  if [[ ! -f "$REPO_ROOT/scripts/openrelix_index.py" ]]; then
+    return 0
+  fi
+  if ! "$PYTHON_BIN" "$REPO_ROOT/scripts/openrelix_index.py" rebuild >/dev/null; then
+    echo "nightly_pipeline: sqlite index rebuild failed; JSONL/raw outputs remain authoritative." >&2
+  fi
+}
+
 exit_if_latest_model_run_failed() {
   local failure_message=""
   set +e
@@ -158,6 +170,7 @@ PY
   done
 fi
 "$PYTHON_BIN" "$REPO_ROOT/scripts/nightly_consolidate.py" --date "$target_date" --stage "$stage" "${extra_args[@]}"
+rebuild_sqlite_index_if_available
 sync_codex_memory_summary_if_enabled
 build_codex_native_display_cache_if_enabled
 "$PYTHON_BIN" "$REPO_ROOT/scripts/build_overview.py"

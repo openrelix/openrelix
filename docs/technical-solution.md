@@ -6,19 +6,19 @@
 
 GitHub 项目页：[openrelix/openrelix](https://github.com/openrelix/openrelix)。欢迎点星支持，便于更多人发现这个本地优先方案。
 
-当前 `v0.1.0 预览版` 的公开交付方式是 macOS installer-first：
+当前预览版的公开交付方式是 macOS installer-first：
 
 - 仓库保存可开源的能力层：skills、installer、templates、scripts、docs、launchd 模板。
 - 用户运行数据默认保存在仓库外的 state root。
-- 当前 v0.1.0 预览版首个适配器是 Codex CLI / Codex app-server；Codex 原生 memory 归 Codex 管，本项目默认只写一份 bounded summary 供上下文读取，完整个人记忆仍留在 state root。
-- Linux / Windows 不作为 `v0.1.0 预览版` 对外承诺。
+- 当前预览版首个适配器是 Codex CLI / Codex app-server；Codex 原生 memory 归 Codex 管，本项目默认只写一份 bounded summary 供上下文读取，完整个人记忆仍留在 state root。
+- Linux / Windows 不作为当前预览版对外承诺。
 
 ## 设计原则
 
-1. **本地优先**：原始 AI host history、复盘、registry、夜间整理产物、日志和面板默认都留在本机 state root；当前 v0.1.0 预览版默认通过 Codex app-server 采集 threads，并在不可用时回退到 Codex history / sessions。
+1. **本地优先**：原始 AI host history、复盘、registry、夜间整理产物、日志和面板默认都留在本机 state root；当前预览版默认通过 Codex app-server 采集 threads，并在不可用时回退到 Codex history / sessions。
 2. **源码和状态分离**：repo 是 source of truth，state root 是 runtime data，不把个人运行数据提交进仓库。
 3. **安装器是主链路**：npm 只做 bootstrapper，真正安装逻辑仍在 `install/install.sh`。
-4. **skill 不靠 hook 挂载**：repo 内启动时发现 `.agents/skills/`，全局可用时由 adapter / installer 把 canonical skill 暴露到对应 host 的用户级 skill root；当前 v0.1.0 预览版使用 Codex skill root。
+4. **skill 不靠 hook 挂载**：repo 内启动时发现 `.agents/skills/`，全局可用时由 adapter / installer 把 canonical skill 暴露到对应 host 的用户级 skill root；当前预览版使用 Codex skill root。
 5. **记忆分层**：稳定强规则放 `AGENTS.md` 或项目文档；本项目生成的 memory 是可检索 recall 层，不是唯一事实来源。
 6. **隐私边界清晰**：不沉淀 secrets、token、Cookie、原始内部日志、用户数据或未脱敏的专有上下文。
 
@@ -34,7 +34,7 @@ Host home
   - optional native memories
   - optional user skills
 
-Current v0.1.0 preview adapter: Codex CLI + CODEX_HOME
+Current preview adapter: Codex CLI + CODEX_HOME
 
 OpenRelix repo
   - .agents/skills/
@@ -53,6 +53,7 @@ External state root
   - consolidated/
   - reports/
   - runtime/
+    - openrelix-index.sqlite3
   - log/
 ```
 
@@ -67,6 +68,9 @@ nightly_consolidate.py
   -> consolidated/daily/<date>/summary.json
   -> consolidated/daily/<date>/summary.md
   -> registry/memory_items.jsonl
+
+openrelix_index.py
+  -> runtime/openrelix-index.sqlite3
 
 memory-review skill
   -> reviews/YYYY/*.md
@@ -84,7 +88,7 @@ build_overview.py
 
 ### 1. Host adapter 层
 
-AI host 自己的用户级目录、history、session 和 native memory 由各 host adapter 负责映射。当前 v0.1.0 预览版 Codex 适配器由 `CODEX_HOME` 决定用户级目录，默认是 `~/.codex`；默认 `auto` 先通过 `codex app-server` 读取 threads，失败时再读取其中的 `history.jsonl` 和 `sessions/**/*.jsonl` 来识别当天窗口、问题和最终结论。
+AI host 自己的用户级目录、history、session 和 native memory 由各 host adapter 负责映射。当前预览版 Codex 适配器由 `CODEX_HOME` 决定用户级目录，默认是 `~/.codex`；默认 `auto` 先通过 `codex app-server` 读取 threads，失败时再读取其中的 `history.jsonl` 和 `sessions/**/*.jsonl` 来识别当天窗口、问题和最终结论。
 
 默认安装开启本地个人记忆，并在当前 Codex 适配器下把压缩后的 bounded summary 写入 `CODEX_HOME`，让 host native context 能读取轻量摘要。完整结构化记录仍保留在 state root；需要严格隔离时使用 `--record-memory-only` 或 `--no-memory-summary`。
 
@@ -95,7 +99,7 @@ AI host 自己的用户级目录、history、session 和 native memory 由各 ho
 仓库保存可复用能力：
 
 - `.agents/skills/memory-review/`：立即复盘入口。
-- `install/`：安装器、模板渲染、host adapter 用户配置和 shell path 配置；当前 v0.1.0 预览版实现 Codex 配置。
+- `install/`：安装器、模板渲染、host adapter 用户配置和 shell path 配置；当前预览版实现 Codex 配置。
 - `scripts/`：运行时路径、采集、整理、概览生成、token live server 和 `openrelix` CLI。
 - `templates/`：资产样例、任务复盘模板、夜间整理 JSON schema。
 - `ops/launchd/`：macOS LaunchAgent 模板。
@@ -113,12 +117,12 @@ state root 默认在：
 
 state root 的主要目录：
 
-- `raw/`：从 AI host history 和 session 采集出的日维度、窗口维度原始结构化数据；当前 v0.1.0 预览版来源是 Codex。
+- `raw/`：从 AI host history 和 session 采集出的日维度、窗口维度原始结构化数据；当前预览版来源是 Codex。
 - `registry/`：资产注册表、复用事件、nightly memory items 和整理质量日志。
 - `reviews/`：脱敏任务复盘。
 - `consolidated/`：夜间或手动整理后的 summary。
 - `reports/`：overview、CSV 和 HTML panel。
-- `runtime/`：运行时缓存、host adapter 运行目录、nightly isolated Codex home、token cache。
+- `runtime/`：运行时缓存、host adapter 运行目录、nightly isolated Codex home、token cache，以及可删除重建的 SQLite 检索索引。
 - `log/`：LaunchAgent 和后台任务日志。
 
 ## 核心模块
@@ -129,13 +133,32 @@ state root 的主要目录：
 
 它负责：
 
-- 解析 state root、host home、host binary、user skill root 和 LaunchAgent 目录；当前 v0.1.0 预览版对应 `CODEX_HOME` 和 Codex binary。
+- 解析 state root、host home、host binary、user skill root 和 LaunchAgent 目录；当前预览版对应 `CODEX_HOME` 和 Codex binary。
 - 管理 `language` 和 `memory_mode`。
 - 创建 state root 下的标准目录和 JSONL 文件。
 - 提供 atomic write，避免中途写坏 JSON / markdown / panel。
 - 兼容旧 slug 的 state root，并支持 legacy repo-local state 迁移。
 
 新增脚本时应优先复用这里的 `get_runtime_paths()` 和 `ensure_state_layout()`，不要在脚本里重新散落路径规则。
+
+### `scripts/openrelix_index.py`
+
+本地 SQLite sidecar 索引。
+
+输入：
+
+- `registry/memory_items.jsonl`
+- `raw/daily/*.json`
+- `raw/windows/*/*.json`
+- `consolidated/daily/*/summary.json`
+
+输出：
+
+- `runtime/openrelix-index.sqlite3`
+
+它不改变 raw / JSONL / consolidated 主链路，也不是权威数据源。索引缺失、schema 过期、source fingerprint 变化或用户手动删除时，都可以从 state root 里的源文件全量重建。`openrelix index status` 只读检查状态，`openrelix index rebuild` 显式重建；`openrelix index search-memory` 和 `openrelix index search-window` 先提供底层检索能力，UI 后续再接。
+
+夜间 pipeline 和普通 `refresh` 会以 warning-only 方式尝试重建 SQLite 索引：失败只写 stderr，不阻断 raw 采集、nightly consolidation、bounded summary 或 panel 生成。
 
 ### `install/install.sh`
 
@@ -190,8 +213,9 @@ state root 的主要目录：
 
 模型调用方式：
 
-- 使用 `codex exec --ephemeral`
+- 使用 `codex exec --ephemeral --model <codex_model>`
 - 使用隔离的 nightly `CODEX_HOME`
+- 默认 `codex_model` 是 `gpt-5.4-mini`；`openrelix models` 通过 `codex debug models` 读取当前本机 Codex catalog，`openrelix config --codex-model <model>` 负责切换
 - 通过 `templates/nightly-summary-schema.json` 约束输出 JSON
 - 在 prompt 前加安全前缀，声明这是纯整理任务，不允许读额外文件、调用 shell、web、MCP 或 patch
 
@@ -413,7 +437,7 @@ openrelix backfill --from <start-date> --to <end-date> --learn-window-days N
 openrelix backfill --dates 2026-04-21,2026-04-23,2026-04-24 --learn-window-days 7
 ```
 
-回溯不是完全离线：采集阶段是本地脚本读取当前 host 的 history 和 session JSONL；当前 v0.1.0 预览版 Codex 适配器会通过 `codex exec --ephemeral` 调用模型生成结构化 summary；最后再由本地脚本重建 overview / panel。
+回溯不是完全离线：采集阶段是本地脚本读取当前 host 的 history 和 session JSONL；当前预览版 Codex 适配器会通过 `codex exec --ephemeral --model <codex_model>` 调用模型生成结构化 summary；最后再由本地脚本重建 overview / panel。
 
 ### 后台整理
 
@@ -434,7 +458,7 @@ LaunchAgent
 
 - GitHub 仓库提供源码、模板、skills、docs 和 launchd 模板。
 - npm 包提供 `npx openrelix install` 入口。
-- 项目定位是 AI-agent-first；当前 v0.1.0 预览版安装器先交付 Codex CLI / Codex app-server 适配器。
+- 项目定位是 AI-agent-first；当前预览版安装器先交付 Codex CLI / Codex app-server 适配器。
 - npm 通过 `files` 白名单携带必要源码，不携带个人运行数据。
 - 发布前用 `npm pack --dry-run` 检查包内容。
 - Codex plugin 作为已打包的 skill route 随仓库/包发布；完整本地集成仍由 installer 负责。
@@ -461,7 +485,7 @@ scripts/cleanup_smoke_temp.sh --dry-run
 
 - 是否引入了硬编码个人绝对路径。
 - 是否把 state root 内容加入 npm 包。
-- 是否会默认改写 host-native memory；当前 v0.1.0 预览版重点检查 Codex native memory。
+- 是否会默认改写 host-native memory；当前预览版重点检查 Codex native memory。
 - 是否破坏 minimal profile 的低侵入边界。
 - 是否让 macOS-only 能力被误读成跨平台承诺。
 

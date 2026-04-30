@@ -14,12 +14,15 @@ APP_SLUG = "openrelix"
 PREVIOUS_PUBLIC_APP_SLUG = "open" + "keepsake"
 LEGACY_APP_SLUGS = (PREVIOUS_PUBLIC_APP_SLUG, "ai-personal-assets", "codex-personal-assets")
 REPO_ROOT = Path(__file__).resolve().parent.parent
+PROJECT_PACKAGE_NAME = APP_SLUG
+DEFAULT_PROJECT_VERSION = "0.0.0"
 DEFAULT_LANGUAGE = "zh"
 SUPPORTED_LANGUAGES = ("zh", "en")
 DEFAULT_MEMORY_MODE = "integrated"
 SUPPORTED_MEMORY_MODES = ("integrated", "local-only", "off")
 SUPPORTED_ACTIVITY_SOURCES = ("history", "app-server", "auto")
 DEFAULT_ACTIVITY_SOURCE = "auto"
+DEFAULT_CODEX_MODEL = "gpt-5.4-mini"
 DEFAULT_MEMORY_SUMMARY_MAX_TOKENS = 8000
 MIN_MEMORY_SUMMARY_MAX_TOKENS = 2000
 MAX_MEMORY_SUMMARY_MAX_TOKENS = 20000
@@ -73,6 +76,18 @@ ACTIVITY_SOURCE_ALIASES = {
     "auto": "auto",
     "read-codex-app": "auto",
     "read_codex_app": "auto",
+}
+CODEX_MODEL_ALIASES = {
+    "mini": DEFAULT_CODEX_MODEL,
+    "gpt54mini": DEFAULT_CODEX_MODEL,
+    "gpt5.4mini": DEFAULT_CODEX_MODEL,
+    "gpt5.4min": DEFAULT_CODEX_MODEL,
+    "gpt5.4": "gpt-5.4",
+    "gpt54": "gpt-5.4",
+    "gpt5.5": "gpt-5.5",
+    "gpt55": "gpt-5.5",
+    "gpt5.3codex": "gpt-5.3-codex",
+    "gpt53codex": "gpt-5.3-codex",
 }
 LEGACY_REPO_STATE_ENV = "AI_ASSET_USE_REPO_STATE"
 LEGACY_STATE_DIR_NAMES = (
@@ -195,6 +210,29 @@ def normalize_activity_source(value: Optional[str], *, strict: bool = False) -> 
     return DEFAULT_ACTIVITY_SOURCE
 
 
+def normalize_codex_model(value: Optional[str], *, strict: bool = False) -> str:
+    text = str(value or "").strip()
+    if not text:
+        if strict:
+            raise ValueError("codex_model cannot be empty")
+        return DEFAULT_CODEX_MODEL
+
+    alias_key = "".join(ch for ch in text.lower() if ch.isalnum() or ch == ".")
+    if alias_key in CODEX_MODEL_ALIASES:
+        return CODEX_MODEL_ALIASES[alias_key]
+
+    if text.startswith("-") or any(ch.isspace() for ch in text):
+        if strict:
+            raise ValueError(
+                "codex_model must be a single model id, for example {}".format(
+                    DEFAULT_CODEX_MODEL
+                )
+            )
+        return DEFAULT_CODEX_MODEL
+
+    return text
+
+
 def _round_token_budget(value: float) -> int:
     return int(round(value / 100.0) * 100)
 
@@ -222,6 +260,24 @@ def get_memory_summary_budget(paths: Optional["RuntimePaths"] = None) -> dict:
 
     config = load_runtime_config(paths)
     return memory_summary_budget_from_max(config.get("memory_summary_max_tokens"))
+
+
+def read_project_package_metadata(repo_root: Optional[Path] = None) -> dict:
+    package_json = (repo_root or REPO_ROOT) / "package.json"
+    try:
+        payload = json.loads(package_json.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def get_project_version(
+    repo_root: Optional[Path] = None,
+    *,
+    fallback: str = DEFAULT_PROJECT_VERSION,
+) -> str:
+    version = str(read_project_package_metadata(repo_root).get("version") or "").strip()
+    return version or fallback
 
 
 def iter_legacy_state_paths():
@@ -430,6 +486,15 @@ def get_activity_source(paths: Optional["RuntimePaths"] = None) -> str:
     return normalize_activity_source(config.get("activity_source"))
 
 
+def get_codex_model(paths: Optional["RuntimePaths"] = None) -> str:
+    explicit = os.environ.get("OPENRELIX_CODEX_MODEL") or os.environ.get("AI_ASSET_CODEX_MODEL")
+    if explicit:
+        return normalize_codex_model(explicit)
+
+    config = load_runtime_config(paths)
+    return normalize_codex_model(config.get("codex_model"))
+
+
 def personal_memory_enabled(paths: Optional["RuntimePaths"] = None) -> bool:
     return get_memory_mode(paths) != "off"
 
@@ -442,6 +507,7 @@ def write_runtime_config(
     language: Optional[str] = None,
     memory_mode: Optional[str] = None,
     activity_source: Optional[str] = None,
+    codex_model: Optional[str] = None,
     memory_summary_max_tokens: Optional[Union[int, str]] = None,
     paths: Optional["RuntimePaths"] = None,
 ) -> dict:
@@ -461,6 +527,11 @@ def write_runtime_config(
         activity_source
         if activity_source is not None
         else config.get("activity_source")
+    )
+    config["codex_model"] = normalize_codex_model(
+        codex_model
+        if codex_model is not None
+        else config.get("codex_model")
     )
     config["memory_summary_max_tokens"] = normalize_memory_summary_max_tokens(
         memory_summary_max_tokens

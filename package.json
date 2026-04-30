@@ -66,6 +66,7 @@
     "scripts/nightly_consolidate.py",
     "scripts/nightly_finalize_previous_day.sh",
     "scripts/nightly_organize_today.sh",
+    "scripts/openrelix_index.py",
     "scripts/nightly_pipeline.sh",
     "scripts/refresh_overview.sh",
     "scripts/run_with_optional_caffeinate.sh",

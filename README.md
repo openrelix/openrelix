@@ -8,7 +8,7 @@ OpenRelix™ is a local-first asset layer for AI coding agents. It turns finishe
 
 The name means an open-source personal memory keepsake: reusable work stays organized locally, while only sanitized, bounded summaries are shared with the active AI host.
 
-The project is intentionally not tied to one AI host. The current v0.1.0 preview ships a Codex CLI adapter first because Codex exposes the history, session, skill, and memory surfaces needed for a working local installer. Other AI CLI / agent hosts can be added through adapter layers without changing the product goal.
+The project is intentionally not tied to one AI host. The current preview ships a Codex CLI adapter first because Codex exposes the history, session, skill, and memory surfaces needed for a working local installer. Other AI CLI / agent hosts can be added through adapter layers without changing the product goal.
 
 GitHub project page: [openrelix/openrelix](https://github.com/openrelix/openrelix). If this project helps your workflow, a star is welcome.
 
@@ -28,7 +28,7 @@ GitHub project page: [openrelix/openrelix](https://github.com/openrelix/openreli
 
 - [Technical Solution](docs/technical-solution.md): architecture, data flow, module responsibilities, runtime state, and release boundaries.
 - [Learning Guide](docs/learning-guide.md): a practical path for users, contributors, and maintainers to understand and validate the project.
-- [Open Source Install And Project Overview](docs/open-source-install-and-project-overview.md): Chinese install guide and project explanation for the current macOS v0.1.0 preview release.
+- [Open Source Install And Project Overview](docs/open-source-install-and-project-overview.md): Chinese install guide and project explanation for the current macOS preview release.
 - [Product Showcase](docs/product-showcase.html): visual product introduction and sanitized panel previews.
 - [System Overview](docs/system-overview.md): layered operating model for AI hosts, repo source, runtime state, and local memory.
 - [Privacy And Distribution Boundary](docs/privacy-and-distribution.md): what belongs in the public repo and what must stay local.
@@ -56,20 +56,20 @@ OpenRelix™ and openrelix™ are trademarks of the project maintainer. The sour
 
 ## Current Adapter Support
 
-v0.1.0 preview is macOS-only. The supported install path assumes:
+The current preview is macOS-only. The supported install path assumes:
 
 - macOS with user-level `launchd` / `LaunchAgent`
 - Node.js 18+ with `npm` / `npx`
 - `zsh`
 - Python 3.10+
 - Codex CLI with a writable `CODEX_HOME`, defaulting to `~/.codex`
-- For model-backed learning refresh, a working Codex model path for `codex exec`. If `openrelix refresh --learn-memory` reports `401`, `Unauthorized`, or `invalid_issuer`, first confirm `codex exec` works in a normal terminal. Shared/proxy providers must keep `CODEX_HOME/auth.json` and `CODEX_HOME/config.toml` together because `model_provider/base_url` is not stored in `auth.json`; official OpenAI API key setups should also check or clear an invalid `OPENAI_API_KEY`.
+- For model-backed learning refresh, a working Codex model path for `codex exec`. OpenRelix pins its own internal `codex exec --model` default to `gpt-5.4-mini` for review, backfill, 30-minute learning refresh, and nightly summaries without changing the user's global Codex default. If `openrelix refresh --learn-memory` reports `401`, `Unauthorized`, or `invalid_issuer`, first confirm `codex exec` works in a normal terminal. Shared/proxy providers must keep `CODEX_HOME/auth.json` and `CODEX_HOME/config.toml` together because `model_provider/base_url` is not stored in `auth.json`; official OpenAI API key setups should also check or clear an invalid `OPENAI_API_KEY`.
 
 Linux and Windows support are future work. Some lower-level Python scripts are written to keep paths configurable, but the public installer and background automation should be treated as macOS-only for this release.
 
-The first public adapter targets Codex CLI and Codex app-server. Several v0.1.0 preview capabilities depend on Codex-specific surfaces, including `CODEX_HOME`, Codex app-server threads, Codex history/session files, Codex native memories, Codex skills, and Codex custom prompts. The product direction remains AI-agent-first: future hosts should plug in by mapping their own history, skill, memory, and command surfaces into the same local asset model.
+The first public adapter targets Codex CLI and Codex app-server. Several current preview capabilities depend on Codex-specific surfaces, including `CODEX_HOME`, Codex app-server threads, Codex history/session files, Codex native memories, Codex skills, and Codex custom prompts. The product direction remains AI-agent-first: future hosts should plug in by mapping their own history, skill, memory, and command surfaces into the same local asset model.
 
-Expected adapter work after v0.1.0 preview includes Claude Code, Gemini CLI, and other AI CLI / coding-agent hosts that expose local history, command, skill, or memory surfaces. These are roadmap targets, not current support guarantees.
+Expected adapter work after the current preview includes Claude Code, Gemini CLI, and other AI CLI / coding-agent hosts that expose local history, command, skill, or memory surfaces. These are roadmap targets, not current support guarantees.
 
 Codex app-server collection is now part of the default Codex adapter path. By default, OpenRelix uses `auto`: it tries `codex app-server` first, maps Codex threads back into the same raw window format used by the existing collector, and falls back to `CODEX_HOME/history.jsonl` plus `CODEX_HOME/sessions/**/*.jsonl` when app-server is unavailable.
 
@@ -105,7 +105,7 @@ Fresh installs should keep user state outside the repository. The installer crea
 
 - `registry/`: asset registry, usage events, and nightly memory items.
 - `reviews/`: sanitized task reviews.
-- `raw/`: collected AI host activity grouped by day and window; Codex is the v0.1.0 preview source.
+- `raw/`: collected AI host activity grouped by day and window; Codex is the current preview source.
 - `consolidated/`: nightly organization output.
 - `reports/`: generated overview markdown, JSON, CSV, and HTML panel.
 - `runtime/`: token cache and adapter runtime such as an isolated nightly Codex home.
@@ -120,7 +120,7 @@ For continuity after the package rename, legacy state roots may be reused only w
 
 ## Quick start
 
-These commands are for macOS v0.1.0 preview.
+These commands are for macOS current preview.
 
 One-line `npx` install:
 
@@ -190,7 +190,7 @@ npx openrelix uninstall --delete-local-memory
 
 `--delete-local-memory` deletes the active state root and the OpenRelix-written `CODEX_HOME/memories/memory_summary.md`. It does not delete your whole `CODEX_HOME`, Codex auth, or Codex history/session files.
 
-The installer stores the selected runtime language and memory mode in the state root under `runtime/config.json`. Supported language values are `zh` and `en`; interactive installs prompt when no language is passed, and non-interactive installs default to `zh`. The language controls local terminal output, generated overview files, nightly summary prompts, fallback summaries, immediate task reviews, asset / usage-event human-facing fields, and the structured memory items written by the local consolidation pipeline. Stable enum keys stay canonical so automation can still classify records, while the visible fields follow the selected language.
+The installer stores the selected runtime language, memory mode, activity source, Codex model, and token budget in the state root under `runtime/config.json`. Supported language values are `zh` and `en`; interactive installs prompt when no language is passed, and non-interactive installs default to `zh`. The language controls local terminal output, generated overview files, nightly summary prompts, fallback summaries, immediate task reviews, asset / usage-event human-facing fields, and the structured memory items written by the local consolidation pipeline. Stable enum keys stay canonical so automation can still classify records, while the visible fields follow the selected language.
 
 ```bash
 ./install/install.sh --language zh
@@ -306,7 +306,7 @@ Before opening the repository and package broadly, keep the public evidence path
 
 - Use `OpenRelix™` on the first visible brand mention in the README, showcase, release notes, and npm page.
 - Keep `openrelix™` as the CLI mark and `openrelix` as the npm package name.
-- Publish a GitHub release and tag named `v0.1.0`.
+- Publish a GitHub release and tag matching the `package.json` version, using `v<version>`.
 - Enable GitHub Pages from the `main` branch and `/docs` folder.
 - Save screenshots of the GitHub README, npm package page, release page, and GitHub Pages showcase after publication.
 - Do not use `OpenRelix®` or `openrelix®` unless registration has issued for the relevant mark and jurisdiction.
@@ -328,7 +328,7 @@ The license allows free personal use, copying, modification, distribution, and s
 
 ## How skills load
 
-- When the active AI host supports repo-local skills, skills under `.agents/skills/` are discoverable automatically. The v0.1.0 preview adapter targets Codex discovery.
+- When the active AI host supports repo-local skills, skills under `.agents/skills/` are discoverable automatically. The current preview adapter targets Codex discovery.
 - If you want the same skill to be available from any repo, install it into the user-level skill root for the active host. The default `integrated` profile does this automatically; use `--install-global-skills` when building a custom profile.
 - This repository does not rely on hooks to make skills discoverable globally. Hooks are optional lifecycle automation; skill availability comes from repo-local discovery or user-level installation.
 
@@ -414,14 +414,26 @@ Backfill collection is local, but synthesis is not purely offline: the raw Codex
 
 In the default `integrated` mode, review, backfill, and refresh also regenerate the bounded `memory_summary.md` under `CODEX_HOME` so Codex can read the compressed context. They still keep full local registry data under the state root and do not write raw windows into Codex native memory. Personal-memory candidates do not have a fixed item cap; the generated summary is bounded by a configurable token budget instead.
 
-Show or update the context summary budget:
+Show or update runtime config:
 
 ```bash
 openrelix config
+openrelix models
+openrelix config --codex-model gpt-5.4-mini
 openrelix config --memory-summary-max-tokens 8000
 ```
 
-`memory_summary_max_tokens` defaults to 8000 and accepts values from 2000 to 20000. Target and warning budgets are derived automatically from that max. Updating it refreshes the summary, overview, and panel by default; add `--no-refresh` when you only want to persist the config.
+`openrelix models` reads the current local Codex CLI model catalog through `codex debug models` and prints a sanitized list of selectable model IDs. `codex_model` defaults to `gpt-5.4-mini` and is passed only to OpenRelix's internal `codex exec` jobs. `memory_summary_max_tokens` defaults to 8000 and accepts values from 2000 to 20000. Target and warning budgets are derived automatically from that max. Updating config refreshes the summary, overview, and panel by default; add `--no-refresh` when you only want to persist the config.
+
+OpenRelix also maintains a local SQLite sidecar index for memory and window lookup. The source of truth stays in the state root's `raw/`, `registry/`, and `consolidated/` files; the database under `runtime/openrelix-index.sqlite3` is rebuildable and can be deleted. Routine `refresh` and nightly runs rebuild it on a warning-only path so search freshness does not block raw capture or JSONL memory writes.
+
+```bash
+openrelix index status
+openrelix index rebuild
+openrelix index search-memory sqlite --bucket durable
+openrelix index search-window "review loop" --project openrelix
+openrelix paths
+```
 
 Advanced fallback:
 

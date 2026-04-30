@@ -425,7 +425,7 @@ python3 scripts/build_overview.py
 - 没有新增硬编码个人绝对路径。
 - 没有把真实 state root 内容加入仓库。
 - 默认只写 bounded summary，不把原始窗口或完整 registry 注入 Codex native memory。
-- 没有让 `v0.1.0 预览版` 看起来承诺 Linux / Windows。
+- 没有让当前预览版看起来承诺 Linux / Windows。
 - 文档说明了隐私边界和安装边界。
 - minimal profile 仍然低侵入。
 - integrated profile 的额外动作都有明确开关。

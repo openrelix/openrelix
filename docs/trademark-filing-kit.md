@@ -22,7 +22,7 @@ Recommended first filing:
   use.
 
 Add Class 42 only if there is a hosted web service, SaaS product, or online
-non-downloadable software service under the same mark. The current v0.1.0 preview repo is a
+non-downloadable software service under the same mark. The current preview repo is a
 downloadable CLI / installer project, so Class 9 is the clean first filing.
 
 Use `OPENRELIX` as the first protection target. Do not lead with an acronym or

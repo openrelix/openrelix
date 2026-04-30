@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
   <title>OpenRelix™ 产品展示</title>
-  <meta name="description" content="OpenRelix™ v0.2.2 预览版是一套开源的个人记忆珍藏系统，面向 AI coding agents / AI CLI，把重复工作沉淀成可复用技能、记忆、模板、复盘和可视化面板。">
+  <meta name="description" content="OpenRelix™ 是一套开源的个人记忆珍藏系统，面向 AI coding agents / AI CLI，把重复工作沉淀成可复用技能、记忆、模板、复盘和可视化面板。">
   <meta name="openrelix:version" content="0.2.2" data-pkg="openrelix">
   <script>
     (() => {
@@ -3316,7 +3316,11 @@
           <a class="button" href="#tour">查看功能导览</a>
           <a class="button secondary" href="#install">安装方式</a>
         </div>
-        <p class="hero-note">v0.2.2 预览版：产品定位不绑定单一 AI host；当前首个公开适配器是 Codex CLI 和 Codex app-server，Claude Code、Gemini CLI 等其他 AI CLI / coding-agent host 在后续适配计划中。本页预览使用脱敏示例面板，不包含真实项目、账号、路径、日志或工作内容。</p>
+        <p
+          class="hero-note"
+          data-version-template-zh="{version} 预览版：产品定位不绑定单一 AI host；当前首个公开适配器是 Codex CLI 和 Codex app-server，Claude Code、Gemini CLI 等其他 AI CLI / coding-agent host 在后续适配计划中。本页预览使用脱敏示例面板，不包含真实项目、账号、路径、日志或工作内容。"
+          data-version-template-en="{version} preview: the product is not tied to one AI host; the first public adapter is Codex CLI and Codex app-server, with Claude Code, Gemini CLI, and other AI CLI / coding-agent hosts on the adapter roadmap. This page uses sanitized sample panels and contains no real projects, accounts, paths, logs, or work content."
+        >当前预览版：产品定位不绑定单一 AI host；当前首个公开适配器是 Codex CLI 和 Codex app-server，Claude Code、Gemini CLI 等其他 AI CLI / coding-agent host 在后续适配计划中。本页预览使用脱敏示例面板，不包含真实项目、账号、路径、日志或工作内容。</p>
       </div>
     </section>
 
@@ -3927,7 +3931,7 @@
             <p>这些是可复用逻辑，适合随 npm 包和 GitHub 仓库一起发布。</p>
           </article>
           <article class="tile">
-            <span class="chip blue">v0.2.2 预览版</span>
+            <span class="chip blue" data-version-template-zh="{version} 预览版" data-version-template-en="{version} Preview">当前预览版</span>
             <h3>AI CLI 优先</h3>
             <p>当前首个公开适配器是 Codex CLI 和 Codex app-server；默认 auto 优先读取 Codex app-server，Claude Code、Gemini CLI 等其他 AI CLI / coding-agent host 是后续适配目标。</p>
           </article>
@@ -3983,7 +3987,11 @@
     <div class="inner">
       <div>
         <strong>OpenRelix™</strong>
-        <div class="small">面向 AI coding agents / AI CLI 的本地优先个人 AI 资产系统。当前 v0.2.2 预览版首个适配器是 Codex CLI；非官方项目，与 OpenAI 无官方关联。</div>
+        <div
+          class="small"
+          data-version-template-zh="面向 AI coding agents / AI CLI 的本地优先个人 AI 资产系统。当前 {version} 预览版首个适配器是 Codex CLI；非官方项目，与 OpenAI 无官方关联。"
+          data-version-template-en="A local-first personal AI asset system for AI coding agents / AI CLI. The first {version} preview adapter is Codex CLI; unofficial and not affiliated with OpenAI."
+        >面向 AI coding agents / AI CLI 的本地优先个人 AI 资产系统。当前预览版首个适配器是 Codex CLI；非官方项目，与 OpenAI 无官方关联。</div>
         <div
           class="small"
           data-zh-html='MIT 授权。版权 (c) 2026 <a class="text-link" href="https://www.npmjs.com/~kk_kais" target="_blank" rel="noopener noreferrer">kk_kais</a>。'
@@ -4026,7 +4034,6 @@
         "安装方式": "Install Options",
         "复制安装命令": "Copy Install Commands",
         "GitHub 点星支持": "Star on GitHub",
-        "v0.2.2 预览版：产品定位不绑定单一 AI host；当前首个公开适配器是 Codex CLI 和 Codex app-server，Claude Code、Gemini CLI 等其他 AI CLI / coding-agent host 在后续适配计划中。本页预览使用脱敏示例面板，不包含真实项目、账号、路径、日志或工作内容。": "v0.2.2 preview: the product is not tied to one AI host; the first public adapter is Codex CLI and Codex app-server, with Claude Code, Gemini CLI, and other AI CLI / coding-agent hosts on the adapter roadmap. This page uses sanitized sample panels and contains no real projects, accounts, paths, logs, or work content.",
         "AI 编程越来越强，但个人经验和记忆仍然很容易流失。": "AI coding keeps getting stronger, but personal know-how still disappears easily.",
         "一次很有价值的排障、一次高质量代码审查、一次顺手写出的脚本，如果没有结构化沉淀，过几天就只剩“我好像做过”。": "A useful debug session, a good code review, or a quick script is hard to reuse a few days later unless it is captured in a structured way.",
         "聊天碎片": "Chat fragments",
@@ -4383,7 +4390,6 @@
         "可以公开": "Shareable",
         "安装器 / 技能 / 模板": "Installer / Skills / Templates",
         "这些是可复用逻辑，适合随 npm 包和 GitHub 仓库一起发布。": "These are reusable logic and can ship with the npm package and GitHub repo.",
-        "v0.2.2 预览版": "v0.2.2 Preview",
         "AI CLI 优先": "AI CLI First",
         "当前首个公开适配器是 Codex CLI 和 Codex app-server；默认 auto 优先读取 Codex app-server，Claude Code、Gemini CLI 等其他 AI CLI / coding-agent host 是后续适配目标。": "The first public adapter is Codex CLI and Codex app-server; auto uses Codex app-server first, while Claude Code, Gemini CLI, and other AI CLI / coding-agent hosts are later adapter targets.",
         "留在本地": "Keep local",
@@ -4402,7 +4408,6 @@
         "无担保": "Warranty",
         "按现状提供": "Provided as is",
         "软件不附带明示或暗示担保，使用、修改和分发时需要自行承担相应风险。": "The software is provided without express or implied warranty; use, modify, and distribute it at your own risk.",
-        "面向 AI coding agents / AI CLI 的本地优先个人 AI 资产系统。当前 v0.2.2 预览版首个适配器是 Codex CLI；非官方项目，与 OpenAI 无官方关联。": "A local-first personal AI asset system for AI coding agents / AI CLI. The first v0.2.2 preview adapter is Codex CLI; unofficial and not affiliated with OpenAI.",
         "MIT 授权。版权 (c) 2026": "MIT License. Copyright (c) 2026",
         "本页产品预览使用脱敏示例数据。": "Product previews on this page use sanitized sample data."
         };
@@ -4464,6 +4469,23 @@
         zh: "OpenRelix 是一套本地优先的个人 AI 资产系统，把重复工作沉淀成可复用技能、记忆、模板、复盘和可视化面板。",
         en: "OpenRelix is a local-first personal AI asset system that turns repeated work into reusable skills, memories, templates, reviews, and visual panels."
       };
+
+      function currentVersionLabel() {
+        const meta = document.querySelector('meta[name="openrelix:version"]');
+        const version = meta ? String(meta.content || "").trim() : "";
+        if (!version) {
+          return "";
+        }
+        return /^v/i.test(version) ? version : `v${version}`;
+      }
+
+      function renderVersionTemplates(language) {
+        const label = currentVersionLabel() || (language === "en" ? "Current preview" : "当前预览版");
+        document.querySelectorAll("[data-version-template-zh][data-version-template-en]").forEach((node) => {
+          const template = language === "en" ? node.dataset.versionTemplateEn : node.dataset.versionTemplateZh;
+          node.textContent = String(template || "").replace(/\{version\}/g, label);
+        });
+      }
 
       function translatePlainText(language) {
         const textTranslations = getTranslations();
@@ -4564,6 +4586,7 @@
         translateHtml(normalized);
         translatePlainText(normalized);
         translateAttributes(normalized);
+        renderVersionTemplates(normalized);
         setLanguageControls(normalized);
         if (options.persist !== false) {
           try {
@@ -4699,6 +4722,7 @@
         applyLanguage(initialLanguage, { persist: false });
       } else {
         setLanguageControls("zh");
+        renderVersionTemplates("zh");
       }
 
       let initialTheme = "system";

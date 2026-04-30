@@ -52,6 +52,27 @@ def make_window_summary():
     ]
 
 
+def make_runtime_paths_for_test(root):
+    root = Path(root)
+    return replace(
+        openrelix.PATHS,
+        state_root=root,
+        codex_home=root / "codex-home",
+        raw_dir=root / "raw",
+        raw_daily_dir=root / "raw" / "daily",
+        raw_windows_dir=root / "raw" / "windows",
+        registry_dir=root / "registry",
+        reviews_dir=root / "reviews",
+        reports_dir=root / "reports",
+        consolidated_dir=root / "consolidated",
+        consolidated_daily_dir=root / "consolidated" / "daily",
+        runtime_dir=root / "runtime",
+        nightly_runner_dir=root / "runtime" / "nightly-runner",
+        nightly_codex_home=root / "runtime" / "codex-nightly-home",
+        log_dir=root / "log",
+    )
+
+
 class TextCollector(HTMLParser):
     def __init__(self):
         super().__init__()
@@ -173,6 +194,11 @@ class NightlyLogicTests(unittest.TestCase):
         self.assertEqual(asset_runtime.normalize_activity_source("read-codex-app"), "auto")
         with self.assertRaises(ValueError):
             asset_runtime.normalize_activity_source("browser", strict=True)
+        self.assertEqual(asset_runtime.normalize_codex_model(None), "gpt-5.4-mini")
+        self.assertEqual(asset_runtime.normalize_codex_model("gpt5.4mini"), "gpt-5.4-mini")
+        self.assertEqual(asset_runtime.normalize_codex_model("gpt5.5"), "gpt-5.5")
+        with self.assertRaises(ValueError):
+            asset_runtime.normalize_codex_model("bad model", strict=True)
         self.assertEqual(asset_runtime.normalize_memory_summary_max_tokens(None), 8000)
         self.assertEqual(asset_runtime.normalize_memory_summary_max_tokens("8000"), 8000)
         with self.assertRaises(ValueError):
@@ -187,6 +213,8 @@ class NightlyLogicTests(unittest.TestCase):
                     "AI_ASSET_MEMORY_MODE": "",
                     "OPENRELIX_ACTIVITY_SOURCE": "",
                     "AI_ASSET_ACTIVITY_SOURCE": "",
+                    "OPENRELIX_CODEX_MODEL": "",
+                    "AI_ASSET_CODEX_MODEL": "",
                 },
             ):
                 paths = asset_runtime.get_runtime_paths()
@@ -195,6 +223,7 @@ class NightlyLogicTests(unittest.TestCase):
                     language="en",
                     memory_mode="codex",
                     activity_source="auto",
+                    codex_model="gpt5.4mini",
                     memory_summary_max_tokens=8000,
                     paths=paths,
                 )
@@ -202,6 +231,7 @@ class NightlyLogicTests(unittest.TestCase):
                 self.assertEqual(config["language"], "en")
                 self.assertEqual(config["memory_mode"], "integrated")
                 self.assertEqual(config["activity_source"], "auto")
+                self.assertEqual(config["codex_model"], "gpt-5.4-mini")
                 self.assertEqual(config["memory_summary_max_tokens"], 8000)
                 self.assertTrue(config["personal_memory_enabled"])
                 self.assertTrue(config["codex_context_enabled"])
@@ -210,6 +240,7 @@ class NightlyLogicTests(unittest.TestCase):
                 self.assertEqual(asset_runtime.get_runtime_language(paths), "en")
                 self.assertEqual(asset_runtime.get_memory_mode(paths), "integrated")
                 self.assertEqual(asset_runtime.get_activity_source(paths), "auto")
+                self.assertEqual(asset_runtime.get_codex_model(paths), "gpt-5.4-mini")
                 self.assertTrue(asset_runtime.personal_memory_enabled(paths))
                 self.assertTrue(asset_runtime.codex_context_enabled(paths))
                 self.assertEqual(
@@ -336,6 +367,7 @@ class NightlyLogicTests(unittest.TestCase):
         old_runtime_dir = nightly_consolidate.RUNTIME_DIR
         old_codex_bin = nightly_consolidate.CODEX_BIN
         old_schema_path = nightly_consolidate.SCHEMA_PATH
+        old_codex_model = nightly_consolidate.CODEX_MODEL
         try:
             with TemporaryDirectory() as tmpdir:
                 root = Path(tmpdir)
@@ -364,6 +396,7 @@ class NightlyLogicTests(unittest.TestCase):
                 nightly_consolidate.RUNTIME_DIR = runtime_dir
                 nightly_consolidate.CODEX_BIN = sys.executable
                 nightly_consolidate.SCHEMA_PATH = schema_path
+                nightly_consolidate.CODEX_MODEL = "gpt-5.4-mini"
 
                 completed = subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
                 with mock.patch.object(nightly_consolidate.subprocess, "run", return_value=completed) as run:
@@ -379,6 +412,8 @@ class NightlyLogicTests(unittest.TestCase):
                 self.assertIn("--sandbox", command)
                 self.assertIn("read-only", command)
                 self.assertIn("--disable", command)
+                self.assertIn("--model", command)
+                self.assertEqual(command[command.index("--model") + 1], "gpt-5.4-mini")
                 self.assertIn('approval_policy="never"', command)
                 self.assertIn('history.persistence="none"', command)
         finally:
@@ -387,6 +422,7 @@ class NightlyLogicTests(unittest.TestCase):
             nightly_consolidate.RUNTIME_DIR = old_runtime_dir
             nightly_consolidate.CODEX_BIN = old_codex_bin
             nightly_consolidate.SCHEMA_PATH = old_schema_path
+            nightly_consolidate.CODEX_MODEL = old_codex_model
 
     def test_openrelix_help_uses_runtime_language(self):
         with mock.patch.object(openrelix, "LANGUAGE", "zh"):
@@ -2770,19 +2806,35 @@ scope: Release checklist, package manifest, and public website validation.
         self.assertNotIn("|", cell)
         self.assertNotIn("\n", cell)
 
-    def test_redaction_preserves_json_escaped_html_attribute_quotes(self):
+    def test_redaction_preserves_clickable_file_href_attributes(self):
+        home_path = "/" + "Users" + "/example"
+        home_href = "file://" + home_path
         payload = (
-            'const snapshot = {"html":"'
-            '<a href=\\"file:///Users/example\\" target=\\"_blank\\" title=\\"/Users/example\\">home</a>'
-            '"};'
+            'const snapshot = {{"html":"'
+            '<a href=\\"{}\\" target=\\"_blank\\" title=\\"{}\\">home</a>'
+            '"}};'
+        ).format(home_href, home_path)
+
+        redacted = build_overview.normalize_brand_display_text(payload)
+
+        self.assertIn('href=\\"{}\\" target=\\"_blank\\"'.format(home_href), redacted)
+        self.assertIn('title=\\"~\\"', redacted)
+        self.assertNotIn('href=\\"file://~\\" target=', redacted)
+        self.assertNotIn('title=\\"~" target=', redacted)
+
+    def test_file_href_redaction_placeholder_does_not_collide_with_visible_text(self):
+        fixture_path = "/" + "Users" + "/example/demo.json"
+        fixture_href = "file://" + fixture_path
+        payload = (
+            'visible __OPENRELIX_FILE_HREF_0__ '
+            '<a href="{}" title="{}">demo</a>'.format(fixture_href, fixture_path)
         )
 
         redacted = build_overview.normalize_brand_display_text(payload)
 
-        self.assertIn('href=\\"file://~\\" target=\\"_blank\\"', redacted)
-        self.assertIn('title=\\"~\\"', redacted)
-        self.assertNotIn('href=\\"file://~" target=', redacted)
-        self.assertNotIn('title=\\"~" target=', redacted)
+        self.assertIn("visible __OPENRELIX_FILE_HREF_0__", redacted)
+        self.assertIn('href="{}"'.format(fixture_href), redacted)
+        self.assertIn('title="~', redacted)
 
     def test_build_html_renders_codex_native_memory_panel(self):
         html = build_overview.build_html(
@@ -3288,9 +3340,17 @@ scope: Release checklist, package manifest, and public website validation.
             '<span class="hero-brand-line"><span data-lang-only="zh">你的专属AI记忆珍藏</span><span data-lang-only="en">Your personal AI memory keepsake</span></span>',
             html,
         )
+        package_json = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))
+        self.assertIn(
+            '<span class="hero-version-line">v{}</span>'.format(package_json["version"]),
+            html,
+        )
         self.assertIn("applyLanguage(defaultLanguage);", html)
         self.assertIn("refreshStatusLanguage();", html)
         self.assertIn('setStatus("live", "", "live_refreshed");', html)
+        self.assertIn("offline_service", html)
+        self.assertIn("本地 Token 服务未启动。请运行 openrelix open panel 后再点实时刷新。", html)
+        self.assertIn("The local Token service is not running. Run openrelix open panel", html)
         self.assertIn("window.localStorage", html)
         self.assertNotIn("side-nav-sublabel", html)
         self.assertIn("personal-memory-context-section", html)
@@ -3356,7 +3416,7 @@ scope: Release checklist, package manifest, and public website validation.
                             "display": "1.8亿",
                             "tone": "token-daily-high",
                             "details": [
-                                {"label": "输入", "value": 160000000, "title": "输入：1.6亿", "meta": "总输入 Token"}
+                                {"label": "输入", "value": 160000000, "title": "输入：1.6亿", "meta": "无缓存输入 Token"}
                             ],
                             "details_heading": "04-27 Token 构成",
                         }
@@ -3368,7 +3428,7 @@ scope: Release checklist, package manifest, and public website validation.
                             "display": "4244.3万",
                             "tone": "token-input",
                             "details": [
-                                {"label": "输入", "value": 42443000, "title": "输入：4244.3万", "meta": "总输入 Token"}
+                                {"label": "输入", "value": 42443000, "title": "输入：4244.3万", "meta": "无缓存输入 Token"}
                             ],
                             "details_heading": "输入详情",
                         }
@@ -3801,49 +3861,94 @@ scope: Release checklist, package manifest, and public website validation.
 
     def test_window_cards_show_activity_source_instead_of_repeating_workspace(self):
         thread_id = "019dcefe-37f1-7a83-a8a6-720bd6b79d7f"
-        html = build_overview.make_window_summary_cards(
-            {
-                "date": "2026-04-28",
-                "windows": [
-                    {
-                        "window_id": thread_id,
-                        "display_index": 1,
-                        "cwd": "/tmp/OpenRelix",
-                        "cwd_display": "OpenRelix",
-                        "project_label": "OpenRelix",
-                        "activity_source": "app-server",
-                        "thread_source": "cli",
-                        "activity_source_label": "采集：Codex app-server · 线程来源：cli",
-                        "window_summary": "Codex 侧栏标题",
-                        "resume_id": thread_id,
-                        "resume_command": "codex resume {}".format(thread_id),
-                        "resume_url": "codex://threads/{}".format(thread_id),
-                        "question_count": 1,
-                        "conclusion_count": 1,
-                        "question_summary": "问题",
-                        "main_takeaway": "**结论**：执行 `codex resume {}`".format(thread_id),
-                        "keywords": [],
-                        "latest_activity_display": "刚刚",
-                        "started_at_display": "刚刚",
-                        "recent_prompts": [],
-                        "recent_conclusions": [],
-                    }
-                ],
-            }
-        )
+        with TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            raw_windows_dir = root / "raw" / "windows"
+            (raw_windows_dir / "2026-04-28").mkdir(parents=True)
+            (raw_windows_dir / "2026-04-28" / "{}.json".format(thread_id)).write_text(
+                json.dumps({"window_id": thread_id}),
+                encoding="utf-8",
+            )
+            paths = replace(build_overview.PATHS, raw_windows_dir=raw_windows_dir)
+            build_overview.load_window_record.cache_clear()
+            try:
+                with mock.patch.object(build_overview, "PATHS", paths):
+                    html = build_overview.make_window_summary_cards(
+                        {
+                            "date": "2026-04-28",
+                            "windows": [
+                                {
+                                    "window_id": thread_id,
+                                    "display_index": 1,
+                                    "cwd": str(root),
+                                    "cwd_display": root.name,
+                                    "project_label": "OpenRelix",
+                                    "activity_source": "app-server",
+                                    "thread_source": "cli",
+                                    "activity_source_label": "采集：Codex app-server · 线程来源：cli",
+                                    "window_summary": "Codex 侧栏标题",
+                                    "resume_id": thread_id,
+                                    "resume_command": "codex resume {}".format(thread_id),
+                                    "resume_url": "codex://threads/{}".format(thread_id),
+                                    "question_count": 1,
+                                    "conclusion_count": 1,
+                                    "question_summary": "问题",
+                                    "main_takeaway": "**结论**：执行 `codex resume {}`".format(thread_id),
+                                    "keywords": ["窗口"],
+                                    "latest_activity_display": "刚刚",
+                                    "started_at_display": "刚刚",
+                                    "recent_prompts": [{"time": "刚刚", "text": "问题原文"}],
+                                    "recent_conclusions": [{"time": "刚刚", "text": "结论原文"}],
+                                }
+                            ],
+                        }
+                    )
+            finally:
+                build_overview.load_window_record.cache_clear()
 
-        self.assertIn("OpenRelix · 窗口 1", html)
-        self.assertIn("窗口摘要", html)
         self.assertIn("Codex 侧栏标题", html)
+        self.assertIn("OpenRelix · 原始窗口 ID：{}".format(thread_id), html)
+        self.assertLess(
+            html.index("OpenRelix · 原始窗口 ID：{}".format(thread_id)),
+            html.index("Codex 侧栏标题"),
+        )
+        self.assertNotIn('class="window-card-title-label"', html)
+        self.assertNotIn("OpenRelix · 窗口 1", html)
         self.assertIn("采集：Codex app-server · 线程来源：cli", html)
-        self.assertIn('data-window-resume-copy', html)
+        self.assertIn('class="window-card-cwd"', html)
+        self.assertIn("当前目录 <a", html)
+        self.assertIn("data-window-resume-copy", html)
         self.assertIn('data-resume-command="codex resume {}"'.format(thread_id), html)
-        self.assertIn('data-window-resume-open', html)
-        self.assertIn('<a\n            href="codex://threads/{}"'.format(thread_id), html)
+        self.assertIn("data-window-resume-open", html)
+        self.assertIn('href="codex://threads/{}"'.format(thread_id), html)
         self.assertIn('data-codex-url="codex://threads/{}"'.format(thread_id), html)
-        self.assertIn("<strong>结论</strong>", html)
+        self.assertIn("执行", html)
         self.assertIn("<code>codex resume {}</code>".format(thread_id), html)
         self.assertNotIn('<p class="window-card-path"><a', html)
+        self.assertIn('class="window-card-takeaway window-markdown"', html)
+        summary_html = html[
+            html.index('<summary class="window-card-trigger">') : html.index("</summary>")
+        ]
+        self.assertNotIn("问题摘要", summary_html)
+        self.assertNotIn("结论摘要", summary_html)
+        self.assertNotIn("问题：", summary_html)
+        self.assertNotIn("结论：", summary_html)
+        self.assertIn('class="window-card-keywords"', summary_html)
+        self.assertNotIn("<details", summary_html)
+        self.assertLess(
+            html.index('class="window-card-keywords"'),
+            html.index('class="window-card-detail"'),
+        )
+        self.assertNotIn("<li class=\"window-detail-item\"><span>原始窗口 ID", html)
+        self.assertNotIn("窗口信息", html)
+        self.assertNotIn("查看完整结论摘要", html)
+        self.assertNotIn('class="window-subdetail', html)
+        self.assertIn("最近问题", html)
+        self.assertIn("最近结论", html)
+        self.assertIn("更多记录见", html)
+        self.assertIn("原始窗口 JSON", html)
+        self.assertNotIn("会话文件", html)
+        self.assertNotIn("会话 JSONL", html)
 
     def test_window_cards_hide_codex_app_button_for_non_uuid_resume_id(self):
         html = build_overview.make_window_summary_cards(
@@ -3871,10 +3976,10 @@ scope: Release checklist, package manifest, and public website validation.
             }
         )
 
-        self.assertIn('data-window-resume-copy', html)
+        self.assertIn("data-window-resume-copy", html)
         self.assertIn('data-resume-command="codex resume thread-name"', html)
-        self.assertNotIn('data-window-resume-open', html)
-        self.assertNotIn('data-codex-url=', html)
+        self.assertNotIn("data-window-resume-open", html)
+        self.assertNotIn("data-codex-url=", html)
 
     def test_window_markdown_renderer_escapes_unsafe_html(self):
         html = build_overview.render_markdown_text(
@@ -3987,10 +4092,17 @@ scope: Release checklist, package manifest, and public website validation.
             language="en",
         )
 
-        self.assertIn("OpenRelix · Window 2", html)
+        self.assertIn("OpenRelix · Raw Window ID: w2", html)
+        self.assertNotIn("OpenRelix · Window 2", html)
         self.assertIn("Collection: Codex app-server · thread source: cli", html)
-        self.assertIn("Takeaway: Window.", html)
+        self.assertIn("Window.", html)
         self.assertIn(">Window<", html)
+        self.assertNotIn("Question Summary", html)
+        self.assertNotIn("Conclusion Summary", html)
+        self.assertIn("Recent Questions", html)
+        self.assertIn("Recent Conclusions", html)
+        self.assertNotIn("Show Recent Questions", html)
+        self.assertNotIn("Show Recent Conclusions", html)
         self.assertNotIn("采集：", html)
 
     def test_backfill_dates_parser_accepts_non_contiguous_dates(self):
@@ -4039,6 +4151,7 @@ scope: Release checklist, package manifest, and public website validation.
             args = argparse.Namespace(
                 memory_summary_max_tokens=8000,
                 activity_source=None,
+                codex_model=None,
                 read_codex_app=False,
                 no_refresh=True,
                 json=True,
@@ -4063,6 +4176,7 @@ scope: Release checklist, package manifest, and public website validation.
             args = argparse.Namespace(
                 memory_summary_max_tokens=None,
                 activity_source=None,
+                codex_model=None,
                 read_codex_app=True,
                 no_refresh=True,
                 json=True,
@@ -4077,6 +4191,165 @@ scope: Release checklist, package manifest, and public website validation.
             self.assertEqual(payload["activity_source"], "auto")
             self.assertFalse(payload["refreshed"])
 
+    def test_openrelix_config_updates_codex_model(self):
+        with TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            runtime_dir = root / "runtime"
+            runtime_dir.mkdir(parents=True)
+            paths = replace(openrelix.PATHS, state_root=root, runtime_dir=runtime_dir)
+            args = argparse.Namespace(
+                memory_summary_max_tokens=None,
+                activity_source=None,
+                codex_model="gpt5.4mini",
+                read_codex_app=False,
+                no_refresh=True,
+                json=True,
+            )
+
+            with mock.patch.dict(
+                os.environ,
+                {"OPENRELIX_CODEX_MODEL": "", "AI_ASSET_CODEX_MODEL": ""},
+                clear=False,
+            ), mock.patch.object(openrelix, "PATHS", paths), mock.patch("sys.stdout", new_callable=io.StringIO) as stdout:
+                openrelix.command_config(args)
+
+            config = json.loads((runtime_dir / "config.json").read_text(encoding="utf-8"))
+            self.assertEqual(config["codex_model"], "gpt-5.4-mini")
+            payload = json.loads(stdout.getvalue())
+            self.assertEqual(payload["codex_model"], "gpt-5.4-mini")
+            self.assertEqual(payload["configured_codex_model"], "gpt-5.4-mini")
+            self.assertFalse(payload["refreshed"])
+
+    def test_openrelix_open_panel_ensures_token_live_service(self):
+        args = argparse.Namespace(target="panel", date="2026-04-29")
+        calls = []
+
+        with mock.patch.object(openrelix, "REPORTS_DIR", Path("/tmp/openrelix-reports")), mock.patch.object(
+            openrelix,
+            "ensure_token_live_service",
+            side_effect=lambda: calls.append("ensure"),
+        ), mock.patch.object(
+            openrelix,
+            "open_path",
+            side_effect=lambda path: calls.append(("open", path)),
+        ), mock.patch(
+            "sys.stdout",
+            new_callable=io.StringIO,
+        ):
+            openrelix.command_open(args)
+
+        self.assertEqual(
+            calls,
+            [
+                "ensure",
+                ("open", Path("/tmp/openrelix-reports") / "panel.html"),
+            ],
+        )
+
+    def test_ensure_token_live_service_bootstraps_when_health_check_fails(self):
+        with TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            paths = make_runtime_paths_for_test(root)
+            plist_path = root / "LaunchAgents" / openrelix.TOKEN_LIVE_PLIST_NAME
+
+            with mock.patch.object(openrelix, "PATHS", paths), mock.patch.object(
+                openrelix.sys,
+                "platform",
+                "darwin",
+            ), mock.patch.object(
+                openrelix.shutil,
+                "which",
+                return_value="/bin/launchctl",
+            ), mock.patch.object(
+                openrelix,
+                "token_live_health_ok",
+                side_effect=[False, True],
+            ), mock.patch.object(
+                openrelix,
+                "render_token_live_launch_agent",
+                return_value=plist_path,
+            ) as render, mock.patch.object(
+                openrelix,
+                "bootstrap_token_live_launch_agent",
+            ) as bootstrap:
+                self.assertTrue(openrelix.ensure_token_live_service(verbose=False))
+
+            render.assert_called_once_with()
+            bootstrap.assert_called_once_with(plist_path)
+
+    def test_openrelix_models_uses_codex_debug_models_and_sanitizes_catalog(self):
+        with TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            codex_home = root / "codex"
+            paths = replace(openrelix.PATHS, state_root=root, runtime_dir=root / "runtime", codex_home=codex_home)
+            stdout = json.dumps(
+                {
+                    "models": [
+                        {
+                            "slug": "gpt-5.5",
+                            "display_name": "GPT-5.5",
+                            "description": "Frontier model.",
+                            "default_reasoning_level": "medium",
+                            "supported_reasoning_levels": [{"effort": "low"}, {"effort": "medium"}],
+                            "supported_in_api": True,
+                            "visibility": "list",
+                            "priority": 0,
+                            "base_instructions": "do not expose this prompt",
+                        },
+                        {
+                            "slug": "codex-auto-review",
+                            "display_name": "Codex Auto Review",
+                            "visibility": "hide",
+                            "priority": 100,
+                            "base_instructions": "hidden prompt",
+                        },
+                    ]
+                }
+            )
+            completed = subprocess.CompletedProcess(args=[], returncode=0, stdout=stdout, stderr="")
+            args = argparse.Namespace(all=False, bundled=False, json=True)
+
+            with mock.patch.object(openrelix, "PATHS", paths), mock.patch.dict(
+                os.environ,
+                {"OPENRELIX_CODEX_MODEL": "", "AI_ASSET_CODEX_MODEL": ""},
+                clear=False,
+            ), mock.patch.object(openrelix.subprocess, "run", return_value=completed) as run, mock.patch(
+                "sys.stdout",
+                new_callable=io.StringIO,
+            ) as stream:
+                openrelix.command_models(args)
+
+            command = run.call_args.args[0]
+            self.assertEqual(command, [paths.codex_bin, "debug", "models"])
+            self.assertEqual(run.call_args.kwargs["env"]["CODEX_HOME"], str(codex_home))
+            payload = json.loads(stream.getvalue())
+            self.assertEqual(payload["configured_model"], "gpt-5.4-mini")
+            self.assertEqual(payload["recommended_default"], "gpt-5.4-mini")
+            self.assertEqual([item["slug"] for item in payload["models"]], ["gpt-5.5"])
+            self.assertEqual(payload["models"][0]["supported_reasoning_levels"], ["low", "medium"])
+            self.assertNotIn("base_instructions", payload["models"][0])
+
+    def test_openrelix_models_main_path_does_not_create_state_layout(self):
+        old_paths = openrelix.PATHS
+        try:
+            with TemporaryDirectory() as tmpdir:
+                paths = make_runtime_paths_for_test(Path(tmpdir) / "state")
+                openrelix.PATHS = paths
+                stdout = json.dumps({"models": [{"slug": "gpt-5.4-mini", "visibility": "list"}]})
+                completed = subprocess.CompletedProcess(args=[], returncode=0, stdout=stdout, stderr="")
+                with mock.patch.object(sys, "argv", ["openrelix", "models", "--json"]), mock.patch.object(
+                    openrelix.subprocess,
+                    "run",
+                    return_value=completed,
+                ), mock.patch("sys.stdout", new_callable=io.StringIO) as stream:
+                    openrelix.main()
+                payload = json.loads(stream.getvalue())
+                self.assertEqual(payload["models"][0]["slug"], "gpt-5.4-mini")
+                self.assertFalse(paths.registry_dir.exists())
+                self.assertFalse(paths.runtime_dir.exists())
+        finally:
+            openrelix.PATHS = old_paths
+
     def test_openrelix_config_rejects_out_of_range_memory_summary_max_tokens(self):
         with TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -4086,6 +4359,7 @@ scope: Release checklist, package manifest, and public website validation.
             args = argparse.Namespace(
                 memory_summary_max_tokens=1000,
                 activity_source=None,
+                codex_model=None,
                 read_codex_app=False,
                 no_refresh=True,
                 json=True,
@@ -4346,6 +4620,176 @@ scope: Release checklist, package manifest, and public website validation.
         self.assertTrue(payload["ok"])
         self.assertEqual(checks["codex_app_server_command"]["status"], "ok")
         self.assertEqual(checks["codex_app_server_probe"]["status"], "ok")
+
+    def test_openrelix_doctor_reports_sqlite_index_status(self):
+        checks = []
+        with mock.patch.object(
+            openrelix,
+            "sqlite_index_status_payload",
+            return_value={
+                "db_path": "/tmp/openrelix-index.sqlite3",
+                "exists": True,
+                "schema_version": 1,
+                "memory_rows": 3,
+                "window_rows": 4,
+                "stale": False,
+                "ok": True,
+            },
+        ):
+            openrelix.append_sqlite_index_doctor_check(checks)
+
+        self.assertEqual(len(checks), 1)
+        self.assertEqual(checks[0]["name"], "sqlite_index")
+        self.assertEqual(checks[0]["status"], "ok")
+        self.assertIn("memories=3", checks[0]["detail"])
+        self.assertIn("windows=4", checks[0]["detail"])
+
+    def test_openrelix_index_command_rebuild_status_and_search_json(self):
+        old_paths = openrelix.PATHS
+        try:
+            with TemporaryDirectory() as tmpdir:
+                paths = make_runtime_paths_for_test(Path(tmpdir) / "state")
+                openrelix.PATHS = paths
+                asset_runtime.ensure_state_layout(paths)
+                (paths.registry_dir / "memory_items.jsonl").write_text(
+                    json.dumps(
+                        {
+                            "date": "2026-04-28",
+                            "source": "nightly_codex",
+                            "bucket": "durable",
+                            "title": "SQLite sidecar index",
+                            "memory_type": "procedural",
+                            "priority": "high",
+                            "value_note": "Future search reads this rebuildable local database.",
+                            "source_window_ids": ["w-cli"],
+                            "keywords": ["sqlite", "search"],
+                        }
+                    )
+                    + "\n",
+                    encoding="utf-8",
+                )
+                (paths.raw_daily_dir / "2026-04-28.json").write_text(
+                    json.dumps(
+                        {
+                            "date": "2026-04-28",
+                            "stage": "manual",
+                            "windows": [
+                                {
+                                    "date": "2026-04-28",
+                                    "window_id": "w-cli",
+                                    "cwd": "/tmp/openrelix",
+                                    "source": "history",
+                                    "prompts": [{"local_time": "2026-04-28T10:00:00+08:00", "text": "add sqlite cli"}],
+                                    "conclusions": [{"completed_at": "2026-04-28T10:05:00+08:00", "text": "index command works"}],
+                                }
+                            ],
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+
+                with mock.patch("sys.stdout", new_callable=io.StringIO) as stdout:
+                    openrelix.command_index(
+                        argparse.Namespace(
+                            action="rebuild",
+                            query="",
+                            bucket=None,
+                            priority=None,
+                            project=None,
+                            date_from=None,
+                            date_to=None,
+                            limit=20,
+                            json=True,
+                        )
+                    )
+                rebuild_payload = json.loads(stdout.getvalue())
+                self.assertEqual(rebuild_payload["memory_rows"], 1)
+                self.assertEqual(rebuild_payload["window_rows"], 1)
+
+                with mock.patch("sys.stdout", new_callable=io.StringIO) as stdout:
+                    openrelix.command_index(
+                        argparse.Namespace(
+                            action="status",
+                            query="",
+                            bucket=None,
+                            priority=None,
+                            project=None,
+                            date_from=None,
+                            date_to=None,
+                            limit=20,
+                            json=True,
+                        )
+                    )
+                status_payload = json.loads(stdout.getvalue())
+                self.assertTrue(status_payload["ok"])
+                self.assertFalse(status_payload["stale"])
+
+                with mock.patch("sys.stdout", new_callable=io.StringIO) as stdout:
+                    openrelix.command_index(
+                        argparse.Namespace(
+                            action="search-memory",
+                            query="sqlite",
+                            bucket="durable",
+                            priority=None,
+                            project=None,
+                            date_from=None,
+                            date_to=None,
+                            limit=20,
+                            json=True,
+                        )
+                    )
+                search_payload = json.loads(stdout.getvalue())
+                self.assertEqual(search_payload["results"][0]["title"], "SQLite sidecar index")
+
+                with mock.patch("sys.stdout", new_callable=io.StringIO) as stdout:
+                    openrelix.command_index(
+                        argparse.Namespace(
+                            action="search-window",
+                            query="index command",
+                            bucket=None,
+                            priority=None,
+                            project="openrelix",
+                            date_from=None,
+                            date_to=None,
+                            limit=20,
+                            json=True,
+                        )
+                    )
+                window_payload = json.loads(stdout.getvalue())
+                self.assertEqual(window_payload["results"][0]["window_id"], "w-cli")
+        finally:
+            openrelix.PATHS = old_paths
+
+    def test_openrelix_paths_prints_sqlite_index_path(self):
+        old_paths = openrelix.PATHS
+        try:
+            with TemporaryDirectory() as tmpdir:
+                paths = make_runtime_paths_for_test(Path(tmpdir) / "state")
+                openrelix.PATHS = paths
+                with mock.patch("sys.stdout", new_callable=io.StringIO) as stdout:
+                    openrelix.command_paths()
+        finally:
+            openrelix.PATHS = old_paths
+
+        self.assertIn("- index_db: {}".format(paths.runtime_dir / "openrelix-index.sqlite3"), stdout.getvalue())
+
+    def test_openrelix_index_status_main_path_does_not_create_state_layout(self):
+        old_paths = openrelix.PATHS
+        try:
+            with TemporaryDirectory() as tmpdir:
+                paths = make_runtime_paths_for_test(Path(tmpdir) / "state")
+                openrelix.PATHS = paths
+                with mock.patch.object(sys, "argv", ["openrelix", "index", "status", "--json"]), mock.patch(
+                    "sys.stdout",
+                    new_callable=io.StringIO,
+                ) as stdout:
+                    openrelix.main()
+                payload = json.loads(stdout.getvalue())
+                self.assertFalse(payload["exists"])
+                self.assertFalse(paths.registry_dir.exists())
+                self.assertFalse(paths.runtime_dir.exists())
+        finally:
+            openrelix.PATHS = old_paths
 
     def test_refresh_overview_learn_memory_forwards_env_to_nightly_pipeline(self):
         with TemporaryDirectory() as tmpdir:
@@ -4703,6 +5147,33 @@ scope: Release checklist, package manifest, and public website validation.
         self.assertIn("npx openrelix uninstall --delete-local-memory", readme)
         self.assertIn("npx openrelix uninstall --delete-local-memory", zh_readme)
 
+    def test_sqlite_index_is_exposed_in_cli_npm_and_package(self):
+        openrelix_cli = (ROOT / "scripts" / "openrelix.py").read_text(encoding="utf-8")
+        npm_bin = (ROOT / "install" / "npm-bin.js").read_text(encoding="utf-8")
+        package_json = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))
+
+        self.assertIn('"index"', openrelix_cli)
+        self.assertIn('choices=["status", "rebuild", "search-memory", "search-window"]', openrelix_cli)
+        self.assertIn("command_index(args)", openrelix_cli)
+        self.assertIn('command === "index"', npm_bin)
+        self.assertIn('runPythonCli(["index", ...args.slice(1)])', npm_bin)
+        self.assertIn("npx openrelix index status", npm_bin)
+        self.assertIn("scripts/openrelix_index.py", package_json["files"])
+        self.assertIn('command === "models"', npm_bin)
+        self.assertIn('runPythonCli(["models", ...args.slice(1)])', npm_bin)
+        self.assertIn("npx openrelix models", npm_bin)
+
+    def test_sqlite_index_rebuild_is_warning_only_in_refresh_scripts(self):
+        nightly = (ROOT / "scripts" / "nightly_pipeline.sh").read_text(encoding="utf-8")
+        refresh = (ROOT / "scripts" / "refresh_overview.sh").read_text(encoding="utf-8")
+
+        for script in (nightly, refresh):
+            self.assertIn("rebuild_sqlite_index_if_available", script)
+            self.assertIn("OPENRELIX_DISABLE_SQLITE_INDEX_REBUILD", script)
+            self.assertIn("openrelix_index.py", script)
+            self.assertIn("JSONL/raw outputs remain authoritative", script)
+            self.assertIn("if ! \"$PYTHON_BIN\" \"$REPO_ROOT/scripts/openrelix_index.py\" rebuild >/dev/null; then", script)
+
     def test_uninstall_local_memory_delete_has_dry_run_and_repo_guard(self):
         with TemporaryDirectory() as tmpdir:
             tmp = Path(tmpdir)
@@ -4834,8 +5305,15 @@ scope: Release checklist, package manifest, and public website validation.
 
             calls = []
 
-            def fake_backfill_dates(dates, stage, learn_window_days=0, force=False, verbose=True):
-                calls.append(("backfill", dates, stage, learn_window_days, force, verbose))
+            def fake_backfill_dates(
+                dates,
+                stage,
+                learn_window_days=0,
+                force=False,
+                ensure_learning_final=True,
+                verbose=True,
+            ):
+                calls.append(("backfill", dates, stage, learn_window_days, force, ensure_learning_final, verbose))
                 return [
                     {
                         "date": date_str,
@@ -4879,8 +5357,66 @@ scope: Release checklist, package manifest, and public website validation.
             self.assertEqual(calls[0][1], ["2026-04-20", "2026-04-21"])
             self.assertEqual(calls[0][2], "final")
             self.assertEqual(calls[0][3], 0)
-            self.assertIs(calls[0][4], True)
+            self.assertIs(calls[0][4], False)
+            self.assertIs(calls[0][5], False)
             self.assertEqual(calls[1][0], "review")
+
+    def test_backfill_reruns_existing_lower_stage_summary(self):
+        with TemporaryDirectory() as tmpdir:
+            consolidated_daily_dir = Path(tmpdir) / "consolidated" / "daily"
+            summary_dir = consolidated_daily_dir / "2026-04-23"
+            summary_dir.mkdir(parents=True)
+            (summary_dir / "summary.json").write_text(
+                json.dumps({"date": "2026-04-23", "stage": "manual"}),
+                encoding="utf-8",
+            )
+            calls = []
+
+            def fake_run_checked_with_progress(cmd, progress_messages, interval_seconds=20, reminder_seconds=60):
+                calls.append(cmd)
+
+            with mock.patch.object(openrelix, "CONSOLIDATED_DAILY_DIR", consolidated_daily_dir), mock.patch.object(
+                openrelix,
+                "run_checked_with_progress",
+                side_effect=fake_run_checked_with_progress,
+            ), mock.patch("sys.stdout", new_callable=io.StringIO):
+                results = openrelix.run_backfill_dates(
+                    ["2026-04-23"],
+                    "final",
+                    learn_window_days=0,
+                    force=False,
+                    verbose=True,
+                )
+
+            self.assertEqual(results[0]["status"], "completed")
+            self.assertEqual(results[0]["reason"], "existing_stage_below_requested")
+            self.assertEqual(calls[0][-2:], ["2026-04-23", "final"])
+
+    def test_backfill_skips_existing_same_stage_summary(self):
+        with TemporaryDirectory() as tmpdir:
+            consolidated_daily_dir = Path(tmpdir) / "consolidated" / "daily"
+            summary_dir = consolidated_daily_dir / "2026-04-23"
+            summary_dir.mkdir(parents=True)
+            (summary_dir / "summary.json").write_text(
+                json.dumps({"date": "2026-04-23", "stage": "final"}),
+                encoding="utf-8",
+            )
+
+            with mock.patch.object(openrelix, "CONSOLIDATED_DAILY_DIR", consolidated_daily_dir), mock.patch.object(
+                openrelix,
+                "run_checked_with_progress",
+            ) as run_pipeline, mock.patch("sys.stdout", new_callable=io.StringIO):
+                results = openrelix.run_backfill_dates(
+                    ["2026-04-23"],
+                    "final",
+                    learn_window_days=0,
+                    force=False,
+                    verbose=True,
+                )
+
+            self.assertEqual(results[0]["status"], "skipped_existing")
+            self.assertEqual(results[0]["reason"], "existing_stage_satisfies_request")
+            run_pipeline.assert_not_called()
 
     def test_review_syncs_summary_and_panel_after_pipeline(self):
         with TemporaryDirectory() as tmpdir:
@@ -5217,7 +5753,7 @@ scope: Release checklist, package manifest, and public website validation.
                             "cachedInputTokens": 250,
                             "outputTokens": 100,
                             "reasoningOutputTokens": 50,
-                            "totalTokens": 1150,
+                            "totalTokens": 1100,
                             "costUSD": 2.5,
                         },
                         {
@@ -5226,7 +5762,7 @@ scope: Release checklist, package manifest, and public website validation.
                             "cachedInputTokens": 1500,
                             "outputTokens": 300,
                             "reasoningOutputTokens": 100,
-                            "totalTokens": 2400,
+                            "totalTokens": 2300,
                             "costUSD": 4.5,
                         },
                     ]
@@ -5238,15 +5774,18 @@ scope: Release checklist, package manifest, and public website validation.
             language="zh",
         )
 
-        self.assertEqual(view["today_total_tokens"], 2400)
+        self.assertEqual(view["today_total_tokens"], 2300)
         self.assertIn("近 7 天中 2 天有记录", view["overview_note"])
         self.assertIn("7 日账单", [card["label"] for card in view["summary_cards"]])
         self.assertEqual(view["summary_cards"][0]["value"], "$7")
-        self.assertIn("3550 Token", view["summary_cards"][0]["caption"])
-        self.assertIn("缓存占输入", [card["label"] for card in view["summary_cards"]])
-        self.assertEqual(view["daily_rows"][-1]["display"], "2400 · $5")
+        self.assertIn("3400 Token", view["summary_cards"][0]["caption"])
+        self.assertIn("缓存读取占总输入", [card["label"] for card in view["summary_cards"]])
+        self.assertEqual(view["daily_rows"][-1]["display"], "2300 · $5")
         self.assertIn("details", view["daily_rows"][-1])
-        self.assertIn("占输入", view["daily_rows"][-1]["details"][1]["meta"])
+        self.assertEqual(view["today_breakdown"][0]["value"], 500)
+        self.assertEqual(view["today_breakdown"][1]["label"], "缓存读取")
+        self.assertIn("无缓存输入", view["today_breakdown"][0]["details"][0]["meta"])
+        self.assertIn("占总输入", view["daily_rows"][-1]["details"][1]["meta"])
         self.assertIn("details", view["today_breakdown"][1])
         self.assertEqual(view["daily_rows"][0]["tone"], "token-daily-mid")
         self.assertEqual(view["daily_rows"][-1]["tone"], "token-daily-high")
@@ -5434,6 +5973,27 @@ scope: Release checklist, package manifest, and public website validation.
         self.assertIn("install/*.py", package_json["files"])
         self.assertIn("install/templates/", package_json["files"])
         self.assertIn("scripts/build_codex_native_display_cache.py", package_json["files"])
+        self.assertIn("scripts/openrelix_index.py", package_json["files"])
+
+    def test_project_version_helpers_use_package_json(self):
+        package_json = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))
+
+        self.assertEqual(asset_runtime.get_project_version(ROOT), package_json["version"])
+        self.assertEqual(openrelix.read_local_package_version(), package_json["version"])
+        self.assertEqual(build_overview.read_panel_package_version(), package_json["version"])
+
+    def test_static_showcase_version_meta_matches_package_json(self):
+        package_json = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))
+        version = package_json["version"]
+
+        for relative in ("docs/product-showcase.html", "docs/index.html"):
+            html = (ROOT / relative).read_text(encoding="utf-8")
+            self.assertIn(
+                '<meta name="openrelix:version" content="{}"'.format(version),
+                html,
+            )
+            self.assertNotIn("v{} 预览版".format(version), html)
+            self.assertNotIn("v{} preview".format(version), html)
 
     def test_asset_value_estimation_uses_events_and_recent_windows(self):
         asset = {
@@ -5560,6 +6120,7 @@ scope: Release checklist, package manifest, and public website validation.
         self.assertIn(".module-help-title {{\n      color: var(--ink);", source)
         self.assertIn("      z-index: 40;\n      width: 212px;", source)
         self.assertIn("width: min(320px, calc(100vw - 44px));", source)
+        self.assertIn(".token-overview-panel {{\n      display: grid;\n      gap: 18px;\n      overflow: visible;", source)
         self.assertIn("@media (min-width: 900px) {{", source)
         self.assertIn(".nightly-title-row .module-help-card {{", source)
         self.assertIn("left: calc(100% + 12px);", source)

@@ -56,8 +56,34 @@ OVERVIEW_RUN_AT_LOAD="<true/>"
 USER_APPLICATIONS_DIR="$HOME/Applications"
 INSTALLED_MAC_CLIENT_APP="$USER_APPLICATIONS_DIR/OpenRelix.app"
 
+read_project_version() {
+  local python_candidate="${PYTHON_BIN:-}"
+  if [[ -z "$python_candidate" ]]; then
+    python_candidate="$(command -v python3 || true)"
+  fi
+  if [[ -z "$python_candidate" ]]; then
+    return 0
+  fi
+  "$python_candidate" - "$REPO_ROOT/package.json" 2>/dev/null <<'PY' || true
+import json
+import sys
+
+try:
+    with open(sys.argv[1], encoding="utf-8") as handle:
+        print(json.load(handle).get("version", ""))
+except Exception:
+    pass
+PY
+}
+
+PROJECT_VERSION="$(read_project_version)"
+if [[ -z "$PROJECT_VERSION" ]]; then
+  PROJECT_VERSION="0.0.0"
+fi
+PROJECT_VERSION_LABEL="v$PROJECT_VERSION"
+
 usage() {
-  cat <<'EOF'
+  cat <<'EOF' | sed "s/__OPENRELIX_VERSION_LABEL__/$PROJECT_VERSION_LABEL/g"
 Usage:
   ./install/install.sh [options]
 
@@ -122,7 +148,7 @@ Options:
                                 Kept for compatibility with older install commands.
   -h, --help                    Show this help text.
 
-This v0.1.0 preview installer currently supports macOS only.
+This __OPENRELIX_VERSION_LABEL__ preview installer currently supports macOS only.
 The installer defaults to integrated personal memory: it records into the
 configured state root and syncs a bounded summary into Codex native context.
 Use --record-memory-only when you explicitly want strict local-only recording
@@ -636,7 +662,7 @@ case "$ACTIVITY_SOURCE" in
 esac
 
 if [[ "$OSTYPE" != darwin* ]]; then
-  echo "OpenRelix v0.1.0 preview installer currently supports macOS only." >&2
+  echo "OpenRelix $PROJECT_VERSION_LABEL preview installer currently supports macOS only." >&2
   echo "Set AI_ASSET_STATE_DIR and run lower-level scripts manually if you are experimenting on another platform." >&2
   exit 1
 fi

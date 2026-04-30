@@ -89,6 +89,18 @@ PY
   fi
 }
 
+rebuild_sqlite_index_if_available() {
+  if [[ "${OPENRELIX_DISABLE_SQLITE_INDEX_REBUILD:-0}" == "1" ]]; then
+    return 0
+  fi
+  if [[ ! -f "$REPO_ROOT/scripts/openrelix_index.py" ]]; then
+    return 0
+  fi
+  if ! "$PYTHON_BIN" "$REPO_ROOT/scripts/openrelix_index.py" rebuild >/dev/null; then
+    echo "refresh_overview: sqlite index rebuild failed; JSONL/raw outputs remain authoritative." >&2
+  fi
+}
+
 case "${learn_memory:l}" in
   1|true|yes|on)
     extra_args=()
@@ -108,3 +120,4 @@ esac
 "$PYTHON_BIN" "$REPO_ROOT/scripts/collect_codex_activity.py" --date "$target_date" --stage manual
 sync_codex_memory_summary_if_enabled
 "$PYTHON_BIN" "$REPO_ROOT/scripts/build_overview.py"
+rebuild_sqlite_index_if_available
