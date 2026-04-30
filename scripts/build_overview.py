@@ -6,6 +6,7 @@ import json
 import math
 import os
 import re
+import shlex
 import shutil
 import subprocess
 from collections import Counter, defaultdict
@@ -14,7 +15,7 @@ from datetime import datetime, timedelta
 from functools import lru_cache
 from html import escape
 from pathlib import Path
-from urllib.parse import unquote, urlparse
+from urllib.parse import quote, unquote, urlparse
 
 from asset_runtime import (
     atomic_write_json,
@@ -4010,6 +4011,167 @@ def compact_preview_text(text, limit=220):
     return normalized[: max(limit - 1, 1)].rstrip() + "…"
 
 
+def render_markdown_inline(text):
+    raw = str(text or "")
+    if not raw:
+        return ""
+
+    placeholders = []
+
+    def placeholder(html):
+        token = "\0OPENRELIXMD{}\0".format(len(placeholders))
+        placeholders.append((token, html))
+        return token
+
+    def inline_code_repl(match):
+        return placeholder("<code>{}</code>".format(escape(match.group(1))))
+
+    def link_repl(match):
+        label = match.group(1).strip()
+        url = match.group(2).strip()
+        parsed = urlparse(url)
+        if parsed.scheme not in {"http", "https", "file"}:
+            return label
+        return placeholder(
+            '<a href="{href}" target="_blank" rel="noopener noreferrer">{label}</a>'.format(
+                href=escape(url, quote=True),
+                label=escape(label),
+            )
+        )
+
+    raw = re.sub(r"`([^`\n]+)`", inline_code_repl, raw)
+    raw = re.sub(r"\[([^\]\n]+)\]\(([^)\s]+)\)", link_repl, raw)
+    rendered = escape(raw)
+    rendered = re.sub(r"\*\*([^*\n][^*\n]*?)\*\*", r"<strong>\1</strong>", rendered)
+    rendered = re.sub(r"__([^_\n][^_\n]*?)__", r"<strong>\1</strong>", rendered)
+    for token, html in placeholders:
+        rendered = rendered.replace(token, html)
+    return rendered
+
+
+def render_markdown_text(text):
+    raw = normalize_brand_display_text(str(text or "")).strip()
+    if not raw:
+        return ""
+
+    blocks = []
+    paragraph_lines = []
+    unordered_items = []
+    ordered_items = []
+    quote_lines = []
+    code_lines = []
+    in_code = False
+
+    def flush_paragraph():
+        nonlocal paragraph_lines
+        if not paragraph_lines:
+            return
+        paragraph = "\n".join(paragraph_lines).strip()
+        if paragraph:
+            blocks.append(
+                "<p>{}</p>".format(render_markdown_inline(paragraph).replace("\n", "<br>"))
+            )
+        paragraph_lines = []
+
+    def flush_unordered_items():
+        nonlocal unordered_items
+        if not unordered_items:
+            return
+        blocks.append(
+            "<ul>{}</ul>".format(
+                "".join("<li>{}</li>".format(render_markdown_inline(item)) for item in unordered_items)
+            )
+        )
+        unordered_items = []
+
+    def flush_ordered_items():
+        nonlocal ordered_items
+        if not ordered_items:
+            return
+        blocks.append(
+            "<ol>{}</ol>".format(
+                "".join("<li>{}</li>".format(render_markdown_inline(item)) for item in ordered_items)
+            )
+        )
+        ordered_items = []
+
+    def flush_quote_lines():
+        nonlocal quote_lines
+        if not quote_lines:
+            return
+        quote = "\n".join(quote_lines).strip()
+        if quote:
+            blocks.append(
+                "<blockquote>{}</blockquote>".format(
+                    render_markdown_inline(quote).replace("\n", "<br>")
+                )
+            )
+        quote_lines = []
+
+    def flush_code_lines():
+        nonlocal code_lines
+        blocks.append("<pre><code>{}</code></pre>".format(escape("\n".join(code_lines))))
+        code_lines = []
+
+    def flush_open_blocks():
+        flush_paragraph()
+        flush_unordered_items()
+        flush_ordered_items()
+        flush_quote_lines()
+
+    for line in raw.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("```"):
+            if in_code:
+                flush_code_lines()
+                in_code = False
+            else:
+                flush_open_blocks()
+                in_code = True
+            continue
+        if in_code:
+            code_lines.append(line)
+            continue
+        if not stripped:
+            flush_open_blocks()
+            continue
+        heading_match = re.match(r"^\s{0,3}(#{1,4})\s+(.+)$", line)
+        unordered_match = re.match(r"^\s*[-*+]\s+(.+)$", line)
+        ordered_match = re.match(r"^\s*\d+[.)]\s+(.+)$", line)
+        quote_match = re.match(r"^\s*>\s?(.+)$", line)
+        if heading_match:
+            flush_open_blocks()
+            blocks.append(
+                '<p class="window-markdown-heading">{}</p>'.format(
+                    render_markdown_inline(heading_match.group(2))
+                )
+            )
+        elif unordered_match:
+            flush_paragraph()
+            flush_ordered_items()
+            flush_quote_lines()
+            unordered_items.append(unordered_match.group(1).strip())
+        elif ordered_match:
+            flush_paragraph()
+            flush_unordered_items()
+            flush_quote_lines()
+            ordered_items.append(ordered_match.group(1).strip())
+        elif quote_match:
+            flush_paragraph()
+            flush_unordered_items()
+            flush_ordered_items()
+            quote_lines.append(quote_match.group(1).strip())
+        else:
+            flush_unordered_items()
+            flush_ordered_items()
+            flush_quote_lines()
+            paragraph_lines.append(line)
+    if in_code:
+        flush_code_lines()
+    flush_open_blocks()
+    return "".join(blocks)
+
+
 def split_path_trailing_punctuation(token):
     core = str(token or "")
     suffix = ""
@@ -6591,6 +6753,62 @@ def window_activity_source_label(activity_source, language=None, thread_source="
     return localized(zh_text, en_text, language)
 
 
+def window_display_summary(raw_window, question_summary="", main_takeaway="", language=None):
+    raw_window = raw_window or {}
+    app_server = raw_window.get("app_server") or {}
+    candidates = (
+        raw_window.get("window_summary", ""),
+        raw_window.get("thread_title", ""),
+        raw_window.get("title", ""),
+        app_server.get("preview", ""),
+        app_server.get("title", ""),
+        question_summary,
+        main_takeaway,
+    )
+    for candidate in candidates:
+        summary = compact_preview_text(candidate, limit=140)
+        if summary:
+            return normalize_brand_display_text(summary)
+    return localized("未捕获窗口摘要", "No captured window summary", language)
+
+
+def window_resume_id(raw_window, window_id=""):
+    raw_window = raw_window or {}
+    app_server = raw_window.get("app_server") or {}
+    return str(
+        raw_window.get("resume_id")
+        or raw_window.get("session_id")
+        or raw_window.get("thread_id")
+        or app_server.get("thread_id")
+        or window_id
+        or raw_window.get("window_id")
+        or ""
+    ).strip()
+
+
+def codex_resume_command(resume_id):
+    resume_id = str(resume_id or "").strip()
+    if not resume_id:
+        return ""
+    return "codex resume {}".format(shlex.quote(resume_id))
+
+
+def is_codex_thread_uuid(value):
+    return bool(
+        re.fullmatch(
+            r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}",
+            str(value or "").strip(),
+        )
+    )
+
+
+def codex_resume_url(resume_id):
+    resume_id = str(resume_id or "").strip()
+    if not is_codex_thread_uuid(resume_id):
+        return ""
+    return "codex://threads/{}".format(quote(resume_id, safe=""))
+
+
 def build_window_items_from_daily_capture(daily_capture, latest_nightly=None, language=None):
     language = current_language(language)
     nightly_map = {}
@@ -6619,6 +6837,13 @@ def build_window_items_from_daily_capture(daily_capture, latest_nightly=None, la
         )
         question_summary = normalize_brand_display_text(question_summary)
         main_takeaway = normalize_brand_display_text(main_takeaway)
+        window_summary = window_display_summary(
+            raw_window,
+            question_summary=question_summary,
+            main_takeaway=main_takeaway,
+            language=language,
+        )
+        resume_id = window_resume_id(raw_window, window_id=window_id)
         cwd = raw_window.get("cwd", "")
         project_label = infer_repo_name_from_path(cwd)
         if not project_label:
@@ -6641,6 +6866,10 @@ def build_window_items_from_daily_capture(daily_capture, latest_nightly=None, la
                 "project_label": project_label,
                 "activity_source": activity_source,
                 "thread_source": thread_source,
+                "window_summary": window_summary,
+                "resume_id": resume_id,
+                "resume_command": codex_resume_command(resume_id),
+                "resume_url": codex_resume_url(resume_id),
                 "activity_source_label": window_activity_source_label(
                     activity_source,
                     language,
@@ -6702,6 +6931,16 @@ def build_window_overview(latest_nightly, language=None, target_date=""):
                     "conclusion_count": item.get("conclusion_count", 0),
                     "question_summary": normalize_brand_display_text(item.get("question_summary", "")),
                     "main_takeaway": normalize_brand_display_text(item.get("main_takeaway", "")),
+                    "window_summary": normalize_brand_display_text(
+                        item.get("window_summary", "")
+                        or item.get("thread_title", "")
+                        or item.get("title", "")
+                        or item.get("question_summary", "")
+                        or localized("未捕获窗口摘要", "No captured window summary", language)
+                    ),
+                    "resume_id": item.get("resume_id", "") or item.get("window_id", ""),
+                    "resume_command": codex_resume_command(item.get("resume_id", "") or item.get("window_id", "")),
+                    "resume_url": codex_resume_url(item.get("resume_id", "") or item.get("window_id", "")),
                     "keywords": [normalize_brand_display_text(keyword) for keyword in item.get("keywords", [])],
                     "latest_activity_at": "",
                     "latest_activity_display": localized("时间未知", "Unknown time", language),
@@ -7634,7 +7873,7 @@ def build_data(assets, usage_events, reviews, language=None):
     window_overview_default_date = (
         today.isoformat()
         if today_capture
-        else ((window_overview or {}).get("date", "") or daily_summary_default_date)
+        else ((window_overview or {}).get("date", "") or daily_summary_default_date or today.isoformat())
     )
     window_overview_views = build_window_overview_views(
         nightly_candidates,
@@ -11197,6 +11436,8 @@ def build_daily_summary_views(candidates, language=None):
 def make_date_select_control(control_id, aria_label, dates, selected_date, date_status=None):
     dates = [date for date in dates if date]
     selected_date = selected_date or (dates[0] if dates else "")
+    if selected_date and selected_date not in dates:
+        dates = [selected_date] + dates
     date_status = date_status or {}
 
     def display_date(date_str):
@@ -11481,18 +11722,58 @@ def make_window_summary_cards(window_overview, language=None):
                 keywords=keywords,
                 label=label,
             )
+            text_html = render_markdown_text(text) or "<p>{}</p>".format(escape(text))
             rows.append(
                 """
                 <li class="window-detail-item">
                   {time_html}
-                  <span>{text}</span>
+                  <div class="window-markdown window-detail-markdown">{text}</div>
                 </li>
                 """.format(
                     time_html=time_html,
-                    text=escape(text),
+                    text=text_html,
                 )
             )
         return "".join(rows)
+
+    def render_resume_actions(resume_command, resume_url):
+        if not resume_command:
+            return ""
+        open_button = ""
+        if resume_url:
+            open_button = """
+          <a
+            href="{resume_url}"
+            class="window-resume-button is-secondary"
+            data-window-resume-open
+            data-codex-url="{resume_url}"
+            data-label="{open_label}"
+            data-opened-label="{opened_label}"
+          >{open_label}</a>""".format(
+                resume_url=escape(resume_url, quote=True),
+                open_label=escape(localized("在 Codex App 打开", "Open in Codex App", language), quote=True),
+                opened_label=escape(localized("正在打开", "Opening", language), quote=True),
+            )
+        return """
+        <div class="window-resume-actions">
+          <button
+            type="button"
+            class="window-resume-button"
+            data-window-resume-copy
+            data-resume-command="{resume_command}"
+            data-label="{copy_label}"
+            data-copied-label="{copied_label}"
+            data-error-label="{copy_error_label}"
+          >{copy_label}</button>
+          {open_button}
+        </div>
+        """.format(
+            resume_command=escape(resume_command, quote=True),
+            copy_label=escape(localized("复制 resume 命令", "Copy resume command", language), quote=True),
+            copied_label=escape(localized("已复制", "Copied", language), quote=True),
+            copy_error_label=escape(localized("复制失败", "Copy failed", language), quote=True),
+            open_button=open_button,
+        )
 
     cards = []
     for item in window_overview.get("windows", []):
@@ -11524,6 +11805,25 @@ def make_window_summary_cards(window_overview, language=None):
             keywords=item.get("keywords", []),
             label="Takeaway",
         )
+        window_summary = normalize_brand_display_text(
+            item.get("window_summary", "")
+            or item.get("thread_title", "")
+            or item.get("title", "")
+            or item.get("question_summary", "")
+            or item.get("main_takeaway", "")
+        )
+        if not window_summary:
+            window_summary = localized("未捕获窗口摘要", "No captured window summary", language)
+        resume_id = item.get("resume_id", "") or window_id
+        resume_command = item.get("resume_command", "") or codex_resume_command(resume_id)
+        resume_url = item.get("resume_url", "") or codex_resume_url(resume_id)
+        question_summary_html = render_markdown_text(question_summary) or "<p>{}</p>".format(
+            escape(question_summary)
+        )
+        main_takeaway_html = render_markdown_text(main_takeaway) or "<p>{}</p>".format(
+            escape(main_takeaway)
+        )
+        resume_actions = render_resume_actions(resume_command, resume_url)
         raw_window = load_window_record(window_date, window_id)
         raw_window_html = escape(localized("暂无", "None", language))
         session_file_html = escape(localized("暂无", "None", language))
@@ -11545,6 +11845,8 @@ def make_window_summary_cards(window_overview, language=None):
               <summary class="window-card-trigger">
                 <div class="window-card-head">
                   <div class="window-card-copy">
+                    <div class="window-card-title-label">{window_summary_label}</div>
+                    <h3 class="window-card-window-summary">{window_summary}</h3>
                     <div class="window-card-label">{project_label} · {window_label} {display_index}</div>
                     <p class="window-card-path">{activity_source_label}</p>
                   </div>
@@ -11559,9 +11861,10 @@ def make_window_summary_cards(window_overview, language=None):
                     </div>
                   </div>
                 </div>
-                <p class="window-card-summary">{main_takeaway}</p>
+                <div class="window-card-summary window-markdown">{main_takeaway}</div>
                 <div class="window-card-meta">
                   <span class="window-card-time">{recent_activity} {latest_activity}</span>
+                  {resume_actions}
                   <span class="window-card-action">
                     <span class="window-card-action-collapsed">{open_details}</span>
                     <span class="window-card-action-expanded">{collapse_details}</span>
@@ -11572,11 +11875,11 @@ def make_window_summary_cards(window_overview, language=None):
                 <div class="window-detail-grid">
                   <section class="window-detail-block">
                     <div class="window-detail-label">{question_summary_label}</div>
-                    <p>{question_summary}</p>
+                    <div class="window-markdown">{question_summary}</div>
                   </section>
                   <section class="window-detail-block">
                     <div class="window-detail-label">{conclusion_summary_label}</div>
-                    <p>{main_takeaway}</p>
+                    <div class="window-markdown">{main_takeaway}</div>
                   </section>
                 </div>
                 <div class="window-detail-grid compact">
@@ -11620,6 +11923,8 @@ def make_window_summary_cards(window_overview, language=None):
                 anchor_id=escape(anchor_id, quote=True),
                 display_index=escape(str(item.get("display_index", ""))),
                 window_label=escape(localized("窗口", "Window", language)),
+                window_summary_label=escape(localized("窗口摘要", "Window Summary", language)),
+                window_summary=escape(window_summary),
                 window_id_full=escape(item.get("window_id", "")),
                 project_label=escape(project_label),
                 activity_source_label=escape(activity_source_label),
@@ -11633,8 +11938,9 @@ def make_window_summary_cards(window_overview, language=None):
                 started_at=escape(item.get("started_at_display", localized("时间未知", "Unknown time", language))),
                 raw_window_html=raw_window_html,
                 session_file_html=session_file_html,
-                question_summary=escape(question_summary),
-                main_takeaway=escape(main_takeaway),
+                question_summary=question_summary_html,
+                main_takeaway=main_takeaway_html,
+                resume_actions=resume_actions,
                 keyword_chips=render_keyword_chips(item.get("keywords", [])),
                 recent_prompts=render_preview_items(
                     item.get("recent_prompts", []),
@@ -15367,6 +15673,22 @@ def build_html(data):
       flex: 1 1 auto;
     }}
 
+    .window-card-title-label {{
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.2;
+      margin-bottom: 6px;
+    }}
+
+    .window-card-window-summary {{
+      margin: 0 0 8px;
+      color: var(--ink);
+      font-size: 18px;
+      line-height: 1.35;
+      font-weight: 700;
+      overflow-wrap: anywhere;
+    }}
+
     .window-card-label {{
       color: var(--muted);
       font-size: 12px;
@@ -15418,11 +15740,15 @@ def build_html(data):
       font-size: 14px;
     }}
 
+    .window-card-summary p:last-child {{
+      margin-bottom: 0;
+    }}
+
     .window-card-meta {{
       margin-top: 14px;
       display: flex;
       flex-wrap: wrap;
-      justify-content: space-between;
+      align-items: center;
       gap: 10px 16px;
       color: var(--muted);
       font-size: 12px;
@@ -15444,8 +15770,45 @@ def build_html(data):
     }}
 
     .window-card-action {{
+      margin-left: auto;
       color: var(--teal);
       font-weight: 600;
+    }}
+
+    .window-resume-actions {{
+      display: inline-flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+    }}
+
+    .window-resume-button {{
+      appearance: none;
+      align-items: center;
+      border: 1px solid rgba(0, 113, 227, 0.24);
+      border-radius: 999px;
+      background: rgba(0, 113, 227, 0.1);
+      color: var(--teal);
+      cursor: pointer;
+      display: inline-flex;
+      font: inherit;
+      font-size: 12px;
+      font-weight: 700;
+      justify-content: center;
+      line-height: 1;
+      padding: 8px 10px;
+      text-decoration: none;
+      white-space: nowrap;
+    }}
+
+    .window-resume-button.is-secondary {{
+      border-color: var(--line);
+      background: var(--soft);
+      color: var(--ink);
+    }}
+
+    .window-resume-button:hover {{
+      transform: translateY(-1px);
     }}
 
     .window-card-action-expanded {{
@@ -15497,6 +15860,77 @@ def build_html(data):
       color: var(--ink);
       line-height: 1.65;
       font-size: 13px;
+    }}
+
+    .window-markdown {{
+      color: var(--ink);
+      font-size: 13px;
+      line-height: 1.65;
+      overflow-wrap: anywhere;
+    }}
+
+    .window-card-summary.window-markdown {{
+      font-size: 14px;
+    }}
+
+    .window-markdown p,
+    .window-markdown ul,
+    .window-markdown ol,
+    .window-markdown blockquote,
+    .window-markdown pre {{
+      margin: 0 0 10px;
+    }}
+
+    .window-markdown p:last-child,
+    .window-markdown ul:last-child,
+    .window-markdown ol:last-child,
+    .window-markdown blockquote:last-child,
+    .window-markdown pre:last-child {{
+      margin-bottom: 0;
+    }}
+
+    .window-markdown ul,
+    .window-markdown ol {{
+      padding-left: 18px;
+    }}
+
+    .window-markdown li + li {{
+      margin-top: 4px;
+    }}
+
+    .window-markdown code {{
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--control);
+      padding: 1px 5px;
+      font-size: 12px;
+      font-family: var(--mono);
+    }}
+
+    .window-markdown pre {{
+      overflow-x: auto;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--control);
+      padding: 10px;
+    }}
+
+    .window-markdown pre code {{
+      border: 0;
+      border-radius: 0;
+      background: transparent;
+      padding: 0;
+    }}
+
+    .window-markdown blockquote {{
+      border-left: 3px solid rgba(0, 113, 227, 0.35);
+      color: var(--muted);
+      padding-left: 10px;
+    }}
+
+    .window-markdown-heading {{
+      color: var(--ink);
+      font-weight: 700;
     }}
 
     .window-detail-list {{
@@ -16265,6 +16699,19 @@ def build_html(data):
 
       .window-card-stats {{
         justify-content: flex-start;
+      }}
+
+      .window-card-meta {{
+        align-items: flex-start;
+        flex-direction: column;
+      }}
+
+      .window-card-action {{
+        margin-left: 0;
+      }}
+
+      .window-resume-actions {{
+        width: 100%;
       }}
     }}
 
@@ -17213,6 +17660,56 @@ def build_html(data):
         }});
       }}
 
+      function flashButtonLabel(button, label) {{
+        if (!button || !label) {{
+          return;
+        }}
+        const original = button.getAttribute("data-label") || button.textContent || "";
+        button.textContent = label;
+        window.setTimeout(function () {{
+          button.textContent = original;
+        }}, 1600);
+      }}
+
+      function wireWindowResumeActions() {{
+        document.addEventListener("click", function (event) {{
+          const copyButton = event.target.closest("[data-window-resume-copy]");
+          if (copyButton) {{
+            event.preventDefault();
+            event.stopPropagation();
+            const command = copyButton.getAttribute("data-resume-command") || "";
+            copyText(command).then(function () {{
+              flashButtonLabel(
+                copyButton,
+                copyButton.getAttribute("data-copied-label") || t("已复制")
+              );
+            }}).catch(function () {{
+              flashButtonLabel(
+                copyButton,
+                copyButton.getAttribute("data-error-label") || t("复制失败")
+              );
+            }});
+            return;
+          }}
+          const openButton = event.target.closest("[data-window-resume-open]");
+          if (openButton) {{
+            event.stopPropagation();
+            const codexUrl = openButton.getAttribute("data-codex-url") || "";
+            const tagName = (openButton.tagName || "").toLowerCase();
+            if (codexUrl) {{
+              flashButtonLabel(
+                openButton,
+                openButton.getAttribute("data-opened-label") || t("正在打开")
+              );
+              if (tagName !== "a") {{
+                event.preventDefault();
+                window.location.href = codexUrl;
+              }}
+            }}
+          }}
+        }});
+      }}
+
       function setActiveSideNav(targetId) {{
         if (!targetId || !elements.sideNavLinks.length) {{
           return;
@@ -17998,6 +18495,7 @@ def build_html(data):
       wireNightlyDateInput();
       wireWindowOverviewDateInput();
       wireBackfillCopyButtons();
+      wireWindowResumeActions();
       wireSideNav();
       wireHorizontalScrollLock();
       applyTheme(readStoredTheme(), false);

@@ -308,6 +308,10 @@ def app_server_thread_to_window(thread, target_date, stage):
     source = thread.get("source") or "app-server"
     metadata = {
         "window_id": thread.get("id", ""),
+        "thread_id": thread.get("id", ""),
+        "resume_id": thread.get("id", ""),
+        "window_summary": thread.get("preview", ""),
+        "thread_title": thread.get("preview", ""),
         "cwd": thread.get("cwd", ""),
         "originator": "codex_app_server",
         "source": "codex_app_server:{}".format(source),
@@ -544,6 +548,10 @@ def build_window_payload(target_date, metadata, prompts, conclusions, raw_conclu
         "source": metadata["source"],
         "started_at": metadata["started_at"],
         "session_file": metadata["session_file"],
+        "thread_id": metadata.get("thread_id", ""),
+        "resume_id": metadata.get("resume_id", "") or metadata["window_id"],
+        "window_summary": metadata.get("window_summary", ""),
+        "thread_title": metadata.get("thread_title", ""),
         "prompt_count": len(prompts),
         "conclusion_count": len(conclusions),
         "raw_conclusion_count": raw_conclusion_count,

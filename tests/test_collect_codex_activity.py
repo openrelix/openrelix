@@ -61,6 +61,9 @@ class CollectCodexActivityTests(unittest.TestCase):
         self.assertEqual(window["prompts"][0]["text"], "请帮我复盘这个任务")
         self.assertEqual(window["conclusions"][0]["text"], "已完成复盘并更新面板。")
         self.assertEqual(window["app_server"]["thread_id"], "thread-1")
+        self.assertEqual(window["window_summary"], "请帮我复盘")
+        self.assertEqual(window["thread_title"], "请帮我复盘")
+        self.assertEqual(window["resume_id"], "thread-1")
 
     def test_app_server_unavailable_message_points_to_doctor_and_history_override(self):
         message = collect_codex_activity.app_server_unavailable_message(

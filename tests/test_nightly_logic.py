@@ -3792,13 +3792,21 @@ scope: Release checklist, package manifest, and public website validation.
         self.assertIn('aria-label="选择窗口日期"', html)
         self.assertIn('value="2026-04-26" selected>2026/04/26</option>', html)
 
+    def test_window_overview_date_control_keeps_selected_empty_state_clickable(self):
+        html = build_overview.make_window_overview_date_control([], "2026-04-30")
+
+        self.assertIn('id="window-overview-date-input"', html)
+        self.assertIn('value="2026-04-30" selected>2026/04/30</option>', html)
+        self.assertNotIn(" disabled", html)
+
     def test_window_cards_show_activity_source_instead_of_repeating_workspace(self):
+        thread_id = "019dcefe-37f1-7a83-a8a6-720bd6b79d7f"
         html = build_overview.make_window_summary_cards(
             {
                 "date": "2026-04-28",
                 "windows": [
                     {
-                        "window_id": "w1",
+                        "window_id": thread_id,
                         "display_index": 1,
                         "cwd": "/tmp/OpenRelix",
                         "cwd_display": "OpenRelix",
@@ -3806,6 +3814,49 @@ scope: Release checklist, package manifest, and public website validation.
                         "activity_source": "app-server",
                         "thread_source": "cli",
                         "activity_source_label": "采集：Codex app-server · 线程来源：cli",
+                        "window_summary": "Codex 侧栏标题",
+                        "resume_id": thread_id,
+                        "resume_command": "codex resume {}".format(thread_id),
+                        "resume_url": "codex://threads/{}".format(thread_id),
+                        "question_count": 1,
+                        "conclusion_count": 1,
+                        "question_summary": "问题",
+                        "main_takeaway": "**结论**：执行 `codex resume {}`".format(thread_id),
+                        "keywords": [],
+                        "latest_activity_display": "刚刚",
+                        "started_at_display": "刚刚",
+                        "recent_prompts": [],
+                        "recent_conclusions": [],
+                    }
+                ],
+            }
+        )
+
+        self.assertIn("OpenRelix · 窗口 1", html)
+        self.assertIn("窗口摘要", html)
+        self.assertIn("Codex 侧栏标题", html)
+        self.assertIn("采集：Codex app-server · 线程来源：cli", html)
+        self.assertIn('data-window-resume-copy', html)
+        self.assertIn('data-resume-command="codex resume {}"'.format(thread_id), html)
+        self.assertIn('data-window-resume-open', html)
+        self.assertIn('<a\n            href="codex://threads/{}"'.format(thread_id), html)
+        self.assertIn('data-codex-url="codex://threads/{}"'.format(thread_id), html)
+        self.assertIn("<strong>结论</strong>", html)
+        self.assertIn("<code>codex resume {}</code>".format(thread_id), html)
+        self.assertNotIn('<p class="window-card-path"><a', html)
+
+    def test_window_cards_hide_codex_app_button_for_non_uuid_resume_id(self):
+        html = build_overview.make_window_summary_cards(
+            {
+                "date": "2026-04-28",
+                "windows": [
+                    {
+                        "window_id": "thread-name",
+                        "display_index": 1,
+                        "project_label": "OpenRelix",
+                        "resume_id": "thread-name",
+                        "resume_command": "codex resume thread-name",
+                        "resume_url": build_overview.codex_resume_url("thread-name"),
                         "question_count": 1,
                         "conclusion_count": 1,
                         "question_summary": "问题",
@@ -3820,9 +3871,23 @@ scope: Release checklist, package manifest, and public website validation.
             }
         )
 
-        self.assertIn("OpenRelix · 窗口 1", html)
-        self.assertIn("采集：Codex app-server · 线程来源：cli", html)
-        self.assertNotIn('<p class="window-card-path"><a', html)
+        self.assertIn('data-window-resume-copy', html)
+        self.assertIn('data-resume-command="codex resume thread-name"', html)
+        self.assertNotIn('data-window-resume-open', html)
+        self.assertNotIn('data-codex-url=', html)
+
+    def test_window_markdown_renderer_escapes_unsafe_html(self):
+        html = build_overview.render_markdown_text(
+            "**加粗** `cmd` foo_bar_baz\n\n- 第一项\n- <script>alert(1)</script>"
+        )
+
+        self.assertIn("<strong>加粗</strong>", html)
+        self.assertIn("<code>cmd</code>", html)
+        self.assertIn("foo_bar_baz", html)
+        self.assertNotIn("<em>bar</em>", html)
+        self.assertIn("<ul>", html)
+        self.assertIn("&lt;script&gt;alert(1)&lt;/script&gt;", html)
+        self.assertNotIn("<script>", html)
 
     def test_window_overview_display_index_counts_down_from_latest_window(self):
         old_raw_daily_dir = build_overview.RAW_DAILY_DIR
@@ -4945,6 +5010,7 @@ scope: Release checklist, package manifest, and public website validation.
         self.assertIn("旧窗口", html)
         self.assertIn("function renderWindowOverview(dateValue)", html)
         self.assertIn("wireWindowOverviewDateInput();", html)
+        self.assertIn("wireWindowResumeActions();", html)
 
     def test_daily_summary_view_carries_bilingual_dynamic_fields(self):
         view = build_overview.build_daily_summary_view(

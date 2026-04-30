@@ -162,6 +162,12 @@ The script creates temporary state and Codex home directories, runs a `--minimal
 scripts/smoke_temp_panel.sh --no-open
 ```
 
+By default this is an empty-state smoke test. To inspect the panel with recent data from your current OpenRelix state while still rendering into a temporary directory, seed the temporary state explicitly:
+
+```bash
+scripts/smoke_temp_panel.sh --seed-current-state
+```
+
 Clean up the temporary smoke directories when you are done:
 
 ```bash
