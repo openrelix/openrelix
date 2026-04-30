@@ -19,3 +19,9 @@
 - Keep personal or site-specific Codex native memory mappings outside the repo, for example in the external state root extension file. Open-source code may only contain generic parsers, generic fallbacks, and sanitized public examples.
 - Prefer installer or template changes over one-off local setup instructions.
 - When adding automation, make state roots and Codex home paths configurable through environment variables.
+
+## Commit Checks
+
+- Before committing OpenRelix changes, run `python3 scripts/check_personal_info.py`, `git diff --check`, and focused tests for the touched code.
+- Before release, publish, installer, docs/site, or package-surface changes, also run `python3 -m py_compile scripts/*.py install/*.py`, `python3 -m unittest discover -s tests`, and `npm pack --dry-run --json`.
+- Treat these checks as the project rule even when local git hooks are not installed or are bypassed.
