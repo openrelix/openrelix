@@ -156,6 +156,12 @@ scripts/smoke_temp_panel.sh
 scripts/smoke_temp_panel.sh --no-open
 ```
 
+默认这是空 state 烟测。需要在临时目录里查看当前真实 OpenRelix state 里的最近数据，同时不污染真实 state 时，显式加：
+
+```bash
+scripts/smoke_temp_panel.sh --seed-current-state
+```
+
 验证完成后清理这些临时目录：
 
 ```bash

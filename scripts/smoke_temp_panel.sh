@@ -10,6 +10,8 @@ LANGUAGE="${AI_ASSET_LANGUAGE:-zh}"
 ACTIVITY_SOURCE="${OPENRELIX_ACTIVITY_SOURCE:-${AI_ASSET_ACTIVITY_SOURCE:-auto}}"
 STATE_DIR="${OPENRELIX_SMOKE_STATE_DIR:-}"
 CODEX_HOME_VALUE="${OPENRELIX_SMOKE_CODEX_HOME:-}"
+SOURCE_STATE_DIR="${OPENRELIX_SMOKE_SOURCE_STATE_DIR:-}"
+SEED_CURRENT_STATE="${OPENRELIX_SMOKE_SEED_CURRENT_STATE:-0}"
 OPEN_PANEL=1
 
 usage() {
@@ -21,6 +23,9 @@ Run a temporary OpenRelix smoke install and stop at the generated panel.
 Options:
   --state-dir PATH       Use PATH as the temporary state root.
   --codex-home PATH      Use PATH as the temporary CODEX_HOME.
+  --seed-current-state   Copy current OpenRelix data into the temporary state before rendering.
+  --source-state-dir PATH
+                         Source state root for --seed-current-state.
   --language zh|en       Runtime language. Default: zh.
   --activity-source SRC  Activity source: history | app-server | auto. Default: auto.
   --no-open             Print the panel path without opening it.
@@ -29,6 +34,8 @@ Options:
 Environment overrides:
   OPENRELIX_SMOKE_STATE_DIR
   OPENRELIX_SMOKE_CODEX_HOME
+  OPENRELIX_SMOKE_SEED_CURRENT_STATE
+  OPENRELIX_SMOKE_SOURCE_STATE_DIR
   AI_ASSET_LANGUAGE
   OPENRELIX_ACTIVITY_SOURCE / AI_ASSET_ACTIVITY_SOURCE
   PYTHON_BIN
@@ -98,6 +105,78 @@ cache_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", 
 PY
 }
 
+resolve_default_state_root() {
+  "$PYTHON_BIN" - "$REPO_ROOT" <<'PY'
+import os
+import sys
+from pathlib import Path
+
+repo_root = Path(sys.argv[1])
+sys.path.insert(0, str(repo_root / "scripts"))
+os.environ.pop("AI_ASSET_STATE_DIR", None)
+
+from asset_runtime import default_state_root  # noqa: E402
+
+print(default_state_root())
+PY
+}
+
+copy_state_subtree() {
+  local relative_path="$1"
+  local source_path="$SOURCE_STATE_DIR/$relative_path"
+  local target_path="$STATE_DIR/$relative_path"
+
+  if [[ ! -e "$source_path" ]]; then
+    return
+  fi
+
+  if [[ -d "$source_path" ]]; then
+    mkdir -p "$target_path"
+    cp -R "$source_path/." "$target_path/"
+  else
+    mkdir -p "${target_path:h}"
+    cp "$source_path" "$target_path"
+  fi
+}
+
+seed_current_state() {
+  case "$SEED_CURRENT_STATE" in
+    1|true|TRUE|yes|YES)
+      ;;
+    *)
+      return
+      ;;
+  esac
+
+  if [[ -z "$SOURCE_STATE_DIR" ]]; then
+    SOURCE_STATE_DIR="$(resolve_default_state_root)"
+  fi
+
+  if [[ ! -d "$SOURCE_STATE_DIR" ]]; then
+    echo "source state root does not exist: $SOURCE_STATE_DIR" >&2
+    exit 1
+  fi
+
+  if [[ "$SOURCE_STATE_DIR" == "$STATE_DIR" ]]; then
+    echo "source state root must differ from temporary state root" >&2
+    exit 1
+  fi
+
+  echo "[seed] 复制当前 state 数据到临时目录..."
+  copy_state_subtree "raw/daily"
+  copy_state_subtree "raw/windows"
+  copy_state_subtree "consolidated/daily"
+  copy_state_subtree "registry"
+  copy_state_subtree "reviews"
+
+  AI_ASSET_STATE_DIR="$STATE_DIR" \
+  CODEX_HOME="$CODEX_HOME_VALUE" \
+  AI_ASSET_LANGUAGE="$LANGUAGE" \
+  OPENRELIX_ACTIVITY_SOURCE="$ACTIVITY_SOURCE" \
+    "$PYTHON_BIN" "$REPO_ROOT/scripts/build_overview.py"
+  echo "        完成"
+}
+
 while (( $# > 0 )); do
   case "$1" in
     --state-dir)
@@ -114,6 +193,18 @@ while (( $# > 0 )); do
       ;;
     --codex-home=*)
       CODEX_HOME_VALUE="${1#--codex-home=}"
+      shift
+      ;;
+    --seed-current-state)
+      SEED_CURRENT_STATE=1
+      shift
+      ;;
+    --source-state-dir)
+      SOURCE_STATE_DIR="${2:?missing value for --source-state-dir}"
+      shift 2
+      ;;
+    --source-state-dir=*)
+      SOURCE_STATE_DIR="${1#--source-state-dir=}"
       shift
       ;;
     --language)
@@ -165,6 +256,9 @@ echo "repo:       $REPO_ROOT"
 echo "state dir:  $STATE_DIR"
 echo "codex home: $CODEX_HOME_VALUE"
 echo "language:   $LANGUAGE"
+if [[ "$SEED_CURRENT_STATE" == "1" || "$SEED_CURRENT_STATE" == "true" || "$SEED_CURRENT_STATE" == "TRUE" || "$SEED_CURRENT_STATE" == "yes" || "$SEED_CURRENT_STATE" == "YES" ]]; then
+  echo "seed data:  current state"
+fi
 echo
 
 "$REPO_ROOT/install/install.sh" \
@@ -175,11 +269,15 @@ echo
   --state-dir "$STATE_DIR" \
   --codex-home "$CODEX_HOME_VALUE"
 
+seed_current_state
+
 AI_ASSET_STATE_DIR="$STATE_DIR" \
 CODEX_HOME="$CODEX_HOME_VALUE" \
 AI_ASSET_LANGUAGE="$LANGUAGE" \
 OPENRELIX_ACTIVITY_SOURCE="$ACTIVITY_SOURCE" \
-  "$PYTHON_BIN" "$REPO_ROOT/scripts/openrelix.py" doctor
+  "$PYTHON_BIN" "$REPO_ROOT/scripts/openrelix.py" doctor || {
+    echo "doctor reported warnings or failures; continuing to generated panel." >&2
+  }
 
 AI_ASSET_STATE_DIR="$STATE_DIR" \
 CODEX_HOME="$CODEX_HOME_VALUE" \
