@@ -14,7 +14,7 @@ from urllib.parse import quote
 from asset_runtime import ensure_state_layout, get_runtime_paths
 
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 3
 DEFAULT_LIMIT = 20
 
 
@@ -84,6 +84,104 @@ def compact_text(value):
 
 def json_dumps(value):
     return json.dumps(value if value is not None else [], ensure_ascii=False, sort_keys=True)
+
+
+def normalize_summary_pairs(raw_pairs, question_summary="", main_takeaway=""):
+    pairs = []
+    if isinstance(raw_pairs, list):
+        for raw_pair in raw_pairs:
+            if not isinstance(raw_pair, dict):
+                continue
+            question = compact_text(raw_pair.get("question", "") or raw_pair.get("problem", ""))
+            conclusion = compact_text(raw_pair.get("conclusion", "") or raw_pair.get("takeaway", ""))
+            if question or conclusion:
+                pairs.append({"question": question, "conclusion": conclusion})
+    if pairs:
+        return pairs
+    question_summary = compact_text(question_summary)
+    main_takeaway = compact_text(main_takeaway)
+    if question_summary or main_takeaway:
+        return [{"question": question_summary, "conclusion": main_takeaway}]
+    return []
+
+
+def window_record_sort_key(item):
+    if not isinstance(item, dict):
+        return ""
+    return str(
+        item.get("local_time")
+        or item.get("completed_at")
+        or item.get("timestamp")
+        or item.get("ts")
+        or ""
+    )
+
+
+def raw_window_summary_pairs(prompts, conclusions, limit=6):
+    if not isinstance(prompts, list):
+        prompts = []
+    if not isinstance(conclusions, list):
+        conclusions = []
+    prompt_items = sorted(
+        [item for item in prompts if isinstance(item, dict)],
+        key=window_record_sort_key,
+    )
+    conclusion_items = sorted(
+        [item for item in conclusions if isinstance(item, dict)],
+        key=window_record_sort_key,
+    )
+    prompt_by_turn = {
+        str(item.get("turn_id", "")): item
+        for item in prompt_items
+        if str(item.get("turn_id", "")).strip()
+    }
+    conclusion_by_turn = {
+        str(item.get("turn_id", "")): item
+        for item in conclusion_items
+        if str(item.get("turn_id", "")).strip()
+    }
+    matched_turn_ids = [
+        str(item.get("turn_id", ""))
+        for item in prompt_items
+        if str(item.get("turn_id", "")).strip() in conclusion_by_turn
+    ]
+    if matched_turn_ids:
+        pairs = []
+        seen_turn_ids = set()
+        for turn_id in matched_turn_ids:
+            if turn_id in seen_turn_ids:
+                continue
+            seen_turn_ids.add(turn_id)
+            question = compact_text(prompt_by_turn.get(turn_id, {}).get("text", ""))
+            answer = compact_text(conclusion_by_turn.get(turn_id, {}).get("text", ""))
+            if question or answer:
+                pairs.append({"question": question, "conclusion": answer})
+            if len(pairs) >= limit:
+                return pairs
+        if pairs:
+            return pairs
+    row_count = min(max(len(prompt_items), len(conclusion_items)), limit)
+    pairs = []
+    for index in range(row_count):
+        prompt = prompt_items[index] if index < len(prompt_items) else {}
+        conclusion = (
+            conclusion_items[index]
+            if index < len(conclusion_items)
+            else {}
+        )
+        question = compact_text(prompt.get("text", ""))
+        answer = compact_text(conclusion.get("text", ""))
+        if question or answer:
+            pairs.append({"question": question, "conclusion": answer})
+    return pairs
+
+
+def summary_model_completed(summary):
+    status = compact_text(
+        (summary or {}).get("model_status")
+        or (summary or {}).get("last_run_model_status", "")
+    ).lower()
+    return status not in {"failed", "error", "fallback"}
 
 
 def normalize_search_key(text):
@@ -241,6 +339,7 @@ def summary_maps(paths):
             continue
         date_str = compact_text(payload.get("date", path.parent.name))
         stage = compact_text(payload.get("stage", ""))
+        model_status = compact_text(payload.get("model_status") or payload.get("last_run_model_status", ""))
         keywords = payload.get("keywords", [])
         if not isinstance(keywords, list):
             keywords = []
@@ -258,7 +357,7 @@ def summary_maps(paths):
                 "next_actions_json": json_dumps(next_actions),
                 "raw_window_count": safe_int(payload.get("raw_window_count", 0)),
                 "review_like_window_count": safe_int(payload.get("review_like_window_count", 0)),
-                "model_status": compact_text(payload.get("model_status") or payload.get("last_run_model_status", "")),
+                "model_status": model_status,
                 "memory_mode": compact_text(payload.get("memory_mode", "")),
                 "learning_input_fingerprint": compact_text(payload.get("learning_input_fingerprint", "")),
                 "quality_json": json_dumps(payload.get("quality", {})),
@@ -286,21 +385,32 @@ def summary_maps(paths):
             current = dict(item)
             current["summary_date"] = date_str
             current["summary_stage"] = stage
+            current["model_status"] = model_status
             by_window_key[(date_str, window_id)] = current
     return by_window_key, daily_rows, skipped
 
 
 def window_search_text(window, summary):
+    summary_pairs = normalize_summary_pairs(
+        summary.get("summary_pairs", []),
+        question_summary=summary.get("question_summary", ""),
+        main_takeaway=summary.get("main_takeaway", ""),
+    )
     pieces = [
         window.get("window_id", ""),
         window.get("date", ""),
         window.get("cwd", ""),
         window.get("source", ""),
         window.get("originator", ""),
+        summary.get("window_title", ""),
         summary.get("question_summary", ""),
         summary.get("main_takeaway", ""),
+        summary.get("summary_status", ""),
         " ".join(summary.get("keywords", []) if isinstance(summary.get("keywords"), list) else []),
     ]
+    for pair in summary_pairs:
+        pieces.append(pair.get("question", ""))
+        pieces.append(pair.get("conclusion", ""))
     pieces.extend(item.get("text", "") for item in window.get("prompts", []) if isinstance(item, dict))
     pieces.extend(item.get("text", "") for item in window.get("conclusions", []) if isinstance(item, dict))
     return compact_text(" ".join(str(piece or "") for piece in pieces))
@@ -314,8 +424,51 @@ def normalize_window(window, raw_path, summary=None):
     keywords = summary.get("keywords", [])
     if not isinstance(keywords, list):
         keywords = []
-    question_summary = compact_text(summary.get("question_summary", ""))
-    main_takeaway = compact_text(summary.get("main_takeaway", ""))
+    prompts = window.get("prompts", [])
+    conclusions = window.get("conclusions", [])
+    first_prompt_text = ""
+    if prompts and isinstance(prompts[0], dict):
+        first_prompt_text = prompts[0].get("text", "")
+    last_conclusion_text = ""
+    if conclusions and isinstance(conclusions[-1], dict):
+        last_conclusion_text = conclusions[-1].get("text", "")
+    summary_has_content = bool(
+        summary.get("question_summary")
+        or summary.get("main_takeaway")
+        or summary.get("summary_pairs")
+        or summary.get("window_title")
+    )
+    has_summary = summary_model_completed(summary) and summary_has_content
+    if has_summary:
+        question_summary = compact_text(summary.get("question_summary", "") or first_prompt_text)
+        main_takeaway = compact_text(summary.get("main_takeaway", "") or last_conclusion_text or first_prompt_text)
+    else:
+        question_summary = compact_text(first_prompt_text)
+        main_takeaway = compact_text(last_conclusion_text or first_prompt_text)
+    summary_status = "summarized" if has_summary else "raw_fallback"
+    if has_summary:
+        summary_pairs = normalize_summary_pairs(
+            summary.get("summary_pairs", []),
+            question_summary=question_summary,
+            main_takeaway=main_takeaway,
+        )
+    else:
+        summary_pairs = raw_window_summary_pairs(prompts, conclusions)
+    raw_summary_pairs = raw_window_summary_pairs(prompts, conclusions)
+    window_title = compact_text(
+        (summary.get("window_title", "") if has_summary else "")
+        or (question_summary if has_summary else (raw_summary_pairs[0].get("question", "") if raw_summary_pairs else first_prompt_text))
+    )[:240]
+    search_summary = dict(summary)
+    search_summary.update(
+        {
+            "window_title": window_title,
+            "question_summary": question_summary,
+            "main_takeaway": main_takeaway,
+            "summary_pairs": summary_pairs,
+            "summary_status": summary_status,
+        }
+    )
     return {
         "window_id": compact_text(window.get("window_id", "")),
         "date": compact_text(window.get("date", summary.get("summary_date", ""))),
@@ -335,12 +488,16 @@ def normalize_window(window, raw_path, summary=None):
         "review_related_window": 1 if window.get("review_related_window") else 0,
         "filtered_review_conclusion_count": safe_int(window.get("filtered_review_conclusion_count", 0)),
         "conclusion_policy": compact_text(window.get("conclusion_policy", "")),
+        "window_title": window_title,
         "question_summary": question_summary,
         "main_takeaway": main_takeaway,
+        "summary_status": summary_status,
+        "summary_pairs_json": json_dumps(summary_pairs),
+        "raw_summary_pairs_json": json_dumps(raw_summary_pairs),
         "keywords_json": json_dumps(keywords),
         "prompts_json": json_dumps(window.get("prompts", [])),
         "conclusions_json": json_dumps(window.get("conclusions", [])),
-        "search_text": window_search_text(window, summary),
+        "search_text": window_search_text(window, search_summary),
     }
 
 
@@ -509,8 +666,12 @@ def create_schema(conn, fts_enabled):
           review_related_window INTEGER NOT NULL DEFAULT 0,
           filtered_review_conclusion_count INTEGER NOT NULL DEFAULT 0,
           conclusion_policy TEXT,
+          window_title TEXT,
           question_summary TEXT,
           main_takeaway TEXT,
+          summary_status TEXT NOT NULL DEFAULT 'raw_fallback',
+          summary_pairs_json TEXT NOT NULL DEFAULT '[]',
+          raw_summary_pairs_json TEXT NOT NULL DEFAULT '[]',
           keywords_json TEXT NOT NULL DEFAULT '[]',
           prompts_json TEXT NOT NULL DEFAULT '[]',
           conclusions_json TEXT NOT NULL DEFAULT '[]',
@@ -551,8 +712,10 @@ def create_schema(conn, fts_enabled):
 
             CREATE VIRTUAL TABLE window_fts USING fts5(
               cwd,
+              window_title,
               question_summary,
               main_takeaway,
+              summary_pairs,
               prompts,
               conclusions,
               keywords
@@ -684,16 +847,18 @@ def insert_window(conn, row, fts_enabled):
           started_at, latest_activity_at, session_file, raw_path, prompt_count,
           conclusion_count, raw_conclusion_count, review_like_window,
           review_related_window, filtered_review_conclusion_count,
-          conclusion_policy, question_summary, main_takeaway, keywords_json,
-          prompts_json, conclusions_json, search_text
+          conclusion_policy, window_title, question_summary, main_takeaway, summary_status,
+          summary_pairs_json, raw_summary_pairs_json, keywords_json, prompts_json,
+          conclusions_json, search_text
         )
         VALUES (
           :window_id, :date, :stage, :cwd, :project_label, :source, :originator,
           :started_at, :latest_activity_at, :session_file, :raw_path, :prompt_count,
           :conclusion_count, :raw_conclusion_count, :review_like_window,
           :review_related_window, :filtered_review_conclusion_count,
-          :conclusion_policy, :question_summary, :main_takeaway, :keywords_json,
-          :prompts_json, :conclusions_json, :search_text
+          :conclusion_policy, :window_title, :question_summary, :main_takeaway, :summary_status,
+          :summary_pairs_json, :raw_summary_pairs_json, :keywords_json, :prompts_json,
+          :conclusions_json, :search_text
         )
         ON CONFLICT(date, window_id) DO UPDATE SET
           stage=excluded.stage,
@@ -712,8 +877,12 @@ def insert_window(conn, row, fts_enabled):
           review_related_window=excluded.review_related_window,
           filtered_review_conclusion_count=excluded.filtered_review_conclusion_count,
           conclusion_policy=excluded.conclusion_policy,
+          window_title=excluded.window_title,
           question_summary=excluded.question_summary,
           main_takeaway=excluded.main_takeaway,
+          summary_status=excluded.summary_status,
+          summary_pairs_json=excluded.summary_pairs_json,
+          raw_summary_pairs_json=excluded.raw_summary_pairs_json,
           keywords_json=excluded.keywords_json,
           prompts_json=excluded.prompts_json,
           conclusions_json=excluded.conclusions_json,
@@ -764,15 +933,24 @@ def insert_window(conn, row, fts_enabled):
         conn.execute(
             """
             INSERT INTO window_fts(
-              rowid, cwd, question_summary, main_takeaway, prompts, conclusions, keywords
+              rowid, cwd, window_title, question_summary, main_takeaway,
+              summary_pairs, prompts, conclusions, keywords
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 row_id,
                 row["cwd"],
+                row["window_title"],
                 row["question_summary"],
                 row["main_takeaway"],
+                compact_text(
+                    " ".join(
+                        "{} {}".format(item.get("question", ""), item.get("conclusion", ""))
+                        for item in json.loads(row["summary_pairs_json"])
+                        if isinstance(item, dict)
+                    )
+                ),
                 compact_text(" ".join(item.get("text", "") for item in json.loads(row["prompts_json"]) if isinstance(item, dict))),
                 compact_text(" ".join(item.get("text", "") for item in json.loads(row["conclusions_json"]) if isinstance(item, dict))),
                 " ".join(json.loads(row["keywords_json"])),
@@ -1010,8 +1188,12 @@ def row_to_window(row):
         "raw_conclusion_count": row["raw_conclusion_count"],
         "filtered_review_conclusion_count": row["filtered_review_conclusion_count"],
         "conclusion_policy": row["conclusion_policy"],
+        "window_title": row["window_title"],
         "question_summary": row["question_summary"],
         "main_takeaway": row["main_takeaway"],
+        "summary_status": row["summary_status"],
+        "summary_pairs": decode_json_list(row["summary_pairs_json"]),
+        "raw_summary_pairs": decode_json_list(row["raw_summary_pairs_json"]),
         "keywords": decode_json_list(row["keywords_json"]),
     }
 

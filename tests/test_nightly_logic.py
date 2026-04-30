@@ -343,6 +343,19 @@ class NightlyLogicTests(unittest.TestCase):
         self.assertNotIn("所有输出都使用中文", prompt)
 
         fallback = nightly_consolidate.build_fallback_summary(raw_payload, language="en")
+        self.assertEqual(
+            fallback["window_summaries"][0]["window_title"],
+            "Install language choice should affect summaries.",
+        )
+        self.assertEqual(
+            fallback["window_summaries"][0]["summary_pairs"],
+            [
+                {
+                    "question": "Install language choice should affect summaries.",
+                    "conclusion": "Persist language in runtime config.",
+                }
+            ],
+        )
         fallback["language"] = "en"
         fallback["stage"] = "manual"
         markdown = nightly_consolidate.render_markdown(fallback, language="en")
@@ -3942,11 +3955,10 @@ scope: Release checklist, package manifest, and public website validation.
             finally:
                 build_overview.load_window_record.cache_clear()
 
-        self.assertIn("Codex 侧栏标题", html)
         self.assertIn("OpenRelix · 原始窗口 ID：{}".format(thread_id), html)
         self.assertLess(
             html.index("OpenRelix · 原始窗口 ID：{}".format(thread_id)),
-            html.index("Codex 侧栏标题"),
+            html.index("问题"),
         )
         self.assertNotIn('class="window-card-title-label"', html)
         self.assertNotIn("OpenRelix · 窗口 1", html)
@@ -3979,12 +3991,131 @@ scope: Release checklist, package manifest, and public website validation.
         self.assertNotIn("窗口信息", html)
         self.assertNotIn("查看完整结论摘要", html)
         self.assertNotIn('class="window-subdetail', html)
-        self.assertIn("最近问题", html)
-        self.assertIn("最近结论", html)
-        self.assertIn("更多记录见", html)
+        self.assertNotIn("最近问题", html)
+        self.assertNotIn("最近结论", html)
+        self.assertIn("问题与结论", html)
+        self.assertNotIn("问题总结", html)
+        self.assertNotIn("结论总结", html)
+        self.assertIn("大模型已做智能整理", html)
+        self.assertIn("原始记录见", html)
         self.assertIn("原始窗口 JSON", html)
+        self.assertIn('class="window-summary-pair-list"', html)
+        self.assertIn('class="window-summary-pair-item"', html)
         self.assertNotIn("会话文件", html)
         self.assertNotIn("会话 JSONL", html)
+
+    def test_window_cards_show_multiple_summary_pairs(self):
+        html = build_overview.make_window_summary_cards(
+            {
+                "date": "2026-04-28",
+                "windows": [
+                    {
+                        "window_id": "w-pairs",
+                        "display_index": 1,
+                        "project_label": "OpenRelix",
+                        "window_title": "SQLite 检索底层改造",
+                        "question_count": 2,
+                        "conclusion_count": 2,
+                        "question_summary": "问题1：SQLite 是否值得切；问题2：搜索 UI 是否先做",
+                        "main_takeaway": "结论1：先切底层索引；结论2：UI 后置",
+                        "summary_pairs": [
+                            {"question": "SQLite 是否值得切", "conclusion": "先切底层索引"},
+                            {"question": "搜索 UI 是否先做", "conclusion": "UI 后置"},
+                        ],
+                        "raw_summary_pairs": [
+                            {"question": "原始问法", "conclusion": "原始答复"},
+                        ],
+                        "summary_status": "summarized",
+                        "summary_status_label": "大模型已做智能整理",
+                        "keywords": ["sqlite", "搜索"],
+                        "latest_activity_display": "刚刚",
+                        "started_at_display": "刚刚",
+                        "recent_prompts": [],
+                        "recent_conclusions": [],
+                    }
+                ],
+            }
+        )
+
+        self.assertIn("SQLite 检索底层改造", html)
+        self.assertIn("大模型已做智能整理", html)
+        self.assertIn("智能整理", html)
+        self.assertIn("原始信息", html)
+        self.assertIn("原始问法", html)
+        self.assertIn("原始答复", html)
+        detail_html = html[html.index('class="window-card-detail"') :]
+        summary_html = html[
+            html.index('<summary class="window-card-trigger">') : html.index("</summary>")
+        ]
+        self.assertIn('class="window-card-pair-preview"', summary_html)
+        self.assertIn("问题1", summary_html)
+        self.assertIn("SQLite 是否值得切", summary_html)
+        self.assertIn("结论1", summary_html)
+        self.assertIn("先切底层索引", summary_html)
+        self.assertNotIn("问题2：搜索 UI 是否先做", html)
+        self.assertNotIn("结论2：UI 后置", html)
+        for text in ["问题1", "SQLite 是否值得切", "结论1", "先切底层索引", "问题2", "搜索 UI 是否先做", "结论2", "UI 后置"]:
+            self.assertIn(text, detail_html)
+        self.assertLess(detail_html.index("问题1"), detail_html.index("SQLite 是否值得切"))
+        self.assertLess(detail_html.index("SQLite 是否值得切"), detail_html.index("结论1"))
+        self.assertLess(detail_html.index("结论1"), detail_html.index("先切底层索引"))
+        self.assertLess(detail_html.index("先切底层索引"), detail_html.index("问题2"))
+        self.assertLess(detail_html.index("问题2"), detail_html.index("搜索 UI 是否先做"))
+        self.assertLess(detail_html.index("搜索 UI 是否先做"), detail_html.index("结论2"))
+        self.assertLess(detail_html.index("结论2"), detail_html.index("UI 后置"))
+        self.assertNotIn("最近问题", html)
+        self.assertNotIn("最近结论", html)
+
+    def test_window_cards_mark_raw_fallback_when_summary_not_ready(self):
+        html = build_overview.make_window_summary_cards(
+            {
+                "date": "2026-04-28",
+                "windows": [
+                    {
+                        "window_id": "w-raw",
+                        "display_index": 1,
+                        "project_label": "OpenRelix",
+                        "question_count": 2,
+                        "conclusion_count": 2,
+                        "question_summary": "原始问题1；原始问题2",
+                        "main_takeaway": "原始结论1；原始结论2",
+                        "summary_pairs": [
+                            {"question": "原始问题1", "conclusion": "原始结论1"},
+                            {"question": "原始问题2", "conclusion": "原始结论2"},
+                        ],
+                        "summary_status": "raw_fallback",
+                        "summary_status_label": "暂未做二次学习和总结，当前展示原始问题和结论",
+                        "keywords": [],
+                        "latest_activity_display": "刚刚",
+                        "started_at_display": "刚刚",
+                        "recent_prompts": [{"time": "刚刚", "text": "原始问题"}],
+                        "recent_conclusions": [{"time": "刚刚", "text": "原始结论"}],
+                    }
+                ],
+            }
+        )
+
+        self.assertIn("暂未做二次学习和总结", html)
+        self.assertIn('data-summary-status="raw_fallback"', html)
+        self.assertIn("原始问题1", html)
+        self.assertIn("原始结论1", html)
+        summary_html = html[
+            html.index('<summary class="window-card-trigger">') : html.index("</summary>")
+        ]
+        self.assertIn("<h3 class=\"window-card-window-summary\">原始问题1</h3>", summary_html)
+        self.assertIn("问题1", summary_html)
+        self.assertIn("原始问题1", summary_html)
+        self.assertIn("结论1", summary_html)
+        self.assertIn("原始结论1", summary_html)
+        self.assertNotIn("问题2：原始问题2", summary_html)
+        self.assertNotIn("结论2：原始结论2", summary_html)
+        self.assertNotIn("原始信息", summary_html)
+        detail_html = html[html.index('class="window-card-detail"') :]
+        self.assertIn('data-summary-mode="raw"', detail_html)
+        self.assertIn("问题2", detail_html)
+        self.assertIn("原始问题2", detail_html)
+        self.assertIn("结论2", detail_html)
+        self.assertIn("原始结论2", detail_html)
 
     def test_window_cards_hide_codex_app_button_for_non_uuid_resume_id(self):
         html = build_overview.make_window_summary_cards(
@@ -4133,10 +4264,14 @@ scope: Release checklist, package manifest, and public website validation.
         self.assertIn("Collection: Codex app-server · thread source: cli", html)
         self.assertIn("Window.", html)
         self.assertIn(">Window<", html)
+        self.assertIn("Question / Conclusion", html)
+        self.assertIn("AI-organized", html)
+        self.assertNotIn("大模型已做智能整理", html)
+        self.assertNotIn("暂未做二次学习", html)
         self.assertNotIn("Question Summary", html)
         self.assertNotIn("Conclusion Summary", html)
-        self.assertIn("Recent Questions", html)
-        self.assertIn("Recent Conclusions", html)
+        self.assertNotIn("Recent Questions", html)
+        self.assertNotIn("Recent Conclusions", html)
         self.assertNotIn("Show Recent Questions", html)
         self.assertNotIn("Show Recent Conclusions", html)
         self.assertNotIn("采集：", html)

@@ -338,6 +338,7 @@ Organization principles:
 10. If today's input signal is rich but you produce too few long-term or short-term memories, first reconsider whether your classification is too conservative.
 11. If learning_context contains recent_window_learning, it represents recent batch summaries and patterns. Use it only to learn which window types deserve durable or session memories; do not import that historical content into today's output.
 12. recent_window_learning.coverage / batch_summaries represent full historical-window coverage; window_samples are only representative samples, not the complete historical set.
+13. For each window summary, write window_title as a plain-language title under 100 characters. Do not reuse raw window IDs, paths, Markdown, or numbered question labels as the title. Then populate summary_pairs with 1 to many readable question/conclusion pairs. If a window contains multiple distinct questions and conclusions, aggregate related turns but keep each pair one-to-one and ordered from oldest to newest.
 
 Input data follows. This is a compact same-day view: each window conservatively clusters near-duplicate or variant prompt / conclusion text before it is shown to you.
 - In prompt_samples / conclusion_samples, a `[merged N similar items]` prefix means the sample represents N similar items.
@@ -369,6 +370,7 @@ Strictly base your output on these clusters. You may learn abstraction granulari
 10. 如果当日输入信号已经很丰富，但你给出的长期 / 短期记忆过少，要先反思是否归类过于保守。
 11. 如果 learning_context 里出现 recent_window_learning，它代表近几天窗口的批次摘要与模式，仅用于学习哪些窗口类型更适合抽象成 durable / session 记忆，不代表这些窗口内容应该直接进入今天的输出。
 12. recent_window_learning.coverage / batch_summaries 代表历史窗口的全量覆盖；window_samples 只是少量代表样本，不是历史窗口全集。
+13. 每个 window_summaries 项都要填写 window_title 和 summary_pairs。window_title 要用通俗易懂的话概括窗口主题，最好不超过 100 字；不要直接复用原始窗口 ID、路径、Markdown 或“问题1/问题2”这类编号标签当标题。summary_pairs 要聚合成 1 到多个可读的问题/结论对，同一组问题和结论必须一一对应，并按从旧到新的顺序排列。
 
 输入数据如下。注意：这是已经压缩过的当日视图；每个窗口会先把近重复、同类变体的 prompt / conclusion 做保守聚类，再提供给你。
 - prompt_samples / conclusion_samples 里，如果样本带有 `[合并N条同类项]` 前缀，表示这一条代表了 N 条相近内容。
@@ -1117,6 +1119,32 @@ def fallback_main_takeaway(window, language=None):
     )
 
 
+def normalize_summary_pairs(raw_pairs, question_summary="", main_takeaway=""):
+    pairs = []
+    if isinstance(raw_pairs, list):
+        for raw_pair in raw_pairs:
+            if not isinstance(raw_pair, dict):
+                continue
+            question = clip_text(raw_pair.get("question", "") or raw_pair.get("problem", ""), 180)
+            conclusion = clip_text(raw_pair.get("conclusion", "") or raw_pair.get("takeaway", ""), 220)
+            if question or conclusion:
+                pairs.append({"question": question, "conclusion": conclusion})
+    if pairs:
+        return pairs[:6]
+    question_summary = clip_text(question_summary, 180)
+    main_takeaway = clip_text(main_takeaway, 220)
+    if question_summary or main_takeaway:
+        return [{"question": question_summary, "conclusion": main_takeaway}]
+    return []
+
+
+def fallback_window_title(window, question_summary="", language=None):
+    return clip_text(
+        question_summary or fallback_question_summary(window, language=language),
+        100,
+    )
+
+
 def normalize_summary(raw_payload, summary, language=None):
     raw_windows = raw_payload["windows"]
     raw_by_id = {window["window_id"]: window for window in raw_windows}
@@ -1129,20 +1157,33 @@ def normalize_summary(raw_payload, summary, language=None):
     normalized_windows = []
     for raw_window in raw_windows:
         current = provided.get(raw_window["window_id"], {})
+        question_summary = current.get(
+            "question_summary",
+            fallback_question_summary(raw_window, language=language),
+        )
+        main_takeaway = current.get(
+            "main_takeaway",
+            fallback_main_takeaway(raw_window, language=language),
+        )
+        window_title = current.get("window_title") or fallback_window_title(
+            raw_window,
+            question_summary=question_summary,
+            language=language,
+        )
         normalized_windows.append(
             {
                 "window_id": raw_window["window_id"],
                 "cwd": raw_window["cwd"],
-                "question_summary": current.get(
-                    "question_summary",
-                    fallback_question_summary(raw_window, language=language),
-                ),
+                "window_title": clip_text(window_title, 100),
+                "question_summary": question_summary,
                 "question_count": raw_window["prompt_count"],
                 "conclusion_count": raw_window["conclusion_count"],
                 "keywords": current.get("keywords", [])[:8],
-                "main_takeaway": current.get(
-                    "main_takeaway",
-                    fallback_main_takeaway(raw_window, language=language),
+                "main_takeaway": main_takeaway,
+                "summary_pairs": normalize_summary_pairs(
+                    current.get("summary_pairs", []),
+                    question_summary=question_summary,
+                    main_takeaway=main_takeaway,
                 ),
             }
         )
@@ -1179,15 +1220,27 @@ def normalize_summary(raw_payload, summary, language=None):
 def build_fallback_summary(raw_payload, language=None, model_error=None, model_exit_code=None):
     window_summaries = []
     for raw_window in raw_payload["windows"]:
+        question_summary = fallback_question_summary(raw_window, language=language)
+        main_takeaway = fallback_main_takeaway(raw_window, language=language)
         window_summaries.append(
             {
                 "window_id": raw_window["window_id"],
                 "cwd": raw_window["cwd"],
-                "question_summary": fallback_question_summary(raw_window, language=language),
+                "window_title": fallback_window_title(
+                    raw_window,
+                    question_summary=question_summary,
+                    language=language,
+                ),
+                "question_summary": question_summary,
                 "question_count": raw_window["prompt_count"],
                 "conclusion_count": raw_window["conclusion_count"],
                 "keywords": [],
-                "main_takeaway": fallback_main_takeaway(raw_window, language=language),
+                "main_takeaway": main_takeaway,
+                "summary_pairs": normalize_summary_pairs(
+                    [],
+                    question_summary=question_summary,
+                    main_takeaway=main_takeaway,
+                ),
             }
         )
 

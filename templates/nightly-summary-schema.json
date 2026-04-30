@@ -26,15 +26,18 @@
         "required": [
           "window_id",
           "cwd",
+          "window_title",
           "question_summary",
           "question_count",
           "conclusion_count",
           "keywords",
-          "main_takeaway"
+          "main_takeaway",
+          "summary_pairs"
         ],
         "properties": {
           "window_id": { "type": "string" },
           "cwd": { "type": "string" },
+          "window_title": { "type": "string" },
           "question_summary": { "type": "string" },
           "question_count": { "type": "integer" },
           "conclusion_count": { "type": "integer" },
@@ -42,7 +45,20 @@
             "type": "array",
             "items": { "type": "string" }
           },
-          "main_takeaway": { "type": "string" }
+          "main_takeaway": { "type": "string" },
+          "summary_pairs": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["question", "conclusion"],
+              "properties": {
+                "question": { "type": "string", "minLength": 1 },
+                "conclusion": { "type": "string", "minLength": 1 }
+              }
+            }
+          }
         }
       }
     },

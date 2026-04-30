@@ -1235,8 +1235,8 @@ PANEL_I18N_EN = {
     "cwd / project_label、问题数、结论数。": (
         "cwd / project_label, question count, and conclusion count."
     ),
-    "问题摘要、结论摘要、关键词。": "Question summary, conclusion summary, and keywords.",
-    "最近问题和最近结论片段。": "Recent question and recent conclusion snippets.",
+    "通俗标题、问题结论对、关键词。": "Plain-language title, question/conclusion pairs, and keywords.",
+    "已整理窗口可一键切换智能整理与原始信息。": "Organized windows can switch between AI summary and raw info with one click.",
 }
 
 
@@ -6862,6 +6862,110 @@ def codex_resume_url(resume_id):
     return "codex://threads/{}".format(quote(resume_id, safe=""))
 
 
+def normalize_window_summary_pairs(raw_pairs):
+    if not isinstance(raw_pairs, list):
+        return []
+    pairs = []
+    for raw_pair in raw_pairs:
+        if not isinstance(raw_pair, dict):
+            continue
+        question = normalize_brand_display_text(
+            raw_pair.get("question", "") or raw_pair.get("problem", "")
+        ).strip()
+        conclusion = normalize_brand_display_text(
+            raw_pair.get("conclusion", "") or raw_pair.get("takeaway", "")
+        ).strip()
+        if question or conclusion:
+            pairs.append({"question": question, "conclusion": conclusion})
+    return pairs
+
+
+def window_record_sort_key(item):
+    if not isinstance(item, dict):
+        return ""
+    return str(
+        item.get("local_time")
+        or item.get("completed_at")
+        or item.get("timestamp")
+        or item.get("ts")
+        or ""
+    )
+
+
+def raw_window_summary_pairs(prompts, conclusions, limit=4):
+    if not isinstance(prompts, list):
+        prompts = []
+    if not isinstance(conclusions, list):
+        conclusions = []
+    prompt_items = sorted(
+        [item for item in prompts if isinstance(item, dict)],
+        key=window_record_sort_key,
+    )
+    conclusion_items = sorted(
+        [item for item in conclusions if isinstance(item, dict)],
+        key=window_record_sort_key,
+    )
+    prompt_by_turn = {
+        str(item.get("turn_id", "")): item
+        for item in prompt_items
+        if str(item.get("turn_id", "")).strip()
+    }
+    conclusion_by_turn = {
+        str(item.get("turn_id", "")): item
+        for item in conclusion_items
+        if str(item.get("turn_id", "")).strip()
+    }
+    matched_turn_ids = [
+        str(item.get("turn_id", ""))
+        for item in prompt_items
+        if str(item.get("turn_id", "")).strip() in conclusion_by_turn
+    ]
+    if matched_turn_ids:
+        pairs = []
+        seen_turn_ids = set()
+        for turn_id in matched_turn_ids:
+            if turn_id in seen_turn_ids:
+                continue
+            seen_turn_ids.add(turn_id)
+            question = normalize_brand_display_text(
+                prompt_by_turn.get(turn_id, {}).get("text", "")
+            ).strip()
+            answer = normalize_brand_display_text(
+                conclusion_by_turn.get(turn_id, {}).get("text", "")
+            ).strip()
+            if question or answer:
+                pairs.append({"question": question, "conclusion": answer})
+            if len(pairs) >= limit:
+                return pairs
+        if pairs:
+            return pairs
+    row_count = min(max(len(prompt_items), len(conclusion_items)), limit)
+    pairs = []
+    for index in range(row_count):
+        prompt = prompt_items[index] if index < len(prompt_items) else {}
+        conclusion = (
+            conclusion_items[index]
+            if index < len(conclusion_items)
+            else {}
+        )
+        question = normalize_brand_display_text(prompt.get("text", "")).strip()
+        answer = normalize_brand_display_text(conclusion.get("text", "")).strip()
+        if question or answer:
+            pairs.append({"question": question, "conclusion": answer})
+    return pairs
+
+
+def window_summary_model_completed(latest_nightly):
+    if not latest_nightly:
+        return False
+    status = str(
+        latest_nightly.get("model_status")
+        or latest_nightly.get("last_run_model_status")
+        or "completed"
+    ).strip().lower()
+    return status not in {"failed", "error", "fallback"}
+
+
 def build_window_items_from_daily_capture(daily_capture, latest_nightly=None, language=None):
     language = current_language(language)
     nightly_map = {}
@@ -6872,6 +6976,7 @@ def build_window_items_from_daily_capture(daily_capture, latest_nightly=None, la
                 nightly_map[window_id] = item
 
     items = []
+    codex_summary_completed = window_summary_model_completed(latest_nightly)
     for raw_window in (daily_capture or {}).get("windows", []):
         window_id = raw_window.get("window_id", "")
         nightly_item = nightly_map.get(window_id, {})
@@ -6880,12 +6985,45 @@ def build_window_items_from_daily_capture(daily_capture, latest_nightly=None, la
         conclusions = raw_window.get("conclusions", [])
         first_prompt = prompts[0] if prompts else {}
         last_conclusion = conclusions[-1] if conclusions else {}
-        question_summary = nightly_item.get("question_summary") or first_prompt.get("text", "")
-        main_takeaway = nightly_item.get("main_takeaway") or (
-            last_conclusion.get("text", "") or first_prompt.get("text", "")
+        has_codex_summary = bool(nightly_item) and codex_summary_completed
+        raw_question_summary = first_prompt.get("text", "")
+        raw_main_takeaway = last_conclusion.get("text", "") or raw_question_summary
+        question_summary = (
+            nightly_item.get("question_summary") or raw_question_summary
+            if has_codex_summary
+            else raw_question_summary
+        )
+        main_takeaway = (
+            nightly_item.get("main_takeaway") or raw_main_takeaway
+            if has_codex_summary
+            else raw_main_takeaway
         )
         question_summary = normalize_brand_display_text(question_summary)
         main_takeaway = normalize_brand_display_text(main_takeaway)
+        nightly_pairs = normalize_window_summary_pairs(nightly_item.get("summary_pairs", []))
+        raw_summary_pairs = raw_window_summary_pairs(prompts, conclusions)
+        summary_pairs = nightly_pairs if has_codex_summary else raw_summary_pairs
+        summary_status = "summarized" if has_codex_summary else "raw_fallback"
+        summary_status_label = (
+            localized("大模型已做智能整理", "AI-organized", language)
+            if has_codex_summary
+            else localized(
+                "暂未做二次学习和总结，当前展示原始问题和结论",
+                "Codex summary has not run yet; showing raw questions and conclusions",
+                language,
+            )
+        )
+        raw_title = (raw_summary_pairs[0].get("question", "") if raw_summary_pairs else question_summary)
+        learned_title = (
+            nightly_item.get("window_title")
+            or nightly_item.get("window_summary")
+            or nightly_item.get("title")
+            or question_summary
+        )
+        window_title = compact_preview_text(
+            normalize_brand_display_text(learned_title if has_codex_summary else raw_title),
+            limit=100,
+        )
         window_summary = window_display_summary(
             raw_window,
             question_summary=question_summary,
@@ -6928,6 +7066,11 @@ def build_window_items_from_daily_capture(daily_capture, latest_nightly=None, la
                 "conclusion_count": raw_window.get("conclusion_count", 0),
                 "question_summary": question_summary or localized("暂无问题摘要。", "No question summary.", language),
                 "main_takeaway": main_takeaway or localized("暂无结论摘要。", "No conclusion summary.", language),
+                "summary_pairs": summary_pairs,
+                "raw_summary_pairs": raw_summary_pairs,
+                "summary_status": summary_status,
+                "summary_status_label": summary_status_label,
+                "window_title": window_title,
                 "keywords": [normalize_brand_display_text(keyword) for keyword in nightly_item.get("keywords", [])],
                 "latest_activity_at": latest_activity.isoformat() if latest_activity else "",
                 "latest_activity_display": display_short_local_datetime(latest_activity) if latest_activity else localized("时间未知", "Unknown time", language),
@@ -6963,8 +7106,19 @@ def build_window_overview(latest_nightly, language=None, target_date=""):
 
     if not daily_capture:
         fallback_items = []
+        codex_summary_completed = window_summary_model_completed(latest_nightly)
         for item in (latest_nightly or {}).get("window_summaries", []):
             cwd = item.get("cwd", "")
+            summary_status = "summarized" if codex_summary_completed else "raw_fallback"
+            summary_status_label = (
+                localized("大模型已做智能整理", "AI-organized", language)
+                if codex_summary_completed
+                else localized(
+                    "暂未做二次学习和总结，当前展示原始问题和结论",
+                    "Codex summary has not run yet; showing raw questions and conclusions",
+                    language,
+                )
+            )
             fallback_items.append(
                 {
                     "window_id": item.get("window_id", ""),
@@ -6980,6 +7134,21 @@ def build_window_overview(latest_nightly, language=None, target_date=""):
                     "conclusion_count": item.get("conclusion_count", 0),
                     "question_summary": normalize_brand_display_text(item.get("question_summary", "")),
                     "main_takeaway": normalize_brand_display_text(item.get("main_takeaway", "")),
+                    "summary_pairs": normalize_window_summary_pairs(item.get("summary_pairs", [])),
+                    "raw_summary_pairs": [],
+                    "summary_status": summary_status,
+                    "summary_status_label": summary_status_label,
+                    "window_title": compact_preview_text(
+                        normalize_brand_display_text(
+                            item.get("window_title")
+                            or item.get("window_summary", "")
+                            or item.get("thread_title", "")
+                            or item.get("title", "")
+                            or item.get("question_summary", "")
+                            or localized("未捕获窗口摘要", "No captured window summary", language)
+                        ),
+                        limit=100,
+                    ),
                     "window_summary": normalize_brand_display_text(
                         item.get("window_summary", "")
                         or item.get("thread_title", "")
@@ -11832,6 +12001,199 @@ def make_window_summary_cards(window_overview, language=None):
             flags=re.IGNORECASE,
         )
 
+    def split_labeled_summary(text, labels):
+        raw = str(text or "").strip()
+        if not raw:
+            return []
+        label_pattern = "|".join(re.escape(label) for label in labels)
+        marker_pattern = re.compile(
+            r"(?:^|[\n;；])\s*(?:[-*]\s*)?(?:{})\s*([0-9一二三四五六七八九十]*)\s*[:：]\s*".format(
+                label_pattern
+            ),
+            flags=re.IGNORECASE,
+        )
+        matches = list(marker_pattern.finditer(raw))
+        if not matches:
+            return [strip_preview_prefix(raw)]
+        entries = []
+        for index, match in enumerate(matches):
+            start = match.end()
+            end = matches[index + 1].start() if index + 1 < len(matches) else len(raw)
+            value = raw[start:end].strip(" ；;\n")
+            if value:
+                entries.append(strip_preview_prefix(value))
+        return entries
+
+    def normalize_summary_pairs(item, question_summary, main_takeaway):
+        raw_pairs = item.get("summary_pairs") or item.get("question_conclusion_pairs") or []
+        pairs = []
+        if isinstance(raw_pairs, list):
+            for raw_pair in raw_pairs:
+                if not isinstance(raw_pair, dict):
+                    continue
+                question = strip_preview_prefix(raw_pair.get("question", "") or raw_pair.get("problem", ""))
+                conclusion = strip_preview_prefix(raw_pair.get("conclusion", "") or raw_pair.get("takeaway", ""))
+                if question or conclusion:
+                    pairs.append({"question": question, "conclusion": conclusion})
+        if pairs:
+            return pairs
+
+        question_items = split_labeled_summary(
+            question_summary,
+            ["问题", "Question", "Focus"],
+        )
+        conclusion_items = split_labeled_summary(
+            main_takeaway,
+            ["结论", "Conclusion", "Takeaway"],
+        )
+        if not question_items and question_summary:
+            question_items = [strip_preview_prefix(question_summary)]
+        if not conclusion_items and main_takeaway:
+            conclusion_items = [strip_preview_prefix(main_takeaway)]
+        row_count = max(len(question_items), len(conclusion_items), 1)
+        for index in range(row_count):
+            question = question_items[index] if index < len(question_items) else ""
+            conclusion = conclusion_items[index] if index < len(conclusion_items) else ""
+            pairs.append({"question": question, "conclusion": conclusion})
+        return pairs
+
+    def summary_pair_label(label):
+        if label == "问题":
+            return localized("问题", "Question", language)
+        if label == "结论":
+            return localized("结论", "Conclusion", language)
+        return localized(label, label, language)
+
+    def numbered_text(items, label):
+        values = [str(item or "").strip() for item in items if str(item or "").strip()]
+        if not values:
+            return ""
+        if len(values) == 1:
+            return values[0]
+        separator = "; " if is_english(language) else "；"
+        label_text = summary_pair_label(label)
+        return separator.join(
+            "{}{}{}{}".format(
+                label_text,
+                " {}".format(index) if is_english(language) else index,
+                ": " if is_english(language) else "：",
+                value,
+            )
+            for index, value in enumerate(values, 1)
+        )
+
+    def indexed_pair_label(label, index, total):
+        label_text = summary_pair_label(label)
+        if total <= 1:
+            return label_text
+        if is_english(language):
+            return "{} {}".format(label_text, index)
+        return "{}{}".format(label_text, index)
+
+    def strip_pair_boundary_punctuation(text):
+        return re.sub(r"\s*[。.!?！？；;:：]+\s*$", "", str(text or "").strip())
+
+    def render_pair_preview_row(label, text):
+        text = str(text or "").strip()
+        if not text:
+            return ""
+        text_html = render_markdown_inline(
+            compact_preview_text(text, limit=320, strip_markdown=False)
+        ) or escape(compact_preview_text(text, limit=320, strip_markdown=False))
+        return """
+                  <div class="window-card-pair-row">
+                    <span class="window-card-pair-label">{label}</span>
+                    <span class="window-card-pair-body">{text}</span>
+                  </div>
+        """.format(
+            label=escape(label),
+            text=text_html,
+        )
+
+    def render_pair_preview(pairs):
+        if not pairs:
+            return ""
+        pair = pairs[0]
+        total = len(pairs)
+        question = strip_pair_boundary_punctuation(pair.get("question", ""))
+        conclusion = str(pair.get("conclusion", "") or "").strip()
+        rows = [
+            render_pair_preview_row(indexed_pair_label("问题", 1, total), question),
+            render_pair_preview_row(indexed_pair_label("结论", 1, total), conclusion),
+        ]
+        rows = [row for row in rows if row]
+        if not rows:
+            return ""
+        return '<div class="window-card-pair-preview">{}</div>'.format("".join(rows))
+
+    def render_summary_pair_timeline(pairs):
+        if not pairs:
+            pairs = [
+                {
+                    "question": localized("暂无问题。", "No question.", language),
+                    "conclusion": localized("暂无结论。", "No conclusion.", language),
+                }
+            ]
+        rows = []
+        for index, pair in enumerate(pairs, 1):
+            question = str(pair.get("question", "") or "").strip()
+            conclusion = str(pair.get("conclusion", "") or "").strip()
+            question_html = render_markdown_text(question) or "<p>{}</p>".format(
+                escape(question or localized("暂无问题。", "No question.", language))
+            )
+            conclusion_html = render_markdown_text(conclusion) or "<p>{}</p>".format(
+                escape(conclusion or localized("暂无结论。", "No conclusion.", language))
+            )
+            pair_count = len(pairs)
+            question_label = indexed_pair_label("问题", index, pair_count)
+            conclusion_label = indexed_pair_label("结论", index, pair_count)
+            rows.append(
+                """
+                <li class="window-summary-pair-item">
+                  <div class="window-summary-pair-row is-question">
+                    <span class="window-summary-index">{question_label}</span>
+                    <div class="window-markdown window-summary-question">{question}</div>
+                  </div>
+                  <div class="window-summary-pair-row is-conclusion">
+                    <span class="window-summary-index">{conclusion_label}</span>
+                    <div class="window-markdown window-summary-conclusion">{conclusion}</div>
+                  </div>
+                </li>
+                """.format(
+                    question_label=escape(question_label),
+                    conclusion_label=escape(conclusion_label),
+                    question=question_html,
+                    conclusion=conclusion_html,
+                )
+            )
+        return "".join(rows)
+
+    def render_summary_mode_panel(pairs, mode):
+        return """
+                <div class="window-summary-mode-panel is-{mode}" data-summary-panel="{mode}">
+                  <ol class="window-summary-pair-list">
+                    {timeline}
+                  </ol>
+                </div>
+        """.format(
+            mode=escape(mode, quote=True),
+            timeline=render_summary_pair_timeline(pairs),
+        )
+
+    def render_summary_mode_controls(has_raw_pairs):
+        if not has_raw_pairs:
+            return ""
+        return """
+                  <div class="window-summary-mode-controls" role="group" aria-label="{aria_label}">
+                    <button type="button" class="window-summary-mode-button" data-window-summary-mode="ai" aria-pressed="true">{ai_label}</button>
+                    <button type="button" class="window-summary-mode-button" data-window-summary-mode="raw" aria-pressed="false">{raw_label}</button>
+                  </div>
+        """.format(
+            aria_label=escape(localized("切换问答视图", "Switch question and conclusion view", language), quote=True),
+            ai_label=escape(localized("智能整理", "AI summary", language)),
+            raw_label=escape(localized("原始信息", "Raw info", language)),
+        )
+
     cards = []
     for item in window_overview.get("windows", []):
         cwd_raw = item.get("cwd", "")
@@ -11851,6 +12213,27 @@ def make_window_summary_cards(window_overview, language=None):
             project_label = localized_context_label(project_label, language)
             if contains_cjk(project_label):
                 project_label = english_freeform_text(project_label, fallback_label="Project")
+        summary_status = str(item.get("summary_status", "") or "summarized")
+        if summary_status == "raw_fallback":
+            summary_status_label = localized(
+                "暂未做二次学习和总结，当前展示原始问题和结论",
+                "Not AI-organized yet; showing raw questions and conclusions",
+                language,
+            )
+        elif summary_status == "summarized":
+            summary_status_label = localized("大模型已做智能整理", "AI-organized", language)
+        else:
+            summary_status_label = str(item.get("summary_status_label", "") or "").strip()
+        summary_status_html = ""
+        if summary_status_label:
+            status_class = "is-ai" if summary_status == "summarized" else "is-raw"
+            summary_status_html = """
+                    <div class="window-card-status {status_class}" data-summary-status="{summary_status}">{summary_status_label}</div>
+            """.format(
+                status_class=escape(status_class, quote=True),
+                summary_status=escape(summary_status, quote=True),
+                summary_status_label=escape(summary_status_label)
+            )
         question_summary = localize_window_preview_text(
             item.get("question_summary", ""),
             language=language,
@@ -11863,23 +12246,51 @@ def make_window_summary_cards(window_overview, language=None):
             keywords=item.get("keywords", []),
             label="Takeaway",
         )
+        summary_pairs = normalize_summary_pairs(item, question_summary, main_takeaway)
+        raw_summary_pairs = normalize_summary_pairs(
+            {"summary_pairs": item.get("raw_summary_pairs", [])},
+            "",
+            "",
+        )
+        question_summary_display = numbered_text(
+            [pair.get("question", "") for pair in summary_pairs],
+            "问题",
+        )
+        conclusion_summary_display = numbered_text(
+            [pair.get("conclusion", "") for pair in summary_pairs],
+            "结论",
+        )
+        title_source = item.get("window_title", "")
+        if summary_status == "raw_fallback":
+            title_source = summary_pairs[0].get("question", "") if summary_pairs else question_summary_display
         window_summary = normalize_brand_display_text(
-            item.get("window_summary", "")
-            or item.get("thread_title", "")
-            or item.get("title", "")
-            or item.get("question_summary", "")
-            or item.get("main_takeaway", "")
+            compact_preview_text(title_source, limit=100)
         )
         if not window_summary:
-            window_summary = localized("未捕获窗口摘要", "No captured window summary", language)
+            window_summary = normalize_brand_display_text(
+                item.get("window_summary", "")
+                or item.get("thread_title", "")
+                or item.get("title", "")
+                or localized("未捕获窗口摘要", "No captured window summary", language)
+            )
         resume_id = item.get("resume_id", "") or window_id
         resume_command = item.get("resume_command", "") or codex_resume_command(resume_id)
         resume_url = item.get("resume_url", "") or codex_resume_url(resume_id)
         resume_actions = render_resume_actions(resume_command, resume_url)
-        main_takeaway_preview = strip_preview_prefix(main_takeaway)
-        main_takeaway_preview_html = render_markdown_inline(main_takeaway_preview) or (
-            escape(main_takeaway_preview)
-        )
+        main_takeaway_preview_html = render_pair_preview(summary_pairs)
+        if not main_takeaway_preview_html and conclusion_summary_display:
+            fallback_takeaway = render_markdown_inline(
+                compact_preview_text(conclusion_summary_display, limit=360, strip_markdown=False)
+            ) or escape(compact_preview_text(conclusion_summary_display, limit=360, strip_markdown=False))
+            main_takeaway_preview_html = '<div class="window-card-pair-preview"><div class="window-card-pair-row"><span class="window-card-pair-body">{}</span></div></div>'.format(
+                fallback_takeaway
+            )
+        show_raw_toggle = summary_status == "summarized" and bool(raw_summary_pairs)
+        initial_summary_mode = "raw" if summary_status == "raw_fallback" else "ai"
+        summary_mode_controls_html = render_summary_mode_controls(show_raw_toggle)
+        summary_mode_panels_html = render_summary_mode_panel(summary_pairs, initial_summary_mode)
+        if show_raw_toggle:
+            summary_mode_panels_html += render_summary_mode_panel(raw_summary_pairs, "raw")
         raw_window = load_window_record(window_date, window_id)
         raw_window_html = escape(localized("暂无", "None", language))
         raw_window_link_html = ""
@@ -11891,24 +12302,12 @@ def make_window_summary_cards(window_overview, language=None):
             raw_window_html = raw_window_link_html
         cwd_detail_label = cwd_raw or cwd_display
         cwd_detail_html = render_local_path_link(cwd_raw, label=cwd_detail_label)
-        recent_prompt_items = item.get("recent_prompts", [])
-        recent_conclusion_items = item.get("recent_conclusions", [])
-        recent_prompts_html = render_preview_items(
-            recent_prompt_items,
-            "Question",
-            keywords=item.get("keywords", []),
-        )
-        recent_conclusions_html = render_preview_items(
-            recent_conclusion_items,
-            "Conclusion",
-            keywords=item.get("keywords", []),
-        )
         raw_window_source_html = ""
         if raw_window_link_html:
             raw_window_source_html = """
-                    <p class="window-detail-source">{more_records_label} {raw_window_html}</p>
+                    <p class="window-detail-source">{raw_record_label} {raw_window_html}</p>
             """.format(
-                more_records_label=escape(localized("更多记录见", "More records in", language)),
+                raw_record_label=escape(localized("原始记录见", "Raw records in", language)),
                 raw_window_html=raw_window_html,
             )
         cards.append(
@@ -11923,6 +12322,7 @@ def make_window_summary_cards(window_overview, language=None):
                       <span class="window-card-path">{activity_source_label}</span>
                       <span class="window-card-cwd">{cwd_label} {cwd_detail_html}</span>
                     </div>
+                    {summary_status_html}
                   </div>
                   <div class="window-card-stats">
                     <div class="window-stat">
@@ -11936,7 +12336,7 @@ def make_window_summary_cards(window_overview, language=None):
                   </div>
                 </div>
                 <div class="window-card-takeaway window-markdown">
-                  <span class="window-card-pair-text">{main_takeaway_preview}</span>
+                  {main_takeaway_preview}
                 </div>
                 <div class="window-card-meta">
                   <span class="window-card-time">{recent_activity} {latest_activity}</span>
@@ -11954,21 +12354,14 @@ def make_window_summary_cards(window_overview, language=None):
                 </div>
               </summary>
               <div class="window-card-detail">
-                <div class="window-detail-grid">
-                  <section class="window-detail-block">
-                    <div class="window-detail-label">{recent_questions_label}</div>
-                    <ul class="window-detail-list">
-                      {recent_prompts}
-                    </ul>
-                  </section>
-                  <section class="window-detail-block">
-                    <div class="window-detail-label">{recent_conclusions_label}</div>
-                    <ul class="window-detail-list">
-                      {recent_conclusions}
-                    </ul>
-                    {raw_window_source_html}
-                  </section>
+                <div class="window-summary-mode-root" data-summary-mode="{summary_mode}">
+                  <div class="window-summary-mode-head">
+                    <div class="window-detail-label">{pair_detail_label}</div>
+                    {summary_mode_controls}
+                  </div>
+                  {summary_mode_panels}
                 </div>
+                {raw_window_source_html}
               </div>
             </details>
             """.format(
@@ -11980,6 +12373,7 @@ def make_window_summary_cards(window_overview, language=None):
                 project_label=escape(project_label),
                 activity_source_label=escape(activity_source_label),
                 cwd_detail_html=cwd_detail_html,
+                summary_status_html=summary_status_html,
                 question_count=escape(str(item.get("question_count", 0))),
                 conclusion_count=escape(str(item.get("conclusion_count", 0))),
                 questions_label=escape(localized("问题", "Questions", language)),
@@ -11991,15 +12385,15 @@ def make_window_summary_cards(window_overview, language=None):
                 resume_actions=resume_actions,
                 main_takeaway_preview=main_takeaway_preview_html,
                 keyword_chips=render_keyword_chips(item.get("keywords", [])),
-                recent_prompts=recent_prompts_html,
-                recent_conclusions=recent_conclusions_html,
+                summary_mode=initial_summary_mode,
+                summary_mode_controls=summary_mode_controls_html,
+                summary_mode_panels=summary_mode_panels_html,
                 raw_window_source_html=raw_window_source_html,
                 open_details=escape(localized("点开看详情", "Open details", language)),
                 collapse_details=escape(localized("收起详情", "Collapse details", language)),
                 cwd_label=escape(localized("当前目录", "Current Directory", language)),
                 keywords_label=escape(localized("关键词", "Keywords", language)),
-                recent_questions_label=escape(localized("最近问题", "Recent Questions", language)),
-                recent_conclusions_label=escape(localized("最近结论", "Recent Conclusions", language)),
+                pair_detail_label=escape(localized("问题与结论", "Question / Conclusion", language)),
             )
         )
     return "".join(cards)
@@ -12877,8 +13271,8 @@ def build_html(data):
                 "label": "包含什么",
                 "body": [
                     "cwd / project_label、问题数、结论数。",
-                    "问题摘要、结论摘要、关键词。",
-                    "最近问题和最近结论片段。",
+                    "通俗标题、问题结论对、关键词。",
+                    "已整理窗口可一键切换智能整理与原始信息。",
                 ],
             },
             {
@@ -15690,6 +16084,130 @@ def build_html(data):
       grid-template-columns: 1fr;
     }}
 
+    .window-summary-pair-list {{
+      display: grid;
+      gap: 0;
+      grid-template-columns: 1fr;
+      list-style: none;
+      margin: 0;
+      padding: 0;
+    }}
+
+    .window-summary-mode-root {{
+      min-width: 0;
+    }}
+
+    .window-summary-mode-head {{
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 12px;
+    }}
+
+    .window-summary-mode-controls {{
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: var(--soft);
+      padding: 3px;
+    }}
+
+    .window-summary-mode-button {{
+      appearance: none;
+      border: 0;
+      border-radius: 999px;
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+      font: inherit;
+      font-size: 12px;
+      font-weight: 700;
+      line-height: 1;
+      padding: 7px 10px;
+      white-space: nowrap;
+    }}
+
+    .window-summary-mode-root[data-summary-mode="ai"] [data-window-summary-mode="ai"],
+    .window-summary-mode-root[data-summary-mode="raw"] [data-window-summary-mode="raw"] {{
+      background: var(--card);
+      color: var(--ink);
+      box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
+    }}
+
+    .window-summary-mode-panel {{
+      display: none;
+    }}
+
+    .window-summary-mode-root[data-summary-mode="ai"] .window-summary-mode-panel[data-summary-panel="ai"],
+    .window-summary-mode-root[data-summary-mode="raw"] .window-summary-mode-panel[data-summary-panel="raw"] {{
+      display: block;
+    }}
+
+    .window-summary-pair-item {{
+      border-top: 1px solid var(--line);
+      display: grid;
+      gap: 8px;
+      margin: 0;
+      padding: 14px 0;
+    }}
+
+    .window-summary-pair-item:first-child {{
+      border-top: 0;
+      padding-top: 0;
+    }}
+
+    .window-summary-pair-item:last-child {{
+      padding-bottom: 0;
+    }}
+
+    .window-summary-pair-row {{
+      display: grid;
+      grid-template-columns: auto 1fr;
+      align-items: start;
+      gap: 10px;
+      min-width: 0;
+    }}
+
+    .window-summary-index {{
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: var(--control);
+      color: var(--muted);
+      flex: 0 0 auto;
+      font-size: 12px;
+      font-weight: 700;
+      line-height: 1;
+      padding: 6px 8px;
+      white-space: nowrap;
+    }}
+
+    .window-summary-markdown {{
+      font-size: 14px;
+      line-height: 1.65;
+      min-width: 0;
+    }}
+
+    .window-summary-question {{
+      font-size: 15px;
+      font-weight: 650;
+      line-height: 1.62;
+      min-width: 0;
+    }}
+
+    .window-summary-conclusion {{
+      color: var(--ink);
+      font-size: 14px;
+      line-height: 1.66;
+      min-width: 0;
+    }}
+
+    .window-summary-pair-row.is-conclusion .window-summary-index {{
+      opacity: 0.82;
+    }}
+
     .window-card {{
       border: 1px solid var(--line);
       border-radius: 20px;
@@ -15732,6 +16250,15 @@ def build_html(data):
       line-height: 1.35;
       font-weight: 700;
       overflow-wrap: anywhere;
+      display: -webkit-box;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 3;
+      overflow: hidden;
+    }}
+
+    .window-card[open] .window-card-window-summary {{
+      display: block;
+      overflow: visible;
     }}
 
     .window-card-label {{
@@ -15752,6 +16279,33 @@ def build_html(data):
       color: var(--muted);
       line-height: 1.5;
       font-size: 13px;
+    }}
+
+    .window-card-status {{
+      display: inline-flex;
+      align-items: center;
+      width: fit-content;
+      max-width: 100%;
+      margin-top: 10px;
+      border: 1px solid rgba(214, 143, 0, 0.28);
+      border-radius: 999px;
+      background: rgba(255, 204, 102, 0.14);
+      color: var(--ink);
+      font-size: 12px;
+      font-weight: 650;
+      line-height: 1.35;
+      padding: 6px 9px;
+      overflow-wrap: anywhere;
+    }}
+
+    .window-card-status.is-ai {{
+      border-color: rgba(20, 184, 166, 0.32);
+      background: rgba(20, 184, 166, 0.12);
+    }}
+
+    .window-card-status.is-raw {{
+      border-color: rgba(214, 143, 0, 0.28);
+      background: rgba(255, 204, 102, 0.14);
     }}
 
     .window-card-path {{
@@ -15825,6 +16379,37 @@ def build_html(data):
 
     .window-card-pair-text {{
       color: var(--ink);
+    }}
+
+    .window-card-pair-preview {{
+      display: grid;
+      gap: 8px;
+      min-width: 0;
+    }}
+
+    .window-card-pair-row {{
+      display: grid;
+      grid-template-columns: auto 1fr;
+      align-items: start;
+      gap: 10px;
+      min-width: 0;
+    }}
+
+    .window-card-pair-label {{
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: var(--control);
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 700;
+      line-height: 1;
+      padding: 5px 8px;
+      white-space: nowrap;
+    }}
+
+    .window-card-pair-body {{
+      min-width: 0;
+      overflow-wrap: anywhere;
     }}
 
     .window-card-summary-label {{
@@ -17867,6 +18452,23 @@ def build_html(data):
 
       function wireWindowResumeActions() {{
         document.addEventListener("click", function (event) {{
+          const modeButton = event.target.closest("[data-window-summary-mode]");
+          if (modeButton) {{
+            event.preventDefault();
+            event.stopPropagation();
+            const root = modeButton.closest(".window-summary-mode-root");
+            const mode = modeButton.getAttribute("data-window-summary-mode") || "ai";
+            if (root && (mode === "ai" || mode === "raw")) {{
+              root.setAttribute("data-summary-mode", mode);
+              root.querySelectorAll("[data-window-summary-mode]").forEach(function (button) {{
+                button.setAttribute(
+                  "aria-pressed",
+                  button.getAttribute("data-window-summary-mode") === mode ? "true" : "false"
+                );
+              }});
+            }}
+            return;
+          }}
           const copyButton = event.target.closest("[data-window-resume-copy]");
           if (copyButton) {{
             event.preventDefault();

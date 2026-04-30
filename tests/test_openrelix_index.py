@@ -135,8 +135,15 @@ class OpenRelixIndexTests(unittest.TestCase):
                         {
                             "window_id": "w-index",
                             "cwd": "/tmp/openrelix",
+                            "window_title": "SQLite index backend",
                             "question_summary": "Design the SQLite index",
                             "main_takeaway": "Use a rebuildable sidecar database.",
+                            "summary_pairs": [
+                                {
+                                    "question": "Should OpenRelix use SQLite for window search?",
+                                    "conclusion": "Use a rebuildable sidecar database.",
+                                }
+                            ],
                             "keywords": ["sqlite", "sidecar"],
                         }
                     ],
@@ -180,7 +187,136 @@ class OpenRelixIndexTests(unittest.TestCase):
             )
             self.assertEqual(len(windows), 1)
             self.assertEqual(windows[0]["window_id"], "w-index")
+            self.assertEqual(windows[0]["window_title"], "SQLite index backend")
             self.assertEqual(windows[0]["main_takeaway"], "Use a rebuildable sidecar database.")
+            self.assertEqual(windows[0]["summary_status"], "summarized")
+            self.assertEqual(
+                windows[0]["summary_pairs"],
+                [
+                    {
+                        "question": "Should OpenRelix use SQLite for window search?",
+                        "conclusion": "Use a rebuildable sidecar database.",
+                    }
+                ],
+            )
+
+            pair_windows = openrelix_index.search_windows(
+                "Should OpenRelix use SQLite",
+                paths=paths,
+                db_path=db_path,
+            )
+            self.assertEqual([item["window_id"] for item in pair_windows], ["w-index"])
+
+            raw_windows = openrelix_index.search_windows(
+                "search command is next",
+                paths=paths,
+                db_path=db_path,
+            )
+            self.assertEqual([item["window_id"] for item in raw_windows], ["w-search"])
+            self.assertEqual(raw_windows[0]["summary_status"], "raw_fallback")
+            self.assertEqual(raw_windows[0]["window_title"], "add search command")
+            self.assertEqual(
+                raw_windows[0]["summary_pairs"],
+                [{"question": "add search command", "conclusion": "search command is next"}],
+            )
+            self.assertEqual(
+                raw_windows[0]["raw_summary_pairs"],
+                [{"question": "add search command", "conclusion": "search command is next"}],
+            )
+
+    def test_failed_model_summary_keeps_window_raw_fallback_in_index(self):
+        with TemporaryDirectory() as tmpdir:
+            paths = runtime_paths_for_state(tmpdir)
+            asset_runtime.ensure_state_layout(paths)
+            raw_payload = {
+                "date": "2026-04-30",
+                "windows": [
+                    {
+                        "date": "2026-04-30",
+                        "window_id": "w-failed-summary",
+                        "cwd": "/tmp/openrelix",
+                        "started_at": "2026-04-30T10:00:00+08:00",
+                        "prompt_count": 2,
+                        "conclusion_count": 2,
+                        "prompts": [
+                            {
+                                "turn_id": "t1",
+                                "local_time": "2026-04-30T10:01:00+08:00",
+                                "text": "raw first question",
+                            },
+                            {
+                                "turn_id": "t2",
+                                "local_time": "2026-04-30T10:03:00+08:00",
+                                "text": "raw second question",
+                            },
+                        ],
+                        "conclusions": [
+                            {
+                                "turn_id": "t2",
+                                "completed_at": "2026-04-30T10:04:00+08:00",
+                                "text": "raw second conclusion",
+                            },
+                            {
+                                "turn_id": "t1",
+                                "completed_at": "2026-04-30T10:02:00+08:00",
+                                "text": "raw first conclusion",
+                            },
+                        ],
+                    }
+                ],
+            }
+            (paths.raw_daily_dir / "2026-04-30.json").write_text(
+                json.dumps(raw_payload),
+                encoding="utf-8",
+            )
+            summary_dir = paths.consolidated_daily_dir / "2026-04-30"
+            summary_dir.mkdir(parents=True, exist_ok=True)
+            (summary_dir / "summary.json").write_text(
+                json.dumps(
+                    {
+                        "date": "2026-04-30",
+                        "stage": "manual",
+                        "model_status": "failed",
+                        "window_summaries": [
+                            {
+                                "window_id": "w-failed-summary",
+                                "cwd": "/tmp/openrelix",
+                                "window_title": "model fallback title should not mark learned",
+                                "question_summary": "model fallback question",
+                                "main_takeaway": "model fallback conclusion",
+                                "summary_pairs": [
+                                    {
+                                        "question": "model fallback pair",
+                                        "conclusion": "model fallback answer",
+                                    }
+                                ],
+                                "keywords": ["fallback"],
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            db_path = Path(tmpdir) / "runtime" / "test-index.sqlite3"
+
+            openrelix_index.rebuild_index(paths, db_path)
+            windows = openrelix_index.search_windows(
+                "raw first conclusion",
+                paths=paths,
+                db_path=db_path,
+            )
+
+            self.assertEqual([item["window_id"] for item in windows], ["w-failed-summary"])
+            self.assertEqual(windows[0]["summary_status"], "raw_fallback")
+            self.assertEqual(windows[0]["window_title"], "raw first question")
+            self.assertEqual(
+                windows[0]["summary_pairs"],
+                [
+                    {"question": "raw first question", "conclusion": "raw first conclusion"},
+                    {"question": "raw second question", "conclusion": "raw second conclusion"},
+                ],
+            )
+            self.assertEqual(windows[0]["summary_pairs"], windows[0]["raw_summary_pairs"])
 
     def test_search_rebuilds_missing_index(self):
         with TemporaryDirectory() as tmpdir:
