@@ -8098,6 +8098,12 @@ def build_data(assets, usage_events, reviews, language=None):
         selected_date=window_overview_default_date,
         language=language,
     )
+    window_overview_views = ensure_window_overview_view(
+        window_overview_views,
+        window_overview,
+        selected_date=window_overview_default_date,
+        language=language,
+    )
     if not window_overview_default_date and window_overview_views:
         window_overview_default_date = window_overview_views[0].get("date", "")
     generated_now = current_local_datetime()
@@ -12469,6 +12475,20 @@ def build_window_overview_views(candidates, selected_date="", language=None):
     return views
 
 
+def ensure_window_overview_view(window_views, window_overview, selected_date="", language=None):
+    views = list(window_views or [])
+    window_overview = window_overview or {}
+    date_str = window_overview.get("date", "") or selected_date
+    if not date_str or not window_overview.get("windows"):
+        return views
+    if any(view.get("date") == date_str for view in views):
+        return views
+    view_source = dict(window_overview)
+    view_source["date"] = date_str
+    views.insert(0, build_window_overview_view(view_source))
+    return views
+
+
 def build_metric_help_sections(metric):
     key = metric.get("key", "")
     caption = metric.get("caption", "")
@@ -12683,6 +12703,14 @@ def build_html(data):
         )
 
     token_usage = data["token_usage"]
+    window_overview = data.get("window_overview") or {}
+    window_overview_default_date = data.get("window_overview_default_date", "")
+    window_overview_views = ensure_window_overview_view(
+        data.get("window_overview_views", []),
+        window_overview,
+        selected_date=window_overview_default_date,
+        language=language,
+    )
     snapshot_payload = json.dumps(
         {
             "generated_at": data["generated_at"],
@@ -12692,8 +12720,8 @@ def build_html(data):
             "daily_summary_default_date": data.get("daily_summary_default_date", ""),
             "daily_summary_select_dates": data.get("daily_summary_select_dates", []),
             "backfill": data.get("backfill", {}),
-            "window_overviews": data.get("window_overview_views", []),
-            "window_overview_default_date": data.get("window_overview_default_date", ""),
+            "window_overviews": window_overview_views,
+            "window_overview_default_date": window_overview_default_date,
         },
         ensure_ascii=False,
     ).replace("</", "<\\/")
@@ -12707,7 +12735,6 @@ def build_html(data):
     nightly = data["nightly"] or {}
     panel_views = data.get("panel_views", {})
     project_contexts = data.get("project_contexts") or []
-    window_overview = data.get("window_overview") or {}
     memory_registry = data.get("memory_registry") or []
     codex_native_memory = data.get("codex_native_memory") or []
     codex_native_preference_rows = data.get("codex_native_preference_rows") or []
@@ -12735,8 +12762,8 @@ def build_html(data):
     )
     daily_summary_title = localized("今天哪些工作能复用？", "What work can be reused today?", language)
     window_overview_date_control = make_window_overview_date_control(
-        data.get("window_overview_views", []),
-        data.get("window_overview_default_date", (window_overview or {}).get("date", "")),
+        window_overview_views,
+        window_overview_default_date or (window_overview or {}).get("date", ""),
     )
     show_highlights_panel = not nightly
     insight_section_class = "grid two-up" if show_highlights_panel else "grid"
