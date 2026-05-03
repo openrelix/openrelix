@@ -133,7 +133,7 @@ npx openrelix install --language en
 推荐完整安装：
 
 ```bash
-npx openrelix install --enable-learning-refresh --enable-nightly --keep-awake=during-job --enable-update-check
+npx openrelix install --enable-learning-refresh --keep-awake=during-job --enable-update-check
 ```
 
 最小安装：
@@ -142,7 +142,7 @@ npx openrelix install --enable-learning-refresh --enable-nightly --keep-awake=du
 ./install/install.sh --minimal
 ```
 
-默认安装档位是 `integrated`。最小安装会初始化 state root，生成第一份 overview，开启当前 Codex adapter 的 memories/history，并同步一份 bounded memory summary 到 `CODEX_HOME`。它不会安装 shell 命令，不改 shell rc，也不 bootstrap LaunchAgents。需要只在本系统本地记录、不注入 host context 时，使用 `--minimal --record-memory-only`。
+默认安装档位是 `integrated`。它默认安装本地 shell 命令、全局 skill symlink、轻量 macOS 客户端、后台刷新服务和夜间整理 LaunchAgents。最小安装会初始化 state root，生成第一份 overview，开启当前 Codex adapter 的 memories/history，并同步一份 bounded memory summary 到 `CODEX_HOME`。它不会安装 shell 命令，不改 shell rc，也不 bootstrap LaunchAgents。需要只在本系统本地记录、不注入 host context 时，使用 `--minimal --record-memory-only`。
 
 如果只是想在 repo checkout 里做一次临时烟测，验证从安装到生成面板的效果，并且不触碰真实 state root 或真实 `CODEX_HOME`，运行：
 
@@ -198,10 +198,10 @@ Memory 默认开启。当前 Codex adapter 的默认模式是 `integrated`：系
 ./install/install.sh --disable-personal-memory
 ```
 
-默认的 integrated profile 会安装全局 skill symlink、bounded history config、`openrelix` shell command 和轻量 macOS 客户端；加上下面这些显式选项后，还会开启 30 分钟自动学习刷新、夜间整理、每日更新检查和任务执行期间防睡眠：
+默认的 integrated profile 会安装全局 skill symlink、bounded history config、`openrelix` shell command、轻量 macOS 客户端和夜间整理；加上下面这些显式选项后，还会开启 30 分钟自动学习刷新、每日更新检查和任务执行期间防睡眠：
 
 ```bash
-./install/install.sh --enable-learning-refresh --enable-nightly --keep-awake=during-job --enable-update-check
+./install/install.sh --enable-learning-refresh --keep-awake=during-job --enable-update-check
 ```
 
 这个 profile 会：

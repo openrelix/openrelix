@@ -139,7 +139,7 @@ npx openrelix install --language en
 Recommended full `npx` install:
 
 ```bash
-npx openrelix install --enable-learning-refresh --enable-nightly --keep-awake=during-job --enable-update-check
+npx openrelix install --enable-learning-refresh --keep-awake=during-job --enable-update-check
 ```
 
 Minimal install:
@@ -148,7 +148,7 @@ Minimal install:
 ./install/install.sh --minimal
 ```
 
-The default install profile is `integrated`. Minimal install initializes the state root, generates the first overview, enables the current Codex adapter's memories/history, and syncs a bounded memory summary into `CODEX_HOME`. It still does not install shell commands, change shell rc files, or bootstrap LaunchAgents. Use `--minimal --record-memory-only` when you want a minimal install that records only to this system's local state root without host-context injection.
+The default install profile is `integrated`. It installs the local shell command, global skill symlink, lightweight macOS client, background refresh services, and nightly organization LaunchAgents by default. Minimal install initializes the state root, generates the first overview, enables the current Codex adapter's memories/history, and syncs a bounded memory summary into `CODEX_HOME`. It still does not install shell commands, change shell rc files, or bootstrap LaunchAgents. Use `--minimal --record-memory-only` when you want a minimal install that records only to this system's local state root without host-context injection.
 
 For a repo-checkout smoke test that stops at the generated panel and does not touch your real state root or real `CODEX_HOME`, run:
 
@@ -208,10 +208,10 @@ The context sync is intentionally compressed: duplicate personal memories are me
 
 `--record-memory-only` keeps the personal memory system on, enables enough Codex history for local collection, disables Codex native memory context, and keeps bounded memory-summary sync off. `--disable-personal-memory` records the mode as `off` and skips local memory-registry writes. `--use-integrated` is the explicit alias for the default mode.
 
-Recommended integrated install with global skill symlinks, bounded history config, the `openrelix` shell command, the lightweight macOS client, 30-minute automatic learning refresh, nightly organization, a daily update check, and sleep protection while nightly jobs are running:
+Recommended integrated install with global skill symlinks, bounded history config, the `openrelix` shell command, the lightweight macOS client, default nightly organization, 30-minute automatic learning refresh, a daily update check, and sleep protection while nightly jobs are running:
 
 ```bash
-./install/install.sh --enable-learning-refresh --enable-nightly --keep-awake=during-job --enable-update-check
+./install/install.sh --enable-learning-refresh --keep-awake=during-job --enable-update-check
 ```
 
 The integrated profile does this:

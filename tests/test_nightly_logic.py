@@ -5308,6 +5308,7 @@ scope: Release checklist, package manifest, and public website validation.
         self.assertNotIn("<h3>开启 30 分钟自动学习（推荐）</h3>", showcase)
         self.assertIn("--enable-learning-refresh", installer)
         self.assertIn('INSTALL_PROFILE="integrated"', installer)
+        self.assertIn("ENABLE_NIGHTLY=1", installer)
         self.assertIn("Default: integrated", installer)
         self.assertIn('ACTIVITY_SOURCE="${OPENRELIX_ACTIVITY_SOURCE:-${AI_ASSET_ACTIVITY_SOURCE:-auto}}"', installer)
         self.assertIn("Default: auto.", installer)
@@ -5328,6 +5329,27 @@ scope: Release checklist, package manifest, and public website validation.
         self.assertIn("首次自动学习会在下一个 30 分钟周期运行", installer)
         self.assertIn("Automatic learning refresh is enabled", installer)
         self.assertIn("__OVERVIEW_RUN_AT_LOAD__", launchd_template)
+
+    def test_integrated_install_defaults_include_nightly_launchagents(self):
+        installer = (ROOT / "install" / "install.sh").read_text(encoding="utf-8")
+        npm_bin = (ROOT / "install" / "npm-bin.js").read_text(encoding="utf-8")
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        zh_readme = (ROOT / "README.zh-CN.md").read_text(encoding="utf-8")
+
+        self.assertIn("Integrated installs enable nightly by default.", installer)
+        self.assertIn("ENABLE_BACKGROUND_SERVICES=1\n      ENABLE_NIGHTLY=1", installer)
+        self.assertIn("nightly organization LaunchAgents", npm_bin)
+        self.assertNotIn("install --enable-nightly --nightly-organize-time", npm_bin)
+        self.assertIn("nightly organization LaunchAgents by default", readme)
+        self.assertIn("夜间整理 LaunchAgents", zh_readme)
+        self.assertIn(
+            "./install/install.sh --enable-learning-refresh --keep-awake=during-job --enable-update-check",
+            readme,
+        )
+        self.assertIn(
+            "./install/install.sh --enable-learning-refresh --keep-awake=during-job --enable-update-check",
+            zh_readme,
+        )
 
     def test_installer_chinese_language_uses_chinese_guidance_for_install_steps(self):
         installer = (ROOT / "install" / "install.sh").read_text(encoding="utf-8")
