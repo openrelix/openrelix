@@ -274,6 +274,17 @@ class NightlyLogicTests(unittest.TestCase):
                 finally:
                     build_overview.personal_redaction_patterns.cache_clear()
 
+    def test_redaction_preserves_public_project_links_in_href(self):
+        html = (
+            '<a href="https://www.npmjs.com/~kk_kais" target="_blank">kk_kais</a> '
+            '<a href="https://example.com/private">private</a>'
+        )
+
+        redacted = build_overview.normalize_brand_display_text(html)
+
+        self.assertIn('href="https://www.npmjs.com/~kk_kais"', redacted)
+        self.assertIn('href="<link>"', redacted)
+
     def test_repo_panel_entrypoint_is_not_written_by_default(self):
         old_paths = build_overview.PATHS
         old_reports_dir = build_overview.REPORTS_DIR
@@ -5356,6 +5367,21 @@ scope: Release checklist, package manifest, and public website validation.
         self.assertIn("webView?.underPageBackgroundColor = background", mac_client)
         self.assertIn("window?.backgroundColor = background", mac_client)
         self.assertNotIn("private let defaultBackground", mac_client)
+
+    def test_macos_client_opens_external_panel_links_outside_webview(self):
+        mac_client = (ROOT / "macos" / "OpenRelixClient" / "main.swift").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("WKNavigationDelegate", mac_client)
+        self.assertIn("WKUIDelegate", mac_client)
+        self.assertIn("webView.navigationDelegate = self", mac_client)
+        self.assertIn("webView.uiDelegate = self", mac_client)
+        self.assertIn("navigationAction.targetFrame == nil", mac_client)
+        self.assertIn("openOutsidePanel(_ url: URL)", mac_client)
+        self.assertIn("NSWorkspace.shared.open(url)", mac_client)
+        self.assertIn("url.isFileURL && isPanelURL(url)", mac_client)
+        self.assertIn("decisionHandler(.cancel)", mac_client)
 
     def test_installer_openrelix_templates_exist_and_use_new_entrypoints(self):
         expected_templates = [

@@ -227,7 +227,7 @@ private let panelThemeBridgeScript = """
 })();
 """
 
-private final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler {
+private final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKNavigationDelegate, WKUIDelegate {
     private var window: NSWindow?
     private var webView: WKWebView?
     private var stateRoot = preferredStateRoot()
@@ -271,6 +271,8 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessag
         configuration.userContentController.add(self, name: "openrelixTheme")
 
         let webView = WKWebView(frame: .zero, configuration: configuration)
+        webView.navigationDelegate = self
+        webView.uiDelegate = self
         webView.allowsBackForwardNavigationGestures = true
         webView.wantsLayer = true
         if webView.responds(to: Selector(("setDrawsBackground:"))) {
@@ -324,6 +326,59 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessag
         } else if theme == "light" {
             applyPanelBackground(isDark: false)
         }
+    }
+
+    private func isPanelURL(_ url: URL) -> Bool {
+        guard url.isFileURL else {
+            return false
+        }
+        return url.standardizedFileURL.path == panelURL(for: stateRoot).standardizedFileURL.path
+    }
+
+    private func openOutsidePanel(_ url: URL) -> Bool {
+        guard let scheme = url.scheme?.lowercased() else {
+            return false
+        }
+        if scheme == "about" || scheme == "data" || scheme == "javascript" {
+            return false
+        }
+        if url.isFileURL && isPanelURL(url) {
+            return false
+        }
+        NSWorkspace.shared.open(url)
+        return true
+    }
+
+    func webView(
+        _ webView: WKWebView,
+        decidePolicyFor navigationAction: WKNavigationAction,
+        decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
+    ) {
+        guard let url = navigationAction.request.url else {
+            decisionHandler(.allow)
+            return
+        }
+        if openOutsidePanel(url) {
+            decisionHandler(.cancel)
+            return
+        }
+        decisionHandler(.allow)
+    }
+
+    func webView(
+        _ webView: WKWebView,
+        createWebViewWith configuration: WKWebViewConfiguration,
+        for navigationAction: WKNavigationAction,
+        windowFeatures: WKWindowFeatures
+    ) -> WKWebView? {
+        guard navigationAction.targetFrame == nil, let url = navigationAction.request.url else {
+            return nil
+        }
+        if openOutsidePanel(url) {
+            return nil
+        }
+        webView.load(navigationAction.request)
+        return nil
     }
 
     private func buildMenu() {

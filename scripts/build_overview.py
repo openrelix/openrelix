@@ -171,6 +171,7 @@ def redact_personal_text(value):
             or lowered.startswith("http://localhost")
             or lowered.startswith("https://github.com/openrelix/")
             or lowered.startswith("https://openrelix.org")
+            or lowered.startswith("https://www.npmjs.com/~kk_kais")
         ):
             return url
         return "<link>"
