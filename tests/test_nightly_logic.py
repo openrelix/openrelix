@@ -3438,7 +3438,7 @@ scope: Release checklist, package manifest, and public website validation.
         self.assertIn('data-language-option="en" aria-pressed="false"', html)
         self.assertIn('"OpenRelix 工作台": "OpenRelix Workbench"', html)
         self.assertIn(
-            '<span class="hero-brand-line"><span data-lang-only="zh">你的专属AI记忆珍藏</span><span data-lang-only="en">Your personal AI memory keepsake</span></span>',
+            '<span class="hero-brand-line"><span data-lang-only="zh">你的专属AI记忆珍藏</span><span data-lang-only="en">Your personal AI memory relics</span></span>',
             html,
         )
         package_json = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))

@@ -2,11 +2,11 @@
 
 [English](README.md) | [简体中文](https://github.com/openrelix/openrelix/blob/main/README.zh-CN.md)
 
-Open-source personal memory keepsake for AI coding agents, currently published as a v0.1 preview.
+Open-source personal memory relics for AI coding agents, currently published as a v0.1 preview.
 
 OpenRelix™ is a local-first asset layer for AI coding agents. It turns finished agent work into reusable task reviews, skills, templates, bounded memory summaries, and a private dashboard instead of leaving useful patterns buried in old chats.
 
-The name means an open-source personal memory keepsake: reusable work stays organized locally, while only sanitized, bounded summaries are shared with the active AI host.
+The name means open-source personal memory relics: reusable work stays organized locally, while only sanitized, bounded summaries are shared with the active AI host.
 
 The project is intentionally not tied to one AI host. The current preview ships a Codex CLI adapter first because Codex exposes the history, session, skill, and memory surfaces needed for a working local installer. Other AI CLI / agent hosts can be added through adapter layers without changing the product goal.
 
