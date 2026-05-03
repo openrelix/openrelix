@@ -427,15 +427,38 @@ def find_session_file(session_id):
     return matches[0] if matches else None
 
 
-def build_turn_prompt_map(session_file):
-    turn_prompts = {}
-    turn_prompt_meta = {}
-    current_turn_id = None
+def find_session_files(session_ids):
+    pending = {str(session_id) for session_id in session_ids if session_id}
+    matches = {}
+    if not pending or not SESSIONS_DIR.exists():
+        return matches
+
+    for session_file in SESSIONS_DIR.rglob("*.jsonl"):
+        name = session_file.name
+        for session_id in list(pending):
+            if session_id in name:
+                matches[session_id] = session_file
+                pending.remove(session_id)
+        if not pending:
+            break
+    return matches
+
+
+def load_session_items(session_file):
+    items = []
     for raw_line in session_file.read_text(encoding="utf-8").splitlines():
         line = raw_line.strip()
         if not line:
             continue
-        item = json.loads(line)
+        items.append(json.loads(line))
+    return items
+
+
+def build_turn_prompt_map(session_items):
+    turn_prompts = {}
+    turn_prompt_meta = {}
+    current_turn_id = None
+    for item in session_items:
         item_type = item.get("type")
         payload = item.get("payload", {})
 
@@ -461,8 +484,8 @@ def build_turn_prompt_map(session_file):
     return result
 
 
-def load_session_metadata_and_conclusions(session_id, target_date, stage):
-    session_file = find_session_file(session_id)
+def load_session_metadata_and_conclusions(session_id, target_date, stage, session_file=None):
+    session_file = session_file or find_session_file(session_id)
     metadata = {
         "window_id": session_id,
         "cwd": "",
@@ -474,14 +497,11 @@ def load_session_metadata_and_conclusions(session_id, target_date, stage):
     conclusions = []
     if not session_file or not session_file.exists():
         return metadata, conclusions, 0
-    turn_prompt_map = build_turn_prompt_map(session_file)
+    session_items = load_session_items(session_file)
+    turn_prompt_map = build_turn_prompt_map(session_items)
     raw_conclusion_count = 0
 
-    for raw_line in session_file.read_text(encoding="utf-8").splitlines():
-        line = raw_line.strip()
-        if not line:
-            continue
-        item = json.loads(line)
+    for item in session_items:
         item_type = item.get("type")
         payload = item.get("payload", {})
 
@@ -575,9 +595,15 @@ def build_window_payload(target_date, metadata, prompts, conclusions, raw_conclu
 
 def load_history_windows_for_date(target_date, stage):
     prompts_by_session = load_history_for_date(target_date)
+    session_files = find_session_files(prompts_by_session.keys())
     windows = []
     for session_id, prompts in sorted(prompts_by_session.items(), key=lambda item: item[0]):
-        metadata, conclusions, raw_conclusion_count = load_session_metadata_and_conclusions(session_id, target_date, stage)
+        metadata, conclusions, raw_conclusion_count = load_session_metadata_and_conclusions(
+            session_id,
+            target_date,
+            stage,
+            session_file=session_files.get(session_id),
+        )
         windows.append(build_window_payload(target_date, metadata, prompts, conclusions, raw_conclusion_count))
     return windows
 

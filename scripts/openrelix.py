@@ -1802,6 +1802,7 @@ def pipeline_command(
     learn_window_days=0,
     defer_global_refresh=False,
     skip_learning_collect=False,
+    skip_if_unchanged=True,
 ):
     cmd = ["/bin/zsh", str(NIGHTLY_PIPELINE_SCRIPT), date_str, stage]
     if learn_window_days > 0:
@@ -1810,6 +1811,10 @@ def pipeline_command(
         cmd.append("--defer-global-refresh")
     if skip_learning_collect:
         cmd.append("--skip-learning-collect")
+    if skip_if_unchanged:
+        cmd.append("--skip-if-unchanged")
+    else:
+        cmd.append("--no-skip-if-unchanged")
     return cmd
 
 
@@ -1918,7 +1923,7 @@ def command_review(args):
     if args.learn_window_days > 0:
         ensure_learning_window_final(args.date, args.learn_window_days, verbose=not args.json)
 
-    cmd = pipeline_command(args.date, args.stage, args.learn_window_days)
+    cmd = pipeline_command(args.date, args.stage, args.learn_window_days, skip_if_unchanged=True)
     if args.json:
         run_checked_with_progress(cmd, [])
     else:
@@ -2088,6 +2093,7 @@ def run_backfill_dates(
             learn_window_days,
             defer_global_refresh=defer_global_refresh,
             skip_learning_collect=skip_learning_collect,
+            skip_if_unchanged=not force,
         )
 
         if verbose:

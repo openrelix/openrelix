@@ -171,6 +171,7 @@ nightly_args=()
 learn_window_days=0
 defer_global_refresh=0
 skip_learning_collect=0
+skip_unchanged="${OPENRELIX_NIGHTLY_SKIP_UNCHANGED:-1}"
 
 for ((i = 1; i <= ${#extra_args[@]}; i++)); do
   arg="${extra_args[$i]}"
@@ -191,9 +192,23 @@ for ((i = 1; i <= ${#extra_args[@]}; i++)); do
       skip_learning_collect=1
       continue
       ;;
+    --skip-if-unchanged)
+      skip_unchanged=1
+      continue
+      ;;
+    --no-skip-if-unchanged)
+      skip_unchanged=0
+      continue
+      ;;
   esac
   nightly_args+=("$arg")
 done
+
+case "${skip_unchanged:l}" in
+  1|true|yes|on)
+    nightly_args+=(--skip-if-unchanged)
+    ;;
+esac
 
 "$PYTHON_BIN" "$REPO_ROOT/scripts/collect_codex_activity.py" --date "$target_date" --stage "$stage"
 if [[ "$skip_learning_collect" != "1" ]] && [[ "$learn_window_days" =~ '^[0-9]+$' ]] && (( learn_window_days > 0 )); then
