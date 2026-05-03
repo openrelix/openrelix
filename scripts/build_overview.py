@@ -2490,6 +2490,38 @@ def list_codex_history_dates(lookback_days=BACKFILL_LOOKBACK_DAYS):
     return sorted(dates, reverse=True)
 
 
+def load_history_fallback_daily_capture(date_str):
+    if not date_str:
+        return None
+    try:
+        import collect_codex_activity
+
+        windows = collect_codex_activity.load_history_windows_for_date(date_str, "manual")
+    except Exception:  # noqa: BLE001
+        return None
+    if not windows:
+        return None
+
+    review_like_windows = [window for window in windows if window.get("review_like_window")]
+    return {
+        "source_kind": "history_fallback",
+        "date": date_str,
+        "stage": "manual",
+        "generated_at": "",
+        "timezone": "",
+        "collection_source": "history",
+        "collection_errors": [],
+        "window_count": len(windows),
+        "excluded_window_count": 0,
+        "review_like_window_count": len(review_like_windows),
+        "prompt_count": sum(safe_int(window.get("prompt_count", 0)) for window in windows),
+        "conclusion_count": sum(safe_int(window.get("conclusion_count", 0)) for window in windows),
+        "windows": windows,
+        "excluded_windows": [],
+        "review_like_windows": review_like_windows,
+    }
+
+
 def shell_quote(value):
     text = str(value)
     if re.fullmatch(r"[A-Za-z0-9_./:=+-]+", text):
@@ -7072,6 +7104,8 @@ def build_window_overview(latest_nightly, language=None, target_date=""):
     language = current_language(language)
     target_date = target_date or (latest_nightly.get("date", "") if latest_nightly else "")
     daily_capture = load_daily_capture(target_date) if target_date else load_daily_capture()
+    if not daily_capture and target_date:
+        daily_capture = load_history_fallback_daily_capture(target_date)
 
     nightly_map = {}
     if latest_nightly:
@@ -7184,7 +7218,7 @@ def build_window_overview(latest_nightly, language=None, target_date=""):
         "window_count": daily_capture.get("window_count", len(items)),
         "excluded_window_count": daily_capture.get("excluded_window_count", 0),
         "review_like_window_count": daily_capture.get("review_like_window_count", 0),
-        "source_kind": "daily_capture",
+        "source_kind": daily_capture.get("source_kind", "daily_capture"),
         "windows": items,
     }
 
@@ -7905,15 +7939,19 @@ def build_data(assets, usage_events, reviews, language=None):
     primary_nightly, active_nightly = load_primary_and_active_nightly_summaries()
     display_nightly = select_display_nightly(primary_nightly, active_nightly)
     today = current_local_datetime().date()
+    today_date_str = today.isoformat()
     today_nightly = select_best_nightly_summary_for_date(nightly_candidates, today.isoformat())
     if today_nightly:
         display_nightly = today_nightly
     window_anchor_nightly = display_nightly
-    today_capture = load_daily_capture(today.isoformat())
+    today_capture = load_daily_capture(today_date_str)
+    today_has_history = today_date_str in set(list_codex_history_dates(lookback_days=1))
+    window_target_date = today_date_str if today_nightly or today_capture or today_has_history else ""
+    window_source_nightly = window_anchor_nightly if today_nightly or not window_target_date else None
     window_overview = build_window_overview(
-        window_anchor_nightly if today_nightly or not today_capture else None,
+        window_source_nightly,
         language=language,
-        target_date=today.isoformat() if today_capture else "",
+        target_date=window_target_date,
     )
     memory_usage_anchor_date = (
         (window_overview or {}).get("date")
@@ -8065,9 +8103,9 @@ def build_data(assets, usage_events, reviews, language=None):
     if not daily_summary_default_date and daily_summary_select_dates:
         daily_summary_default_date = daily_summary_select_dates[0]
     window_overview_default_date = (
-        today.isoformat()
-        if today_capture
-        else ((window_overview or {}).get("date", "") or daily_summary_default_date or today.isoformat())
+        today_date_str
+        if today_capture or today_has_history
+        else ((window_overview or {}).get("date", "") or daily_summary_default_date or today_date_str)
     )
     window_overview_views = build_window_overview_views(
         nightly_candidates,
@@ -12325,7 +12363,7 @@ def build_window_overview_view(window_overview, title_zh="当日窗口概览", t
 
 
 def build_window_overview_views(candidates, selected_date="", language=None):
-    dates = set(list_daily_capture_dates())
+    dates = set(list_daily_capture_dates()) | set(list_codex_history_dates())
     for payload in candidates or []:
         parsed = parse_nightly_summary_date(payload)
         if parsed is not None:

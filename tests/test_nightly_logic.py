@@ -4258,6 +4258,92 @@ scope: Release checklist, package manifest, and public website validation.
             [("newer", 2), ("older", 1)],
         )
 
+    def test_window_overview_uses_history_fallback_when_daily_capture_missing(self):
+        history_capture = {
+            "source_kind": "history_fallback",
+            "date": "2026-05-03",
+            "stage": "manual",
+            "collection_source": "history",
+            "window_count": 1,
+            "excluded_window_count": 0,
+            "review_like_window_count": 0,
+            "windows": [
+                {
+                    "date": "2026-05-03",
+                    "window_id": "w-history",
+                    "cwd": "/tmp/OpenRelix",
+                    "source": "history",
+                    "started_at": "2026-05-03T09:00:00+08:00",
+                    "prompt_count": 1,
+                    "conclusion_count": 1,
+                    "prompts": [
+                        {
+                            "local_time": "2026-05-03T09:01:00+08:00",
+                            "text": "首次安装时展示历史窗口",
+                        }
+                    ],
+                    "conclusions": [
+                        {
+                            "completed_at": "2026-05-03T09:02:00+08:00",
+                            "text": "使用 raw fallback 卡片展示。",
+                        }
+                    ],
+                }
+            ],
+        }
+
+        with mock.patch.object(build_overview, "load_daily_capture", return_value=None), mock.patch.object(
+            build_overview,
+            "load_history_fallback_daily_capture",
+            return_value=history_capture,
+        ):
+            overview = build_overview.build_window_overview(None, target_date="2026-05-03")
+
+        self.assertEqual(overview["source_kind"], "history_fallback")
+        self.assertEqual(overview["window_count"], 1)
+        self.assertEqual(overview["windows"][0]["window_id"], "w-history")
+        self.assertEqual(overview["windows"][0]["summary_status"], "raw_fallback")
+        self.assertIn("Codex CLI history/session", overview["windows"][0]["activity_source_label"])
+        self.assertIn("首次安装时展示历史窗口", overview["windows"][0]["question_summary"])
+
+    def test_window_overview_views_include_codex_history_dates(self):
+        history_capture = {
+            "source_kind": "history_fallback",
+            "date": "2026-05-03",
+            "stage": "manual",
+            "collection_source": "history",
+            "window_count": 1,
+            "excluded_window_count": 0,
+            "review_like_window_count": 0,
+            "windows": [
+                {
+                    "date": "2026-05-03",
+                    "window_id": "w-history",
+                    "cwd": "/tmp/OpenRelix",
+                    "source": "history",
+                    "started_at": "2026-05-03T09:00:00+08:00",
+                    "prompt_count": 1,
+                    "conclusion_count": 1,
+                    "prompts": [{"local_time": "2026-05-03T09:01:00+08:00", "text": "历史窗口"}],
+                    "conclusions": [{"completed_at": "2026-05-03T09:02:00+08:00", "text": "历史结论"}],
+                }
+            ],
+        }
+
+        with mock.patch.object(build_overview, "list_daily_capture_dates", return_value=[]), mock.patch.object(
+            build_overview,
+            "list_codex_history_dates",
+            return_value=["2026-05-03"],
+        ), mock.patch.object(build_overview, "load_daily_capture", return_value=None), mock.patch.object(
+            build_overview,
+            "load_history_fallback_daily_capture",
+            return_value=history_capture,
+        ):
+            views = build_overview.build_window_overview_views([], selected_date="2026-05-03")
+
+        self.assertEqual([view["date"] for view in views], ["2026-05-03"])
+        self.assertIn("历史窗口", views[0]["cards_html"])
+
     def test_english_window_cards_localize_source_and_chinese_summaries(self):
         html = build_overview.make_window_summary_cards(
             {

@@ -933,6 +933,9 @@ write_runtime_config(
     paths=paths,
 )
 PY
+  if ! "$PYTHON_BIN" "$REPO_ROOT/scripts/collect_codex_activity.py" --stage manual; then
+    echo "openrelix install: initial activity collection failed; the panel will populate after the first refresh." >&2
+  fi
   "$PYTHON_BIN" "$REPO_ROOT/scripts/build_overview.py"
   "$PYTHON_BIN" - "$REPO_ROOT" "$LANGUAGE" <<'PY'
 import json
