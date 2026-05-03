@@ -3888,6 +3888,7 @@ scope: Release checklist, package manifest, and public website validation.
         self.assertIn("align-items: start;", nightly_css)
         self.assertIn("height: fit-content;", nightly_css)
         self.assertIn("grid-template-columns: repeat(auto-fit, minmax(min(124px, 100%), 1fr));", nightly_css)
+        self.assertIn(".nightly-backfill-command[hidden] {{", nightly_css)
         self.assertNotIn("min-height: 100%;", nightly_css)
 
     def test_build_html_prepaint_light_preference_is_not_overridden_by_body(self):
@@ -6735,6 +6736,45 @@ scope: Release checklist, package manifest, and public website validation.
         self.assertIn("openrelix backfill --from 2026-04-24 --to 2026-04-24", html)
         self.assertIn("data-backfill-copy=\"single\"", html)
 
+    def test_nightly_summary_panel_prompts_final_backfill_for_preliminary_date(self):
+        summary_view = build_overview.build_daily_summary_view(
+            {
+                "date": "2026-04-24",
+                "stage": "preliminary",
+                "day_summary": "轻量整理完成：读取 2 个窗口。",
+                "raw_window_count": 2,
+                "durable_memories": [],
+                "session_memories": [1],
+                "low_priority_memories": [],
+            },
+            {"window_count": 2},
+            [],
+        )
+        html = build_overview.make_nightly_summary_panel(
+            "每日整理结果",
+            "2026-04-24 · 预览",
+            "",
+            {},
+            {"window_count": 2},
+            [],
+            summary_views=[summary_view],
+            selected_date="2026-04-24",
+            selectable_dates=["2026-04-24"],
+            backfill={
+                "missing_dates": [],
+                "learn_window_days": 7,
+                "range_command": "",
+                "commands_by_date": {},
+            },
+        )
+
+        self.assertIn("建议深度回溯", html)
+        self.assertIn("当前是轻量整理，日报和记忆可能不准确", html)
+        self.assertIn("首次安装后，会自动触发深度回溯，请耐心等待。", html)
+        self.assertIn("深度回溯", html)
+        self.assertIn("openrelix backfill --from 2026-04-24 --to 2026-04-24 --stage final", html)
+        self.assertIn('id="nightly-backfill-range" hidden', html)
+
     def test_build_html_wires_window_overview_date_views(self):
         html = build_overview.build_html(
             {
@@ -6919,6 +6959,30 @@ scope: Release checklist, package manifest, and public website validation.
         self.assertIn('getLocalizedSummaryList(summary, "detail_parts")', html)
         self.assertIn('getLocalizedSummaryList(summary, "context_labels")', html)
         self.assertIn('getLocalizedSummaryText(summary, "note_text")', html)
+
+    def test_preliminary_daily_summary_view_prompts_final_backfill(self):
+        view = build_overview.build_daily_summary_view(
+            {
+                "date": "2026-04-27",
+                "stage": "preliminary",
+                "day_summary": "轻量整理完成：读取 2 个窗口。",
+                "raw_window_count": 2,
+                "durable_memories": [],
+                "session_memories": [1],
+                "low_priority_memories": [],
+            },
+            {"window_count": 2},
+            [],
+        )
+
+        self.assertIn("日报和记忆可能不准确", view["note_text"])
+        self.assertFalse(
+            any(
+                "openrelix backfill --from 2026-04-27 --to 2026-04-27 --stage final" in item
+                for item in view["detail_parts"]
+            )
+        )
+        self.assertFalse(any("may be inaccurate" in item for item in view["detail_parts_en"]))
 
     def test_daily_token_panel_uses_bar_rows_newest_first(self):
         rows = [

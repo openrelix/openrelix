@@ -744,10 +744,17 @@ PANEL_I18N_EN = {
     "该日期暂无整理结果。": "No synthesis for this date.",
     "未整理": "Not synthesized",
     "缺少整理结果": "Missing synthesis",
+    "建议深度回溯": "Recommended deep backfill",
     "该日期还没有整理结果。可以复制命令在终端手动回溯。": (
         "This date has no synthesis yet. Copy the command and run it in a terminal to backfill it."
     ),
+    "当前是轻量整理，日报和记忆可能不准确。可以复制命令在终端补跑 final 深度回溯。首次安装后，会自动触发深度回溯，请耐心等待。": (
+        "This is the lightweight pass, so the daily summary and memories may be inaccurate. "
+        "Copy the command and run final deep backfill in a terminal. After first install, "
+        "OpenRelix starts deep backfill automatically; please wait."
+    ),
     "单日回溯": "Single-date backfill",
+    "深度回溯": "Deep backfill",
     "多日回溯": "Multi-day backfill",
     "复制命令": "Copy command",
     "已复制回溯命令": "Backfill command copied",
@@ -11425,6 +11432,7 @@ def stage_display_label(stage, language=None):
 def build_daily_summary_view(nightly, window_overview=None, project_contexts=None, language=None):
     language = current_language(language)
     nightly = nightly or {}
+    stage = nightly.get("stage", "")
     summary_text_zh = normalize_brand_display_text(
         re.sub(r"\s+", " ", str(nightly.get("day_summary", "") or "")).strip()
     )
@@ -11494,7 +11502,10 @@ def build_daily_summary_view(nightly, window_overview=None, project_contexts=Non
 
     note_text_zh = "这些数字来自当前整理结果，用来快速判断今天沉淀了多少内容。"
     note_text_en = "These numbers come from the selected synthesis and help estimate how much was captured that day."
-    if not nightly:
+    if stage == "preliminary":
+        note_text_zh = "当前是轻量整理，日报和记忆可能不准确；可运行 final 深度回溯查看全部可用的记忆和总结。"
+        note_text_en = "This is the lightweight pass, so the daily summary and memories may be inaccurate; run final deep backfill for all available memories and summaries."
+    elif not nightly:
         note_text_zh = "当前还没有最近一次整理；生成后这里会自动切成摘要卡。"
         note_text_en = "No recent synthesis yet; this area will switch to a summary card after generation."
     elif not any(safe_int(item.get("value", 0)) for item in stats[1:]):
@@ -11502,7 +11513,6 @@ def build_daily_summary_view(nightly, window_overview=None, project_contexts=Non
         note_text_en = "No memory items were captured yet; use the window overview to review that day's context."
     note_text = localized(note_text_zh, note_text_en, language)
 
-    stage = nightly.get("stage", "")
     badges = []
     if stage == "preliminary":
         badges.append({"label": localized("预览", "Preview", language), "tone": "amber"})
@@ -11742,20 +11752,34 @@ def make_nightly_summary_panel(
     )
     backfill_panel_hidden = " hidden"
     selected_missing = selected_date in set(backfill.get("missing_dates", []))
-    if selected_missing and not current_view.get("available"):
+    selected_preliminary = current_view.get("stage") == "preliminary"
+    if (selected_missing and not current_view.get("available")) or selected_preliminary:
         backfill_panel_hidden = ""
     selected_backfill_command = backfill.get("commands_by_date", {}).get(
         selected_date,
         make_backfill_command(selected_date) if selected_date else "",
     )
     backfill_range_command = backfill.get("range_command", "")
-    backfill_range_hidden = "" if backfill_range_command and backfill_range_command != selected_backfill_command else " hidden"
+    backfill_range_hidden = (
+        ""
+        if backfill_range_command
+        and backfill_range_command != selected_backfill_command
+        and not selected_preliminary
+        else " hidden"
+    )
+    backfill_title = "建议深度回溯" if selected_preliminary else "缺少整理结果"
+    backfill_note = (
+        "当前是轻量整理，日报和记忆可能不准确。可以复制命令在终端补跑 final 深度回溯。首次安装后，会自动触发深度回溯，请耐心等待。"
+        if selected_preliminary
+        else "该日期还没有整理结果。可以复制命令在终端手动回溯。"
+    )
+    backfill_single_label = "深度回溯" if selected_preliminary else "单日回溯"
     backfill_panel = """
           <div class="nightly-backfill" id="nightly-backfill-panel"{hidden}>
-            <div class="nightly-backfill-title">缺少整理结果</div>
-            <p class="nightly-backfill-note" id="nightly-backfill-note">该日期还没有整理结果。可以复制命令在终端手动回溯。</p>
+            <div class="nightly-backfill-title" id="nightly-backfill-title">{title}</div>
+            <p class="nightly-backfill-note" id="nightly-backfill-note">{note}</p>
             <div class="nightly-backfill-command">
-              <div class="nightly-backfill-label">单日回溯</div>
+              <div class="nightly-backfill-label" id="nightly-backfill-single-label">{single_label}</div>
               <code id="nightly-backfill-single-command">{single_command}</code>
               <button type="button" class="nightly-backfill-copy" data-backfill-copy="single">复制命令</button>
             </div>
@@ -11768,6 +11792,9 @@ def make_nightly_summary_panel(
           </div>
     """.format(
         hidden=backfill_panel_hidden,
+        title=escape(backfill_title),
+        note=escape(backfill_note),
+        single_label=escape(backfill_single_label),
         single_command=escape(selected_backfill_command),
         range_command=escape(backfill_range_command),
         range_hidden=backfill_range_hidden,
@@ -14431,6 +14458,10 @@ def build_html(data):
       gap: 8px;
       align-items: center;
       min-width: 0;
+    }}
+
+    .nightly-backfill-command[hidden] {{
+      display: none;
     }}
 
     .nightly-backfill-label {{
@@ -17736,7 +17767,9 @@ def build_html(data):
         nightlyStatGrid: document.getElementById("nightly-stat-grid"),
         nightlyRailNote: document.getElementById("nightly-rail-note"),
         backfillPanel: document.getElementById("nightly-backfill-panel"),
+        backfillTitle: document.getElementById("nightly-backfill-title"),
         backfillNote: document.getElementById("nightly-backfill-note"),
+        backfillSingleLabel: document.getElementById("nightly-backfill-single-label"),
         backfillSingleCommand: document.getElementById("nightly-backfill-single-command"),
         backfillRange: document.getElementById("nightly-backfill-range"),
         backfillRangeCommand: document.getElementById("nightly-backfill-range-command"),
@@ -18120,12 +18153,14 @@ def build_html(data):
         return "openrelix backfill --from " + dateValue + " --to " + dateValue + " --stage final --learn-window-days " + days;
       }}
 
-      function renderBackfillPanel(dateValue, hasSummary) {{
+      function renderBackfillPanel(dateValue, summary) {{
         if (!elements.backfillPanel) {{
           return;
         }}
+        const hasSummary = Boolean(summary);
+        const isPreliminary = hasSummary && summary.stage === "preliminary";
         const missingDates = missingBackfillDates();
-        const shouldShow = Boolean(dateValue) && !hasSummary && missingDates.includes(dateValue);
+        const shouldShow = Boolean(dateValue) && (isPreliminary || (!hasSummary && missingDates.includes(dateValue)));
         elements.backfillPanel.hidden = !shouldShow;
         if (!shouldShow) {{
           if (elements.backfillStatus) {{
@@ -18134,9 +18169,19 @@ def build_html(data):
           return;
         }}
         const singleCommand = commandForBackfillDate(dateValue);
-        const rangeCommand = backfillState().range_command || "";
+        const rangeCommand = isPreliminary ? "" : (backfillState().range_command || "");
+        if (elements.backfillTitle) {{
+          elements.backfillTitle.textContent = t(isPreliminary ? "建议深度回溯" : "缺少整理结果");
+        }}
         if (elements.backfillNote) {{
-          elements.backfillNote.textContent = t("该日期还没有整理结果。可以复制命令在终端手动回溯。");
+          elements.backfillNote.textContent = t(
+            isPreliminary
+              ? "当前是轻量整理，日报和记忆可能不准确。可以复制命令在终端补跑 final 深度回溯。首次安装后，会自动触发深度回溯，请耐心等待。"
+              : "该日期还没有整理结果。可以复制命令在终端手动回溯。"
+          );
+        }}
+        if (elements.backfillSingleLabel) {{
+          elements.backfillSingleLabel.textContent = t(isPreliminary ? "深度回溯" : "单日回溯");
         }}
         if (elements.backfillSingleCommand) {{
           elements.backfillSingleCommand.textContent = singleCommand;
@@ -18187,7 +18232,7 @@ def build_html(data):
         syncDateControlValue(elements.nightlyDateInput);
         if (!summary) {{
           renderNightlyBadges(null);
-          renderBackfillPanel(dateValue, false);
+          renderBackfillPanel(dateValue, null);
           if (elements.nightlyLead) {{
             elements.nightlyLead.textContent = t("该日期暂无整理结果。");
           }}
@@ -18207,7 +18252,7 @@ def build_html(data):
           return;
         }}
 
-        renderBackfillPanel(dateValue, true);
+        renderBackfillPanel(dateValue, summary);
         renderNightlyBadges(summary);
         if (elements.nightlyLead) {{
           elements.nightlyLead.textContent = getLocalizedSummaryText(summary, "lead_text");
