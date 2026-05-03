@@ -34,6 +34,7 @@ ENABLE_LEARNING_REFRESH=0
 ENABLE_UPDATE_CHECK=0
 LEARNING_REFRESH_WINDOW_DAYS="${OPENRELIX_REFRESH_LEARN_WINDOW_DAYS:-7}"
 INSTALL_LEARN_JOBS="${OPENRELIX_INSTALL_LEARN_JOBS:-2}"
+INSTALL_DEEP_LEARN_JOBS=1
 MEMORY_MODE_EXPLICIT=0
 KEEP_AWAKE="none"
 NIGHTLY_ORGANIZE_TIME="${OPENRELIX_NIGHTLY_ORGANIZE_TIME:-23:00}"
@@ -1205,10 +1206,10 @@ deep_learn_memory_command() {
     return
   fi
   if (( INSTALL_GLOBAL_COMMAND )); then
-    printf 'openrelix review --stage final --learn-window-days %s --jobs %s\n' "$LEARNING_REFRESH_WINDOW_DAYS" "$INSTALL_LEARN_JOBS"
+    printf 'openrelix backfill --days %s --stage final --learn-window-days %s --jobs %s\n' "$LEARNING_REFRESH_WINDOW_DAYS" "$LEARNING_REFRESH_WINDOW_DAYS" "$INSTALL_DEEP_LEARN_JOBS"
     return
   fi
-  printf 'AI_ASSET_STATE_DIR=%q CODEX_HOME=%q AI_ASSET_LANGUAGE=%q OPENRELIX_ACTIVITY_SOURCE=%q %q %q review --stage final --learn-window-days %s --jobs %s\n' \
+  printf 'AI_ASSET_STATE_DIR=%q CODEX_HOME=%q AI_ASSET_LANGUAGE=%q OPENRELIX_ACTIVITY_SOURCE=%q %q %q backfill --days %s --stage final --learn-window-days %s --jobs %s\n' \
     "$STATE_DIR" \
     "$CODEX_HOME" \
     "$LANGUAGE" \
@@ -1216,7 +1217,8 @@ deep_learn_memory_command() {
     "$PYTHON_BIN" \
     "$REPO_ROOT/scripts/openrelix.py" \
     "$LEARNING_REFRESH_WINDOW_DAYS" \
-    "$INSTALL_LEARN_JOBS"
+    "$LEARNING_REFRESH_WINDOW_DAYS" \
+    "$INSTALL_DEEP_LEARN_JOBS"
 }
 
 open_panel_command() {
@@ -1322,7 +1324,7 @@ EOF
 EOF
     if [[ -n "$DEEP_LEARN_MEMORY_COMMAND" ]]; then
       cat <<EOF
-     深度学习可随后运行：
+     深度回溯近 ${LEARNING_REFRESH_WINDOW_DAYS} 天可随后运行：
      $DEEP_LEARN_MEMORY_COMMAND
 EOF
     fi
@@ -1427,7 +1429,7 @@ EOF
 EOF
     if [[ -n "$DEEP_LEARN_MEMORY_COMMAND" ]]; then
       cat <<EOF
-     Deep learning can then run:
+     Deep backfill for the last ${LEARNING_REFRESH_WINDOW_DAYS} days can then run:
      $DEEP_LEARN_MEMORY_COMMAND
 EOF
     fi
@@ -1556,6 +1558,42 @@ run_post_install_shallow_learning() {
     backfill --days "$LEARNING_REFRESH_WINDOW_DAYS" --stage preliminary --learn-window-days 0 --jobs "$INSTALL_LEARN_JOBS"
 }
 
+print_post_install_shallow_ready() {
+  if [[ "$LANGUAGE" == "en" ]]; then
+    print -r -- ""
+    if (( LEARNING_REFRESH_WINDOW_DAYS == 0 )); then
+      print -r -- "Lightweight backfill is complete. OpenRelix is ready to use now; if the browser panel or app is already open, refresh it to see the quick summary."
+    else
+      print -r -- "Lightweight backfill is complete. OpenRelix is ready to use now; if the browser panel or app is already open, refresh it to see the quick summary. Deep backfill will continue in this terminal."
+    fi
+  else
+    print -r -- ""
+    if (( LEARNING_REFRESH_WINDOW_DAYS == 0 )); then
+      print -r -- "浅度回溯已完成，OpenRelix 现在可以先使用了；如果浏览器面板或 app 已经打开，手动刷新即可看到快速总结。"
+    else
+      print -r -- "浅度回溯已完成，OpenRelix 现在可以先使用了；如果浏览器面板或 app 已经打开，手动刷新即可看到快速总结。接下来会在当前终端继续深度回溯。"
+    fi
+  fi
+}
+
+print_post_install_shallow_failed() {
+  if [[ "$LANGUAGE" == "en" ]]; then
+    print -r -- ""
+    if (( LEARNING_REFRESH_WINDOW_DAYS == 0 )); then
+      print -r -- "Lightweight backfill did not complete cleanly. OpenRelix will still open."
+    else
+      print -r -- "Lightweight backfill did not complete cleanly. OpenRelix will still open, and deep backfill will continue in this terminal."
+    fi
+  else
+    print -r -- ""
+    if (( LEARNING_REFRESH_WINDOW_DAYS == 0 )); then
+      print -r -- "浅度回溯未完整完成。OpenRelix 仍会打开。"
+    else
+      print -r -- "浅度回溯未完整完成。OpenRelix 仍会打开，并继续在当前终端尝试深度回溯。"
+    fi
+  fi
+}
+
 launch_app_after_shallow_learning() {
   if [[ "$OSTYPE" == darwin* ]] && (( WILL_AUTO_LAUNCH )) && [[ -d "$INSTALLED_MAC_CLIENT_APP" ]]; then
     open "$INSTALLED_MAC_CLIENT_APP" >/dev/null 2>&1 || true
@@ -1563,26 +1601,29 @@ launch_app_after_shallow_learning() {
   fi
 }
 
-start_post_install_deep_learning() {
+run_post_install_deep_learning() {
   if (( LEARNING_REFRESH_WINDOW_DAYS == 0 )); then
     return
   fi
-  mkdir -p "$STATE_DIR/log" "$STATE_DIR/runtime"
-  local log_path="$STATE_DIR/log/install-deep-learning.log"
-  local pid_path="$STATE_DIR/runtime/install-deep-learning.pid"
-  (
-    export AI_ASSET_STATE_DIR="$STATE_DIR"
-    export CODEX_HOME="$CODEX_HOME"
-    export AI_ASSET_LANGUAGE="$LANGUAGE"
-    export OPENRELIX_ACTIVITY_SOURCE="$ACTIVITY_SOURCE"
-    exec "$PYTHON_BIN" "$REPO_ROOT/scripts/openrelix.py" \
-      review --stage final --learn-window-days "$LEARNING_REFRESH_WINDOW_DAYS" --jobs "$INSTALL_LEARN_JOBS"
-  ) >>"$log_path" 2>&1 &
-  print -r -- "$!" >"$pid_path"
   if [[ "$LANGUAGE" == "en" ]]; then
-    print -r -- "Deep learning backfill started in the background. Log: $log_path"
+    print -r -- ""
+    print -r -- "Starting serial deep learning backfill for the last ${LEARNING_REFRESH_WINDOW_DAYS} days. Progress will stay visible in this terminal."
   else
-    print -r -- "深度回溯已在后台启动。日志: $log_path"
+    print -r -- ""
+    print -r -- "开始串行深度回溯最近 ${LEARNING_REFRESH_WINDOW_DAYS} 天，进度会继续显示在当前终端。"
+  fi
+  AI_ASSET_STATE_DIR="$STATE_DIR" \
+    CODEX_HOME="$CODEX_HOME" \
+    AI_ASSET_LANGUAGE="$LANGUAGE" \
+    OPENRELIX_ACTIVITY_SOURCE="$ACTIVITY_SOURCE" \
+    "$PYTHON_BIN" "$REPO_ROOT/scripts/openrelix.py" \
+    backfill --days "$LEARNING_REFRESH_WINDOW_DAYS" --stage final --learn-window-days "$LEARNING_REFRESH_WINDOW_DAYS" --jobs "$INSTALL_DEEP_LEARN_JOBS"
+  if [[ "$LANGUAGE" == "en" ]]; then
+    print -r -- ""
+    print -r -- "Deep learning backfill is complete. If the browser panel or OpenRelix app is already open, refresh it manually to see the final memories and summaries."
+  else
+    print -r -- ""
+    print -r -- "深度回溯已完成。如果浏览器面板或 OpenRelix app 已经打开，请手动刷新当前页面或 app，查看终版记忆和日报。"
   fi
 }
 
@@ -1593,9 +1634,9 @@ if (( INTERACTIVE_TTY )) && (( LEARN_AFTER_INSTALL )); then
     if (( LEARNING_REFRESH_WINDOW_DAYS == 0 )); then
       print -r -- "This stores a fast reusable compact layer for today without historical learning."
     elif (( WILL_AUTO_LAUNCH )); then
-      print -r -- "Step 1 stores a reusable lightweight layer; the app opens next, then Step 2 starts deep ${LEARNING_REFRESH_WINDOW_DAYS}-day learning in the background."
+      print -r -- "Step 1 stores a reusable lightweight layer; the app opens next, then Step 2 serially backfills the last ${LEARNING_REFRESH_WINDOW_DAYS} days deeply in this terminal."
     else
-      print -r -- "Step 1 stores a reusable lightweight layer; Step 2 starts deep ${LEARNING_REFRESH_WINDOW_DAYS}-day learning in the background after Step 1."
+      print -r -- "Step 1 stores a reusable lightweight layer; Step 2 serially backfills the last ${LEARNING_REFRESH_WINDOW_DAYS} days deeply in this terminal after Step 1."
     fi
     print -r -- "  $LEARN_MEMORY_COMMAND"
     if (( WILL_AUTO_LAUNCH )); then
@@ -1611,9 +1652,9 @@ if (( INTERACTIVE_TTY )) && (( LEARN_AFTER_INSTALL )); then
     if (( LEARNING_REFRESH_WINDOW_DAYS == 0 )); then
       print -r -- "这会为当天窗口写入可复用轻量层，不做历史学习。"
     elif (( WILL_AUTO_LAUNCH )); then
-      print -r -- "第一步先写入可复用轻量层；随后打开 app，并在后台触发 ${LEARNING_REFRESH_WINDOW_DAYS} 天深度学习。"
+      print -r -- "第一步先写入可复用轻量层；随后打开 app，并在当前终端串行深度回溯最近 ${LEARNING_REFRESH_WINDOW_DAYS} 天。"
     else
-      print -r -- "第一步先写入可复用轻量层；完成后会在后台触发 ${LEARNING_REFRESH_WINDOW_DAYS} 天深度学习。"
+      print -r -- "第一步先写入可复用轻量层；完成后会在当前终端串行深度回溯最近 ${LEARNING_REFRESH_WINDOW_DAYS} 天。"
     fi
     print -r -- "  $LEARN_MEMORY_COMMAND"
     if (( WILL_AUTO_LAUNCH )); then
@@ -1627,9 +1668,13 @@ if (( INTERACTIVE_TTY )) && (( LEARN_AFTER_INSTALL )); then
   LEARN_ANSWER=""
   IFS= read -r LEARN_ANSWER || LEARN_ANSWER=""
   if ! is_no_answer "$LEARN_ANSWER"; then
-    run_post_install_shallow_learning || true
+    if run_post_install_shallow_learning; then
+      print_post_install_shallow_ready
+    else
+      print_post_install_shallow_failed
+    fi
     launch_app_after_shallow_learning
-    start_post_install_deep_learning
+    run_post_install_deep_learning
   fi
 fi
 

@@ -174,8 +174,8 @@ def build_parser():
         type=int,
         default=1,
         help=localized(
-            "补齐历史 final summary 时的并发数，当前最大 2；目标日期仍串行整理。",
-            "Concurrency for backfilling historical final summaries, currently capped at 2; the target date still runs serially.",
+            "补齐历史 preliminary summary 时的并发数，当前最大 2；final 终版整理始终串行。",
+            "Concurrency for backfilling historical preliminary summaries, currently capped at 2; final organization always runs serially.",
         ),
     )
 
@@ -242,8 +242,8 @@ def build_parser():
         type=int,
         default=1,
         help=localized(
-            "并发回溯天数，当前最大 2；仅在 --learn-window-days 0 且全局刷新延后时并发。",
-            "Number of dates to backfill concurrently, currently capped at 2; only parallelizes when --learn-window-days is 0 and global refresh is deferred.",
+            "并发回溯天数，当前最大 2；preliminary 可并发，final 终版目标日期会串行整理。",
+            "Number of dates to backfill concurrently, currently capped at 2; preliminary can run concurrently, while final target dates are organized serially.",
         ),
     )
     backfill.add_argument(
@@ -855,6 +855,12 @@ def normalize_backfill_jobs(value):
     return max(1, min(jobs, MAX_BACKFILL_JOBS))
 
 
+def effective_backfill_jobs(stage, jobs):
+    if stage == "final":
+        return 1
+    return normalize_backfill_jobs(jobs)
+
+
 def review_summary_needs_run(date_str, requested_stage, force=False):
     summary_json_path, summary_md_path = review_summary_paths(date_str)
     info = {
@@ -990,7 +996,28 @@ def run_warning_only(cmd, warning):
     return False
 
 
-def run_checked_with_progress(cmd, progress_messages, interval_seconds=20, reminder_seconds=60):
+def run_warning_only_with_progress(cmd, warning, progress_messages):
+    try:
+        run_checked_with_progress(
+            cmd,
+            progress_messages,
+            reminder_zh="仍在刷新: 已等待约 {} 分钟，当前同步步骤仍在运行。",
+            reminder_en="Still refreshing: waited about {} minutes; the current sync step is still running.",
+        )
+        return True
+    except subprocess.CalledProcessError:
+        print(warning, file=sys.stderr)
+        return False
+
+
+def run_checked_with_progress(
+    cmd,
+    progress_messages,
+    interval_seconds=20,
+    reminder_seconds=60,
+    reminder_zh="仍在整理: 已等待约 {} 分钟，子流程仍在运行。",
+    reminder_en="Still organizing: waited about {} minutes; the subprocess is still running.",
+):
     process = subprocess.Popen(
         cmd,
         cwd=str(REPO_ROOT),
@@ -1019,8 +1046,8 @@ def run_checked_with_progress(cmd, progress_messages, interval_seconds=20, remin
                     elapsed_minutes = max(1, int(round(elapsed / 60.0)))
                     print(
                         localized(
-                            "仍在整理: 已等待约 {} 分钟，子流程仍在运行。".format(elapsed_minutes),
-                            "Still organizing: waited about {} minutes; the subprocess is still running.".format(elapsed_minutes),
+                            reminder_zh.format(elapsed_minutes),
+                            reminder_en.format(elapsed_minutes),
                         ),
                         flush=True,
                     )
@@ -1299,19 +1326,34 @@ def ensure_overview_snapshot():
     return overview_path
 
 
-def rebuild_sqlite_index_if_available():
+def rebuild_sqlite_index_if_available(verbose=False):
     if os.environ.get("OPENRELIX_DISABLE_SQLITE_INDEX_REBUILD", "0") == "1":
         return
     index_script = REPO_ROOT / "scripts" / "openrelix_index.py"
     if not index_script.exists():
         return
-    run_warning_only(
-        [sys.executable, str(index_script), "rebuild"],
-        "openrelix: sqlite index rebuild failed; JSONL/raw outputs remain authoritative.",
-    )
+    cmd = [sys.executable, str(index_script), "rebuild"]
+    warning = "openrelix: sqlite index rebuild failed; JSONL/raw outputs remain authoritative."
+    if verbose:
+        run_warning_only_with_progress(
+            cmd,
+            warning,
+            [
+                localized(
+                    "仍在刷新: 正在重建搜索索引，历史窗口较多时可能需要几分钟。",
+                    "Still refreshing: rebuilding the search index; this may take a few minutes with many historical windows.",
+                ),
+                localized(
+                    "仍在刷新: 索引重建还在运行，完成后会继续同步摘要和面板。",
+                    "Still refreshing: index rebuild is still running; summary and panel sync will continue afterward.",
+                ),
+            ],
+        )
+        return
+    run_warning_only(cmd, warning)
 
 
-def build_codex_native_display_cache_if_enabled():
+def build_codex_native_display_cache_if_enabled(verbose=False):
     display_polish = os.environ.get("OPENRELIX_ENABLE_NATIVE_DISPLAY_POLISH", "auto").strip().lower()
     if display_polish in {"0", "false", "no", "off", "disabled"}:
         return
@@ -1323,27 +1365,137 @@ def build_codex_native_display_cache_if_enabled():
         return
     if not BUILD_CODEX_NATIVE_DISPLAY_CACHE_SCRIPT.exists():
         return
-    run_warning_only(
-        [sys.executable, str(BUILD_CODEX_NATIVE_DISPLAY_CACHE_SCRIPT)],
-        "openrelix: codex native display polish failed; using source-text fallback.",
-    )
-
-
-def sync_review_outputs(include_index=False, include_native_display=False):
-    if include_index:
-        rebuild_sqlite_index_if_available()
-    if get_memory_mode(PATHS) == "integrated":
-        run_checked_quiet(
+    cmd = [sys.executable, str(BUILD_CODEX_NATIVE_DISPLAY_CACHE_SCRIPT)]
+    warning = "openrelix: codex native display polish failed; using source-text fallback."
+    if verbose:
+        run_warning_only_with_progress(
+            cmd,
+            warning,
             [
-                sys.executable,
-                str(BUILD_CODEX_MEMORY_SUMMARY_SCRIPT),
-                "--memory-summary",
-                str(PATHS.codex_home / "memories" / "memory_summary.md"),
-            ]
+                localized(
+                    "仍在刷新: 正在整理中文记忆卡展示缓存。",
+                    "Still refreshing: polishing the Chinese memory-card display cache.",
+                ),
+                localized(
+                    "仍在刷新: 展示缓存还在生成，完成后会继续重建面板。",
+                    "Still refreshing: display cache generation is still running; panel rebuild will continue afterward.",
+                ),
+            ],
+        )
+        return
+    run_warning_only(cmd, warning)
+
+
+def sync_review_outputs(include_index=False, include_native_display=False, verbose=False):
+    if verbose:
+        print(
+            localized(
+                "刷新提示: 最后同步会更新搜索索引、Codex context 摘要和面板；历史数据较多时可能需要几分钟，请保持终端打开。",
+                "Refresh note: final sync updates the search index, Codex context summary, and panel; with more history this can take a few minutes, so keep this terminal open.",
+            ),
+            flush=True,
+        )
+    if include_index:
+        if verbose:
+            print(localized("刷新中 [1/4]: 重建搜索索引。", "Refreshing [1/4]: rebuilding the search index."), flush=True)
+        rebuild_sqlite_index_if_available(verbose=verbose)
+    if get_memory_mode(PATHS) == "integrated":
+        if verbose:
+            print(
+                localized(
+                    "刷新中 [2/4]: 更新 Codex context 摘要。",
+                    "Refreshing [2/4]: updating the Codex context summary.",
+                ),
+                flush=True,
+            )
+        cmd = [
+            sys.executable,
+            str(BUILD_CODEX_MEMORY_SUMMARY_SCRIPT),
+            "--memory-summary",
+            str(PATHS.codex_home / "memories" / "memory_summary.md"),
+        ]
+        if verbose:
+            run_checked_with_progress(
+                cmd,
+                [
+                    localized(
+                        "仍在刷新: 正在汇总可注入 Codex 的记忆摘要。",
+                        "Still refreshing: building the memory summary that Codex can inject.",
+                    ),
+                    localized(
+                        "仍在刷新: Codex context 摘要还在生成，完成后会继续更新面板。",
+                        "Still refreshing: Codex context summary is still being generated; panel update will continue afterward.",
+                    ),
+                ],
+                reminder_zh="仍在刷新: 已等待约 {} 分钟，Codex context 摘要仍在生成。",
+                reminder_en="Still refreshing: waited about {} minutes; Codex context summary is still being generated.",
+            )
+        else:
+            run_checked_quiet(cmd)
+    elif verbose:
+        print(
+            localized(
+                "刷新中 [2/4]: 当前未启用 integrated 记忆模式，跳过 Codex context 摘要。",
+                "Refreshing [2/4]: integrated memory mode is not enabled; skipping Codex context summary.",
+            ),
+            flush=True,
+        )
+    if include_native_display and verbose:
+        print(
+            localized(
+                "刷新中 [3/4]: 更新记忆卡展示缓存。",
+                "Refreshing [3/4]: updating memory-card display cache.",
+            ),
+            flush=True,
         )
     if include_native_display:
-        build_codex_native_display_cache_if_enabled()
-    run_checked_quiet([sys.executable, str(BUILD_OVERVIEW_SCRIPT)])
+        build_codex_native_display_cache_if_enabled(verbose=verbose)
+    elif verbose:
+        print(
+            localized(
+                "刷新中 [3/4]: 跳过记忆卡展示缓存。",
+                "Refreshing [3/4]: skipping memory-card display cache.",
+            ),
+            flush=True,
+        )
+    if verbose:
+        print(localized("刷新中 [4/4]: 重建 overview 和面板。", "Refreshing [4/4]: rebuilding overview and panel."), flush=True)
+    cmd = [sys.executable, str(BUILD_OVERVIEW_SCRIPT)]
+    if verbose:
+        run_checked_with_progress(
+            cmd,
+            [
+                localized(
+                    "仍在刷新: 正在生成 overview 数据和 panel.html。",
+                    "Still refreshing: generating overview data and panel.html.",
+                ),
+                localized(
+                    "仍在刷新: 面板重建还在运行，完成后会显示最终结果。",
+                    "Still refreshing: panel rebuild is still running; final results will be available afterward.",
+                ),
+            ],
+            reminder_zh="仍在刷新: 已等待约 {} 分钟，面板重建仍在运行。",
+            reminder_en="Still refreshing: waited about {} minutes; panel rebuild is still running.",
+        )
+        print(
+            localized(
+                "刷新完成: 面板和摘要已更新；如果浏览器面板或 OpenRelix app 已经打开，请手动刷新当前页面或 app。",
+                "Refresh complete: panel and summary are updated; if the browser panel or OpenRelix app is already open, refresh it manually.",
+            ),
+            flush=True,
+        )
+    else:
+        run_checked_quiet(cmd)
+
+
+def print_preliminary_ready_message():
+    print("")
+    print(
+        localized(
+            "轻度回溯已完成，OpenRelix 现在可以先使用了；如果浏览器面板或 app 已经打开，手动刷新即可看到快速总结。后续深度回溯会继续补全更准确的终版记忆和日报。",
+            "Lightweight backfill is complete. OpenRelix is ready to use now; if the browser panel or app is already open, refresh it to see the quick summary. A later deep backfill will fill in more accurate final memories and daily summaries.",
+        )
+    )
 
 
 def load_json(path):
@@ -2205,7 +2357,7 @@ def command_review(args):
             pipeline_error = exc
     if not args.json:
         print(localized("刷新中: 同步 Codex context 摘要和面板。", "Refreshing: syncing Codex context summary and panel."))
-    sync_review_outputs(include_index=True, include_native_display=True)
+    sync_review_outputs(include_index=True, include_native_display=True, verbose=not args.json)
     if not args.json:
         print(localized("生成完成: 读取摘要。", "Generation complete: reading summary."))
     summary_json_path, summary_md_path = review_summary_paths(args.date)
@@ -2255,6 +2407,8 @@ def command_review(args):
         print("- review: {}".format(summary_md_path))
         print("- panel: {}".format(REPORTS_DIR / "panel.html"))
         print("- overview: {}".format(REPORTS_DIR / "overview.md"))
+        if args.stage == "preliminary" and not failure_exit_code:
+            print_preliminary_ready_message()
         if model_failed:
             print("")
             print_model_failure_warning(summary, args.date)
@@ -2329,7 +2483,7 @@ def run_backfill_dates(
         precollect_learning_window_sources(runnable_dates, learn_window_days, verbose=verbose)
         skip_learning_collect = True
 
-    parallel_jobs = normalize_backfill_jobs(jobs)
+    parallel_jobs = effective_backfill_jobs(stage, jobs)
     can_parallelize = (
         parallel_jobs > 1
         and learn_window_days <= 0
@@ -2487,8 +2641,11 @@ def command_backfill(args):
         print(localized("回溯开始", "Backfill started"))
         print("{}: {} -> {}".format(localized("日期范围", "Date range"), dates[0], dates[-1]))
         print("{}: {}".format(localized("阶段", "Stage"), args.stage))
-        if normalize_backfill_jobs(args.jobs) > 1:
-            print("{}: {}".format(localized("并发", "Jobs"), normalize_backfill_jobs(args.jobs)))
+        effective_jobs = effective_backfill_jobs(args.stage, args.jobs)
+        if effective_jobs > 1:
+            print("{}: {}".format(localized("并发", "Jobs"), effective_jobs))
+        elif args.stage == "final" and normalize_backfill_jobs(args.jobs) > 1:
+            print(localized("深度 final 回溯将按串行执行。", "Final deep backfill will run serially."))
         if args.learn_window_days > 0:
             print("{}: {} days".format(localized("窗口学习", "Window learning"), args.learn_window_days))
 
@@ -2508,11 +2665,11 @@ def command_backfill(args):
         if not args.json:
             print(
                 localized(
-                    "刷新中: 汇总更新索引、Codex context 摘要和面板。",
-                    "Refreshing: updating index, Codex context summary, and panel once.",
+                    "刷新中: 汇总更新索引、Codex context 摘要和面板；这一步可能需要几分钟。",
+                    "Refreshing: updating index, Codex context summary, and panel once; this may take a few minutes.",
                 )
             )
-        sync_review_outputs(include_index=True, include_native_display=True)
+        sync_review_outputs(include_index=True, include_native_display=True, verbose=not args.json)
 
     if args.json:
         print_json({"dates": results})
@@ -2536,6 +2693,8 @@ def command_backfill(args):
     )
     print("- panel: {}".format(REPORTS_DIR / "panel.html"))
     print("- overview: {}".format(REPORTS_DIR / "overview.md"))
+    if args.stage == "preliminary" and completed and not failed_results:
+        print_preliminary_ready_message()
     if failed_results:
         print("")
         print(localized("失败日期", "Failed dates"))

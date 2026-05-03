@@ -525,6 +525,10 @@ class NightlyLogicTests(unittest.TestCase):
             nightly_consolidate.CODEX_BIN = old_codex_bin
             nightly_consolidate.SCHEMA_PATH = old_schema_path
 
+    def test_default_codex_exec_timeout_is_30_minutes(self):
+        with mock.patch.dict(os.environ, {"OPENRELIX_CODEX_EXEC_TIMEOUT_SECONDS": ""}, clear=False):
+            self.assertEqual(nightly_consolidate.default_codex_exec_timeout_seconds(), 30 * 60)
+
     def test_openrelix_help_uses_runtime_language(self):
         with mock.patch.object(openrelix, "LANGUAGE", "zh"):
             help_text = openrelix.build_parser().format_help()
@@ -5607,7 +5611,7 @@ scope: Release checklist, package manifest, and public website validation.
         self.assertIn("npx openrelix@latest install --enable-learning-refresh", showcase)
         self.assertNotIn("npx openrelix install --profile integrated --enable-learning-refresh", showcase)
         self.assertNotIn("npx openrelix install --profile integrated --enable-learning-refresh --read-codex-app", showcase)
-        self.assertIn("openrelix review --stage final --learn-window-days 7", showcase)
+        self.assertIn("openrelix backfill --days 7 --stage final --learn-window-days 7", showcase)
         self.assertNotIn(
             '<code class="command-code">openrelix refresh --learn-memory --learn-window-days 7</code>',
             showcase,
@@ -5615,8 +5619,14 @@ scope: Release checklist, package manifest, and public website validation.
         self.assertNotIn("<h3>开启 30 分钟自动学习（推荐）</h3>", showcase)
         self.assertIn("--enable-learning-refresh", installer)
         self.assertIn("backfill --days %s --stage preliminary --learn-window-days 0 --jobs %s", installer)
-        self.assertIn('review --stage final --learn-window-days "$LEARNING_REFRESH_WINDOW_DAYS" --jobs "$INSTALL_LEARN_JOBS"', installer)
-        self.assertIn("深度回溯已在后台启动。日志:", installer)
+        self.assertIn('INSTALL_DEEP_LEARN_JOBS=1', installer)
+        self.assertIn('backfill --days "$LEARNING_REFRESH_WINDOW_DAYS" --stage final --learn-window-days "$LEARNING_REFRESH_WINDOW_DAYS" --jobs "$INSTALL_DEEP_LEARN_JOBS"', installer)
+        self.assertIn("开始串行深度回溯最近 ${LEARNING_REFRESH_WINDOW_DAYS} 天，进度会继续显示在当前终端。", installer)
+        self.assertIn("backfills the last ${LEARNING_REFRESH_WINDOW_DAYS} days deeply in this terminal", installer)
+        self.assertIn("请手动刷新当前页面或 app", installer)
+        self.assertIn("浅度回溯已完成，OpenRelix 现在可以先使用了", installer)
+        self.assertIn("Lightweight backfill is complete. OpenRelix is ready to use now", installer)
+        self.assertNotIn("深度回溯已在后台启动。日志:", installer)
         self.assertIn("写入可复用压缩层", installer)
         self.assertIn('if [[ -n "$DEEP_LEARN_MEMORY_COMMAND" ]]; then', installer)
         self.assertIn("--no-learn                    Skip the post-install prompt for two-step memory backfill.", installer)
@@ -6136,7 +6146,7 @@ scope: Release checklist, package manifest, and public website validation.
                 self.assertIn("--defer-global-refresh", command)
                 self.assertIn("--skip-learning-collect", command)
 
-    def test_backfill_jobs_parallelize_only_shallow_deferred_runs(self):
+    def test_backfill_jobs_parallelize_deferred_independent_dates(self):
         with TemporaryDirectory() as tmpdir:
             consolidated_daily_dir = Path(tmpdir) / "consolidated" / "daily"
             pipeline_calls = []
@@ -6151,7 +6161,7 @@ scope: Release checklist, package manifest, and public website validation.
             ), mock.patch("sys.stdout", new_callable=io.StringIO):
                 results = openrelix.run_backfill_dates(
                     ["2026-04-28", "2026-04-29"],
-                    "final",
+                    "preliminary",
                     learn_window_days=0,
                     force=False,
                     ensure_learning_final=True,
@@ -6163,9 +6173,57 @@ scope: Release checklist, package manifest, and public website validation.
             self.assertEqual([item["date"] for item in results], ["2026-04-28", "2026-04-29"])
             self.assertEqual(len(pipeline_calls), 2)
             self.assertEqual(openrelix.normalize_backfill_jobs(9), 2)
+            self.assertEqual(openrelix.effective_backfill_jobs("preliminary", 9), 2)
+            self.assertEqual(openrelix.effective_backfill_jobs("final", 9), 1)
             for command in pipeline_calls:
                 self.assertIn("--defer-global-refresh", command)
                 self.assertIn("--skip-if-unchanged", command)
+
+    def test_backfill_final_with_learning_runs_serially_after_shared_precollection(self):
+        with TemporaryDirectory() as tmpdir:
+            consolidated_daily_dir = Path(tmpdir) / "consolidated" / "daily"
+            pipeline_calls = []
+            precollect_calls = []
+
+            def fake_run_checked_with_progress(cmd, progress_messages, interval_seconds=20, reminder_seconds=60):
+                pipeline_calls.append(cmd)
+
+            def fake_precollect(date_strs, learn_window_days, verbose=True):
+                precollect_calls.append((date_strs, learn_window_days, verbose))
+                return []
+
+            with mock.patch.object(openrelix, "CONSOLIDATED_DAILY_DIR", consolidated_daily_dir), mock.patch.object(
+                openrelix,
+                "resolve_learning_backfill_dates_for_targets",
+                return_value=[],
+            ), mock.patch.object(
+                openrelix,
+                "precollect_learning_window_sources",
+                side_effect=fake_precollect,
+            ), mock.patch.object(
+                openrelix,
+                "run_checked_with_progress",
+                side_effect=fake_run_checked_with_progress,
+            ), mock.patch("sys.stdout", new_callable=io.StringIO) as stdout:
+                results = openrelix.run_backfill_dates(
+                    ["2026-04-28", "2026-04-29"],
+                    "final",
+                    learn_window_days=7,
+                    force=False,
+                    ensure_learning_final=True,
+                    defer_global_refresh=True,
+                    verbose=True,
+                    jobs=2,
+                )
+
+            self.assertEqual([item["date"] for item in results], ["2026-04-28", "2026-04-29"])
+            self.assertEqual(precollect_calls, [(["2026-04-28", "2026-04-29"], 7, True)])
+            self.assertNotIn("并发回溯: jobs=2", stdout.getvalue())
+            self.assertEqual(len(pipeline_calls), 2)
+            for command in pipeline_calls:
+                self.assertIn("--defer-global-refresh", command)
+                self.assertIn("--skip-learning-collect", command)
+                self.assertIn("--learn-window-days", command)
 
     def test_progress_runner_stops_child_tree_on_keyboard_interrupt(self):
         class InterruptingProcess:
@@ -6330,7 +6388,47 @@ scope: Release checklist, package manifest, and public website validation.
         self.assertEqual(calls[0][0], "backfill")
         self.assertIs(calls[0][6], True)
         self.assertEqual(calls[0][8], 2)
-        self.assertEqual(calls[1], ("refresh", {"include_index": True, "include_native_display": True}))
+        self.assertEqual(calls[1], ("refresh", {"include_index": True, "include_native_display": True, "verbose": True}))
+
+    def test_backfill_final_refresh_progress_sets_user_expectations(self):
+        source = (ROOT / "scripts" / "openrelix.py").read_text(encoding="utf-8")
+
+        self.assertIn("这一步可能需要几分钟", source)
+        self.assertIn("刷新提示: 最后同步会更新搜索索引、Codex context 摘要和面板", source)
+        self.assertIn("仍在刷新: 已等待约 {} 分钟", source)
+        self.assertIn("请手动刷新当前页面或 app", source)
+
+    def test_preliminary_backfill_tells_user_it_is_ready_to_use(self):
+        args = argparse.Namespace(
+            dates="2026-04-28",
+            date_from=None,
+            date_to="2026-04-28",
+            days=0,
+            stage="preliminary",
+            learn_window_days=0,
+            force=False,
+            json=False,
+            jobs=1,
+        )
+        with mock.patch.object(
+            openrelix,
+            "run_backfill_dates",
+            return_value=[
+                {
+                    "date": "2026-04-28",
+                    "status": "completed",
+                    "summary_json": "",
+                    "summary_md": "",
+                }
+            ],
+        ), mock.patch.object(openrelix, "sync_review_outputs"), mock.patch(
+            "sys.stdout",
+            new_callable=io.StringIO,
+        ) as stdout:
+            openrelix.command_backfill(args)
+
+        self.assertIn("OpenRelix 现在可以先使用了", stdout.getvalue())
+        self.assertIn("手动刷新即可看到快速总结", stdout.getvalue())
 
     def test_command_backfill_syncs_outputs_and_exits_when_deferred_pipeline_fails(self):
         calls = []
@@ -6382,7 +6480,7 @@ scope: Release checklist, package manifest, and public website validation.
 
         self.assertEqual(raised.exception.code, 2)
         self.assertEqual(calls[0], ("backfill", True, 2))
-        self.assertEqual(calls[1], ("refresh", {"include_index": True, "include_native_display": True}))
+        self.assertEqual(calls[1], ("refresh", {"include_index": True, "include_native_display": True, "verbose": True}))
 
     def test_command_backfill_final_ensures_preliminary_without_deepening_learning_dependencies(self):
         with TemporaryDirectory() as tmpdir:
@@ -6446,7 +6544,7 @@ scope: Release checklist, package manifest, and public website validation.
             self.assertEqual(calls[1], ("precollect", ["2026-04-28"], 7, True))
             self.assertEqual(calls[2][0], "pipeline")
             self.assertEqual(calls[2][1][2:4], ["2026-04-28", "final"])
-            self.assertEqual(calls[3], ("refresh", {"include_index": True, "include_native_display": True}))
+            self.assertEqual(calls[3], ("refresh", {"include_index": True, "include_native_display": True, "verbose": True}))
 
     def test_review_syncs_summary_and_panel_after_pipeline(self):
         with TemporaryDirectory() as tmpdir:
@@ -6496,7 +6594,7 @@ scope: Release checklist, package manifest, and public website validation.
                 openrelix.command_review(args)
 
             self.assertEqual([item[0] for item in calls], ["pipeline", "refresh"])
-            self.assertEqual(calls[1][1], {"include_index": True, "include_native_display": True})
+            self.assertEqual(calls[1][1], {"include_index": True, "include_native_display": True, "verbose": True})
 
     def test_review_syncs_outputs_when_deferred_pipeline_exits_after_fallback_summary(self):
         with TemporaryDirectory() as tmpdir:
@@ -6554,7 +6652,7 @@ scope: Release checklist, package manifest, and public website validation.
 
             self.assertEqual(raised.exception.code, 1)
             self.assertEqual([item[0] for item in calls], ["pipeline", "refresh"])
-            self.assertEqual(calls[1][1], {"include_index": True, "include_native_display": True})
+            self.assertEqual(calls[1][1], {"include_index": True, "include_native_display": True, "verbose": True})
 
     def test_review_final_ensures_preliminary_without_historical_final_sync(self):
         with TemporaryDirectory() as tmpdir:
@@ -6646,7 +6744,7 @@ scope: Release checklist, package manifest, and public website validation.
             self.assertEqual(calls[0], ("backfill", ["2026-04-21"], "preliminary", 0, False, True, 2))
             self.assertEqual(calls[1], ("precollect", ["2026-04-28"], 7, True))
             self.assertEqual(calls[2][0], "pipeline")
-            self.assertEqual(calls[3], ("refresh", {"include_index": True, "include_native_display": True}))
+            self.assertEqual(calls[3], ("refresh", {"include_index": True, "include_native_display": True, "verbose": True}))
 
     def test_review_json_syncs_outputs_without_polluting_json(self):
         with TemporaryDirectory() as tmpdir:
@@ -6694,7 +6792,7 @@ scope: Release checklist, package manifest, and public website validation.
                 openrelix.command_review(args)
 
             self.assertEqual([item[0] for item in calls], ["pipeline", "refresh"])
-            self.assertEqual(calls[1][1], {"include_index": True, "include_native_display": True})
+            self.assertEqual(calls[1][1], {"include_index": True, "include_native_display": True, "verbose": False})
             self.assertEqual(calls[0][2], [])
             payload = json.loads(stdout.getvalue())
             self.assertEqual(payload["day_summary"], "json ok")
@@ -6724,6 +6822,42 @@ scope: Release checklist, package manifest, and public website validation.
         self.assertIn("缺少整理结果", html)
         self.assertIn("openrelix backfill --from 2026-04-24 --to 2026-04-24", html)
         self.assertIn("data-backfill-copy=\"single\"", html)
+
+    def test_nightly_summary_panel_shows_final_backfill_command_for_preliminary_date(self):
+        summary_view = build_overview.build_daily_summary_view(
+            {
+                "date": "2026-04-24",
+                "stage": "preliminary",
+                "day_summary": "轻量整理完成：读取 2 个窗口。",
+                "raw_window_count": 2,
+                "durable_memories": [],
+                "session_memories": [1],
+                "low_priority_memories": [],
+            },
+            {"window_count": 2},
+            [],
+        )
+        html = build_overview.make_nightly_summary_panel(
+            "每日整理结果",
+            "2026-04-24 · 预览",
+            "",
+            {},
+            {"window_count": 2},
+            [],
+            summary_views=[summary_view],
+            selected_date="2026-04-24",
+            selectable_dates=["2026-04-24"],
+            backfill={
+                "missing_dates": [],
+                "learn_window_days": 7,
+                "range_command": "",
+                "commands_by_date": {},
+            },
+        )
+
+        self.assertIn("建议深度回溯", html)
+        self.assertIn("当前是轻量整理，日报和记忆可能不准确", html)
+        self.assertIn("openrelix backfill --from 2026-04-24 --to 2026-04-24 --stage final", html)
 
     def test_build_html_wires_window_overview_date_views(self):
         html = build_overview.build_html(
@@ -6909,6 +7043,30 @@ scope: Release checklist, package manifest, and public website validation.
         self.assertIn('getLocalizedSummaryList(summary, "detail_parts")', html)
         self.assertIn('getLocalizedSummaryList(summary, "context_labels")', html)
         self.assertIn('getLocalizedSummaryText(summary, "note_text")', html)
+
+    def test_preliminary_daily_summary_view_prompts_final_backfill(self):
+        view = build_overview.build_daily_summary_view(
+            {
+                "date": "2026-04-27",
+                "stage": "preliminary",
+                "day_summary": "轻量整理完成：读取 2 个窗口。",
+                "raw_window_count": 2,
+                "durable_memories": [],
+                "session_memories": [1],
+                "low_priority_memories": [],
+            },
+            {"window_count": 2},
+            [],
+        )
+
+        self.assertIn("日报和记忆可能不准确", view["note_text"])
+        self.assertFalse(
+            any(
+                "openrelix backfill --from 2026-04-27 --to 2026-04-27 --stage final" in item
+                for item in view["detail_parts"]
+            )
+        )
+        self.assertFalse(any("may be inaccurate" in item for item in view["detail_parts_en"]))
 
     def test_daily_token_panel_uses_bar_rows_newest_first(self):
         rows = [
@@ -7586,9 +7744,13 @@ scope: Release checklist, package manifest, and public website validation.
                 self.assertEqual(summary["model_status"], "skipped_lightweight")
                 self.assertEqual(summary["summary_generation"], "lightweight")
                 self.assertEqual(summary["compact_payload_source"], "fresh")
+                self.assertIn("轻量日报", summary["day_summary"])
+                self.assertNotIn("可能不准确", summary["day_summary"])
+                self.assertIn("openrelix backfill --from 2026-04-28 --to 2026-04-28", summary["next_actions"][0])
                 self.assertEqual(summary["window_summaries"][0]["main_takeaway"], "轻量层要给 final 复用")
-                self.assertEqual(summary["session_memories"][0]["source_window_ids"], ["w1"])
-                self.assertEqual(registry_rows[0]["bucket"], "session")
+                self.assertGreater(len(summary["window_summaries"][0]["keywords"]), 1)
+                self.assertEqual(summary["durable_memories"][0]["source_window_ids"], ["w1"])
+                self.assertEqual(registry_rows[0]["bucket"], "durable")
         finally:
             nightly_consolidate.RAW_DIR = old_raw_dir
             nightly_consolidate.CONSOLIDATED_DIR = old_consolidated_dir
@@ -7597,6 +7759,122 @@ scope: Release checklist, package manifest, and public website validation.
             nightly_consolidate.LANGUAGE = old_language
             nightly_consolidate.MEMORY_MODE = old_memory_mode
             nightly_consolidate.PERSONAL_MEMORY_ENABLED = old_personal_memory_enabled
+
+    def test_lightweight_summary_memory_limit_scales_with_window_count(self):
+        windows = []
+        for index in range(30):
+            windows.append(
+                {
+                    "window_id": "w{}".format(index),
+                    "cwd": "/tmp/project-{}".format(index % 3),
+                    "prompt_count": 1,
+                    "conclusion_count": 1,
+                    "prompt_cluster_count": 1,
+                    "conclusion_cluster_count": 1,
+                    "prompt_samples": ["问题 {}".format(index)],
+                    "conclusion_samples": ["结论 {}".format(index)],
+                }
+            )
+        raw_payload = {
+            "date": "2026-04-28",
+            "window_count": len(windows),
+            "prompt_count": len(windows),
+            "conclusion_count": len(windows),
+        }
+        compact_payload = {
+            **raw_payload,
+            "windows": windows,
+        }
+
+        summary = nightly_consolidate.build_lightweight_summary(
+            raw_payload,
+            compact_payload,
+            language="zh",
+        )
+
+        self.assertEqual(
+            len(summary["durable_memories"]) + len(summary["session_memories"]) + len(summary["low_priority_memories"]),
+            nightly_consolidate.LIGHTWEIGHT_SESSION_MEMORY_MAX,
+        )
+        self.assertEqual(len(summary["durable_memories"]), nightly_consolidate.LIGHTWEIGHT_DURABLE_MEMORY_MAX)
+        self.assertEqual(len(summary["low_priority_memories"]), 4)
+        self.assertEqual(summary["lightweight_memory_candidate_count"], 30)
+        self.assertEqual(summary["lightweight_memory_limit"], nightly_consolidate.LIGHTWEIGHT_SESSION_MEMORY_MAX)
+        self.assertEqual(summary["lightweight_durable_memory_limit"], nightly_consolidate.LIGHTWEIGHT_DURABLE_MEMORY_MAX)
+        self.assertEqual(summary["lightweight_low_priority_memory_limit"], 4)
+        self.assertEqual(summary["lightweight_summary_version"], 6)
+
+    def test_lightweight_summary_keeps_tail_candidates_as_low_priority(self):
+        windows = []
+        for index in range(6):
+            windows.append(
+                {
+                    "window_id": "w{}".format(index),
+                    "cwd": "/tmp/project",
+                    "prompt_count": 1,
+                    "conclusion_count": 1 if index < 3 else 0,
+                    "prompt_cluster_count": 1,
+                    "conclusion_cluster_count": 1 if index < 3 else 0,
+                    "prompt_samples": ["低优先候选 {}".format(index)],
+                    "conclusion_samples": ["可复用结论 {}".format(index)] if index < 3 else [],
+                }
+            )
+        raw_payload = {
+            "date": "2026-04-28",
+            "window_count": len(windows),
+            "prompt_count": len(windows),
+            "conclusion_count": 3,
+        }
+        compact_payload = {**raw_payload, "windows": windows}
+
+        summary = nightly_consolidate.build_lightweight_summary(
+            raw_payload,
+            compact_payload,
+            language="zh",
+        )
+
+        self.assertGreater(len(summary["low_priority_memories"]), 0)
+        self.assertEqual(summary["low_priority_memories"][0]["priority"], "low")
+        self.assertTrue(summary["low_priority_memories"][0]["title"].startswith("轻量待查"))
+
+    def test_lightweight_summary_keywords_keep_window_terms(self):
+        raw_payload = {
+            "date": "2026-04-30",
+            "window_count": 1,
+            "prompt_count": 3,
+            "conclusion_count": 3,
+        }
+        compact_payload = {
+            **raw_payload,
+            "windows": [
+                {
+                    "window_id": "w-camera",
+                    "cwd": "/tmp/Douyin",
+                    "prompt_count": 3,
+                    "conclusion_count": 3,
+                    "prompt_cluster_count": 1,
+                    "conclusion_cluster_count": 1,
+                    "prompt_samples": [
+                        "长按相机拍摄按钮后，我需要屏蔽除了按钮上方提示区外的全部UI，包括相机的实时tag、tab栏、工具区、关闭按钮等等元素，帮我设计技术方案，做独立审阅，然后实现，再独立审阅代码和走自测。"
+                    ],
+                    "conclusion_samples": ["相机页已经打开，可以用 wrangler 看看。"],
+                }
+            ],
+        }
+
+        summary = nightly_consolidate.build_lightweight_summary(
+            raw_payload,
+            compact_payload,
+            language="zh",
+        )
+        keywords = summary["window_summaries"][0]["keywords"]
+
+        self.assertEqual(
+            keywords[:8],
+            ["Douyin", "长按相机拍摄按钮", "按钮上方提示区", "全部UI", "实时tag", "tab栏", "工具区", "关闭按钮"],
+        )
+        self.assertIn("全部UI", summary["keywords"])
+        self.assertEqual(summary["durable_memories"][0]["keywords"][:4], keywords[:4])
 
     def test_final_consolidate_reuses_lightweight_compact_artifact(self):
         old_raw_dir = nightly_consolidate.RAW_DIR

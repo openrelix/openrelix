@@ -58,12 +58,17 @@ SPARSE_WINDOW_THRESHOLD = 3
 SPARSE_PROMPT_THRESHOLD = 12
 SPARSE_CONCLUSION_THRESHOLD = 4
 STAGE_PRIORITY = {"manual": 0, "preliminary": 1, "final": 2}
-DEFAULT_CODEX_EXEC_TIMEOUT_SECONDS = 15 * 60
+DEFAULT_CODEX_EXEC_TIMEOUT_SECONDS = 30 * 60
 CODEX_EXEC_TIMEOUT_RETURN_CODE = 124
 COMPACT_PAYLOAD_CACHE_VERSION = 1
 DAILY_COMPACT_ARTIFACT_VERSION = 1
-LIGHTWEIGHT_SUMMARY_VERSION = 1
-LIGHTWEIGHT_SESSION_MEMORY_LIMIT = 3
+LIGHTWEIGHT_SUMMARY_VERSION = 6
+LIGHTWEIGHT_SESSION_MEMORY_MIN = 3
+LIGHTWEIGHT_SESSION_MEMORY_MAX = 24
+LIGHTWEIGHT_DURABLE_MEMORY_MAX = 8
+LIGHTWEIGHT_LOW_PRIORITY_MEMORY_MAX = 8
+LIGHTWEIGHT_WINDOW_KEYWORD_LIMIT = 8
+LIGHTWEIGHT_DAILY_KEYWORD_LIMIT = 16
 RECENT_WINDOW_LEARNING_CACHE_VERSION = 1
 _COMPACT_PAYLOAD_CACHE = {}
 _RECENT_WINDOW_LEARNING_CACHE = {}
@@ -1581,6 +1586,7 @@ def build_learning_input_fingerprint(
         "personal_memory_enabled": PERSONAL_MEMORY_ENABLED,
         "codex_model": CODEX_MODEL,
         "learn_window_days": max(learn_window_days, 0),
+        "lightweight_summary_version": LIGHTWEIGHT_SUMMARY_VERSION,
         "daily_compact_payload": compact_payload,
         "learning_context": fingerprint_learning_context,
     }
@@ -1783,6 +1789,160 @@ def fallback_window_title(window, question_summary="", language=None):
     )
 
 
+LIGHTWEIGHT_KEYWORD_STOPWORDS = {
+    "问题",
+    "结论",
+    "需求",
+    "包括",
+    "以及",
+    "然后",
+    "当前",
+    "这个",
+    "那个",
+    "全部",
+    "元素",
+    "等等",
+    "屏蔽",
+    "屏蔽除",
+    "相关",
+    "后续",
+    "没有",
+    "暂无",
+    "用户问题",
+    "可复用结论",
+    "当日没有",
+    "No",
+    "None",
+}
+
+LIGHTWEIGHT_LATIN_KEYWORD_STOPWORDS = {
+    "after",
+    "all",
+    "and",
+    "are",
+    "but",
+    "can",
+    "codex",
+    "for",
+    "from",
+    "have",
+    "need",
+    "not",
+    "the",
+    "this",
+    "that",
+    "with",
+    "you",
+}
+
+LIGHTWEIGHT_KEYWORD_SUFFIX_PATTERN = re.compile(
+    r"[\u4e00-\u9fffA-Za-z0-9_+-]{0,10}"
+    r"(?:UI|tag|tab栏|按钮|提示区|工具区|方案|审阅|自测|代码|逻辑|面板|安装器|回溯|记忆|日报|窗口|"
+    r"数据库|索引|搜索|发布|权限|工作流|性能|缓存|进程|配置|模型|布局|交互|样式|视觉|历史|学习|整理|"
+    r"压缩层|控件|组件|页面|列表|卡片|命令|服务|任务|测试|校验|构建|安装|卸载|版本|Release|release|"
+    r"npm|GitHub|Token|token|日志|报错|文案)"
+)
+
+
+def lightweight_keyword_key(text):
+    return re.sub(r"\s+", "", str(text or "")).lower()
+
+
+def clean_lightweight_keyword(text):
+    keyword = clip_text(text, 32)
+    keyword = re.sub(r"\[[^\]]*(?:合并|merged)[^\]]*\]\s*", "", keyword, flags=re.IGNORECASE)
+    keyword = re.sub(r"^[`*_#\-\s]+|[`*_#\-\s]+$", "", keyword)
+    keyword = keyword.strip(" ，,。.;；:：!?！？、/\\()（）[]【】{}<>《》\"'")
+    keyword = re.sub(
+        r"^(?:我需要|我要|请|帮我|需要|当前|这个|那个|以及|包括|然后|再|先|把|将|做|实现|修复|优化|新增|支持|查看|看看|除(?:了)?|除了|屏蔽除了)+",
+        "",
+        keyword,
+    )
+    keyword = keyword.strip(" ，,。.;；:：!?！？、/\\()（）[]【】{}<>《》\"'")
+    keyword = re.sub(r"(?:之外|以外|外|等等|等元素|等|除|除了)$", "", keyword)
+    keyword = keyword.strip(" ，,。.;；:：!?！？、/\\()（）[]【】{}<>《》\"'")
+    if len(keyword) < 2:
+        return ""
+    if keyword in LIGHTWEIGHT_KEYWORD_STOPWORDS:
+        return ""
+    if re.fullmatch(r"[\d.:-]+", keyword):
+        return ""
+    if "/" in keyword or keyword.startswith("~"):
+        return ""
+    if re.fullmatch(r"[0-9a-fA-F-]{8,}", keyword):
+        return ""
+    if not re.search(r"[\u4e00-\u9fff]", keyword):
+        lowered = keyword.lower()
+        if lowered in LIGHTWEIGHT_LATIN_KEYWORD_STOPWORDS:
+            return ""
+        if len(keyword) < 2:
+            return ""
+    return keyword
+
+
+def append_lightweight_keyword(candidates, seen, keyword):
+    keyword = clean_lightweight_keyword(keyword)
+    if not keyword:
+        return
+    key = lightweight_keyword_key(keyword)
+    if not key or key in seen:
+        return
+    for existing in list(seen):
+        if key in existing:
+            return
+    candidates.append(keyword)
+    seen.add(key)
+
+
+def lightweight_keywords_from_text(text):
+    source = str(text or "")
+    if not source.strip():
+        return []
+    candidates = []
+    seen = set()
+    compact = re.sub(r"\[[^\]]*(?:合并|merged)[^\]]*\]\s*", " ", source, flags=re.IGNORECASE)
+    compact = re.sub(r"\[[^\]]+\]\([^)]+\)", " ", compact)
+    compact = re.sub(r"`([^`]{2,60})`", r" \1 ", compact)
+
+    split_text = re.sub(r"[，。；;、,.\n\r\t()（）【】\[\]{}<>《》“”\"'!?！？:：]", "|", compact)
+    split_text = re.sub(
+        r"(?:包括|以及|然后|并且|同时|或者|和|与|后续|需要|帮我|请|我要|我需要|这是|当前|进行|然后|再|先|的|了|后|前)",
+        "|",
+        split_text,
+    )
+    for chunk in split_text.split("|"):
+        chunk = clean_lightweight_keyword(chunk)
+        if 2 <= len(chunk) <= 14:
+            append_lightweight_keyword(candidates, seen, chunk)
+        elif chunk:
+            for match in LIGHTWEIGHT_KEYWORD_SUFFIX_PATTERN.findall(chunk):
+                append_lightweight_keyword(candidates, seen, match)
+
+    for match in LIGHTWEIGHT_KEYWORD_SUFFIX_PATTERN.findall(compact):
+        append_lightweight_keyword(candidates, seen, match)
+
+    for match in re.findall(r"\b[A-Za-z][A-Za-z0-9_+.-]{1,31}\b", compact):
+        append_lightweight_keyword(candidates, seen, match)
+
+    return candidates
+
+
+def lightweight_window_keywords(window, context_label, question_summary="", main_takeaway="", window_title=""):
+    candidates = []
+    seen = set()
+    append_lightweight_keyword(candidates, seen, context_label)
+    source_texts = []
+    source_texts.extend(window.get("prompt_samples", [])[:4])
+    source_texts.extend(window.get("conclusion_samples", [])[-4:])
+    source_texts.extend([question_summary, main_takeaway, window_title])
+    for text in source_texts:
+        for keyword in lightweight_keywords_from_text(text):
+            append_lightweight_keyword(candidates, seen, keyword)
+            if len(candidates) >= LIGHTWEIGHT_WINDOW_KEYWORD_LIMIT:
+                return candidates
+    return candidates[:LIGHTWEIGHT_WINDOW_KEYWORD_LIMIT]
+
+
 def normalize_summary(raw_payload, summary, language=None):
     raw_windows = raw_payload["windows"]
     raw_by_id = {window["window_id"]: window for window in raw_windows}
@@ -1911,10 +2071,174 @@ def compact_window_signal_score(window):
     return window.get("prompt_count", 0) * 2 + window.get("conclusion_count", 0) * 3
 
 
+def lightweight_session_memory_limit(raw_payload, candidate_count):
+    if candidate_count <= 0:
+        return 0
+    try:
+        window_count = int(raw_payload.get("window_count", candidate_count))
+    except (TypeError, ValueError):
+        window_count = candidate_count
+    target = max(LIGHTWEIGHT_SESSION_MEMORY_MIN, window_count)
+    return min(candidate_count, target, LIGHTWEIGHT_SESSION_MEMORY_MAX)
+
+
+def lightweight_durable_memory_limit(memory_limit):
+    if memory_limit <= 0:
+        return 0
+    return min(LIGHTWEIGHT_DURABLE_MEMORY_MAX, max(1, memory_limit // 3))
+
+
+def lightweight_low_priority_memory_limit(memory_limit):
+    if memory_limit < 4:
+        return 0
+    return min(LIGHTWEIGHT_LOW_PRIORITY_MEMORY_MAX, max(1, memory_limit // 5))
+
+
+def lightweight_takeaway_is_reusable(text):
+    compact = str(text or "").strip()
+    if not compact:
+        return False
+    lowered = compact.lower()
+    fallback_markers = (
+        "当日没有保留到可复用结论",
+        "该窗口的问题已记录",
+        "没有可整理",
+        "暂无结论",
+        "no reusable conclusions",
+        "no conclusion",
+        "excluded by the review-like",
+    )
+    if any(marker in lowered for marker in fallback_markers):
+        return False
+    return True
+
+
+def lightweight_memory_item(title_prefix, item, memory_type="task", priority="medium"):
+    return {
+        "title": clip_text("{}: {}".format(title_prefix, item["window_title"]), 120),
+        "memory_type": memory_type,
+        "priority": priority,
+        "value_note": clip_text(item["main_takeaway"] or item["question_summary"], 220),
+        "source_window_ids": [item["window_id"]],
+        "keywords": item.get("keywords", [])[:4],
+    }
+
+
+def format_lightweight_list(items, limit=3, separator="、"):
+    values = []
+    for item in items or []:
+        text = clip_text(item, 48)
+        if text and text not in values:
+            values.append(text)
+        if len(values) >= limit:
+            break
+    return separator.join(values)
+
+
+def lightweight_int(value):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 0
+
+
+def build_lightweight_day_summary(raw_payload, window_summaries, context_counter, top_keywords, final_backfill_command, language=None):
+    if raw_payload.get("window_count", 0) == 0:
+        return localized(
+            "当日没有可整理的主窗口内容。",
+            "No main-window content was available to organize for the day.",
+            language,
+        )
+
+    top_windows = sorted(
+        window_summaries,
+        key=lambda item: (
+            lightweight_int(item.get("conclusion_count", 0)),
+            lightweight_int(item.get("question_count", 0)),
+            item.get("window_id", ""),
+        ),
+        reverse=True,
+    )
+    context_text = format_lightweight_list(
+        [context for context, _ in context_counter.most_common(3)],
+        limit=3,
+        separator=", " if current_language(language) == "en" else "、",
+    )
+    context_keys = {
+        lightweight_keyword_key(context)
+        for context, _ in context_counter.most_common(8)
+        if context
+    }
+    summary_keywords = [
+        keyword
+        for keyword in top_keywords
+        if lightweight_keyword_key(keyword) not in context_keys
+    ] or top_keywords
+    keyword_text = format_lightweight_list(
+        summary_keywords,
+        limit=6,
+        separator=", " if current_language(language) == "en" else "、",
+    )
+    window_text = format_lightweight_list(
+        [
+            item.get("window_title")
+            or item.get("main_takeaway")
+            or item.get("question_summary", "")
+            for item in top_windows
+        ],
+        limit=3,
+        separator="; " if current_language(language) == "en" else "；",
+    )
+    counts_zh = "已读取 {} 个窗口、{} 条用户问题、{} 条结论".format(
+        raw_payload.get("window_count", 0),
+        raw_payload.get("prompt_count", 0),
+        raw_payload.get("conclusion_count", 0),
+    )
+    counts_en = "Read {} windows, {} user prompts, and {} conclusions".format(
+        raw_payload.get("window_count", 0),
+        raw_payload.get("prompt_count", 0),
+        raw_payload.get("conclusion_count", 0),
+    )
+
+    if current_language(language) == "en":
+        lead_parts = []
+        if context_text:
+            lead_parts.append("focused on {}".format(context_text))
+        if keyword_text:
+            lead_parts.append("with recurring topics around {}".format(keyword_text))
+        lead = (
+            "Lightweight daily summary: the day {}.".format(" and ".join(lead_parts))
+            if lead_parts
+            else "Lightweight daily summary: the day has a fast conservative synthesis."
+        )
+        details = []
+        if window_text:
+            details.append("Representative windows: {}.".format(window_text))
+        details.append("{}.".format(counts_en))
+        return " ".join([lead] + details)
+
+    lead_parts = []
+    if context_text:
+        lead_parts.append("主要围绕 {}".format(context_text))
+    if keyword_text:
+        lead_parts.append("高频主题包括 {}".format(keyword_text))
+    lead = (
+        "轻量日报：当天{}。".format("，".join(lead_parts))
+        if lead_parts
+        else "轻量日报：当天已生成保守版快速总结。"
+    )
+    details = []
+    if window_text:
+        details.append("代表窗口：{}。".format(window_text))
+    details.append("{}。".format(counts_zh))
+    return "".join([lead] + details)
+
+
 def build_lightweight_summary(raw_payload, compact_payload, language=None):
     language = current_language(language)
     window_summaries = []
     context_counter = Counter()
+    keyword_counter = Counter()
     memory_candidates = []
 
     for window in compact_payload.get("windows", []):
@@ -1927,6 +2251,13 @@ def build_lightweight_summary(raw_payload, compact_payload, language=None):
             question_summary=question_summary,
             language=language,
         )
+        window_keywords = lightweight_window_keywords(
+            window,
+            context_label,
+            question_summary=question_summary,
+            main_takeaway=main_takeaway,
+            window_title=window_title,
+        )
         window_summary = {
             "window_id": window["window_id"],
             "cwd": window["cwd"],
@@ -1934,7 +2265,7 @@ def build_lightweight_summary(raw_payload, compact_payload, language=None):
             "question_summary": question_summary,
             "question_count": window["prompt_count"],
             "conclusion_count": window["conclusion_count"],
-            "keywords": [context_label][:1],
+            "keywords": window_keywords,
             "main_takeaway": main_takeaway,
             "summary_pairs": normalize_summary_pairs(
                 [],
@@ -1943,6 +2274,7 @@ def build_lightweight_summary(raw_payload, compact_payload, language=None):
             ),
         }
         window_summaries.append(window_summary)
+        keyword_counter.update(window_keywords)
         if window.get("prompt_count", 0) or window.get("conclusion_count", 0):
             memory_candidates.append((compact_window_signal_score(window), window_summary, context_label))
 
@@ -1955,56 +2287,82 @@ def build_lightweight_summary(raw_payload, compact_payload, language=None):
         ),
         reverse=True,
     )
+    memory_limit = lightweight_session_memory_limit(raw_payload, len(memory_candidates))
+    durable_limit = lightweight_durable_memory_limit(memory_limit)
+    low_priority_limit = lightweight_low_priority_memory_limit(memory_limit)
+    low_priority_start = max(0, min(len(memory_candidates), memory_limit) - low_priority_limit)
+    durable_memories = []
     session_memories = []
-    for _, item, context_label in memory_candidates[:LIGHTWEIGHT_SESSION_MEMORY_LIMIT]:
-        title_prefix = localized("轻量整理", "Lightweight review", language)
+    low_priority_memories = []
+    for index, (_, item, _context_label) in enumerate(memory_candidates[:memory_limit]):
+        if low_priority_limit and index >= low_priority_start:
+            low_priority_memories.append(
+                lightweight_memory_item(
+                    localized("轻量待查", "Lightweight later review", language),
+                    item,
+                    memory_type="task",
+                    priority="low",
+                )
+            )
+            continue
+        if (
+            len(durable_memories) < durable_limit
+            and item.get("conclusion_count", 0) > 0
+            and lightweight_takeaway_is_reusable(item.get("main_takeaway", ""))
+        ):
+            durable_memories.append(
+                lightweight_memory_item(
+                    localized("轻量日报", "Lightweight daily", language),
+                    item,
+                    memory_type="semantic",
+                    priority="medium",
+                )
+            )
+            continue
         session_memories.append(
-            {
-                "title": clip_text("{}: {}".format(title_prefix, item["window_title"]), 120),
-                "memory_type": "task",
-                "priority": "medium",
-                "value_note": clip_text(item["main_takeaway"] or item["question_summary"], 220),
-                "source_window_ids": [item["window_id"]],
-                "keywords": [context_label][:1],
-            }
+            lightweight_memory_item(
+                localized("轻量跟进", "Lightweight follow-up", language),
+                item,
+                memory_type="task",
+                priority="medium",
+            )
         )
 
-    top_contexts = [context for context, _ in context_counter.most_common(8)]
-    if raw_payload.get("window_count", 0) == 0:
-        day_summary = localized(
-            "当日没有可整理的主窗口内容。",
-            "No main-window content was available to organize for the day.",
-            language,
-        )
-    elif language == "en":
-        day_summary = (
-            "Lightweight organization completed: read {windows} windows, {prompts} user prompts, "
-            "and {conclusions} conclusions. This result stores the reusable compact layer for later "
-            "final consolidation."
-        ).format(
-            windows=raw_payload.get("window_count", 0),
-            prompts=raw_payload.get("prompt_count", 0),
-            conclusions=raw_payload.get("conclusion_count", 0),
-        )
-    else:
-        day_summary = "轻量整理完成：读取 {} 个窗口、{} 条用户问题、{} 条结论，并写入可供后续 final 深度整理复用的压缩层。".format(
-            raw_payload.get("window_count", 0),
-            raw_payload.get("prompt_count", 0),
-            raw_payload.get("conclusion_count", 0),
-        )
+    top_keywords = [
+        keyword
+        for keyword, _ in keyword_counter.most_common(LIGHTWEIGHT_DAILY_KEYWORD_LIMIT)
+        if keyword
+    ]
+    if not top_keywords:
+        top_keywords = [context for context, _ in context_counter.most_common(8)]
+    final_backfill_command = (
+        "openrelix backfill --from {date} --to {date} --stage final --learn-window-days 7"
+    ).format(date=raw_payload["date"])
+    day_summary = build_lightweight_day_summary(
+        raw_payload,
+        window_summaries,
+        context_counter,
+        top_keywords,
+        final_backfill_command,
+        language=language,
+    )
 
     return {
         "date": raw_payload["date"],
         "day_summary": day_summary,
         "window_summaries": window_summaries,
-        "durable_memories": [],
+        "durable_memories": durable_memories,
         "session_memories": session_memories,
-        "low_priority_memories": [],
-        "keywords": top_contexts,
+        "low_priority_memories": low_priority_memories,
+        "keywords": top_keywords,
         "next_actions": [
             localized(
-                "后续运行 final 深度整理时会复用本次轻量压缩层。",
-                "A later final consolidation will reuse this lightweight compact layer.",
+                "如需查看全部可用的记忆和总结，建议运行 final 深度回溯：{}。".format(
+                    final_backfill_command
+                ),
+                "To view all available memories and summaries, run final deep backfill: {}.".format(
+                    final_backfill_command
+                ),
                 language,
             )
         ],
@@ -2013,6 +2371,10 @@ def build_lightweight_summary(raw_payload, compact_payload, language=None):
         "model_status": "skipped_lightweight",
         "summary_generation": "lightweight",
         "lightweight_summary_version": LIGHTWEIGHT_SUMMARY_VERSION,
+        "lightweight_memory_candidate_count": len(memory_candidates),
+        "lightweight_memory_limit": memory_limit,
+        "lightweight_durable_memory_limit": durable_limit,
+        "lightweight_low_priority_memory_limit": low_priority_limit,
     }
 
 

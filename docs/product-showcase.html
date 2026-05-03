@@ -3711,9 +3711,9 @@
             <article class="mode-card">
               <span class="mode-kicker">第一步</span>
               <h3>整理最近 7 天</h3>
-              <p>先手动跑一次终版 review，把最近 7 天的 Codex 记录整理进 OpenRelix 本地账本和面板。默认 auto 会先尝试 Codex app-server，失败时回退到 Codex CLI history/session。</p>
+              <p>先手动跑一次近 7 天终版回溯，把最近 7 天的 Codex 记录整理进 OpenRelix 本地账本和面板。默认 auto 会先尝试 Codex app-server，失败时回退到 Codex CLI history/session。</p>
               <div class="command-row inline-command">
-                <code class="command-code">openrelix review --stage final --learn-window-days 7</code>
+                <code class="command-code">openrelix backfill --days 7 --stage final --learn-window-days 7</code>
                 <button class="command-copy" type="button" aria-label="复制学习窗口命令"><span data-copy-label aria-live="polite">复制</span></button>
               </div>
               <div class="step-visual" aria-hidden="true">
@@ -3729,7 +3729,7 @@
             <article class="mode-card">
               <span class="mode-kicker">第二步</span>
               <h3>再打开本地面板</h3>
-              <p>整理完成后打开面板，看今天整理了什么、长期和短期记忆有哪些、同步是否正常。运行命令打开网页端或桌面端，也可以在 macOS 中搜索 OpenRelix 直接启动。</p>
+              <p>整理完成后打开面板，看最近几天整理了什么、长期和短期记忆有哪些、同步是否正常。如果整理期间面板或 app 已经打开，手动刷新一下即可看到终版结果。</p>
               <div class="command-row inline-command">
                 <code class="command-code">openrelix open panel</code>
                 <button class="command-copy" type="button" aria-label="复制打开网页端命令"><span data-copy-label aria-live="polite">复制</span></button>
