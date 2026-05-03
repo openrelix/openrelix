@@ -1783,40 +1783,6 @@ class NightlyLogicTests(unittest.TestCase):
         self.assertIn("未检测到 custom-codex/memories/memory_summary.md", missing_comparison["note"])
         self.assertIn("custom-codex/memories/MEMORY.md 未检测到", missing_comparison["note"])
 
-    def test_codex_native_memory_highlight_preserves_empty_source_state(self):
-        empty_highlight = build_overview.build_codex_native_memory_highlight(
-            {"topic_items": 0, "user_preferences": 1, "general_tips": 1, "source_exists": True},
-            {
-                "note": (
-                    "已读取 custom-codex/memories/memory_summary.md；"
-                    "暂无 What's in Memory 主题项；偏好 1 条；通用 tips 1 条。"
-                )
-            },
-            "custom-codex/memories/memory_summary.md",
-        )
-        missing_highlight = build_overview.build_codex_native_memory_highlight(
-            {"topic_items": 0, "user_preferences": 0, "general_tips": 0, "source_exists": False},
-            {},
-            "custom-codex/memories/memory_summary.md",
-        )
-        missing_with_index_note = build_overview.build_codex_native_memory_highlight(
-            {"topic_items": 0, "user_preferences": 0, "general_tips": 0, "source_exists": False},
-            {
-                "note": (
-                    "未检测到 custom-codex/memories/memory_summary.md；"
-                    "custom-codex/memories/MEMORY.md 未检测到，任务组统计暂不可用。"
-                )
-            },
-            "custom-codex/memories/memory_summary.md",
-        )
-
-        self.assertIn("Codex 原生记忆摘要已读取", empty_highlight)
-        self.assertIn("暂无 What's in Memory 主题项", empty_highlight)
-        self.assertNotIn("尚未读到", empty_highlight)
-        self.assertIn("尚未读到 custom-codex/memories/memory_summary.md", missing_highlight)
-        self.assertIn("Codex 原生记忆摘要暂不可用", missing_with_index_note)
-        self.assertIn("custom-codex/memories/MEMORY.md 未检测到", missing_with_index_note)
-
     def test_unreadable_codex_native_memory_summary_fails_closed(self):
         with TemporaryDirectory() as tmpdir:
             tmp = Path(tmpdir)
@@ -1839,17 +1805,11 @@ class NightlyLogicTests(unittest.TestCase):
                 {},
                 summary_path_label="custom-codex/memories/memory_summary.md",
             )
-            highlight = build_overview.build_codex_native_memory_highlight(
-                parsed["counts"],
-                comparison,
-                "custom-codex/memories/memory_summary.md",
-            )
 
         self.assertEqual(parsed["rows"], [])
         self.assertTrue(parsed["counts"]["source_exists"])
         self.assertFalse(parsed["counts"]["source_readable"])
         self.assertIn("无法读取 custom-codex/memories/memory_summary.md", comparison["note"])
-        self.assertIn("暂不可用", highlight)
 
     def test_invalid_utf8_codex_native_memory_summary_fails_closed(self):
         with TemporaryDirectory() as tmpdir:
@@ -3406,6 +3366,8 @@ scope: Release checklist, package manifest, and public website validation.
         self.assertIn("进入 Codex context 的记忆", html)
         self.assertIn("personal-memory-durable-section", html)
         self.assertIn("codex-native-topic-section", html)
+        self.assertNotIn("本期小结", html)
+        self.assertNotIn("highlight-list", html)
 
     def test_build_html_language_switch_respects_english_default(self):
         html = build_overview.build_html(

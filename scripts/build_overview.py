@@ -776,7 +776,6 @@ PANEL_I18N_EN = {
     "今日热词": "Today Hot Terms",
     "近 7 日热词": "Last 7 Days Hot Terms",
     "热词时间范围": "Hot terms date range",
-    "本期小结": "Current Summary",
     "资产类型分布": "Asset Type Distribution",
     "项目 / 上下文分布": "Project / Context Distribution",
     "月度新增": "Monthly Additions",
@@ -6541,47 +6540,6 @@ def build_codex_native_memory_comparison(
     }
 
 
-def build_codex_native_memory_highlight(native_counts, native_comparison, summary_path_label, language=None):
-    language = current_language(language)
-    note = (native_comparison or {}).get("note", "")
-    note = note.rstrip(".") if is_english(language) else note.rstrip("。")
-    if native_counts.get("source_error") and not native_counts.get("source_readable", False):
-        return localized(
-            "Codex 原生记忆摘要暂不可用：{}。".format(note),
-            "Codex native memory summary is unavailable: {}.".format(note),
-            language,
-        )
-    if native_counts.get("source_exists"):
-        if not native_counts.get("source_readable", True):
-            return localized(
-                "Codex 原生记忆摘要暂不可用：{}。".format(note),
-                "Codex native memory summary is unavailable: {}.".format(note),
-                language,
-            )
-        if native_counts.get("topic_items", 0) > 0:
-            return localized(
-                "Codex 原生记忆已接入可视化：{}。".format(note),
-                "Codex native memory is visible in the panel: {}.".format(note),
-                language,
-            )
-        return localized(
-            "Codex 原生记忆摘要已读取：{}。".format(note),
-            "Codex native memory summary was read: {}.".format(note),
-            language,
-        )
-    if note:
-        return localized(
-            "Codex 原生记忆摘要暂不可用：{}。".format(note),
-            "Codex native memory summary is unavailable: {}.".format(note),
-            language,
-        )
-    return localized(
-        "尚未读到 {}，当前仍以 nightly 整理结果为主。".format(summary_path_label),
-        "{} has not been read yet; the view is still based on nightly synthesis.".format(summary_path_label),
-        language,
-    )
-
-
 def markdown_table_cell(value, limit=None):
     text = compact_preview_text(value, limit=limit or 240)
     text = text.replace("\r", " ").replace("\n", " ").replace("|", "/")
@@ -8241,70 +8199,6 @@ def build_data(assets, usage_events, reviews, language=None):
         },
     ]
 
-    highlights = [
-        localized(
-            "当前已沉淀 {} 个可复用资产，其中 {} 个仍处于活跃状态。".format(
-                len(assets), summary["active_assets"]
-            ),
-            "{} reusable assets are registered; {} are still active.".format(
-                len(assets), summary["active_assets"]
-            ),
-            language,
-        ),
-        localized(
-            "已形成 {} 篇任务复盘，后续会按复用证据自动估算节省时长。".format(len(reviews)),
-            "{} task reviews are stored; saved time is now estimated from reuse evidence.".format(len(reviews)),
-            language,
-        ),
-    ]
-    if project_contexts:
-        highlights.append(
-            localized(
-                "最近活跃的项目 / 上下文包括 {}。".format(
-                    "、".join(item["label"] for item in project_contexts[:3])
-                ),
-                "Recent active projects / contexts include {}.".format(
-                    ", ".join(item["label"] for item in project_contexts[:3])
-                ),
-                language,
-            )
-        )
-    else:
-        highlights.append(
-            localized(
-                "仓库场景资产 {} 个，当前以资产沉淀和近期工作上下文为主线。".format(
-                    summary["scope_counter"].get("repo", 0)
-                ),
-                "{} repo-scoped assets are registered; current focus is asset capture and recent work context.".format(
-                    summary["scope_counter"].get("repo", 0)
-                ),
-                language,
-            )
-        )
-    token_highlight = ""
-    if token_usage["available"]:
-        token_highlight = localized(
-            "{} 的 Token 总消耗为 {}，近 7 日累计为 {}。".format(
-                token_usage["today_date_label"],
-                token_usage["today_total_tokens_display"],
-                token_usage["seven_day_total_tokens_display"],
-            ),
-            "{} Token usage is {}; the last 7 days total {}.".format(
-                token_usage["today_date_label"],
-                token_usage["today_total_tokens_display"],
-                token_usage["seven_day_total_tokens_display"],
-            ),
-            language,
-        )
-        highlights.append(token_highlight)
-    else:
-        token_highlight = localized(
-            "本地未取到 ccusage 的日维度 Token 数据，面板其余部分仍可正常使用。",
-            "ccusage daily Token data is unavailable locally; the rest of the panel still works.",
-            language,
-        )
-        highlights.append(token_highlight)
-
     nightly_title = localized("每日整理结果", "Daily Synthesis", language)
     nightly_note = localized("暂无夜间整理结果", "No nightly synthesis yet", language)
     active_nightly_note = ""
@@ -8326,23 +8220,6 @@ def build_data(assets, usage_events, reviews, language=None):
         stage = display_nightly.get("stage", "manual")
         stage_label = stage_display_label(stage, language=language)
         nightly_note = "{} · {}".format(display_nightly["date"], stage_label)
-        highlights.append(
-            localized(
-                "{} 的整理结果已经生成，当前个人资产-长期记忆 {} 条、个人资产-短期记忆 {} 条、个人资产-低优先记忆 {} 条。".format(
-                    display_nightly["date"],
-                    len(display_nightly.get("durable_memories", [])),
-                    len(display_nightly.get("session_memories", [])),
-                    len(display_nightly.get("low_priority_memories", [])),
-                ),
-                "{} synthesis is available: {} personal asset long-term memories, {} personal asset short-term memories, and {} personal asset low-priority memories.".format(
-                    display_nightly["date"],
-                    len(display_nightly.get("durable_memories", [])),
-                    len(display_nightly.get("session_memories", [])),
-                    len(display_nightly.get("low_priority_memories", [])),
-                ),
-                language,
-            )
-        )
     if active_nightly and display_nightly is not active_nightly:
         active_stage = active_nightly.get("stage", "manual")
         active_stage_label = (
@@ -8355,21 +8232,6 @@ def build_data(assets, usage_events, reviews, language=None):
             "Another active synthesis exists today: {} · {}".format(active_nightly.get("date", ""), active_stage_label),
             language,
         )
-        highlights.append(
-            localized(
-                "{}，主视图仍优先保留更稳定的整理结果。".format(active_nightly_note),
-                "{}; the main view still keeps the more stable synthesis as primary.".format(active_nightly_note),
-                language,
-            )
-        )
-    highlights.append(
-        build_codex_native_memory_highlight(
-            codex_native_memory["counts"],
-            codex_native_memory_comparison,
-            codex_memory_summary_path_label,
-            language=language,
-        )
-    )
 
     memory_view_nightly = select_memory_view_nightly(primary_nightly, active_nightly)
     memory_view_date = (memory_view_nightly or {}).get("date") or (primary_nightly or {}).get("date", "")
@@ -8471,8 +8333,6 @@ def build_data(assets, usage_events, reviews, language=None):
         "summary_terms": summary_terms,
         "summary_term_default_days": SUMMARY_TERM_DEFAULT_DAYS,
         "summary_term_views": summary_term_views,
-        "highlights": highlights,
-        "token_highlight": token_highlight,
         "token_usage": token_usage,
         "daily_summary_views": daily_summary_views,
         "daily_summary_default_date": daily_summary_default_date,
@@ -10294,14 +10154,6 @@ def make_summary_term_cloud_views(summary_term_views, default_days=SUMMARY_TERM_
     """.format(
         cards="".join(cards),
     )
-
-
-def make_highlight_list(items, token_highlight=""):
-    rendered = []
-    for item in items:
-        item_attrs = ' id="token-highlight"' if token_highlight and item == token_highlight else ""
-        rendered.append("<li{}>{}</li>".format(item_attrs, escape(item)))
-    return "".join(rendered)
 
 
 def make_language_switch(language=None):
@@ -12738,36 +12590,18 @@ def build_html(data):
         data.get("window_overview_views", []),
         data.get("window_overview_default_date", (window_overview or {}).get("date", "")),
     )
-    show_highlights_panel = not nightly
-    insight_section_class = "grid two-up" if show_highlights_panel else "grid"
-    highlights_panel_html = ""
-    if show_highlights_panel:
-        highlights_panel_html = """
-      <section class="panel">
-        {highlights_header}
-        <ul class="highlight-list">
-          {highlights}
-        </ul>
-      </section>
-        """.format(
-            highlights_header="{highlights_header}",
-            highlights="{highlights}",
-        )
     insight_section_html = """
-    <section class="{section_class}">
+    <section class="grid">
       <section class="panel">
         {term_cloud_header}
         <div class="term-cloud-area">
           {term_cloud}
         </div>
       </section>
-      {highlights_panel_html}
     </section>
     """.format(
-        section_class=insight_section_class,
         term_cloud_header="{term_cloud_header}",
         term_cloud="{term_cloud}",
-        highlights_panel_html=highlights_panel_html,
     )
 
     token_metric_cards = []
@@ -12920,19 +12754,6 @@ def build_html(data):
             },
         ],
     )
-    highlights_help = make_help_popover(
-        "本期小结",
-        [
-            {
-                "label": "生成方式",
-                "body": "按当前资产数量、活跃状态、最近上下文、Token 和夜间整理结果拼出几条快速结论。",
-            },
-            {
-                "label": "怎么看",
-                "body": "它适合快速扫一眼，不替代下面的明细面板。",
-            },
-        ],
-    )
     term_cloud_header_html = make_panel_header(
         "今日热词",
         "今日 / 近 7 日并排对照",
@@ -12943,17 +12764,9 @@ def build_html(data):
         data.get("summary_term_default_days", SUMMARY_TERM_DEFAULT_DAYS),
         language=language,
     )
-    highlights_header_html = make_panel_header(
-        "本期小结",
-        "方便快速浏览当前阶段的沉淀情况",
-        highlights_help,
-    )
-    highlights_html = make_highlight_list(data["highlights"], data.get("token_highlight", ""))
     insight_section_html = insight_section_html.format(
         term_cloud_header=term_cloud_header_html,
         term_cloud=term_cloud_html,
-        highlights_header=highlights_header_html,
-        highlights=highlights_html,
     )
     token_overview_help = make_help_popover(
         "Token 速览",
@@ -16991,13 +16804,6 @@ def build_html(data):
       margin: 14px 0 0;
     }}
 
-    .highlight-list {{
-      margin: 0;
-      padding-left: 18px;
-      color: var(--muted);
-      line-height: 1.8;
-    }}
-
     .guide-list {{
       margin: 0;
       padding-left: 18px;
@@ -17822,7 +17628,6 @@ def build_html(data):
         refreshButton: document.getElementById("token-refresh-button"),
         refreshLabel: document.getElementById("token-refresh-label"),
         refreshStatusText: document.getElementById("token-refresh-status-text"),
-        tokenHighlight: document.getElementById("token-highlight"),
         tokenOverviewPanel: document.getElementById("token-overview-panel"),
         tokenOverviewNote: document.getElementById("token-overview-note"),
         tokenSummaryCards: document.getElementById("token-summary-cards"),
@@ -19280,29 +19085,6 @@ def build_html(data):
         renderTokenSummaryCards(preparedTokenUsage.summary_cards || []);
         renderBarRows(elements.dailyTokenRows, (preparedTokenUsage.daily_rows || []).slice().reverse(), "token-daily-mid");
         renderBarRows(elements.todayTokenRows, preparedTokenUsage.today_breakdown || [], "token-input");
-        if (elements.tokenHighlight) {{
-          if (tokenUsage.available) {{
-            if (currentLanguage === "en") {{
-              elements.tokenHighlight.textContent =
-                todayLabel + " Token usage is " +
-                todayTokenValue +
-                "; the last 7 days total " +
-                sevenDayTokenValue +
-                ". (" + relativeUpdate + ")";
-            }} else {{
-              elements.tokenHighlight.textContent =
-                todayLabel + " 的 Token 总消耗为 " +
-                todayTokenValue +
-                "，近 7 日累计为 " +
-                sevenDayTokenValue +
-                "。（" + relativeUpdate + "）";
-            }}
-          }} else {{
-            elements.tokenHighlight.textContent = currentLanguage === "en"
-              ? "ccusage daily Token data is unavailable locally; the rest of the panel still works."
-              : "本地未取到 ccusage 的日维度 Token 数据，面板其余部分仍可正常使用。";
-          }}
-        }}
         translateStaticText();
       }}
 
