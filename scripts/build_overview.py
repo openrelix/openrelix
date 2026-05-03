@@ -19736,7 +19736,7 @@ def build_html(data):
         hero_title=panel_language_text_html("OpenRelix 工作台"),
         hero_brand_line=panel_language_variant_html(
             escape("你的专属AI记忆珍藏"),
-            escape("Your personal AI memory keepsake"),
+            escape("Your personal AI memory relics"),
         ),
         hero_version_badge=make_project_version_badge(),
         hero_copy=panel_language_text_html(
