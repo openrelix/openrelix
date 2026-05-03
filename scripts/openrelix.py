@@ -792,7 +792,7 @@ def codex_history_dates_for_targets(target_dates):
     return found
 
 
-def resolve_learning_backfill_dates(date_str, learn_window_days):
+def resolve_learning_backfill_dates(date_str, learn_window_days, requested_stage="final"):
     dates = learning_window_dates(date_str, learn_window_days)
     if not dates:
         return []
@@ -800,7 +800,7 @@ def resolve_learning_backfill_dates(date_str, learn_window_days):
     history_dates = codex_history_dates_for_targets(dates)
     missing_dates = []
     for candidate_date in dates:
-        needs_run, _, _ = review_summary_needs_run(candidate_date, "final")
+        needs_run, _, _ = review_summary_needs_run(candidate_date, requested_stage)
         if not needs_run:
             continue
         raw_daily_path = PATHS.raw_daily_dir / "{}.json".format(candidate_date)
@@ -809,11 +809,11 @@ def resolve_learning_backfill_dates(date_str, learn_window_days):
     return missing_dates
 
 
-def resolve_learning_backfill_dates_for_targets(date_strs, learn_window_days, exclude_dates=None):
+def resolve_learning_backfill_dates_for_targets(date_strs, learn_window_days, exclude_dates=None, requested_stage="final"):
     excluded = set(exclude_dates or [])
     missing_dates = []
     for date_str in date_strs:
-        for candidate_date in resolve_learning_backfill_dates(date_str, learn_window_days):
+        for candidate_date in resolve_learning_backfill_dates(date_str, learn_window_days, requested_stage=requested_stage):
             if candidate_date not in excluded:
                 missing_dates.append(candidate_date)
     return unique_ordered(missing_dates)
@@ -1926,6 +1926,67 @@ def ensure_learning_windows_final(date_strs, learn_window_days, verbose=True, de
     return sync_results
 
 
+def ensure_learning_windows_preliminary(date_strs, learn_window_days, verbose=True, defer_global_refresh=False, jobs=1):
+    if learn_window_days <= 0:
+        return []
+    target_dates = list(date_strs)
+    backfill_dates = resolve_learning_backfill_dates_for_targets(
+        target_dates,
+        learn_window_days,
+        exclude_dates=target_dates,
+        requested_stage="preliminary",
+    )
+    if not backfill_dates:
+        if verbose:
+            print(
+                localized(
+                    "轻量回溯: 近 {} 天 preliminary 日报已齐，或没有可回溯窗口。".format(learn_window_days),
+                    "Lightweight backfill: preliminary daily reports for the last {} days are already complete, or no source windows are available.".format(learn_window_days),
+                )
+            )
+        return []
+    if verbose:
+        print(
+            localized(
+                "轻量回溯: 近 {} 天有 {} 天缺失轻量日报，先按 preliminary 生成；深度 final 只作用于目标日期。".format(
+                    learn_window_days,
+                    len(backfill_dates),
+                ),
+                "Lightweight backfill: {} daily reports are missing preliminary coverage in the last {} days; generating preliminary first while final stays on the target date.".format(
+                    len(backfill_dates),
+                    learn_window_days,
+                ),
+            )
+        )
+        print("{}: {}".format(localized("日期", "Dates"), ", ".join(backfill_dates)))
+    sync_kwargs = {
+        "learn_window_days": 0,
+        "force": False,
+        "ensure_learning_final": False,
+        "verbose": verbose,
+        "jobs": jobs,
+    }
+    if defer_global_refresh:
+        sync_kwargs["defer_global_refresh"] = True
+    sync_results = run_backfill_dates(backfill_dates, "preliminary", **sync_kwargs)
+    if verbose:
+        completed = sum(1 for item in sync_results if item["status"] == "completed")
+        skipped = sum(1 for item in sync_results if item["status"] == "skipped_existing")
+        failed = sum(1 for item in sync_results if item["status"] == "failed")
+        print(
+            localized(
+                "轻量回溯完成: 完成 {} 天 | 跳过 {} 天 | 失败 {} 天".format(completed, skipped, failed),
+                "Lightweight backfill completed: completed {} | skipped {} | failed {}".format(
+                    completed,
+                    skipped,
+                    failed,
+                ),
+            )
+        )
+        print("")
+    return sync_results
+
+
 def ensure_learning_window_final(date_str, learn_window_days, verbose=True, defer_global_refresh=False, jobs=1):
     return ensure_learning_windows_final(
         [date_str],
@@ -1981,7 +2042,20 @@ def precollect_learning_window_sources(date_strs, learn_window_days, verbose=Tru
 
 def command_review(args):
     learning_sync_results = []
-    if args.learn_window_days > 0:
+    if args.stage == "final" and args.learn_window_days > 0:
+        learning_sync_results = ensure_learning_windows_preliminary(
+            [args.date],
+            args.learn_window_days,
+            verbose=not args.json,
+            defer_global_refresh=True,
+            jobs=args.jobs,
+        )
+        precollect_learning_window_sources(
+            [args.date],
+            args.learn_window_days,
+            verbose=not args.json,
+        )
+    elif args.learn_window_days > 0:
         learning_sync_results = ensure_learning_window_final(
             args.date,
             args.learn_window_days,
@@ -2137,6 +2211,22 @@ def run_backfill_dates(
     skip_learning_collect = False
 
     if stage == "final" and target_dates and runnable_dates and ensure_learning_final and learn_window_days > 0:
+        learning_sync_results = ensure_learning_windows_preliminary(
+            target_dates,
+            learn_window_days,
+            verbose=verbose,
+            defer_global_refresh=True,
+            jobs=jobs,
+        )
+        dependency_failures.extend(
+            {
+                **item,
+                "dependency": "learning_window_preliminary",
+            }
+            for item in learning_sync_results
+            if item["status"] == "failed"
+        )
+    elif stage != "final" and target_dates and runnable_dates and ensure_learning_final and learn_window_days > 0:
         learning_sync_results = ensure_learning_windows_final(
             target_dates,
             learn_window_days,
@@ -2169,7 +2259,7 @@ def run_backfill_dates(
     work_items = []
 
     for index, date_str in enumerate(target_dates, start=1):
-        if ensure_learning_final and learn_window_days > 0 and not batch_learning_ready:
+        if stage != "final" and ensure_learning_final and learn_window_days > 0 and not batch_learning_ready:
             learning_sync_results = ensure_learning_window_final(
                 date_str,
                 learn_window_days,
