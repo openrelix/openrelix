@@ -7802,7 +7802,63 @@ scope: Release checklist, package manifest, and public website validation.
         self.assertEqual(summary["lightweight_memory_limit"], nightly_consolidate.LIGHTWEIGHT_SESSION_MEMORY_MAX)
         self.assertEqual(summary["lightweight_durable_memory_limit"], nightly_consolidate.LIGHTWEIGHT_DURABLE_MEMORY_MAX)
         self.assertEqual(summary["lightweight_low_priority_memory_limit"], 4)
-        self.assertEqual(summary["lightweight_summary_version"], 6)
+        self.assertEqual(summary["lightweight_summary_version"], nightly_consolidate.LIGHTWEIGHT_SUMMARY_VERSION)
+
+    def test_lightweight_summary_uses_deep_style_pairs_and_daily_sections(self):
+        raw_payload = {
+            "date": "2026-04-28",
+            "window_count": 1,
+            "prompt_count": 2,
+            "conclusion_count": 2,
+        }
+        compact_payload = {
+            **raw_payload,
+            "windows": [
+                {
+                    "window_id": "w-format",
+                    "cwd": "/tmp/openrelix",
+                    "prompt_count": 2,
+                    "conclusion_count": 2,
+                    "prompt_cluster_count": 2,
+                    "conclusion_cluster_count": 2,
+                    "prompt_samples": [
+                        "轻度回溯后的每日总结要和深度回溯一样",
+                        "窗口卡片也需要展示多条问题与结论",
+                    ],
+                    "conclusion_samples": [
+                        "轻量路径应生成多条 summary_pairs",
+                        "每日摘要要拆出范围、记忆和代表问答",
+                    ],
+                }
+            ],
+        }
+
+        summary = nightly_consolidate.build_lightweight_summary(
+            raw_payload,
+            compact_payload,
+            language="zh",
+        )
+        window = summary["window_summaries"][0]
+
+        self.assertEqual(
+            window["summary_pairs"],
+            [
+                {
+                    "question": "轻度回溯后的每日总结要和深度回溯一样",
+                    "conclusion": "轻量路径应生成多条 summary_pairs",
+                },
+                {
+                    "question": "窗口卡片也需要展示多条问题与结论",
+                    "conclusion": "每日摘要要拆出范围、记忆和代表问答",
+                },
+            ],
+        )
+        self.assertIn("问题1：轻度回溯后的每日总结要和深度回溯一样", window["question_summary"])
+        self.assertIn("结论2：每日摘要要拆出范围、记忆和代表问答", window["main_takeaway"])
+        self.assertIn("记忆沉淀", summary["day_summary"])
+        self.assertIn("重点窗口", summary["day_summary"])
+        self.assertIn("代表问答", summary["day_summary"])
+        self.assertGreaterEqual(len(build_overview.split_nightly_summary(summary["day_summary"])), 4)
 
     def test_lightweight_summary_keeps_tail_candidates_as_low_priority(self):
         windows = []

@@ -62,7 +62,7 @@ DEFAULT_CODEX_EXEC_TIMEOUT_SECONDS = 30 * 60
 CODEX_EXEC_TIMEOUT_RETURN_CODE = 124
 COMPACT_PAYLOAD_CACHE_VERSION = 1
 DAILY_COMPACT_ARTIFACT_VERSION = 1
-LIGHTWEIGHT_SUMMARY_VERSION = 6
+LIGHTWEIGHT_SUMMARY_VERSION = 7
 LIGHTWEIGHT_SESSION_MEMORY_MIN = 3
 LIGHTWEIGHT_SESSION_MEMORY_MAX = 24
 LIGHTWEIGHT_DURABLE_MEMORY_MAX = 8
@@ -1789,6 +1789,126 @@ def fallback_window_title(window, question_summary="", language=None):
     )
 
 
+def clean_lightweight_summary_sample(text, limit):
+    compact = " ".join(str(text or "").split())
+    if not compact:
+        return ""
+    compact = re.sub(
+        r"^\[(?:合并\d+条同类项|merged\s+\d+\s+similar\s+items)\]\s*",
+        "",
+        compact,
+        flags=re.IGNORECASE,
+    )
+    compact = re.sub(r"\s+变体：.*$", "", compact)
+    compact = re.sub(r"\s+variants:\s+.*$", "", compact, flags=re.IGNORECASE)
+    return clip_text(compact, limit)
+
+
+def lightweight_summary_samples(window, sample_key, raw_key, raw_text_key, limit, max_items=6):
+    values = []
+    seen = set()
+    for sample in window.get(sample_key, []):
+        text = clean_lightweight_summary_sample(sample, limit)
+        normalized = normalize_cluster_text(text)
+        if not text or normalized in seen:
+            continue
+        values.append(text)
+        seen.add(normalized)
+        if len(values) >= max_items:
+            return values
+
+    for row in window.get(raw_key, []):
+        if not isinstance(row, dict):
+            continue
+        text = clean_lightweight_summary_sample(row.get(raw_text_key, ""), limit)
+        normalized = normalize_cluster_text(text)
+        if not text or normalized in seen:
+            continue
+        values.append(text)
+        seen.add(normalized)
+        if len(values) >= max_items:
+            return values
+    return values
+
+
+def build_lightweight_summary_pairs(window, language=None):
+    questions = lightweight_summary_samples(
+        window,
+        "prompt_samples",
+        "prompts",
+        "text",
+        180,
+    )
+    conclusions = lightweight_summary_samples(
+        window,
+        "conclusion_samples",
+        "conclusions",
+        "text",
+        220,
+    )
+
+    if not questions and window.get("prompt_count", 0):
+        questions = [fallback_question_summary(window, language=language)]
+    pair_count = max(len(questions), len(conclusions))
+    pairs = []
+    for index in range(pair_count):
+        question = questions[index] if index < len(questions) else ""
+        conclusion = conclusions[index] if index < len(conclusions) else ""
+        if question or conclusion:
+            pairs.append({"question": question, "conclusion": conclusion})
+
+    if pairs:
+        return normalize_summary_pairs(pairs)
+    return normalize_summary_pairs(
+        [],
+        question_summary=fallback_question_summary(window, language=language),
+        main_takeaway=fallback_main_takeaway(window, language=language),
+    )
+
+
+def lightweight_numbered_summary(items, label_zh, label_en, language=None, limit=6):
+    values = []
+    seen = set()
+    for item in items:
+        value = str(item or "").strip()
+        key = normalize_cluster_text(value)
+        if not value or key in seen:
+            continue
+        values.append(value)
+        seen.add(key)
+        if len(values) >= limit:
+            break
+    if not values:
+        return ""
+    if len(values) == 1:
+        return values[0]
+    if current_language(language) == "en":
+        return "; ".join(
+            "{} {}: {}".format(label_en, index, value)
+            for index, value in enumerate(values, 1)
+        )
+    return "；".join(
+        "{}{}：{}".format(label_zh, index, value)
+        for index, value in enumerate(values, 1)
+    )
+
+
+def lightweight_window_title(window, summary_pairs, question_summary, language=None):
+    for pair in summary_pairs:
+        question = str(pair.get("question", "") or "").strip()
+        if question:
+            return clip_text(question, 100)
+    for pair in summary_pairs:
+        conclusion = str(pair.get("conclusion", "") or "").strip()
+        if conclusion:
+            return clip_text(conclusion, 100)
+    return fallback_window_title(
+        window,
+        question_summary=question_summary,
+        language=language,
+    )
+
+
 LIGHTWEIGHT_KEYWORD_STOPWORDS = {
     "问题",
     "结论",
@@ -2142,13 +2262,22 @@ def lightweight_int(value):
         return 0
 
 
-def build_lightweight_day_summary(raw_payload, window_summaries, context_counter, top_keywords, final_backfill_command, language=None):
+def build_lightweight_day_summary(
+    raw_payload,
+    window_summaries,
+    context_counter,
+    top_keywords,
+    final_backfill_command,
+    language=None,
+    memory_counts=None,
+):
     if raw_payload.get("window_count", 0) == 0:
         return localized(
             "当日没有可整理的主窗口内容。",
             "No main-window content was available to organize for the day.",
             language,
         )
+    memory_counts = memory_counts or {}
 
     top_windows = sorted(
         window_summaries,
@@ -2187,7 +2316,31 @@ def build_lightweight_day_summary(raw_payload, window_summaries, context_counter
             for item in top_windows
         ],
         limit=3,
-        separator="; " if current_language(language) == "en" else "；",
+        separator="; " if current_language(language) == "en" else "、",
+    )
+    representative_pairs = []
+    for item in top_windows:
+        for pair in item.get("summary_pairs", []):
+            question = clip_text(pair.get("question", ""), 48)
+            conclusion = clip_text(pair.get("conclusion", ""), 68)
+            if question and conclusion:
+                pair_text = "{} -> {}".format(question, conclusion)
+            elif question:
+                pair_text = question
+            elif conclusion:
+                pair_text = conclusion
+            else:
+                continue
+            if pair_text not in representative_pairs:
+                representative_pairs.append(pair_text)
+            if len(representative_pairs) >= 3:
+                break
+        if len(representative_pairs) >= 3:
+            break
+    pair_text = format_lightweight_list(
+        representative_pairs,
+        limit=3,
+        separator=" / ",
     )
     counts_zh = "已读取 {} 个窗口、{} 条用户问题、{} 条结论".format(
         raw_payload.get("window_count", 0),
@@ -2214,6 +2367,15 @@ def build_lightweight_day_summary(raw_payload, window_summaries, context_counter
         details = []
         if window_text:
             details.append("Representative windows: {}.".format(window_text))
+        if pair_text:
+            details.append("Representative Q/A: {}.".format(pair_text))
+        details.append(
+            "Memory output: {} long-term, {} short-term, {} low-priority.".format(
+                memory_counts.get("durable", 0),
+                memory_counts.get("session", 0),
+                memory_counts.get("low_priority", 0),
+            )
+        )
         details.append("{}.".format(counts_en))
         return " ".join([lead] + details)
 
@@ -2228,9 +2390,18 @@ def build_lightweight_day_summary(raw_payload, window_summaries, context_counter
         else "轻量日报：当天已生成保守版快速总结。"
     )
     details = []
-    if window_text:
-        details.append("代表窗口：{}。".format(window_text))
     details.append("{}。".format(counts_zh))
+    details.append(
+        "记忆沉淀：长期 {} 条、短期 {} 条、低优先级 {} 条。".format(
+            memory_counts.get("durable", 0),
+            memory_counts.get("session", 0),
+            memory_counts.get("low_priority", 0),
+        )
+    )
+    if window_text:
+        details.append("重点窗口：{}。".format(window_text))
+    if pair_text:
+        details.append("代表问答：{}。".format(pair_text))
     return "".join([lead] + details)
 
 
@@ -2242,12 +2413,24 @@ def build_lightweight_summary(raw_payload, compact_payload, language=None):
     memory_candidates = []
 
     for window in compact_payload.get("windows", []):
-        question_summary = fallback_question_summary(window, language=language)
-        main_takeaway = fallback_main_takeaway(window, language=language)
+        summary_pairs = build_lightweight_summary_pairs(window, language=language)
+        question_summary = lightweight_numbered_summary(
+            [pair.get("question", "") for pair in summary_pairs],
+            "问题",
+            "Question",
+            language=language,
+        ) or fallback_question_summary(window, language=language)
+        main_takeaway = lightweight_numbered_summary(
+            [pair.get("conclusion", "") for pair in summary_pairs],
+            "结论",
+            "Conclusion",
+            language=language,
+        ) or fallback_main_takeaway(window, language=language)
         context_label = humanize_context_label(window.get("cwd", ""), language=language)
         context_counter[context_label] += 1
-        window_title = fallback_window_title(
+        window_title = lightweight_window_title(
             window,
+            summary_pairs,
             question_summary=question_summary,
             language=language,
         )
@@ -2267,11 +2450,7 @@ def build_lightweight_summary(raw_payload, compact_payload, language=None):
             "conclusion_count": window["conclusion_count"],
             "keywords": window_keywords,
             "main_takeaway": main_takeaway,
-            "summary_pairs": normalize_summary_pairs(
-                [],
-                question_summary=question_summary,
-                main_takeaway=main_takeaway,
-            ),
+            "summary_pairs": summary_pairs,
         }
         window_summaries.append(window_summary)
         keyword_counter.update(window_keywords)
@@ -2345,6 +2524,11 @@ def build_lightweight_summary(raw_payload, compact_payload, language=None):
         top_keywords,
         final_backfill_command,
         language=language,
+        memory_counts={
+            "durable": len(durable_memories),
+            "session": len(session_memories),
+            "low_priority": len(low_priority_memories),
+        },
     )
 
     return {
