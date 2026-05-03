@@ -6167,6 +6167,46 @@ scope: Release checklist, package manifest, and public website validation.
                 self.assertIn("--defer-global-refresh", command)
                 self.assertIn("--skip-if-unchanged", command)
 
+    def test_progress_runner_stops_child_tree_on_keyboard_interrupt(self):
+        class InterruptingProcess:
+            pid = 12345
+            returncode = None
+
+            def communicate(self, timeout=None):
+                raise KeyboardInterrupt
+
+        process = InterruptingProcess()
+
+        with mock.patch.object(openrelix.subprocess, "Popen", return_value=process), mock.patch.object(
+            openrelix,
+            "stop_child_process_tree",
+        ) as stop_child:
+            with self.assertRaises(KeyboardInterrupt):
+                openrelix.run_checked_with_progress(["demo"], [], interval_seconds=1)
+
+        stop_child.assert_called_once_with(process)
+        self.assertNotIn(process, openrelix._ACTIVE_CHILD_PROCESSES)
+
+    def test_quiet_runner_stops_child_tree_on_keyboard_interrupt(self):
+        class InterruptingProcess:
+            pid = 12345
+            returncode = None
+
+            def communicate(self):
+                raise KeyboardInterrupt
+
+        process = InterruptingProcess()
+
+        with mock.patch.object(openrelix.subprocess, "Popen", return_value=process), mock.patch.object(
+            openrelix,
+            "stop_child_process_tree",
+        ) as stop_child:
+            with self.assertRaises(KeyboardInterrupt):
+                openrelix.run_capture_interruptible(["demo"])
+
+        stop_child.assert_called_once_with(process)
+        self.assertNotIn(process, openrelix._ACTIVE_CHILD_PROCESSES)
+
     def test_backfill_records_failed_pipeline_result(self):
         with TemporaryDirectory() as tmpdir:
             consolidated_daily_dir = Path(tmpdir) / "consolidated" / "daily"

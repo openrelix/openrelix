@@ -7,8 +7,10 @@ import os
 import re
 import shlex
 import shutil
+import signal
 import subprocess
 import sys
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -71,6 +73,9 @@ TOKEN_LIVE_HEALTH_URL = "http://127.0.0.1:8765/healthz"
 TOKEN_LIVE_STARTUP_TIMEOUT_SECONDS = 8.0
 STAGE_PRIORITY = {"manual": 0, "preliminary": 1, "final": 2}
 MAX_BACKFILL_JOBS = 2
+
+_ACTIVE_CHILD_PROCESSES = set()
+_ACTIVE_CHILD_PROCESSES_LOCK = threading.Lock()
 
 
 def current_language(language=None):
@@ -872,17 +877,90 @@ def review_summary_needs_run(date_str, requested_stage, force=False):
     return False, "existing_stage_satisfies_request", info
 
 
+def interruptible_popen_kwargs():
+    if os.name == "posix":
+        return {"start_new_session": True}
+    return {}
+
+
+def register_child_process(process):
+    with _ACTIVE_CHILD_PROCESSES_LOCK:
+        _ACTIVE_CHILD_PROCESSES.add(process)
+
+
+def unregister_child_process(process):
+    with _ACTIVE_CHILD_PROCESSES_LOCK:
+        _ACTIVE_CHILD_PROCESSES.discard(process)
+
+
+def send_signal_to_child_tree(process, signal_number):
+    if process.poll() is not None:
+        return
+    try:
+        if os.name == "posix":
+            os.killpg(process.pid, signal_number)
+        else:
+            process.send_signal(signal_number)
+    except ProcessLookupError:
+        return
+    except OSError:
+        if process.poll() is None:
+            process.kill()
+
+
+def stop_child_process_tree(process):
+    if process.poll() is not None:
+        return
+    for signal_number in (signal.SIGINT, signal.SIGTERM):
+        send_signal_to_child_tree(process, signal_number)
+        try:
+            process.wait(timeout=2)
+            return
+        except subprocess.TimeoutExpired:
+            continue
+    if hasattr(signal, "SIGKILL"):
+        send_signal_to_child_tree(process, signal.SIGKILL)
+    else:
+        process.kill()
+    try:
+        process.wait(timeout=2)
+    except subprocess.TimeoutExpired:
+        process.kill()
+
+
+def stop_active_child_processes():
+    with _ACTIVE_CHILD_PROCESSES_LOCK:
+        processes = list(_ACTIVE_CHILD_PROCESSES)
+    for process in processes:
+        stop_child_process_tree(process)
+
+
 def run_checked(cmd):
     subprocess.run(cmd, cwd=str(REPO_ROOT), check=True)
 
 
-def run_checked_quiet(cmd):
-    result = subprocess.run(
+def run_capture_interruptible(cmd):
+    process = subprocess.Popen(
         cmd,
         cwd=str(REPO_ROOT),
         text=True,
-        capture_output=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        **interruptible_popen_kwargs(),
     )
+    register_child_process(process)
+    try:
+        stdout, stderr = process.communicate()
+    except KeyboardInterrupt:
+        stop_child_process_tree(process)
+        raise
+    finally:
+        unregister_child_process(process)
+    return subprocess.CompletedProcess(cmd, process.returncode, stdout, stderr)
+
+
+def run_checked_quiet(cmd):
+    result = run_capture_interruptible(cmd)
     if result.returncode == 0:
         return result
     print(
@@ -905,12 +983,7 @@ def run_checked_quiet(cmd):
 
 
 def run_warning_only(cmd, warning):
-    result = subprocess.run(
-        cmd,
-        cwd=str(REPO_ROOT),
-        text=True,
-        capture_output=True,
-    )
+    result = run_capture_interruptible(cmd)
     if result.returncode == 0:
         return True
     print(warning, file=sys.stderr)
@@ -924,31 +997,39 @@ def run_checked_with_progress(cmd, progress_messages, interval_seconds=20, remin
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
+        **interruptible_popen_kwargs(),
     )
+    register_child_process(process)
     message_index = 0
     started_at = time.monotonic()
     next_reminder_at = reminder_seconds
     stdout = ""
     stderr = ""
-    while True:
-        try:
-            stdout, stderr = process.communicate(timeout=interval_seconds)
-            break
-        except subprocess.TimeoutExpired:
-            elapsed = time.monotonic() - started_at
-            if message_index < len(progress_messages):
-                print(progress_messages[message_index], flush=True)
-                message_index += 1
-            elif elapsed >= next_reminder_at:
-                elapsed_minutes = max(1, int(round(elapsed / 60.0)))
-                print(
-                    localized(
-                        "仍在整理: 已等待约 {} 分钟，子流程仍在运行。".format(elapsed_minutes),
-                        "Still organizing: waited about {} minutes; the subprocess is still running.".format(elapsed_minutes),
-                    ),
-                    flush=True,
-                )
-                next_reminder_at += reminder_seconds
+    try:
+        while True:
+            try:
+                stdout, stderr = process.communicate(timeout=interval_seconds)
+                break
+            except subprocess.TimeoutExpired:
+                elapsed = time.monotonic() - started_at
+                if message_index < len(progress_messages):
+                    print(progress_messages[message_index], flush=True)
+                    message_index += 1
+                elif elapsed >= next_reminder_at:
+                    elapsed_minutes = max(1, int(round(elapsed / 60.0)))
+                    print(
+                        localized(
+                            "仍在整理: 已等待约 {} 分钟，子流程仍在运行。".format(elapsed_minutes),
+                            "Still organizing: waited about {} minutes; the subprocess is still running.".format(elapsed_minutes),
+                        ),
+                        flush=True,
+                    )
+                    next_reminder_at += reminder_seconds
+    except KeyboardInterrupt:
+        stop_child_process_tree(process)
+        raise
+    finally:
+        unregister_child_process(process)
 
     if process.returncode != 0:
         print(
@@ -2379,13 +2460,23 @@ def run_backfill_dates(
     if can_parallelize:
         with ThreadPoolExecutor(max_workers=parallel_jobs) as executor:
             future_map = {executor.submit(run_work_item, item): item for item in work_items}
-            for future in as_completed(future_map):
-                result_index, result = future.result()
-                indexed_results[result_index] = result
+            try:
+                for future in as_completed(future_map):
+                    result_index, result = future.result()
+                    indexed_results[result_index] = result
+            except KeyboardInterrupt:
+                stop_active_child_processes()
+                for future in future_map:
+                    future.cancel()
+                raise
     else:
-        for item in work_items:
-            result_index, result = run_work_item(item)
-            indexed_results[result_index] = result
+        try:
+            for item in work_items:
+                result_index, result = run_work_item(item)
+                indexed_results[result_index] = result
+        except KeyboardInterrupt:
+            stop_active_child_processes()
+            raise
 
     return dependency_failures + [item for item in indexed_results if item is not None]
 
@@ -3562,4 +3653,8 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        stop_active_child_processes()
+        raise SystemExit(130)
