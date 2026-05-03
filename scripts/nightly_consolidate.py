@@ -62,8 +62,10 @@ DEFAULT_CODEX_EXEC_TIMEOUT_SECONDS = 15 * 60
 CODEX_EXEC_TIMEOUT_RETURN_CODE = 124
 COMPACT_PAYLOAD_CACHE_VERSION = 1
 DAILY_COMPACT_ARTIFACT_VERSION = 1
-LIGHTWEIGHT_SUMMARY_VERSION = 1
+LIGHTWEIGHT_SUMMARY_VERSION = 2
 LIGHTWEIGHT_SESSION_MEMORY_LIMIT = 3
+LIGHTWEIGHT_WINDOW_KEYWORD_LIMIT = 8
+LIGHTWEIGHT_DAILY_KEYWORD_LIMIT = 16
 RECENT_WINDOW_LEARNING_CACHE_VERSION = 1
 _COMPACT_PAYLOAD_CACHE = {}
 _RECENT_WINDOW_LEARNING_CACHE = {}
@@ -1581,6 +1583,7 @@ def build_learning_input_fingerprint(
         "personal_memory_enabled": PERSONAL_MEMORY_ENABLED,
         "codex_model": CODEX_MODEL,
         "learn_window_days": max(learn_window_days, 0),
+        "lightweight_summary_version": LIGHTWEIGHT_SUMMARY_VERSION,
         "daily_compact_payload": compact_payload,
         "learning_context": fingerprint_learning_context,
     }
@@ -1783,6 +1786,284 @@ def fallback_window_title(window, question_summary="", language=None):
     )
 
 
+LIGHTWEIGHT_KEYWORD_STOPWORDS = {
+    "问题",
+    "结论",
+    "需求",
+    "当前",
+    "这个",
+    "那个",
+    "相关",
+    "后续",
+    "没有",
+    "暂无",
+    "用户问题",
+    "可复用结论",
+    "当日没有",
+    "最该盯",
+    "图片",
+    "截图",
+    "No",
+    "None",
+}
+
+LIGHTWEIGHT_LATIN_KEYWORD_STOPWORDS = {
+    "after",
+    "all",
+    "and",
+    "are",
+    "but",
+    "can",
+    "for",
+    "from",
+    "have",
+    "image",
+    "img",
+    "need",
+    "not",
+    "none",
+    "screenshot",
+    "the",
+    "that",
+    "this",
+    "with",
+    "you",
+}
+
+LIGHTWEIGHT_CJK_KEYWORD_SUFFIXES = (
+    "UI",
+    "tag",
+    "tab栏",
+    "按钮",
+    "提示区",
+    "工具区",
+    "方案",
+    "审阅",
+    "自测",
+    "代码",
+    "逻辑",
+    "面板",
+    "安装器",
+    "回溯",
+    "记忆",
+    "日报",
+    "窗口",
+    "指标",
+    "花销",
+    "数量",
+    "数据库",
+    "索引",
+    "搜索",
+    "发布",
+    "权限",
+    "工作流",
+    "性能",
+    "缓存",
+    "进程",
+    "配置",
+    "模型",
+    "布局",
+    "交互",
+    "样式",
+    "视觉",
+    "历史",
+    "学习",
+    "整理",
+    "压缩层",
+    "控件",
+    "组件",
+    "页面",
+    "列表",
+    "卡片",
+    "命令",
+    "服务",
+    "任务",
+    "测试",
+    "校验",
+    "构建",
+    "安装",
+    "卸载",
+    "版本",
+    "商标",
+    "日志",
+    "报错",
+    "文案",
+)
+LIGHTWEIGHT_CJK_KEYWORD_SUFFIX_PATTERN = re.compile(
+    r"[\u4e00-\u9fffA-Za-z0-9_+.-]{{0,10}}(?:{})".format(
+        "|".join(re.escape(suffix) for suffix in LIGHTWEIGHT_CJK_KEYWORD_SUFFIXES)
+    )
+)
+LIGHTWEIGHT_EXPLICIT_TERM_PATTERN = re.compile(
+    r"Cost\s*\(USD\)|\b(?:Cost|USD|OpenRelix|Codex|GitHub|npm|Release)\b|"
+    r"\bgpt[-A-Za-z0-9_.]*\b|token\s*(?:花销|数量)?",
+    re.IGNORECASE,
+)
+LIGHTWEIGHT_LATIN_TERM_PATTERN = re.compile(r"\b[A-Za-z][A-Za-z0-9_+.-]{1,31}\b")
+
+
+def strip_lightweight_keyword_markup(text):
+    value = str(text or "")
+    value = re.sub(r"!\[[^\]]*\]\([^)]+\)", " ", value)
+    value = re.sub(r"\[(?:image|图片|截图)\]", " ", value, flags=re.IGNORECASE)
+    value = re.sub(r"\[[^\]]+\]\([^)]+\)", " ", value)
+    value = re.sub(r"`([^`]{1,80})`", r" \1 ", value)
+    value = re.sub(r"[*_~#]+", " ", value)
+    return re.sub(r"\s+", " ", value).strip()
+
+
+def lightweight_keyword_key(text):
+    compact = re.sub(r"\s+", "", str(text or "")).lower()
+    return re.sub(r"[，,。.;；:：!?！？、/\\()（）\[\]【】{}<>《》\"']", "", compact)
+
+
+def is_lightweight_sentence_fragment(text):
+    candidate = str(text or "").strip()
+    if not candidate:
+        return True
+    lowered = candidate.lower()
+    if re.search(r"[?？]|什么|怎么|怎样|为何|为什么|吗|呢|么|是否|是不是|要不要|能不能|可不可以", candidate):
+        return True
+    if re.search(r"(帮我|请|需要|想要|想看|看下|看看|做一下|修一下|一般说|最关注|最该盯|该盯)", candidate):
+        return True
+    if re.search(r"^(我们|我|你|大家|用户|这个|那个|当前)", candidate) and len(candidate) > 4:
+        return True
+    if lowered.startswith(("how ", "what ", "why ", "can ", "should ", "please ")):
+        return True
+    return False
+
+
+def has_lightweight_keyword_suffix(text):
+    return any(str(text or "").endswith(suffix) for suffix in LIGHTWEIGHT_CJK_KEYWORD_SUFFIXES)
+
+
+def is_lightweight_keyword_candidate(text):
+    candidate = str(text or "").strip()
+    if not candidate or is_lightweight_sentence_fragment(candidate):
+        return False
+    if candidate in LIGHTWEIGHT_KEYWORD_STOPWORDS:
+        return False
+    if re.fullmatch(r"[\d.:-]+", candidate):
+        return False
+    if "/" in candidate or candidate.startswith("~"):
+        return False
+    if re.fullmatch(r"[0-9a-fA-F-]{8,}", candidate):
+        return False
+
+    has_cjk = bool(re.search(r"[\u4e00-\u9fff]", candidate))
+    if has_cjk:
+        compact = re.sub(r"\s+", "", candidate)
+        if len(compact) > 14:
+            return False
+        return (
+            bool(re.search(r"[A-Za-z0-9]", compact))
+            or has_lightweight_keyword_suffix(compact)
+            or 2 <= len(compact) <= 4
+        )
+
+    lowered = candidate.lower()
+    if lowered in LIGHTWEIGHT_LATIN_KEYWORD_STOPWORDS:
+        return False
+    return 2 <= len(candidate) <= 32
+
+
+def clean_lightweight_keyword(text):
+    keyword = strip_lightweight_keyword_markup(text)
+    keyword = re.sub(r"\[[^\]]*(?:合并|merged)[^\]]*\]\s*", "", keyword, flags=re.IGNORECASE)
+    keyword = re.sub(r"^\s*(?:[-*]|\d+[.)、])\s*", "", keyword)
+    keyword = keyword.strip(" ，,。.;；:：!?！？、/\\()（）[]【】{}<>《》\"'")
+    keyword = re.sub(
+        r"^(?:我们一般说|一般说|我们通常说|通常说|我们会说|我需要|我要|请|帮我|需要|当前|这个|那个|"
+        r"以及|包括|然后|再|先|其次才是|其次是|最该盯的是|最该盯是|才是|把|将|做|实现|修复|优化|新增|支持|查看|看看|看下)+",
+        "",
+        keyword,
+    )
+    keyword = keyword.strip(" ，,。.;；:：!?！？、/\\()（）[]【】{}<>《》\"'")
+    keyword = re.sub(r"(?:之外|以外|外|等等|等元素|等|除|除了)$", "", keyword)
+    keyword = re.sub(r"(?<=[A-Za-z])\s+(?=[\u4e00-\u9fff])", "", keyword)
+    keyword = re.sub(r"(?<=[\u4e00-\u9fff])\s+(?=[A-Za-z])", "", keyword)
+    keyword = re.sub(r"\s+", " ", keyword).strip(" ，,。.;；:：!?！？、/\\()（）[]【】{}<>《》\"'")
+    if re.fullmatch(r"cost\s*\(?usd\)?", keyword, flags=re.IGNORECASE):
+        return "Cost (USD)"
+    if not is_lightweight_keyword_candidate(keyword):
+        return ""
+    return clip_text(keyword, 32)
+
+
+def append_lightweight_keyword(candidates, seen, keyword):
+    keyword = clean_lightweight_keyword(keyword)
+    if not keyword:
+        return
+    key = lightweight_keyword_key(keyword)
+    if not key:
+        return
+    for index, existing in enumerate(list(candidates)):
+        existing_key = lightweight_keyword_key(existing)
+        if key == existing_key:
+            return
+        if key in existing_key:
+            return
+        if existing_key in key and len(key) > len(existing_key) + 1:
+            candidates[index] = keyword
+            seen.discard(existing_key)
+            seen.add(key)
+            return
+    if key in seen:
+        return
+    candidates.append(keyword)
+    seen.add(key)
+
+
+def lightweight_keywords_from_text(text):
+    source = strip_lightweight_keyword_markup(text)
+    if not source:
+        return []
+    candidates = []
+    seen = set()
+    compact = re.sub(r"\[[^\]]*(?:合并|merged)[^\]]*\]\s*", " ", source, flags=re.IGNORECASE)
+
+    for match in LIGHTWEIGHT_EXPLICIT_TERM_PATTERN.findall(compact):
+        append_lightweight_keyword(candidates, seen, match)
+
+    split_text = re.sub(r"[，。；;、,.\n\r\t()（）【】\[\]{}<>《》“”\"'!?！？:：]", "|", compact)
+    split_text = re.sub(
+        r"(?:包括|以及|然后|并且|同时|或者|和|与|后续|需要|帮我|请|我要|我需要|这是|当前|进行|再|先|的|了|后|前)",
+        "|",
+        split_text,
+    )
+    for chunk in split_text.split("|"):
+        cleaned = clean_lightweight_keyword(chunk)
+        if cleaned:
+            append_lightweight_keyword(candidates, seen, cleaned)
+            continue
+        for match in LIGHTWEIGHT_CJK_KEYWORD_SUFFIX_PATTERN.findall(chunk):
+            append_lightweight_keyword(candidates, seen, match)
+
+    for match in LIGHTWEIGHT_CJK_KEYWORD_SUFFIX_PATTERN.findall(compact):
+        append_lightweight_keyword(candidates, seen, match)
+
+    for match in LIGHTWEIGHT_LATIN_TERM_PATTERN.findall(compact):
+        append_lightweight_keyword(candidates, seen, match)
+
+    return candidates
+
+
+def lightweight_window_keywords(window, context_label, question_summary="", main_takeaway="", window_title=""):
+    candidates = []
+    seen = set()
+    append_lightweight_keyword(candidates, seen, context_label)
+    source_texts = []
+    source_texts.extend(window.get("prompt_samples", [])[:4])
+    source_texts.extend(window.get("conclusion_samples", [])[-4:])
+    source_texts.extend([question_summary, main_takeaway, window_title])
+    for text in source_texts:
+        for keyword in lightweight_keywords_from_text(text):
+            append_lightweight_keyword(candidates, seen, keyword)
+            if len(candidates) >= LIGHTWEIGHT_WINDOW_KEYWORD_LIMIT:
+                return candidates
+    return candidates[:LIGHTWEIGHT_WINDOW_KEYWORD_LIMIT]
+
+
 def normalize_summary(raw_payload, summary, language=None):
     raw_windows = raw_payload["windows"]
     raw_by_id = {window["window_id"]: window for window in raw_windows}
@@ -1915,6 +2196,7 @@ def build_lightweight_summary(raw_payload, compact_payload, language=None):
     language = current_language(language)
     window_summaries = []
     context_counter = Counter()
+    keyword_counter = Counter()
     memory_candidates = []
 
     for window in compact_payload.get("windows", []):
@@ -1927,6 +2209,13 @@ def build_lightweight_summary(raw_payload, compact_payload, language=None):
             question_summary=question_summary,
             language=language,
         )
+        window_keywords = lightweight_window_keywords(
+            window,
+            context_label,
+            question_summary=question_summary,
+            main_takeaway=main_takeaway,
+            window_title=window_title,
+        )
         window_summary = {
             "window_id": window["window_id"],
             "cwd": window["cwd"],
@@ -1934,7 +2223,7 @@ def build_lightweight_summary(raw_payload, compact_payload, language=None):
             "question_summary": question_summary,
             "question_count": window["prompt_count"],
             "conclusion_count": window["conclusion_count"],
-            "keywords": [context_label][:1],
+            "keywords": window_keywords,
             "main_takeaway": main_takeaway,
             "summary_pairs": normalize_summary_pairs(
                 [],
@@ -1943,6 +2232,7 @@ def build_lightweight_summary(raw_payload, compact_payload, language=None):
             ),
         }
         window_summaries.append(window_summary)
+        keyword_counter.update(window_keywords)
         if window.get("prompt_count", 0) or window.get("conclusion_count", 0):
             memory_candidates.append((compact_window_signal_score(window), window_summary, context_label))
 
@@ -1965,11 +2255,17 @@ def build_lightweight_summary(raw_payload, compact_payload, language=None):
                 "priority": "medium",
                 "value_note": clip_text(item["main_takeaway"] or item["question_summary"], 220),
                 "source_window_ids": [item["window_id"]],
-                "keywords": [context_label][:1],
+                "keywords": item.get("keywords", [])[:4] or [context_label][:1],
             }
         )
 
-    top_contexts = [context for context, _ in context_counter.most_common(8)]
+    top_keywords = [
+        keyword
+        for keyword, _ in keyword_counter.most_common(LIGHTWEIGHT_DAILY_KEYWORD_LIMIT)
+        if keyword
+    ]
+    if not top_keywords:
+        top_keywords = [context for context, _ in context_counter.most_common(8)]
     if raw_payload.get("window_count", 0) == 0:
         day_summary = localized(
             "当日没有可整理的主窗口内容。",
@@ -2000,7 +2296,7 @@ def build_lightweight_summary(raw_payload, compact_payload, language=None):
         "durable_memories": [],
         "session_memories": session_memories,
         "low_priority_memories": [],
-        "keywords": top_contexts,
+        "keywords": top_keywords,
         "next_actions": [
             localized(
                 "后续运行 final 深度整理时会复用本次轻量压缩层。",
