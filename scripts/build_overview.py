@@ -11701,6 +11701,7 @@ def make_date_select_control(control_id, aria_label, dates, selected_date, date_
     return """
       <label class="nightly-date-control" for="{control_id}">
         <span class="nightly-date-label">日期</span>
+        <span class="nightly-date-value" data-date-select-value>{selected_label}</span>
         <select
           class="nightly-date-input"
           id="{control_id}"
@@ -11714,6 +11715,7 @@ def make_date_select_control(control_id, aria_label, dates, selected_date, date_
         control_id=escape(control_id, quote=True),
         aria_label=escape(aria_label, quote=True),
         disabled=disabled,
+        selected_label=escape(display_date(selected_date)),
         options=options,
     )
 
@@ -14435,6 +14437,7 @@ def build_html(data):
       border-radius: 999px;
       border: 1px solid var(--line-strong);
       background: var(--control);
+      overflow: hidden;
       box-shadow:
         inset 0 1px 0 rgba(255, 255, 255, 0.86),
         0 8px 20px rgba(0, 0, 0, 0.06);
@@ -14470,26 +14473,42 @@ def build_html(data):
     }}
 
     .nightly-date-label {{
+      position: relative;
+      z-index: 1;
       flex: 0 0 auto;
       color: var(--muted);
       font-size: 14px;
       font-weight: 650;
       letter-spacing: 0;
+      pointer-events: none;
     }}
 
-    .nightly-date-input {{
-      appearance: none;
-      -webkit-appearance: none;
-      border: 0;
-      background: transparent;
+    .nightly-date-value {{
+      position: relative;
+      z-index: 1;
       min-width: 96px;
-      padding: 0;
       color: var(--ink);
       font-family: "SF Pro Display", -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif;
       font-size: 16px;
       font-weight: 720;
       line-height: 1.2;
       font-variant-numeric: tabular-nums;
+      pointer-events: none;
+    }}
+
+    .nightly-date-input {{
+      position: absolute;
+      inset: 0;
+      z-index: 2;
+      width: 100%;
+      height: 100%;
+      appearance: none;
+      -webkit-appearance: none;
+      border: 0;
+      border-radius: inherit;
+      background: transparent;
+      padding: 0;
+      opacity: 0;
       outline: none;
       cursor: pointer;
     }}
@@ -18139,12 +18158,35 @@ def build_html(data):
         return view[localizedKey] || view[key] || "";
       }}
 
+      function syncDateControlValue(select) {{
+        if (!select) {{
+          return;
+        }}
+        const control = select.closest(".nightly-date-control");
+        if (!control) {{
+          return;
+        }}
+        const valueNode = control.querySelector("[data-date-select-value]");
+        if (!valueNode) {{
+          return;
+        }}
+        const selectedOption = select.selectedOptions && select.selectedOptions.length
+          ? select.selectedOptions[0]
+          : select.options[select.selectedIndex];
+        valueNode.textContent = selectedOption ? selectedOption.textContent : "";
+      }}
+
+      function syncDateControlValues() {{
+        document.querySelectorAll(".nightly-date-input").forEach(syncDateControlValue);
+      }}
+
       function renderWindowOverview(dateValue) {{
         const view = findWindowOverview(dateValue);
         state.selectedWindowOverviewDate = dateValue || state.selectedWindowOverviewDate;
         if (elements.windowOverviewDateInput && elements.windowOverviewDateInput.value !== dateValue) {{
           elements.windowOverviewDateInput.value = dateValue || "";
         }}
+        syncDateControlValue(elements.windowOverviewDateInput);
         if (!view) {{
           if (elements.windowOverviewTitle) {{
             elements.windowOverviewTitle.textContent = t("当日窗口概览");
@@ -18294,6 +18336,7 @@ def build_html(data):
         if (elements.nightlyDateInput && elements.nightlyDateInput.value !== dateValue) {{
           elements.nightlyDateInput.value = dateValue || "";
         }}
+        syncDateControlValue(elements.nightlyDateInput);
         if (!summary) {{
           renderNightlyBadges(null);
           renderBackfillPanel(dateValue, false);
@@ -18374,6 +18417,7 @@ def build_html(data):
         if (state.selectedWindowOverviewDate) {{
           renderWindowOverview(state.selectedWindowOverviewDate);
         }}
+        syncDateControlValues();
         translateStaticText();
         translateStaticAttributes();
       }}
