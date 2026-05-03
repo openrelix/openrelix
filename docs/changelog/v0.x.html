@@ -618,6 +618,30 @@
     <section class="section">
       <div class="inner">
         <div class="changelog-list">
+          <article class="changelog-entry is-released" id="v0-2-5">
+            <div class="changelog-meta">
+              <span class="changelog-version">v0.2.5</span>
+              <span class="changelog-date">2026-05-03</span>
+              <span class="changelog-chip">已发布</span>
+            </div>
+            <div class="changelog-body">
+              <p>发布 v0.2.4 之后合入的稳定性与性能更新：nightly 学习和固化流程更快、更稳，默认开启 nightly agents，面板交互与 macOS 外链跳转也完成一轮修复。</p>
+              <span class="group-title">发布流程</span>
+              <ul>
+                <li>新增一键创建 GitHub Release 并派发 npm trusted publishing 的 workflow，推送版本 tag 也会触发 npm 发布。</li>
+              </ul>
+              <span class="group-title">性能</span>
+              <ul>
+                <li>nightly consolidation 和 nightly learning 增加安全缓存，回填流程延后全局刷新，减少重复计算。</li>
+              </ul>
+              <span class="group-title">修复</span>
+              <ul>
+                <li>默认开启 nightly agents，并补齐相关测试覆盖。</li>
+                <li>修复 macOS 客户端外部链接跳转、面板外部链接拦截、日期选择点击区域、记忆标题响应式展示和 Token 日维度展示。</li>
+              </ul>
+            </div>
+          </article>
+
           <article class="changelog-entry is-released" id="v0-2-4">
             <div class="changelog-meta">
               <span class="changelog-version">v0.2.4</span>
@@ -806,6 +830,13 @@
         "Unreleased": "Unreleased",
         "主线开发中的改动": "Mainline Changes In Progress",
         "以下改动已合入 main 分支，但尚未单独发布版本号；下一次版本号上调时这些条目会归入对应版本。": "These changes are merged into main but have not received their own version bump yet; the next release will absorb them.",
+        "发布 v0.2.4 之后合入的稳定性与性能更新：nightly 学习和固化流程更快、更稳，默认开启 nightly agents，面板交互与 macOS 外链跳转也完成一轮修复。": "Stability and performance updates merged after v0.2.4: nightly learning and consolidation are faster and steadier, nightly agents are enabled by default, and panel interactions plus macOS external-link handling got another repair pass.",
+        "发布流程": "Release Flow",
+        "性能": "Performance",
+        "新增一键创建 GitHub Release 并派发 npm trusted publishing 的 workflow，推送版本 tag 也会触发 npm 发布。": "Add a one-click workflow that creates a GitHub Release and dispatches npm trusted publishing; pushing a version tag also triggers npm publishing.",
+        "nightly consolidation 和 nightly learning 增加安全缓存，回填流程延后全局刷新，减少重复计算。": "Add safe caches for nightly consolidation and nightly learning, and defer the global refresh during backfill to reduce repeated work.",
+        "默认开启 nightly agents，并补齐相关测试覆盖。": "Enable nightly agents by default and expand the related test coverage.",
+        "修复 macOS 客户端外部链接跳转、面板外部链接拦截、日期选择点击区域、记忆标题响应式展示和 Token 日维度展示。": "Fix macOS client external-link navigation, panel external-link blocking, date selector click targets, responsive memory headers, and Token daily display.",
         "修复未总结日期的窗口概览回退展示，已有原始窗口时不再显示为空。": "Fix the window overview fallback for unsummarized dates, so existing raw windows no longer render as empty.",
         "修复已知bug。": "Fixed known bugs.",
         "更新了登陆校验失败的bug。": "Fixed the login validation failure bug.",
