@@ -53,8 +53,10 @@ REPORTS_DIR = PATHS.reports_dir
 CONSOLIDATED_DAILY_DIR = PATHS.consolidated_daily_dir
 REFRESH_SCRIPT = REPO_ROOT / "scripts" / "refresh_overview.sh"
 NIGHTLY_PIPELINE_SCRIPT = REPO_ROOT / "scripts" / "nightly_pipeline.sh"
+COLLECT_CODEX_ACTIVITY_SCRIPT = REPO_ROOT / "scripts" / "collect_codex_activity.py"
 BUILD_OVERVIEW_SCRIPT = REPO_ROOT / "scripts" / "build_overview.py"
 BUILD_CODEX_MEMORY_SUMMARY_SCRIPT = REPO_ROOT / "scripts" / "build_codex_memory_summary.py"
+BUILD_CODEX_NATIVE_DISPLAY_CACHE_SCRIPT = REPO_ROOT / "scripts" / "build_codex_native_display_cache.py"
 CONFIGURE_CODEX_USER_SCRIPT = REPO_ROOT / "install" / "configure_codex_user.py"
 BUILD_MACOS_CLIENT_SCRIPT = REPO_ROOT / "scripts" / "build_macos_client.sh"
 RENDER_TEMPLATE_SCRIPT = REPO_ROOT / "install" / "render_template.py"
@@ -718,6 +720,27 @@ def learning_window_dates(date_str, learn_window_days):
     ]
 
 
+def unique_ordered(items):
+    result = []
+    seen = set()
+    for item in items:
+        if item in seen:
+            continue
+        seen.add(item)
+        result.append(item)
+    return result
+
+
+def learning_window_dates_for_targets(date_strs, learn_window_days, exclude_dates=None):
+    excluded = set(exclude_dates or [])
+    dates = []
+    for date_str in date_strs:
+        for learning_date in learning_window_dates(date_str, learn_window_days):
+            if learning_date not in excluded:
+                dates.append(learning_date)
+    return unique_ordered(dates)
+
+
 def codex_history_dates_for_targets(target_dates):
     targets = set(target_dates)
     if not targets:
@@ -764,6 +787,16 @@ def resolve_learning_backfill_dates(date_str, learn_window_days):
         if raw_daily_path.exists() or candidate_date in history_dates:
             missing_dates.append(candidate_date)
     return missing_dates
+
+
+def resolve_learning_backfill_dates_for_targets(date_strs, learn_window_days, exclude_dates=None):
+    excluded = set(exclude_dates or [])
+    missing_dates = []
+    for date_str in date_strs:
+        for candidate_date in resolve_learning_backfill_dates(date_str, learn_window_days):
+            if candidate_date not in excluded:
+                missing_dates.append(candidate_date)
+    return unique_ordered(missing_dates)
 
 
 def review_summary_stage(date_str):
@@ -833,6 +866,19 @@ def run_checked_quiet(cmd):
         output=result.stdout,
         stderr=result.stderr,
     )
+
+
+def run_warning_only(cmd, warning):
+    result = subprocess.run(
+        cmd,
+        cwd=str(REPO_ROOT),
+        text=True,
+        capture_output=True,
+    )
+    if result.returncode == 0:
+        return True
+    print(warning, file=sys.stderr)
+    return False
 
 
 def run_checked_with_progress(cmd, progress_messages, interval_seconds=20, reminder_seconds=60):
@@ -1136,7 +1182,39 @@ def ensure_overview_snapshot():
     return overview_path
 
 
-def sync_review_outputs():
+def rebuild_sqlite_index_if_available():
+    if os.environ.get("OPENRELIX_DISABLE_SQLITE_INDEX_REBUILD", "0") == "1":
+        return
+    index_script = REPO_ROOT / "scripts" / "openrelix_index.py"
+    if not index_script.exists():
+        return
+    run_warning_only(
+        [sys.executable, str(index_script), "rebuild"],
+        "openrelix: sqlite index rebuild failed; JSONL/raw outputs remain authoritative.",
+    )
+
+
+def build_codex_native_display_cache_if_enabled():
+    display_polish = os.environ.get("OPENRELIX_ENABLE_NATIVE_DISPLAY_POLISH", "auto").strip().lower()
+    if display_polish in {"0", "false", "no", "off", "disabled"}:
+        return
+    if display_polish in {"auto", ""} and get_runtime_language(PATHS) != "zh":
+        return
+    if display_polish not in {"1", "true", "yes", "on", "enabled", "auto", ""}:
+        return
+    if get_memory_mode(PATHS) != "integrated":
+        return
+    if not BUILD_CODEX_NATIVE_DISPLAY_CACHE_SCRIPT.exists():
+        return
+    run_warning_only(
+        [sys.executable, str(BUILD_CODEX_NATIVE_DISPLAY_CACHE_SCRIPT)],
+        "openrelix: codex native display polish failed; using source-text fallback.",
+    )
+
+
+def sync_review_outputs(include_index=False, include_native_display=False):
+    if include_index:
+        rebuild_sqlite_index_if_available()
     if get_memory_mode(PATHS) == "integrated":
         run_checked_quiet(
             [
@@ -1146,6 +1224,8 @@ def sync_review_outputs():
                 str(PATHS.codex_home / "memories" / "memory_summary.md"),
             ]
         )
+    if include_native_display:
+        build_codex_native_display_cache_if_enabled()
     run_checked_quiet([sys.executable, str(BUILD_OVERVIEW_SCRIPT)])
 
 
@@ -1716,17 +1796,32 @@ def command_doctor(args):
         raise SystemExit(1)
 
 
-def pipeline_command(date_str, stage, learn_window_days=0):
+def pipeline_command(
+    date_str,
+    stage,
+    learn_window_days=0,
+    defer_global_refresh=False,
+    skip_learning_collect=False,
+):
     cmd = ["/bin/zsh", str(NIGHTLY_PIPELINE_SCRIPT), date_str, stage]
     if learn_window_days > 0:
         cmd.extend(["--learn-window-days", str(learn_window_days)])
+    if defer_global_refresh:
+        cmd.append("--defer-global-refresh")
+    if skip_learning_collect:
+        cmd.append("--skip-learning-collect")
     return cmd
 
 
-def ensure_learning_window_final(date_str, learn_window_days, verbose=True):
+def ensure_learning_windows_final(date_strs, learn_window_days, verbose=True, defer_global_refresh=False):
     if learn_window_days <= 0:
         return []
-    backfill_dates = resolve_learning_backfill_dates(date_str, learn_window_days)
+    target_dates = list(date_strs)
+    backfill_dates = resolve_learning_backfill_dates_for_targets(
+        target_dates,
+        learn_window_days,
+        exclude_dates=target_dates,
+    )
     if not backfill_dates:
         if verbose:
             print(
@@ -1750,14 +1845,15 @@ def ensure_learning_window_final(date_str, learn_window_days, verbose=True):
             )
         )
         print("{}: {}".format(localized("日期", "Dates"), ", ".join(backfill_dates)))
-    sync_results = run_backfill_dates(
-        backfill_dates,
-        "final",
-        learn_window_days=0,
-        force=False,
-        ensure_learning_final=False,
-        verbose=verbose,
-    )
+    sync_kwargs = {
+        "learn_window_days": 0,
+        "force": False,
+        "ensure_learning_final": False,
+        "verbose": verbose,
+    }
+    if defer_global_refresh:
+        sync_kwargs["defer_global_refresh"] = True
+    sync_results = run_backfill_dates(backfill_dates, "final", **sync_kwargs)
     if verbose:
         completed = sum(1 for item in sync_results if item["status"] == "completed")
         skipped = sum(1 for item in sync_results if item["status"] == "skipped_existing")
@@ -1769,6 +1865,53 @@ def ensure_learning_window_final(date_str, learn_window_days, verbose=True):
         )
         print("")
     return sync_results
+
+
+def ensure_learning_window_final(date_str, learn_window_days, verbose=True, defer_global_refresh=False):
+    return ensure_learning_windows_final(
+        [date_str],
+        learn_window_days,
+        verbose=verbose,
+        defer_global_refresh=defer_global_refresh,
+    )
+
+
+def precollect_learning_window_sources(date_strs, learn_window_days, verbose=True):
+    collect_dates = learning_window_dates_for_targets(
+        date_strs,
+        learn_window_days,
+        exclude_dates=set(date_strs),
+    )
+    if not collect_dates:
+        return []
+    if verbose:
+        print(
+            localized(
+                "预采集学习窗口: {} 天历史窗口只采集一次。".format(len(collect_dates)),
+                "Pre-collecting learning window: collecting {} historical dates once.".format(len(collect_dates)),
+            )
+        )
+    for index, date_str in enumerate(collect_dates, start=1):
+        if verbose:
+            print(
+                "[{}/{}] {} {}".format(
+                    index,
+                    len(collect_dates),
+                    date_str,
+                    localized("采集历史窗口。", "collecting historical windows."),
+                )
+            )
+        run_checked_quiet(
+            [
+                sys.executable,
+                str(COLLECT_CODEX_ACTIVITY_SCRIPT),
+                "--date",
+                date_str,
+                "--stage",
+                "final",
+            ]
+        )
+    return collect_dates
 
 
 def command_review(args):
@@ -1881,12 +2024,34 @@ def run_backfill_dates(
     learn_window_days=0,
     force=False,
     ensure_learning_final=True,
+    defer_global_refresh=False,
     verbose=True,
 ):
     results = []
+    target_dates = list(dates)
+    runnable_dates = [
+        date_str
+        for date_str in target_dates
+        if review_summary_needs_run(date_str, stage, force=force)[0]
+    ]
+    batch_learning_ready = False
+    skip_learning_collect = False
 
-    for index, date_str in enumerate(dates, start=1):
-        if ensure_learning_final and learn_window_days > 0:
+    if stage == "final" and target_dates and runnable_dates and ensure_learning_final and learn_window_days > 0:
+        ensure_learning_windows_final(
+            target_dates,
+            learn_window_days,
+            verbose=verbose,
+            defer_global_refresh=True,
+        )
+        batch_learning_ready = True
+
+    if stage == "final" and runnable_dates and learn_window_days > 0:
+        precollect_learning_window_sources(runnable_dates, learn_window_days, verbose=verbose)
+        skip_learning_collect = True
+
+    for index, date_str in enumerate(target_dates, start=1):
+        if ensure_learning_final and learn_window_days > 0 and not batch_learning_ready:
             ensure_learning_window_final(date_str, learn_window_days, verbose=verbose)
 
         summary_json_path, summary_md_path = review_summary_paths(date_str)
@@ -1907,20 +2072,26 @@ def run_backfill_dates(
                 print(
                     "[{}/{}] {} {}".format(
                         index,
-                        len(dates),
+                        len(target_dates),
                         date_str,
                         localized(
                             "已有 {} summary，跳过。".format(summary_info.get("stage") or stage),
                             "existing {} summary; skipped.".format(summary_info.get("stage") or stage),
                         ),
                     )
-                )
+            )
             continue
 
-        cmd = pipeline_command(date_str, stage, learn_window_days)
+        cmd = pipeline_command(
+            date_str,
+            stage,
+            learn_window_days,
+            defer_global_refresh=defer_global_refresh,
+            skip_learning_collect=skip_learning_collect,
+        )
 
         if verbose:
-            print("[{}/{}] {} {}".format(index, len(dates), date_str, localized("开始回溯。", "started.")))
+            print("[{}/{}] {} {}".format(index, len(target_dates), date_str, localized("开始回溯。", "started.")))
         run_checked_with_progress(
             cmd,
             [] if not verbose else [
@@ -1946,7 +2117,7 @@ def run_backfill_dates(
             }
         )
         if verbose:
-            print("[{}/{}] {} {}".format(index, len(dates), date_str, localized("完成。", "completed.")))
+            print("[{}/{}] {} {}".format(index, len(target_dates), date_str, localized("完成。", "completed.")))
 
     return results
 
@@ -1966,14 +2137,24 @@ def command_backfill(args):
         learn_window_days=args.learn_window_days,
         force=args.force,
         ensure_learning_final=True,
+        defer_global_refresh=True,
         verbose=not args.json,
     )
+    completed = sum(1 for item in results if item["status"] == "completed")
+    if completed:
+        if not args.json:
+            print(
+                localized(
+                    "刷新中: 汇总更新索引、Codex context 摘要和面板。",
+                    "Refreshing: updating index, Codex context summary, and panel once.",
+                )
+            )
+        sync_review_outputs(include_index=True, include_native_display=True)
 
     if args.json:
         print_json({"dates": results})
         return
 
-    completed = sum(1 for item in results if item["status"] == "completed")
     skipped = sum(1 for item in results if item["status"] == "skipped_existing")
     print("")
     print(localized("回溯完成", "Backfill completed"))
