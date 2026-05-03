@@ -172,6 +172,60 @@ localized_text() {
   fi
 }
 
+INSTALL_CHILD_PID=""
+
+stop_install_child_process() {
+  local pid="${INSTALL_CHILD_PID:-}"
+  local attempt
+  if [[ -z "$pid" ]]; then
+    return 0
+  fi
+  if ! kill -0 "$pid" 2>/dev/null; then
+    return 0
+  fi
+  kill -INT "$pid" 2>/dev/null || true
+  for attempt in {1..20}; do
+    if ! kill -0 "$pid" 2>/dev/null; then
+      return 0
+    fi
+    sleep 0.1
+  done
+  kill -TERM "$pid" 2>/dev/null || true
+  for attempt in {1..20}; do
+    if ! kill -0 "$pid" 2>/dev/null; then
+      return 0
+    fi
+    sleep 0.1
+  done
+  kill -KILL "$pid" 2>/dev/null || true
+}
+
+handle_install_signal() {
+  local signal_name="$1"
+  trap '' HUP INT TERM
+  printf '\n%s\n' "$(localized_text "安装已收到中断信号，正在停止子任务..." "Installer received an interrupt; stopping child tasks...")" >&2
+  stop_install_child_process
+  case "$signal_name" in
+    HUP) exit 129 ;;
+    INT) exit 130 ;;
+    TERM) exit 143 ;;
+  esac
+  exit 1
+}
+
+run_interruptible_child() {
+  local status=0
+  "$@" &
+  INSTALL_CHILD_PID=$!
+  wait "$INSTALL_CHILD_PID" || status=$?
+  INSTALL_CHILD_PID=""
+  return "$status"
+}
+
+trap 'handle_install_signal HUP' HUP
+trap 'handle_install_signal INT' INT
+trap 'handle_install_signal TERM' TERM
+
 step() {
   STEP_INDEX=$((STEP_INDEX + 1))
   printf '[%d/%d] %s\n' "$STEP_INDEX" "$TOTAL_STEPS" "$1"
@@ -1546,7 +1600,7 @@ run_post_install_shallow_learning() {
       CODEX_HOME="$CODEX_HOME" \
       AI_ASSET_LANGUAGE="$LANGUAGE" \
       OPENRELIX_ACTIVITY_SOURCE="$ACTIVITY_SOURCE" \
-      "$PYTHON_BIN" "$REPO_ROOT/scripts/openrelix.py" \
+      run_interruptible_child "$PYTHON_BIN" "$REPO_ROOT/scripts/openrelix.py" \
       review --stage preliminary --learn-window-days 0 --jobs "$INSTALL_LEARN_JOBS"
     return
   fi
@@ -1554,7 +1608,7 @@ run_post_install_shallow_learning() {
     CODEX_HOME="$CODEX_HOME" \
     AI_ASSET_LANGUAGE="$LANGUAGE" \
     OPENRELIX_ACTIVITY_SOURCE="$ACTIVITY_SOURCE" \
-    "$PYTHON_BIN" "$REPO_ROOT/scripts/openrelix.py" \
+    run_interruptible_child "$PYTHON_BIN" "$REPO_ROOT/scripts/openrelix.py" \
     backfill --days "$LEARNING_REFRESH_WINDOW_DAYS" --stage preliminary --learn-window-days 0 --jobs "$INSTALL_LEARN_JOBS"
 }
 
@@ -1616,7 +1670,7 @@ run_post_install_deep_learning() {
     CODEX_HOME="$CODEX_HOME" \
     AI_ASSET_LANGUAGE="$LANGUAGE" \
     OPENRELIX_ACTIVITY_SOURCE="$ACTIVITY_SOURCE" \
-    "$PYTHON_BIN" "$REPO_ROOT/scripts/openrelix.py" \
+    run_interruptible_child "$PYTHON_BIN" "$REPO_ROOT/scripts/openrelix.py" \
     backfill --days "$LEARNING_REFRESH_WINDOW_DAYS" --stage final --learn-window-days "$LEARNING_REFRESH_WINDOW_DAYS" --jobs "$INSTALL_DEEP_LEARN_JOBS"
   if [[ "$LANGUAGE" == "en" ]]; then
     print -r -- ""

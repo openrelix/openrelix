@@ -889,6 +889,35 @@ def interruptible_popen_kwargs():
     return {}
 
 
+def process_descendant_pids(root_pid):
+    if os.name != "posix":
+        return []
+    try:
+        output = subprocess.check_output(["ps", "-Ao", "pid=,ppid="], text=True)
+    except (OSError, subprocess.SubprocessError):
+        return []
+
+    children_by_parent = {}
+    for line in output.splitlines():
+        parts = line.split()
+        if len(parts) != 2:
+            continue
+        try:
+            pid = int(parts[0])
+            ppid = int(parts[1])
+        except ValueError:
+            continue
+        children_by_parent.setdefault(ppid, []).append(pid)
+
+    descendants = []
+    stack = list(children_by_parent.get(root_pid, []))
+    while stack:
+        pid = stack.pop()
+        descendants.append(pid)
+        stack.extend(children_by_parent.get(pid, []))
+    return descendants
+
+
 def register_child_process(process):
     with _ACTIVE_CHILD_PROCESSES_LOCK:
         _ACTIVE_CHILD_PROCESSES.add(process)
@@ -899,33 +928,109 @@ def unregister_child_process(process):
         _ACTIVE_CHILD_PROCESSES.discard(process)
 
 
-def send_signal_to_child_tree(process, signal_number):
+def child_signal_targets(process):
     if process.poll() is not None:
-        return
-    try:
-        if os.name == "posix":
-            os.killpg(process.pid, signal_number)
+        return set(), set()
+    if os.name != "posix":
+        return set(), {process.pid}
+
+    current_pgid = os.getpgrp()
+    process_groups = set()
+    individual_pids = set()
+    for pid in [process.pid] + process_descendant_pids(process.pid):
+        try:
+            pgid = os.getpgid(pid)
+        except ProcessLookupError:
+            continue
+        except OSError:
+            continue
+        if pgid == current_pgid:
+            individual_pids.add(pid)
         else:
-            process.send_signal(signal_number)
-    except ProcessLookupError:
+            process_groups.add(pgid)
+    return process_groups, individual_pids
+
+
+def signal_child_targets(process_groups, individual_pids, signal_number):
+    if os.name == "posix":
+        for pgid in list(process_groups):
+            try:
+                os.killpg(pgid, signal_number)
+            except ProcessLookupError:
+                process_groups.discard(pgid)
+            except OSError:
+                process_groups.discard(pgid)
+        for pid in list(individual_pids):
+            try:
+                os.kill(pid, signal_number)
+            except ProcessLookupError:
+                individual_pids.discard(pid)
+            except OSError:
+                individual_pids.discard(pid)
         return
-    except OSError:
-        if process.poll() is None:
-            process.kill()
+
+    for pid in list(individual_pids):
+        try:
+            os.kill(pid, signal_number)
+        except ProcessLookupError:
+            individual_pids.discard(pid)
+        except OSError:
+            individual_pids.discard(pid)
+
+
+def child_targets_alive(process_groups, individual_pids):
+    if os.name == "posix":
+        for pgid in list(process_groups):
+            try:
+                os.killpg(pgid, 0)
+                return True
+            except ProcessLookupError:
+                process_groups.discard(pgid)
+            except OSError:
+                process_groups.discard(pgid)
+        for pid in list(individual_pids):
+            try:
+                os.kill(pid, 0)
+                return True
+            except ProcessLookupError:
+                individual_pids.discard(pid)
+            except OSError:
+                individual_pids.discard(pid)
+        return False
+
+    for pid in list(individual_pids):
+        try:
+            os.kill(pid, 0)
+            return True
+        except ProcessLookupError:
+            individual_pids.discard(pid)
+        except OSError:
+            individual_pids.discard(pid)
+    return False
+
+
+def send_signal_to_child_tree(process, signal_number):
+    process_groups, individual_pids = child_signal_targets(process)
+    if not process_groups and not individual_pids:
+        return
+    signal_child_targets(process_groups, individual_pids, signal_number)
 
 
 def stop_child_process_tree(process):
-    if process.poll() is not None:
+    process_groups, individual_pids = child_signal_targets(process)
+    if not process_groups and not individual_pids:
         return
     for signal_number in (signal.SIGINT, signal.SIGTERM):
-        send_signal_to_child_tree(process, signal_number)
+        signal_child_targets(process_groups, individual_pids, signal_number)
         try:
             process.wait(timeout=2)
-            return
+            if not child_targets_alive(process_groups, individual_pids):
+                return
         except subprocess.TimeoutExpired:
-            continue
+            if not child_targets_alive(process_groups, individual_pids):
+                return
     if hasattr(signal, "SIGKILL"):
-        send_signal_to_child_tree(process, signal.SIGKILL)
+        signal_child_targets(process_groups, individual_pids, signal.SIGKILL)
     else:
         process.kill()
     try:
@@ -939,6 +1044,21 @@ def stop_active_child_processes():
         processes = list(_ACTIVE_CHILD_PROCESSES)
     for process in processes:
         stop_child_process_tree(process)
+
+
+def stop_active_child_processes_for_signal(signum, _frame):
+    stop_active_child_processes()
+    raise SystemExit(128 + signum)
+
+
+def install_termination_signal_handlers():
+    if os.name != "posix":
+        return
+    for signal_name in ("SIGHUP", "SIGTERM"):
+        signal_number = getattr(signal, signal_name, None)
+        if signal_number is None:
+            continue
+        signal.signal(signal_number, stop_active_child_processes_for_signal)
 
 
 def run_checked(cmd):
@@ -3813,6 +3933,7 @@ def main():
 
 if __name__ == "__main__":
     try:
+        install_termination_signal_handlers()
         main()
     except KeyboardInterrupt:
         stop_active_child_processes()
