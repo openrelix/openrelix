@@ -56,6 +56,10 @@ SPARSE_WINDOW_THRESHOLD = 3
 SPARSE_PROMPT_THRESHOLD = 12
 SPARSE_CONCLUSION_THRESHOLD = 4
 STAGE_PRIORITY = {"manual": 0, "preliminary": 1, "final": 2}
+COMPACT_PAYLOAD_CACHE_VERSION = 1
+RECENT_WINDOW_LEARNING_CACHE_VERSION = 1
+_COMPACT_PAYLOAD_CACHE = {}
+_RECENT_WINDOW_LEARNING_CACHE = {}
 
 
 class CodexConsolidationError(RuntimeError):
@@ -131,6 +135,86 @@ def load_json(path):
 
 def write_json(path, payload):
     atomic_write_json(path, payload)
+
+
+def cache_disabled():
+    return str(os.environ.get("OPENRELIX_DISABLE_NIGHTLY_CACHE", "")).strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
+def default_cache_dir():
+    return RUNTIME_DIR / "nightly-cache"
+
+
+def json_fingerprint(payload):
+    encoded = json.dumps(payload, ensure_ascii=True, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
+def file_fingerprint(path):
+    path = Path(path)
+    if not path.exists():
+        return {"exists": False}
+    try:
+        data = path.read_bytes()
+    except OSError as exc:
+        return {"exists": True, "error": exc.__class__.__name__}
+    return {
+        "exists": True,
+        "size": len(data),
+        "sha256": hashlib.sha256(data).hexdigest(),
+    }
+
+
+def cache_file_path(cache_dir, namespace, fingerprint):
+    if not cache_dir or cache_disabled():
+        return None
+    return Path(cache_dir) / namespace / "{}.json".format(fingerprint)
+
+
+def read_cached_payload(cache_dir, namespace, fingerprint, payload_key):
+    cache_path = cache_file_path(cache_dir, namespace, fingerprint)
+    if not cache_path or not cache_path.exists():
+        return None
+    try:
+        cached = load_json(cache_path)
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    if not isinstance(cached, dict):
+        return None
+    if cached.get("fingerprint") != fingerprint:
+        return None
+    return cached.get(payload_key)
+
+
+def write_cached_payload(cache_dir, namespace, fingerprint, payload_key, payload):
+    cache_path = cache_file_path(cache_dir, namespace, fingerprint)
+    if not cache_path:
+        return
+    try:
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        write_json(
+            cache_path,
+            {
+                "fingerprint": fingerprint,
+                "generated_at": datetime.now().astimezone().isoformat(),
+                payload_key: payload,
+            },
+        )
+    except OSError:
+        return
+
+
+def remember_cached_value(cache, key, payload, max_size=64):
+    if cache_disabled():
+        return
+    if len(cache) >= max_size:
+        cache.clear()
+    cache[key] = payload
 
 
 def clip_text(text, limit):
@@ -283,7 +367,134 @@ def render_cluster_sample(cluster, language=None):
     return " ".join(parts)
 
 
-def build_compact_payload(raw_payload, language=None):
+def compact_payload_cache_input(raw_payload):
+    return {
+        "date": raw_payload.get("date", ""),
+        "window_count": raw_payload.get("window_count", 0),
+        "prompt_count": raw_payload.get("prompt_count", 0),
+        "conclusion_count": raw_payload.get("conclusion_count", 0),
+        "windows": [
+            {
+                "window_id": window.get("window_id", ""),
+                "cwd": window.get("cwd", ""),
+                "prompt_count": window.get("prompt_count", 0),
+                "conclusion_count": window.get("conclusion_count", 0),
+                "prompts": window.get("prompts", []),
+                "conclusions": window.get("conclusions", []),
+            }
+            for window in raw_payload.get("windows", [])
+        ],
+    }
+
+
+def compact_payload_fingerprint(raw_payload, language=None):
+    payload = {
+        "version": COMPACT_PAYLOAD_CACHE_VERSION,
+        "language": current_language(language),
+        "cluster_settings": {
+            "variant_sample_limit": CLUSTER_VARIANT_SAMPLE_LIMIT,
+            "min_normalized_length": CLUSTER_MIN_NORMALIZED_LENGTH,
+            "long_text_length": CLUSTER_LONG_TEXT_LENGTH,
+            "medium_similarity_threshold": CLUSTER_MEDIUM_SIMILARITY_THRESHOLD,
+            "long_similarity_threshold": CLUSTER_LONG_SIMILARITY_THRESHOLD,
+        },
+        "raw": compact_payload_cache_input(raw_payload),
+    }
+    return json_fingerprint(payload)
+
+
+def is_valid_compact_payload(payload, raw_payload=None):
+    if not isinstance(payload, dict):
+        return False
+    windows = payload.get("windows")
+    if not isinstance(windows, list):
+        return False
+    for key in ("date", "window_count", "prompt_count", "conclusion_count"):
+        if key not in payload:
+            return False
+    for key in ("window_count", "prompt_count", "conclusion_count"):
+        if not isinstance(payload.get(key), int) or payload.get(key) < 0:
+            return False
+    if raw_payload is not None:
+        if payload.get("date") != raw_payload.get("date"):
+            return False
+        for key in ("window_count", "prompt_count", "conclusion_count"):
+            if payload.get(key) != raw_payload.get(key):
+                return False
+    if len(windows) != payload.get("window_count"):
+        return False
+    raw_windows = raw_payload.get("windows", []) if raw_payload is not None else None
+    if raw_windows is not None and len(windows) != len(raw_windows):
+        return False
+    for window in windows:
+        if not isinstance(window, dict):
+            return False
+        for key in (
+            "window_id",
+            "cwd",
+            "prompt_count",
+            "conclusion_count",
+            "prompt_cluster_count",
+            "conclusion_cluster_count",
+            "prompt_samples",
+            "conclusion_samples",
+        ):
+            if key not in window:
+                return False
+        for key in (
+            "prompt_count",
+            "conclusion_count",
+            "prompt_cluster_count",
+            "conclusion_cluster_count",
+        ):
+            if not isinstance(window.get(key), int) or window.get(key) < 0:
+                return False
+        if not isinstance(window.get("prompt_samples"), list):
+            return False
+        if not isinstance(window.get("conclusion_samples"), list):
+            return False
+        if not all(isinstance(sample, str) for sample in window.get("prompt_samples", [])):
+            return False
+        if not all(isinstance(sample, str) for sample in window.get("conclusion_samples", [])):
+            return False
+        if window.get("prompt_cluster_count") > window.get("prompt_count"):
+            return False
+        if window.get("conclusion_cluster_count") > window.get("conclusion_count"):
+            return False
+        if len(window.get("prompt_samples", [])) != window.get("prompt_cluster_count"):
+            return False
+        if len(window.get("conclusion_samples", [])) != window.get("conclusion_cluster_count"):
+            return False
+    if raw_windows is not None:
+        for cached_window, raw_window in zip(windows, raw_windows):
+            for key in ("window_id", "cwd", "prompt_count", "conclusion_count"):
+                if cached_window.get(key) != raw_window.get(key):
+                    return False
+    return True
+
+
+def build_compact_payload(raw_payload, language=None, cache_dir=None, fingerprint=None):
+    language = current_language(language)
+    use_cache = not cache_disabled()
+    fingerprint = fingerprint or (
+        compact_payload_fingerprint(raw_payload, language=language) if use_cache else ""
+    )
+    if use_cache and fingerprint in _COMPACT_PAYLOAD_CACHE:
+        cached_memory = _COMPACT_PAYLOAD_CACHE[fingerprint]
+        if is_valid_compact_payload(cached_memory, raw_payload=raw_payload):
+            return cached_memory
+        _COMPACT_PAYLOAD_CACHE.pop(fingerprint, None)
+
+    cached = read_cached_payload(
+        cache_dir,
+        "compact-payload",
+        fingerprint,
+        "compact_payload",
+    )
+    if is_valid_compact_payload(cached, raw_payload=raw_payload):
+        remember_cached_value(_COMPACT_PAYLOAD_CACHE, fingerprint, cached)
+        return cached
+
     windows = []
     for window in raw_payload["windows"]:
         prompt_clusters = build_text_clusters(window["prompts"], "text", 220)
@@ -306,22 +517,32 @@ def build_compact_payload(raw_payload, language=None):
                 ],
             }
         )
-    return {
+    compact_payload = {
         "date": raw_payload["date"],
         "window_count": raw_payload["window_count"],
         "prompt_count": raw_payload["prompt_count"],
         "conclusion_count": raw_payload["conclusion_count"],
         "windows": windows,
     }
+    remember_cached_value(_COMPACT_PAYLOAD_CACHE, fingerprint, compact_payload)
+    write_cached_payload(
+        cache_dir,
+        "compact-payload",
+        fingerprint,
+        "compact_payload",
+        compact_payload,
+    )
+    return compact_payload
 
 
 def build_prompt(raw_payload, language=None):
     return build_prompt_with_learning(raw_payload, {}, language=language)
 
 
-def build_prompt_with_learning(raw_payload, learning_context, language=None):
+def build_prompt_with_learning(raw_payload, learning_context, language=None, compact_payload=None):
     language = current_language(language)
-    compact_payload = build_compact_payload(raw_payload, language=language)
+    if compact_payload is None:
+        compact_payload = build_compact_payload(raw_payload, language=language)
     if language == "en":
         return """You are a nightly organization agent. Your job is to convert the user's questions and the final conclusions from multiple Codex windows on the same day into personal asset results that are readable and searchable the next day.
 
@@ -512,13 +733,225 @@ def build_window_learning_batches(samples):
     return batches
 
 
-def build_recent_window_learning(date_str, lookback_days):
+def recent_window_learning_fingerprint(date_str, lookback_days, language=None):
+    target_date_obj = parse_summary_date(date_str)
+    if target_date_obj is None or lookback_days <= 0:
+        return ""
+
+    source_files = []
+    for offset in range(1, lookback_days + 1):
+        candidate_date = (target_date_obj - timedelta(days=offset)).isoformat()
+        raw_path = RAW_DIR / "daily" / "{}.json".format(candidate_date)
+        summary_path = CONSOLIDATED_DIR / candidate_date / "summary.json"
+        source_files.append(
+            {
+                "date": candidate_date,
+                "raw_daily": file_fingerprint(raw_path),
+                "summary": file_fingerprint(summary_path),
+            }
+        )
+
+    payload = {
+        "version": RECENT_WINDOW_LEARNING_CACHE_VERSION,
+        "date": date_str,
+        "lookback_days": lookback_days,
+        "language": current_language(language),
+        "raw_dir": str(RAW_DIR),
+        "consolidated_dir": str(CONSOLIDATED_DIR),
+        "codex_home": str(PATHS.codex_home),
+        "state_root": str(PATHS.state_root),
+        "limits": {
+            "sample_limit": LEARNING_WINDOW_SAMPLE_LIMIT,
+            "pattern_limit": LEARNING_WINDOW_PATTERN_LIMIT,
+            "batch_size": LEARNING_WINDOW_BATCH_SIZE,
+            "batch_keyword_limit": LEARNING_WINDOW_BATCH_KEYWORD_LIMIT,
+            "batch_takeaway_limit": LEARNING_WINDOW_BATCH_TAKEAWAY_LIMIT,
+        },
+        "source_files": source_files,
+    }
+    return json_fingerprint(payload)
+
+
+def is_valid_recent_window_learning(payload, lookback_days=None):
+    if not isinstance(payload, dict):
+        return False
+    required_types = {
+        "lookback_days": int,
+        "scanned_date_count": int,
+        "source_dates": list,
+        "raw_window_count": int,
+        "batch_size": int,
+        "batch_count": int,
+        "coverage": dict,
+        "batch_summaries": list,
+        "window_samples": list,
+        "context_patterns": list,
+    }
+    for key, expected_type in required_types.items():
+        if not isinstance(payload.get(key), expected_type):
+            return False
+    if not all(isinstance(date_str, str) for date_str in payload.get("source_dates", [])):
+        return False
+    if lookback_days is not None and payload.get("lookback_days") != lookback_days:
+        return False
+    if payload.get("scanned_date_count") != payload.get("lookback_days"):
+        return False
+    if payload.get("batch_count") != len(payload.get("batch_summaries", [])):
+        return False
+    if len(payload.get("source_dates", [])) > payload.get("lookback_days"):
+        return False
+    if len(payload.get("window_samples", [])) > min(
+        payload.get("raw_window_count", 0),
+        LEARNING_WINDOW_SAMPLE_LIMIT,
+    ):
+        return False
+    if len(payload.get("context_patterns", [])) > LEARNING_WINDOW_PATTERN_LIMIT:
+        return False
+    coverage = payload.get("coverage", {})
+    for key in (
+        "scanned_date_count",
+        "raw_window_count",
+        "source_date_count",
+        "context_count",
+        "batch_size",
+        "batch_count",
+        "injected_window_sample_count",
+        "injected_pattern_count",
+    ):
+        if not isinstance(coverage.get(key), int):
+            return False
+    if not isinstance(coverage.get("source_dates"), list):
+        return False
+    if not all(isinstance(date_str, str) for date_str in coverage.get("source_dates", [])):
+        return False
+    if payload.get("source_dates") != coverage.get("source_dates"):
+        return False
+    if coverage.get("scanned_date_count") != payload.get("scanned_date_count"):
+        return False
+    if coverage.get("raw_window_count") != payload.get("raw_window_count"):
+        return False
+    if coverage.get("source_date_count") != len(payload.get("source_dates", [])):
+        return False
+    if coverage.get("source_date_count") != len(coverage.get("source_dates", [])):
+        return False
+    if coverage.get("batch_size") != payload.get("batch_size"):
+        return False
+    if coverage.get("batch_count") != payload.get("batch_count"):
+        return False
+    if coverage.get("injected_window_sample_count") != len(payload.get("window_samples", [])):
+        return False
+    if coverage.get("injected_pattern_count") != len(payload.get("context_patterns", [])):
+        return False
+    if coverage.get("injected_pattern_count") > min(
+        coverage.get("context_count", 0),
+        LEARNING_WINDOW_PATTERN_LIMIT,
+    ):
+        return False
+    batch_window_count = 0
+    source_date_set = set(payload.get("source_dates", []))
+    for batch in payload.get("batch_summaries", []):
+        if not isinstance(batch, dict):
+            return False
+        if not isinstance(batch.get("batch_id"), str):
+            return False
+        if not isinstance(batch.get("date"), str):
+            return False
+        if batch.get("date") not in source_date_set:
+            return False
+        for key in ("window_count", "prompt_count", "conclusion_count"):
+            if not isinstance(batch.get(key), int):
+                return False
+            if batch.get(key) < 0:
+                return False
+        if (
+            batch.get("window_count", 0) < 0
+            or batch.get("window_count", 0) > payload.get("batch_size", 0)
+        ):
+            return False
+        for key in ("contexts", "top_keywords", "sample_takeaways"):
+            if not isinstance(batch.get(key), list):
+                return False
+        batch_window_count += batch.get("window_count", 0)
+    if batch_window_count != payload.get("raw_window_count"):
+        return False
+    for sample in payload.get("window_samples", []):
+        if not isinstance(sample, dict):
+            return False
+        if sample.get("date") not in source_date_set:
+            return False
+        for key in ("context", "cwd", "question_summary", "main_takeaway"):
+            if not isinstance(sample.get(key), str):
+                return False
+        for key in ("prompt_count", "conclusion_count"):
+            if not isinstance(sample.get(key), int) or sample.get(key) < 0:
+                return False
+        if not isinstance(sample.get("keywords"), list):
+            return False
+    for pattern in payload.get("context_patterns", []):
+        if not isinstance(pattern, dict):
+            return False
+        if not isinstance(pattern.get("dates"), list):
+            return False
+        if not set(pattern.get("dates", [])).issubset(source_date_set):
+            return False
+        if not isinstance(pattern.get("context"), str):
+            return False
+        for key in ("window_count", "prompt_count", "conclusion_count"):
+            if not isinstance(pattern.get(key), int) or pattern.get(key) < 0:
+                return False
+        for key in ("top_keywords", "sample_takeaways"):
+            if not isinstance(pattern.get(key), list):
+                return False
+    return True
+
+
+def build_recent_window_learning(date_str, lookback_days, cache_dir=None):
     if lookback_days <= 0:
         return {}
 
     target_date_obj = parse_summary_date(date_str)
     if target_date_obj is None:
         return {}
+
+    use_cache = not cache_disabled()
+    fingerprint = ""
+    if use_cache:
+        fingerprint = recent_window_learning_fingerprint(
+            date_str,
+            lookback_days,
+            language=LANGUAGE,
+        )
+    if use_cache and fingerprint in _RECENT_WINDOW_LEARNING_CACHE:
+        cached_memory = _RECENT_WINDOW_LEARNING_CACHE[fingerprint]
+        if (
+            is_valid_recent_window_learning(cached_memory, lookback_days=lookback_days)
+            and recent_window_learning_fingerprint(
+                date_str,
+                lookback_days,
+                language=LANGUAGE,
+            )
+            == fingerprint
+        ):
+            return cached_memory
+        _RECENT_WINDOW_LEARNING_CACHE.pop(fingerprint, None)
+
+    cached = read_cached_payload(
+        cache_dir,
+        "recent-window-learning",
+        fingerprint,
+        "recent_window_learning",
+    )
+    if (
+        is_valid_recent_window_learning(cached, lookback_days=lookback_days)
+        and recent_window_learning_fingerprint(
+            date_str,
+            lookback_days,
+            language=LANGUAGE,
+        )
+        == fingerprint
+    ):
+        remember_cached_value(_RECENT_WINDOW_LEARNING_CACHE, fingerprint, cached)
+        return cached
 
     samples = []
     grouped = {}
@@ -633,7 +1066,7 @@ def build_recent_window_learning(date_str, lookback_days):
 
     context_patterns = patterns[:LEARNING_WINDOW_PATTERN_LIMIT]
 
-    return {
+    learning = {
         "lookback_days": lookback_days,
         "scanned_date_count": lookback_days,
         "source_dates": source_dates[:lookback_days],
@@ -655,6 +1088,22 @@ def build_recent_window_learning(date_str, lookback_days):
         "window_samples": trimmed_samples,
         "context_patterns": context_patterns,
     }
+    if use_cache:
+        final_fingerprint = recent_window_learning_fingerprint(
+            date_str,
+            lookback_days,
+            language=LANGUAGE,
+        )
+        if final_fingerprint == fingerprint:
+            remember_cached_value(_RECENT_WINDOW_LEARNING_CACHE, fingerprint, learning)
+            write_cached_payload(
+                cache_dir,
+                "recent-window-learning",
+                fingerprint,
+                "recent_window_learning",
+                learning,
+            )
+    return learning
 
 
 def load_jsonl(path):
@@ -907,7 +1356,7 @@ def load_recent_quality_lessons(target_date):
     return lessons
 
 
-def build_learning_context(date_str, existing_summary, learn_window_days=0):
+def build_learning_context(date_str, existing_summary, learn_window_days=0, cache_dir=None):
     if not PERSONAL_MEMORY_ENABLED:
         context = {
             "same_date_reference": None,
@@ -920,6 +1369,7 @@ def build_learning_context(date_str, existing_summary, learn_window_days=0):
             context["recent_window_learning"] = build_recent_window_learning(
                 date_str,
                 learn_window_days,
+                cache_dir=cache_dir,
             )
         return context
 
@@ -934,6 +1384,7 @@ def build_learning_context(date_str, existing_summary, learn_window_days=0):
         context["recent_window_learning"] = build_recent_window_learning(
             date_str,
             learn_window_days,
+            cache_dir=cache_dir,
         )
     return context
 
@@ -976,7 +1427,15 @@ def build_learning_context_digest(learning_context, learn_window_days):
     }
 
 
-def build_learning_input_fingerprint(raw_payload, learning_context, learn_window_days, language=None):
+def build_learning_input_fingerprint(
+    raw_payload,
+    learning_context,
+    learn_window_days,
+    language=None,
+    compact_payload=None,
+):
+    if compact_payload is None:
+        compact_payload = build_compact_payload(raw_payload, language=language)
     fingerprint_learning_context = dict(learning_context or {})
     fingerprint_learning_context["same_date_reference"] = None
     payload = {
@@ -986,7 +1445,7 @@ def build_learning_input_fingerprint(raw_payload, learning_context, learn_window
         "personal_memory_enabled": PERSONAL_MEMORY_ENABLED,
         "codex_model": CODEX_MODEL,
         "learn_window_days": max(learn_window_days, 0),
-        "daily_compact_payload": build_compact_payload(raw_payload, language=language),
+        "daily_compact_payload": compact_payload,
         "learning_context": fingerprint_learning_context,
     }
     encoded = json.dumps(payload, ensure_ascii=True, sort_keys=True, separators=(",", ":"))
@@ -1506,16 +1965,24 @@ def main():
         existing_language = normalize_language(existing_summary.get("language") or "zh")
         if existing_language != language:
             existing_summary = None
+    cache_dir = default_cache_dir()
+    compact_payload = build_compact_payload(
+        raw_payload,
+        language=language,
+        cache_dir=cache_dir,
+    )
     learning_context = build_learning_context(
         date_str,
         existing_summary,
         learn_window_days=learn_window_days,
+        cache_dir=cache_dir,
     )
     learning_input_fingerprint = build_learning_input_fingerprint(
         raw_payload,
         learning_context,
         learn_window_days,
         language=language,
+        compact_payload=compact_payload,
     )
     if args.skip_if_unchanged and summary_matches_learning_input(
         existing_summary,
@@ -1527,7 +1994,6 @@ def main():
             )
         )
         return
-    prompt = build_prompt_with_learning(raw_payload, learning_context, language=language)
 
     if raw_payload["window_count"] == 0:
         empty_summary = {
@@ -1578,6 +2044,13 @@ def main():
             }
         )
         return
+
+    prompt = build_prompt_with_learning(
+        raw_payload,
+        learning_context,
+        language=language,
+        compact_payload=compact_payload,
+    )
 
     try:
         run_codex_consolidation(prompt, output_json_path, language=language)
