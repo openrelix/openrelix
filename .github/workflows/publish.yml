@@ -4,6 +4,9 @@ on:
   workflow_dispatch:
   release:
     types: [published]
+  push:
+    tags:
+      - "v*"
 
 permissions:
   contents: read
@@ -25,11 +28,36 @@ jobs:
       - name: Use latest npm
         run: npm install -g npm@latest
 
+      - name: Resolve package version
+        id: version
+        shell: bash
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          if [[ -z "$version" ]]; then
+            echo "package.json version is empty" >&2
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Check npm version
+        id: npm_version
+        shell: bash
+        run: |
+          if npm view "openrelix@${{ steps.version.outputs.version }}" version --registry https://registry.npmjs.org/ >/dev/null 2>&1; then
+            echo "published=true" >> "$GITHUB_OUTPUT"
+            echo "openrelix@${{ steps.version.outputs.version }} already exists on npm."
+          else
+            echo "published=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Block personal-info leaks
+        if: steps.npm_version.outputs.published != 'true'
         run: python3 scripts/check_personal_info.py
 
       - name: Verify package contents
+        if: steps.npm_version.outputs.published != 'true'
         run: npm pack --dry-run --json
 
       - name: Publish to npm
+        if: steps.npm_version.outputs.published != 'true'
         run: npm publish --provenance
