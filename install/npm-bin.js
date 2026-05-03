@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-const { spawnSync } = require("node:child_process");
+const { spawn, spawnSync } = require("node:child_process");
 const fs = require("node:fs");
 const path = require("node:path");
 
@@ -61,6 +61,68 @@ Uninstall removes OpenRelix LaunchAgents, the macOS app, shell command, user-lev
 Run "npx openrelix install --help" to show installer options.`);
 }
 
+function exitCodeForSignal(signal) {
+  if (signal === "SIGHUP") return 129;
+  if (signal === "SIGINT") return 130;
+  if (signal === "SIGTERM") return 143;
+  return 1;
+}
+
+function runManagedChild(command, args) {
+  const child = spawn(command, args, {
+    cwd: repoRoot,
+    stdio: "inherit",
+    env: process.env,
+  });
+  let forwardedSignal = null;
+  let killTimer = null;
+
+  function cleanup() {
+    process.off("SIGHUP", forwardSignal);
+    process.off("SIGINT", forwardSignal);
+    process.off("SIGTERM", forwardSignal);
+    if (killTimer) {
+      clearTimeout(killTimer);
+      killTimer = null;
+    }
+  }
+
+  function forwardSignal(signal) {
+    forwardedSignal = signal;
+    child.kill(signal);
+    if (!killTimer) {
+      killTimer = setTimeout(() => {
+        child.kill("SIGKILL");
+      }, 5000);
+      killTimer.unref();
+    }
+  }
+
+  process.on("SIGHUP", forwardSignal);
+  process.on("SIGINT", forwardSignal);
+  process.on("SIGTERM", forwardSignal);
+
+  child.on("error", (error) => {
+    cleanup();
+    console.error(error.message);
+    process.exit(1);
+  });
+
+  child.on("exit", (code, signal) => {
+    cleanup();
+    if (signal) {
+      process.exit(exitCodeForSignal(signal));
+    }
+    if (typeof code === "number") {
+      process.exit(code);
+    }
+    if (forwardedSignal) {
+      process.exit(exitCodeForSignal(forwardedSignal));
+    }
+    process.exit(1);
+  });
+}
+
 function runPythonCli(args) {
   if (!fs.existsSync(openrelixCli)) {
     console.error(`Missing CLI: ${openrelixCli}`);
@@ -68,17 +130,7 @@ function runPythonCli(args) {
   }
 
   const pythonBin = process.env.PYTHON_BIN || "python3";
-  const result = spawnSync(pythonBin, [openrelixCli, ...args], {
-    cwd: repoRoot,
-    stdio: "inherit",
-    env: process.env,
-  });
-
-  if (result.error) {
-    console.error(result.error.message);
-    process.exit(1);
-  }
-  process.exit(result.status ?? 1);
+  runManagedChild(pythonBin, [openrelixCli, ...args]);
 }
 
 function runInstaller(args) {
@@ -87,17 +139,7 @@ function runInstaller(args) {
     process.exit(1);
   }
 
-  const result = spawnSync("zsh", [installScript, ...args], {
-    cwd: repoRoot,
-    stdio: "inherit",
-    env: process.env,
-  });
-
-  if (result.error) {
-    console.error(result.error.message);
-    process.exit(1);
-  }
-  process.exit(result.status ?? 1);
+  runManagedChild("zsh", [installScript, ...args]);
 }
 
 function updateArgsToInstallArgs(args) {
@@ -157,58 +199,71 @@ function shellQuote(value) {
 function handleUpdate(args) {
   const installArgs = updateArgsToInstallArgs(args);
   if (installArgs === null) {
-    return;
+    return false;
   }
   const command = ["npx", "-y", "openrelix@latest", "install", ...installArgs];
   if (args.includes("--print-command")) {
     console.log(command.map(shellQuote).join(" "));
-    return;
+    return false;
   }
   runInstaller(installArgs);
+  return true;
 }
 
-const args = process.argv.slice(2);
-const command = args[0];
+function main() {
+  const args = process.argv.slice(2);
+  const command = args[0];
 
-if (!command || command === "help" || command === "--help" || command === "-h") {
+  if (!command || command === "help" || command === "--help" || command === "-h") {
+    printHelp();
+    process.exit(0);
+  }
+
+  if (command === "--version" || command === "-v" || command === "version") {
+    console.log(readPackageVersion());
+    process.exit(0);
+  }
+
+  if (command === "install") {
+    runInstaller(args.slice(1));
+    return;
+  }
+
+  if (command === "update" || command === "upgrade") {
+    if (handleUpdate(args.slice(1))) {
+      return;
+    }
+    process.exit(0);
+  }
+
+  if (command === "uninstall" || command === "remove") {
+    runPythonCli(["uninstall", ...args.slice(1)]);
+    return;
+  }
+
+  if (command === "app" || command === "client" || command === "mac") {
+    runPythonCli(["app", ...args.slice(1)]);
+    return;
+  }
+
+  if (command === "models") {
+    runPythonCli(["models", ...args.slice(1)]);
+    return;
+  }
+
+  if (command === "index") {
+    runPythonCli(["index", ...args.slice(1)]);
+    return;
+  }
+
+  if (command.startsWith("-")) {
+    runInstaller(args);
+    return;
+  }
+
+  console.error(`Unknown command: ${command}`);
   printHelp();
-  process.exit(0);
+  process.exit(1);
 }
 
-if (command === "--version" || command === "-v" || command === "version") {
-  console.log(readPackageVersion());
-  process.exit(0);
-}
-
-if (command === "install") {
-  runInstaller(args.slice(1));
-}
-
-if (command === "update" || command === "upgrade") {
-  handleUpdate(args.slice(1));
-  process.exit(0);
-}
-
-if (command === "uninstall" || command === "remove") {
-  runPythonCli(["uninstall", ...args.slice(1)]);
-}
-
-if (command === "app" || command === "client" || command === "mac") {
-  runPythonCli(["app", ...args.slice(1)]);
-}
-
-if (command === "models") {
-  runPythonCli(["models", ...args.slice(1)]);
-}
-
-if (command === "index") {
-  runPythonCli(["index", ...args.slice(1)]);
-}
-
-if (command.startsWith("-")) {
-  runInstaller(args);
-}
-
-console.error(`Unknown command: ${command}`);
-printHelp();
-process.exit(1);
+main();

@@ -5674,6 +5674,29 @@ scope: Release checklist, package manifest, and public website validation.
             zh_readme,
         )
 
+    def test_install_entrypoints_forward_interrupts_to_backfill_children(self):
+        installer = (ROOT / "install" / "install.sh").read_text(encoding="utf-8")
+        npm_bin = (ROOT / "install" / "npm-bin.js").read_text(encoding="utf-8")
+        openrelix_cli = (ROOT / "scripts" / "openrelix.py").read_text(encoding="utf-8")
+
+        self.assertIn('const { spawn, spawnSync } = require("node:child_process");', npm_bin)
+        self.assertIn('process.on("SIGINT", forwardSignal);', npm_bin)
+        self.assertIn('process.on("SIGTERM", forwardSignal);', npm_bin)
+        self.assertIn('child.kill(signal);', npm_bin)
+        self.assertIn("if (handleUpdate(args.slice(1)))", npm_bin)
+        self.assertIn("return true;", npm_bin)
+
+        self.assertIn("INSTALL_CHILD_PID=", installer)
+        self.assertIn("trap 'handle_install_signal INT' INT", installer)
+        self.assertIn("trap 'handle_install_signal TERM' TERM", installer)
+        self.assertIn("trap '' HUP INT TERM", installer)
+        self.assertIn("stop_install_child_process", installer)
+        self.assertIn("run_interruptible_child \"$PYTHON_BIN\" \"$REPO_ROOT/scripts/openrelix.py\"", installer)
+
+        self.assertIn("def install_termination_signal_handlers():", openrelix_cli)
+        self.assertIn('for signal_name in ("SIGHUP", "SIGTERM"):', openrelix_cli)
+        self.assertIn("process_descendant_pids(process.pid)", openrelix_cli)
+
     def test_installer_chinese_language_uses_chinese_guidance_for_install_steps(self):
         installer = (ROOT / "install" / "install.sh").read_text(encoding="utf-8")
         openrelix_cli = (ROOT / "scripts" / "openrelix.py").read_text(encoding="utf-8")
@@ -6264,6 +6287,101 @@ scope: Release checklist, package manifest, and public website validation.
 
         stop_child.assert_called_once_with(process)
         self.assertNotIn(process, openrelix._ACTIVE_CHILD_PROCESSES)
+
+    def test_send_signal_to_child_tree_signals_descendant_process_groups(self):
+        class RunningProcess:
+            pid = 100
+
+            def poll(self):
+                return None
+
+            def kill(self):
+                raise AssertionError("process.kill should not be needed")
+
+        ps_output = "\n".join(
+            [
+                "  100     1",
+                "  101   100",
+                "  102   101",
+                "  103   100",
+            ]
+        )
+        pgids = {
+            100: 100,
+            101: 101,
+            102: 101,
+            103: 103,
+        }
+
+        with mock.patch.object(openrelix.subprocess, "check_output", return_value=ps_output), mock.patch.object(
+            openrelix.os,
+            "getpgrp",
+            return_value=999,
+        ), mock.patch.object(
+            openrelix.os,
+            "getpgid",
+            side_effect=lambda pid: pgids[pid],
+        ), mock.patch.object(
+            openrelix.os,
+            "killpg",
+        ) as killpg, mock.patch.object(
+            openrelix.os,
+            "kill",
+        ) as kill:
+            openrelix.send_signal_to_child_tree(RunningProcess(), openrelix.signal.SIGTERM)
+
+        self.assertEqual(
+            {call.args for call in killpg.call_args_list},
+            {
+                (100, openrelix.signal.SIGTERM),
+                (101, openrelix.signal.SIGTERM),
+                (103, openrelix.signal.SIGTERM),
+            },
+        )
+        kill.assert_not_called()
+
+    def test_termination_signal_handler_stops_children_and_exits_with_signal_code(self):
+        with mock.patch.object(openrelix, "stop_active_child_processes") as stop_children:
+            with self.assertRaises(SystemExit) as raised:
+                openrelix.stop_active_child_processes_for_signal(openrelix.signal.SIGTERM, None)
+
+        stop_children.assert_called_once_with()
+        self.assertEqual(raised.exception.code, 143)
+
+    def test_stop_child_process_tree_escalates_when_descendant_group_remains_alive(self):
+        class ExitingParentProcess:
+            pid = 100
+
+            def poll(self):
+                return None
+
+            def wait(self, timeout=None):
+                return 0
+
+            def kill(self):
+                raise AssertionError("process.kill should not be needed")
+
+        process_groups = {100, 101}
+        individual_pids = set()
+
+        with mock.patch.object(
+            openrelix,
+            "child_signal_targets",
+            return_value=(process_groups, individual_pids),
+        ), mock.patch.object(
+            openrelix,
+            "signal_child_targets",
+        ) as signal_targets, mock.patch.object(
+            openrelix,
+            "child_targets_alive",
+            side_effect=[True, False],
+        ):
+            openrelix.stop_child_process_tree(ExitingParentProcess())
+
+        self.assertEqual(
+            [call.args[2] for call in signal_targets.call_args_list],
+            [openrelix.signal.SIGINT, openrelix.signal.SIGTERM],
+        )
 
     def test_backfill_records_failed_pipeline_result(self):
         with TemporaryDirectory() as tmpdir:
