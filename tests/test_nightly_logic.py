@@ -4118,6 +4118,48 @@ scope: Release checklist, package manifest, and public website validation.
         self.assertNotIn("最近问题", html)
         self.assertNotIn("最近结论", html)
 
+    def test_window_cards_hide_single_ai_question_from_result_preview(self):
+        html = build_overview.make_window_summary_cards(
+            {
+                "date": "2026-04-28",
+                "windows": [
+                    {
+                        "window_id": "w-single-ai",
+                        "display_index": 1,
+                        "project_label": "OpenRelix",
+                        "window_title": "整理后的标题",
+                        "question_count": 1,
+                        "conclusion_count": 1,
+                        "question_summary": "单个问题正文",
+                        "main_takeaway": "单个结论正文",
+                        "summary_pairs": [
+                            {"question": "单个问题正文", "conclusion": "单个结论正文"},
+                        ],
+                        "summary_status": "summarized",
+                        "summary_status_label": "大模型已做智能整理",
+                        "keywords": [],
+                        "latest_activity_display": "刚刚",
+                        "started_at_display": "刚刚",
+                        "recent_prompts": [],
+                        "recent_conclusions": [],
+                    }
+                ],
+            }
+        )
+
+        summary_html = html[
+            html.index('<summary class="window-card-trigger">') : html.index("</summary>")
+        ]
+        detail_html = html[html.index('class="window-card-detail"') :]
+        self.assertIn("大模型已做智能整理", summary_html)
+        self.assertIn('class="window-card-pair-preview"', summary_html)
+        self.assertNotIn('class="window-card-pair-label">问题</span>', summary_html)
+        self.assertNotIn("单个问题正文", summary_html)
+        self.assertIn('class="window-card-pair-label">结论</span>', summary_html)
+        self.assertIn("单个结论正文", summary_html)
+        self.assertIn("单个问题正文", detail_html)
+        self.assertIn("单个结论正文", detail_html)
+
     def test_window_cards_mark_raw_fallback_when_summary_not_ready(self):
         html = build_overview.make_window_summary_cards(
             {
