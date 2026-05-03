@@ -5364,6 +5364,7 @@ scope: Release checklist, package manifest, and public website validation.
         self.assertIn("panelThemeBridgeScript", mac_client)
         self.assertIn("WKScriptMessageHandler", mac_client)
         self.assertIn("openrelixTheme", mac_client)
+        self.assertIn("openrelixOpenExternal", mac_client)
         self.assertIn("webView?.underPageBackgroundColor = background", mac_client)
         self.assertIn("window?.backgroundColor = background", mac_client)
         self.assertNotIn("private let defaultBackground", mac_client)
@@ -5378,6 +5379,8 @@ scope: Release checklist, package manifest, and public website validation.
         self.assertIn("webView.navigationDelegate = self", mac_client)
         self.assertIn("webView.uiDelegate = self", mac_client)
         self.assertIn("navigationAction.targetFrame == nil", mac_client)
+        self.assertIn('message.name == "openrelixOpenExternal"', mac_client)
+        self.assertIn("let url = URL(string: rawURL)", mac_client)
         self.assertIn("openOutsidePanel(_ url: URL)", mac_client)
         self.assertIn("NSWorkspace.shared.open(url)", mac_client)
         self.assertIn("url.isFileURL && isPanelURL(url)", mac_client)
@@ -5883,6 +5886,9 @@ scope: Release checklist, package manifest, and public website validation.
         self.assertIn("旧窗口", html)
         self.assertIn("function renderWindowOverview(dateValue)", html)
         self.assertIn("wireWindowOverviewDateInput();", html)
+        self.assertIn("function wireExternalPanelLinks()", html)
+        self.assertIn("openrelixOpenExternal", html)
+        self.assertIn("wireExternalPanelLinks();", html)
         self.assertIn("wireWindowResumeActions();", html)
 
     def test_daily_summary_view_carries_bilingual_dynamic_fields(self):

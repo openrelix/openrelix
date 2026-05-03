@@ -269,6 +269,7 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessag
             )
         )
         configuration.userContentController.add(self, name: "openrelixTheme")
+        configuration.userContentController.add(self, name: "openrelixOpenExternal")
 
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.navigationDelegate = self
@@ -318,13 +319,18 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessag
     }
 
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
-        guard message.name == "openrelixTheme", let theme = message.body as? String else {
+        if message.name == "openrelixTheme", let theme = message.body as? String {
+            if theme == "dark" {
+                applyPanelBackground(isDark: true)
+            } else if theme == "light" {
+                applyPanelBackground(isDark: false)
+            }
             return
         }
-        if theme == "dark" {
-            applyPanelBackground(isDark: true)
-        } else if theme == "light" {
-            applyPanelBackground(isDark: false)
+        if message.name == "openrelixOpenExternal",
+           let rawURL = message.body as? String,
+           let url = URL(string: rawURL) {
+            _ = openOutsidePanel(url)
         }
     }
 

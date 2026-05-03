@@ -18488,6 +18488,68 @@ def build_html(data):
         }}, 1600);
       }}
 
+      function nativeExternalOpenHandler() {{
+        return (
+          window.webkit &&
+          window.webkit.messageHandlers &&
+          window.webkit.messageHandlers.openrelixOpenExternal
+        ) ? window.webkit.messageHandlers.openrelixOpenExternal : null;
+      }}
+
+      function shouldOpenOutsidePanel(rawHref) {{
+        if (!rawHref) {{
+          return false;
+        }}
+        try {{
+          const url = new URL(rawHref, window.location.href);
+          const protocol = (url.protocol || "").toLowerCase();
+          if (!["http:", "https:", "file:", "codex:"].includes(protocol)) {{
+            return false;
+          }}
+          if (protocol === "file:") {{
+            const targetPath = url.href.split("#")[0];
+            const currentPath = window.location.href.split("#")[0];
+            if (targetPath === currentPath) {{
+              return false;
+            }}
+          }}
+          return true;
+        }} catch (error) {{
+          return false;
+        }}
+      }}
+
+      function postExternalOpen(rawHref) {{
+        const handler = nativeExternalOpenHandler();
+        if (!handler) {{
+          return false;
+        }}
+        try {{
+          handler.postMessage(rawHref);
+          return true;
+        }} catch (error) {{
+          return false;
+        }}
+      }}
+
+      function wireExternalPanelLinks() {{
+        document.addEventListener("click", function (event) {{
+          const target = event.target;
+          const link = target && target.closest ? target.closest("a[href]") : null;
+          if (!link) {{
+            return;
+          }}
+          const href = link.href || link.getAttribute("href") || "";
+          if (!shouldOpenOutsidePanel(href)) {{
+            return;
+          }}
+          if (postExternalOpen(href)) {{
+            event.preventDefault();
+            event.stopPropagation();
+          }}
+        }}, true);
+      }}
+
       function wireWindowResumeActions() {{
         document.addEventListener("click", function (event) {{
           const modeButton = event.target.closest("[data-window-summary-mode]");
@@ -19420,6 +19482,7 @@ def build_html(data):
       wireNightlyDateInput();
       wireWindowOverviewDateInput();
       wireBackfillCopyButtons();
+      wireExternalPanelLinks();
       wireWindowResumeActions();
       wireSideNav();
       wireHorizontalScrollLock();
