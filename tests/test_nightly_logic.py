@@ -8138,11 +8138,13 @@ scope: Release checklist, package manifest, and public website validation.
         )
         keywords = summary["window_summaries"][0]["keywords"]
 
-        self.assertEqual(keywords[:4], ["OpenRelix", "token花销", "Cost (USD)", "token数量"])
+        self.assertEqual(keywords, ["OpenRelix", "token花销", "Cost (USD)", "token数量"])
         self.assertNotIn("Image", keywords)
+        self.assertNotIn("是Cost", keywords)
         self.assertFalse(any("什么指标" in keyword for keyword in keywords))
         self.assertFalse(any("一般说" in keyword for keyword in keywords))
         self.assertFalse(any("最该盯" in keyword for keyword in keywords))
+        self.assertFalse(any("**" in keyword for keyword in keywords))
         self.assertIn("token花销", summary["keywords"])
 
 
