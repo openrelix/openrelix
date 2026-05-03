@@ -3880,6 +3880,16 @@ scope: Release checklist, package manifest, and public website validation.
         self.assertNotIn("font-size: clamp", source)
         self.assertNotIn("letter-spacing: 0.08em", source)
 
+    def test_nightly_summary_ledger_layout_fits_content_height(self):
+        source = (ROOT / "scripts" / "build_overview.py").read_text(encoding="utf-8")
+        nightly_start = source.index(".nightly-shell {{")
+        nightly_css = source[nightly_start : source.index(".panel-head {{", nightly_start)]
+
+        self.assertIn("align-items: start;", nightly_css)
+        self.assertIn("height: fit-content;", nightly_css)
+        self.assertIn("grid-template-columns: repeat(auto-fit, minmax(min(124px, 100%), 1fr));", nightly_css)
+        self.assertNotIn("min-height: 100%;", nightly_css)
+
     def test_build_html_prepaint_light_preference_is_not_overridden_by_body(self):
         source = (ROOT / "scripts" / "build_overview.py").read_text(encoding="utf-8")
 

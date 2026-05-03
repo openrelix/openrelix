@@ -14167,7 +14167,7 @@ def build_html(data):
       display: grid;
       grid-template-columns: minmax(0, 1.55fr) minmax(320px, 0.9fr);
       gap: 34px;
-      align-items: stretch;
+      align-items: start;
     }}
 
     .nightly-copy {{
@@ -14537,16 +14537,16 @@ def build_html(data):
       gap: 22px;
       align-content: start;
       min-width: 0;
+      height: fit-content;
       padding: 28px;
       border-radius: 28px;
       border: 1px solid var(--line-strong);
       background: var(--soft);
-      min-height: 100%;
     }}
 
     .nightly-stat-grid {{
       display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(min(124px, 100%), 1fr));
       gap: 14px;
     }}
 
@@ -14554,12 +14554,13 @@ def build_html(data):
       display: flex;
       flex-direction: column;
       justify-content: space-between;
-      min-height: 118px;
-      padding: 22px;
+      min-height: 108px;
+      padding: 20px;
       border-radius: 22px;
       border: 1px solid var(--line);
       background: var(--card);
       box-shadow: var(--shadow-soft);
+      min-width: 0;
     }}
 
     .nightly-stat-label {{
@@ -14568,6 +14569,8 @@ def build_html(data):
       font-size: 15px;
       line-height: 1.3;
       letter-spacing: 0;
+      overflow-wrap: anywhere;
+      word-break: break-word;
     }}
 
     .nightly-stat-value {{
@@ -14577,6 +14580,8 @@ def build_html(data):
       font-weight: 600;
       line-height: 1;
       font-variant-numeric: tabular-nums;
+      overflow-wrap: anywhere;
+      word-break: break-word;
     }}
 
     .nightly-rail-note {{
