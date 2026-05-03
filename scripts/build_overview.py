@@ -744,10 +744,17 @@ PANEL_I18N_EN = {
     "该日期暂无整理结果。": "No synthesis for this date.",
     "未整理": "Not synthesized",
     "缺少整理结果": "Missing synthesis",
+    "建议深度回溯": "Recommended deep backfill",
     "该日期还没有整理结果。可以复制命令在终端手动回溯。": (
         "This date has no synthesis yet. Copy the command and run it in a terminal to backfill it."
     ),
+    "当前是轻量整理，日报和记忆可能不准确。可以复制命令在终端补跑 final 深度回溯。首次安装后，会自动触发深度回溯，请耐心等待。": (
+        "This is the lightweight pass, so the daily summary and memories may be inaccurate. "
+        "Copy the command and run final deep backfill in a terminal. After first install, "
+        "OpenRelix starts deep backfill automatically; please wait."
+    ),
     "单日回溯": "Single-date backfill",
+    "深度回溯": "Deep backfill",
     "多日回溯": "Multi-day backfill",
     "复制命令": "Copy command",
     "已复制回溯命令": "Backfill command copied",
@@ -11497,7 +11504,7 @@ def build_daily_summary_view(nightly, window_overview=None, project_contexts=Non
     note_text_en = "These numbers come from the selected synthesis and help estimate how much was captured that day."
     if stage == "preliminary":
         note_text_zh = "当前是轻量整理，日报和记忆可能不准确；可运行 final 深度回溯查看全部可用的记忆和总结。"
-        note_text_en = "This is the lightweight pass, so the daily summary and memory may be inaccurate; run final deep backfill for all available memories and summaries."
+        note_text_en = "This is the lightweight pass, so the daily summary and memories may be inaccurate; run final deep backfill for all available memories and summaries."
     elif not nightly:
         note_text_zh = "当前还没有最近一次整理；生成后这里会自动切成摘要卡。"
         note_text_en = "No recent synthesis yet; this area will switch to a summary card after generation."
@@ -11762,7 +11769,7 @@ def make_nightly_summary_panel(
     )
     backfill_title = "建议深度回溯" if selected_preliminary else "缺少整理结果"
     backfill_note = (
-        "当前是轻量整理，日报和记忆可能不准确。可以复制命令在终端补跑 final 深度回溯。"
+        "当前是轻量整理，日报和记忆可能不准确。可以复制命令在终端补跑 final 深度回溯。首次安装后，会自动触发深度回溯，请耐心等待。"
         if selected_preliminary
         else "该日期还没有整理结果。可以复制命令在终端手动回溯。"
     )
@@ -14187,7 +14194,7 @@ def build_html(data):
       display: grid;
       grid-template-columns: minmax(0, 1.55fr) minmax(320px, 0.9fr);
       gap: 34px;
-      align-items: stretch;
+      align-items: start;
     }}
 
     .nightly-copy {{
@@ -14453,6 +14460,10 @@ def build_html(data):
       min-width: 0;
     }}
 
+    .nightly-backfill-command[hidden] {{
+      display: none;
+    }}
+
     .nightly-backfill-label {{
       grid-column: 1 / -1;
       color: var(--slate);
@@ -14557,16 +14568,16 @@ def build_html(data):
       gap: 22px;
       align-content: start;
       min-width: 0;
+      height: fit-content;
       padding: 28px;
       border-radius: 28px;
       border: 1px solid var(--line-strong);
       background: var(--soft);
-      min-height: 100%;
     }}
 
     .nightly-stat-grid {{
       display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(min(124px, 100%), 1fr));
       gap: 14px;
     }}
 
@@ -14574,12 +14585,13 @@ def build_html(data):
       display: flex;
       flex-direction: column;
       justify-content: space-between;
-      min-height: 118px;
-      padding: 22px;
+      min-height: 108px;
+      padding: 20px;
       border-radius: 22px;
       border: 1px solid var(--line);
       background: var(--card);
       box-shadow: var(--shadow-soft);
+      min-width: 0;
     }}
 
     .nightly-stat-label {{
@@ -14588,6 +14600,8 @@ def build_html(data):
       font-size: 15px;
       line-height: 1.3;
       letter-spacing: 0;
+      overflow-wrap: anywhere;
+      word-break: break-word;
     }}
 
     .nightly-stat-value {{
@@ -14597,6 +14611,8 @@ def build_html(data):
       font-weight: 600;
       line-height: 1;
       font-variant-numeric: tabular-nums;
+      overflow-wrap: anywhere;
+      word-break: break-word;
     }}
 
     .nightly-rail-note {{
@@ -18160,7 +18176,7 @@ def build_html(data):
         if (elements.backfillNote) {{
           elements.backfillNote.textContent = t(
             isPreliminary
-              ? "当前是轻量整理，日报和记忆可能不准确。可以复制命令在终端补跑 final 深度回溯。"
+              ? "当前是轻量整理，日报和记忆可能不准确。可以复制命令在终端补跑 final 深度回溯。首次安装后，会自动触发深度回溯，请耐心等待。"
               : "该日期还没有整理结果。可以复制命令在终端手动回溯。"
           );
         }}

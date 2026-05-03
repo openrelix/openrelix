@@ -3884,6 +3884,17 @@ scope: Release checklist, package manifest, and public website validation.
         self.assertNotIn("font-size: clamp", source)
         self.assertNotIn("letter-spacing: 0.08em", source)
 
+    def test_nightly_summary_ledger_layout_fits_content_height(self):
+        source = (ROOT / "scripts" / "build_overview.py").read_text(encoding="utf-8")
+        nightly_start = source.index(".nightly-shell {{")
+        nightly_css = source[nightly_start : source.index(".panel-head {{", nightly_start)]
+
+        self.assertIn("align-items: start;", nightly_css)
+        self.assertIn("height: fit-content;", nightly_css)
+        self.assertIn("grid-template-columns: repeat(auto-fit, minmax(min(124px, 100%), 1fr));", nightly_css)
+        self.assertIn(".nightly-backfill-command[hidden] {{", nightly_css)
+        self.assertNotIn("min-height: 100%;", nightly_css)
+
     def test_build_html_prepaint_light_preference_is_not_overridden_by_body(self):
         source = (ROOT / "scripts" / "build_overview.py").read_text(encoding="utf-8")
 
@@ -6857,7 +6868,10 @@ scope: Release checklist, package manifest, and public website validation.
 
         self.assertIn("建议深度回溯", html)
         self.assertIn("当前是轻量整理，日报和记忆可能不准确", html)
+        self.assertIn("首次安装后，会自动触发深度回溯，请耐心等待。", html)
+        self.assertIn("深度回溯", html)
         self.assertIn("openrelix backfill --from 2026-04-24 --to 2026-04-24 --stage final", html)
+        self.assertIn('id="nightly-backfill-range" hidden', html)
 
     def test_build_html_wires_window_overview_date_views(self):
         html = build_overview.build_html(
