@@ -14024,9 +14024,9 @@ def build_html(data):
 
     .memory-family-title-row.has-extra {{
       display: grid;
-      grid-template-columns: minmax(260px, 0.7fr) minmax(320px, 0.85fr) minmax(380px, 440px);
+      grid-template-columns: minmax(0, 1fr) minmax(220px, 0.72fr) minmax(260px, 0.86fr);
       align-items: start;
-      gap: 24px;
+      gap: 18px;
     }}
 
     .memory-family-title-copy {{
@@ -17266,6 +17266,16 @@ def build_html(data):
 
       .memory-family-title-row.has-extra {{
         grid-template-columns: 1fr;
+      }}
+    }}
+
+    @media (max-width: 1280px) and (min-width: 721px) {{
+      .memory-family-title-row.has-extra {{
+        grid-template-columns: minmax(0, 1fr) minmax(220px, 0.72fr);
+      }}
+
+      .memory-token-widget {{
+        grid-column: 1 / -1;
       }}
     }}
 
