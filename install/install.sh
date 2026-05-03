@@ -1172,10 +1172,10 @@ fi
 learn_memory_command() {
   if (( LEARNING_REFRESH_WINDOW_DAYS == 0 )); then
     if (( INSTALL_GLOBAL_COMMAND )); then
-      printf 'openrelix review --stage final --learn-window-days 0 --jobs %s\n' "$INSTALL_LEARN_JOBS"
+      printf 'openrelix review --stage preliminary --learn-window-days 0 --jobs %s\n' "$INSTALL_LEARN_JOBS"
       return
     fi
-    printf 'AI_ASSET_STATE_DIR=%q CODEX_HOME=%q AI_ASSET_LANGUAGE=%q OPENRELIX_ACTIVITY_SOURCE=%q %q %q review --stage final --learn-window-days 0 --jobs %s\n' \
+    printf 'AI_ASSET_STATE_DIR=%q CODEX_HOME=%q AI_ASSET_LANGUAGE=%q OPENRELIX_ACTIVITY_SOURCE=%q %q %q review --stage preliminary --learn-window-days 0 --jobs %s\n' \
       "$STATE_DIR" \
       "$CODEX_HOME" \
       "$LANGUAGE" \
@@ -1186,10 +1186,10 @@ learn_memory_command() {
     return
   fi
   if (( INSTALL_GLOBAL_COMMAND )); then
-    printf 'openrelix backfill --days %s --stage final --learn-window-days 0 --jobs %s\n' "$LEARNING_REFRESH_WINDOW_DAYS" "$INSTALL_LEARN_JOBS"
+    printf 'openrelix backfill --days %s --stage preliminary --learn-window-days 0 --jobs %s\n' "$LEARNING_REFRESH_WINDOW_DAYS" "$INSTALL_LEARN_JOBS"
     return
   fi
-  printf 'AI_ASSET_STATE_DIR=%q CODEX_HOME=%q AI_ASSET_LANGUAGE=%q OPENRELIX_ACTIVITY_SOURCE=%q %q %q backfill --days %s --stage final --learn-window-days 0 --jobs %s\n' \
+  printf 'AI_ASSET_STATE_DIR=%q CODEX_HOME=%q AI_ASSET_LANGUAGE=%q OPENRELIX_ACTIVITY_SOURCE=%q %q %q backfill --days %s --stage preliminary --learn-window-days 0 --jobs %s\n' \
     "$STATE_DIR" \
     "$CODEX_HOME" \
     "$LANGUAGE" \
@@ -1267,18 +1267,18 @@ if [[ "$OSTYPE" == darwin* ]] && (( MAC_CLIENT_INSTALLED )) && (( LAUNCH_AFTER_I
 fi
 if (( LEARNING_REFRESH_WINDOW_DAYS == 0 )); then
   if [[ "$MEMORY_MODE" == "integrated" ]]; then
-    REVIEW_CONTEXT_NOTE_ZH="这一步只整理当天窗口，不做历史学习。当前 integrated 会同步 bounded summary，但不会把原始窗口写进 Codex 原生 memory。"
-    REVIEW_CONTEXT_NOTE_EN="This only organizes today's window and does not run historical learning. The current integrated mode syncs a bounded summary, but does not write raw windows into Codex native memory."
+    REVIEW_CONTEXT_NOTE_ZH="这一步只读取并轻量整理当天窗口，写入可复用压缩层，不做历史学习。当前 integrated 会同步 bounded summary，但不会把原始窗口写进 Codex 原生 memory。"
+    REVIEW_CONTEXT_NOTE_EN="This only reads and lightly organizes today's window, stores a reusable compact layer, and does not run historical learning. The current integrated mode syncs a bounded summary, but does not write raw windows into Codex native memory."
   else
-    REVIEW_CONTEXT_NOTE_ZH="这一步只整理当天窗口，不做历史学习。当前 $MEMORY_MODE 不会向 Codex context 同步摘要。"
-    REVIEW_CONTEXT_NOTE_EN="This only organizes today's window and does not run historical learning. The current $MEMORY_MODE mode does not sync a summary into Codex context."
+    REVIEW_CONTEXT_NOTE_ZH="这一步只读取并轻量整理当天窗口，写入可复用压缩层，不做历史学习。当前 $MEMORY_MODE 不会向 Codex context 同步摘要。"
+    REVIEW_CONTEXT_NOTE_EN="This only reads and lightly organizes today's window, stores a reusable compact layer, and does not run historical learning. The current $MEMORY_MODE mode does not sync a summary into Codex context."
   fi
 elif [[ "$MEMORY_MODE" == "integrated" ]]; then
-  REVIEW_CONTEXT_NOTE_ZH="浅度回溯会整理最近 ${LEARNING_REFRESH_WINDOW_DAYS} 天当天窗口，不做历史学习；随后可运行深度学习。当前 integrated 会同步 bounded summary，但不会把原始窗口写进 Codex 原生 memory。"
-  REVIEW_CONTEXT_NOTE_EN="The shallow backfill organizes same-day windows for the last ${LEARNING_REFRESH_WINDOW_DAYS} days without historical learning; deep learning can run afterwards. The current integrated mode syncs a bounded summary, but does not write raw windows into Codex native memory."
+  REVIEW_CONTEXT_NOTE_ZH="浅度回溯会读取并轻量整理最近 ${LEARNING_REFRESH_WINDOW_DAYS} 天窗口，写入可复用压缩层；随后 final 深度学习会复用这层结果。当前 integrated 会同步 bounded summary，但不会把原始窗口写进 Codex 原生 memory。"
+  REVIEW_CONTEXT_NOTE_EN="The shallow backfill reads and lightly organizes the last ${LEARNING_REFRESH_WINDOW_DAYS} days of windows, then stores a reusable compact layer for later final consolidation. The current integrated mode syncs a bounded summary, but does not write raw windows into Codex native memory."
 else
-  REVIEW_CONTEXT_NOTE_ZH="浅度回溯会整理最近 ${LEARNING_REFRESH_WINDOW_DAYS} 天当天窗口，不做历史学习；随后可运行深度学习。当前 $MEMORY_MODE 不会向 Codex context 同步摘要。"
-  REVIEW_CONTEXT_NOTE_EN="The shallow backfill organizes same-day windows for the last ${LEARNING_REFRESH_WINDOW_DAYS} days without historical learning; deep learning can run afterwards. The current $MEMORY_MODE mode does not sync a summary into Codex context."
+  REVIEW_CONTEXT_NOTE_ZH="浅度回溯会读取并轻量整理最近 ${LEARNING_REFRESH_WINDOW_DAYS} 天窗口，写入可复用压缩层；随后 final 深度学习会复用这层结果。当前 $MEMORY_MODE 不会向 Codex context 同步摘要。"
+  REVIEW_CONTEXT_NOTE_EN="The shallow backfill reads and lightly organizes the last ${LEARNING_REFRESH_WINDOW_DAYS} days of windows, then stores a reusable compact layer for later final consolidation. The current $MEMORY_MODE mode does not sync a summary into Codex context."
 fi
 
 if [[ "$LANGUAGE" == "zh" ]]; then
@@ -1545,7 +1545,7 @@ run_post_install_shallow_learning() {
       AI_ASSET_LANGUAGE="$LANGUAGE" \
       OPENRELIX_ACTIVITY_SOURCE="$ACTIVITY_SOURCE" \
       "$PYTHON_BIN" "$REPO_ROOT/scripts/openrelix.py" \
-      review --stage final --learn-window-days 0 --jobs "$INSTALL_LEARN_JOBS"
+      review --stage preliminary --learn-window-days 0 --jobs "$INSTALL_LEARN_JOBS"
     return
   fi
   AI_ASSET_STATE_DIR="$STATE_DIR" \
@@ -1553,7 +1553,7 @@ run_post_install_shallow_learning() {
     AI_ASSET_LANGUAGE="$LANGUAGE" \
     OPENRELIX_ACTIVITY_SOURCE="$ACTIVITY_SOURCE" \
     "$PYTHON_BIN" "$REPO_ROOT/scripts/openrelix.py" \
-    backfill --days "$LEARNING_REFRESH_WINDOW_DAYS" --stage final --learn-window-days 0 --jobs "$INSTALL_LEARN_JOBS"
+    backfill --days "$LEARNING_REFRESH_WINDOW_DAYS" --stage preliminary --learn-window-days 0 --jobs "$INSTALL_LEARN_JOBS"
 }
 
 launch_app_after_shallow_learning() {
@@ -1591,11 +1591,11 @@ if (( INTERACTIVE_TTY )) && (( LEARN_AFTER_INSTALL )); then
     print -r -- ""
     print -r -- "Run the default two-step memory backfill now?"
     if (( LEARNING_REFRESH_WINDOW_DAYS == 0 )); then
-      print -r -- "This runs a fast same-day review without historical learning."
+      print -r -- "This stores a fast reusable compact layer for today without historical learning."
     elif (( WILL_AUTO_LAUNCH )); then
-      print -r -- "Step 1 is shallow and faster; the app opens next, then Step 2 starts deep ${LEARNING_REFRESH_WINDOW_DAYS}-day learning in the background."
+      print -r -- "Step 1 stores a reusable lightweight layer; the app opens next, then Step 2 starts deep ${LEARNING_REFRESH_WINDOW_DAYS}-day learning in the background."
     else
-      print -r -- "Step 1 is shallow and faster; Step 2 starts deep ${LEARNING_REFRESH_WINDOW_DAYS}-day learning in the background after Step 1."
+      print -r -- "Step 1 stores a reusable lightweight layer; Step 2 starts deep ${LEARNING_REFRESH_WINDOW_DAYS}-day learning in the background after Step 1."
     fi
     print -r -- "  $LEARN_MEMORY_COMMAND"
     if (( WILL_AUTO_LAUNCH )); then
@@ -1609,11 +1609,11 @@ if (( INTERACTIVE_TTY )) && (( LEARN_AFTER_INSTALL )); then
     print -r -- ""
     print -r -- "现在执行默认两段式记忆回溯吗？"
     if (( LEARNING_REFRESH_WINDOW_DAYS == 0 )); then
-      print -r -- "这会快速整理当天窗口，不做历史学习。"
+      print -r -- "这会为当天窗口写入可复用轻量层，不做历史学习。"
     elif (( WILL_AUTO_LAUNCH )); then
-      print -r -- "第一步浅度回溯更快；随后打开 app，并在后台触发 ${LEARNING_REFRESH_WINDOW_DAYS} 天深度学习。"
+      print -r -- "第一步先写入可复用轻量层；随后打开 app，并在后台触发 ${LEARNING_REFRESH_WINDOW_DAYS} 天深度学习。"
     else
-      print -r -- "第一步浅度回溯更快；完成后会在后台触发 ${LEARNING_REFRESH_WINDOW_DAYS} 天深度学习。"
+      print -r -- "第一步先写入可复用轻量层；完成后会在后台触发 ${LEARNING_REFRESH_WINDOW_DAYS} 天深度学习。"
     fi
     print -r -- "  $LEARN_MEMORY_COMMAND"
     if (( WILL_AUTO_LAUNCH )); then

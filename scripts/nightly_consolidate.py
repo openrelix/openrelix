@@ -61,6 +61,9 @@ STAGE_PRIORITY = {"manual": 0, "preliminary": 1, "final": 2}
 DEFAULT_CODEX_EXEC_TIMEOUT_SECONDS = 15 * 60
 CODEX_EXEC_TIMEOUT_RETURN_CODE = 124
 COMPACT_PAYLOAD_CACHE_VERSION = 1
+DAILY_COMPACT_ARTIFACT_VERSION = 1
+LIGHTWEIGHT_SUMMARY_VERSION = 1
+LIGHTWEIGHT_SESSION_MEMORY_LIMIT = 3
 RECENT_WINDOW_LEARNING_CACHE_VERSION = 1
 _COMPACT_PAYLOAD_CACHE = {}
 _RECENT_WINDOW_LEARNING_CACHE = {}
@@ -582,6 +585,82 @@ def build_compact_payload(raw_payload, language=None, cache_dir=None, fingerprin
         compact_payload,
     )
     return compact_payload
+
+
+def daily_compact_artifact_path(summary_dir):
+    return Path(summary_dir) / "compact_payload.json"
+
+
+def read_daily_compact_payload(summary_dir, raw_payload, language=None):
+    if cache_disabled():
+        return None
+    artifact_path = daily_compact_artifact_path(summary_dir)
+    if not artifact_path.exists():
+        return None
+    try:
+        artifact = load_json(artifact_path)
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    if not isinstance(artifact, dict):
+        return None
+    if artifact.get("version") != DAILY_COMPACT_ARTIFACT_VERSION:
+        return None
+    if artifact.get("language") != current_language(language):
+        return None
+    fingerprint = compact_payload_fingerprint(raw_payload, language=language)
+    if artifact.get("fingerprint") != fingerprint:
+        return None
+    compact_payload = artifact.get("compact_payload")
+    if not is_valid_compact_payload(compact_payload, raw_payload=raw_payload):
+        return None
+    remember_cached_value(_COMPACT_PAYLOAD_CACHE, fingerprint, compact_payload)
+    return compact_payload
+
+
+def write_daily_compact_payload(summary_dir, raw_payload, compact_payload, language=None, fingerprint=None):
+    if cache_disabled():
+        return
+    if not is_valid_compact_payload(compact_payload, raw_payload=raw_payload):
+        return
+    fingerprint = fingerprint or compact_payload_fingerprint(raw_payload, language=language)
+    artifact_path = daily_compact_artifact_path(summary_dir)
+    try:
+        artifact_path.parent.mkdir(parents=True, exist_ok=True)
+        write_json(
+            artifact_path,
+            {
+                "version": DAILY_COMPACT_ARTIFACT_VERSION,
+                "language": current_language(language),
+                "fingerprint": fingerprint,
+                "generated_at": datetime.now().astimezone().isoformat(),
+                "compact_payload": compact_payload,
+            },
+        )
+    except OSError:
+        return
+
+
+def build_or_reuse_daily_compact_payload(raw_payload, summary_dir, language=None, cache_dir=None):
+    language = current_language(language)
+    compact_payload = read_daily_compact_payload(summary_dir, raw_payload, language=language)
+    if compact_payload is not None:
+        return compact_payload, "daily_artifact"
+
+    fingerprint = compact_payload_fingerprint(raw_payload, language=language) if not cache_disabled() else ""
+    compact_payload = build_compact_payload(
+        raw_payload,
+        language=language,
+        cache_dir=cache_dir,
+        fingerprint=fingerprint,
+    )
+    write_daily_compact_payload(
+        summary_dir,
+        raw_payload,
+        compact_payload,
+        language=language,
+        fingerprint=fingerprint or None,
+    )
+    return compact_payload, "fresh"
 
 
 def build_prompt(raw_payload, language=None):
@@ -1284,6 +1363,14 @@ def choose_preferred_summary(existing_summary, candidate_summary, raw_payload):
         chosen = candidate_summary
     elif (
         candidate_stage_rank > existing_stage_rank
+        and existing_summary.get("summary_generation") == "lightweight"
+        and candidate_summary.get("model_status") == "completed"
+        and not candidate_quality["is_sparse"]
+    ):
+        reason = "candidate_deepens_lightweight_summary"
+        chosen = candidate_summary
+    elif (
+        candidate_stage_rank > existing_stage_rank
         and candidate_substantive_score >= existing_substantive_score
         and candidate_primary >= existing_primary
         and not candidate_quality["is_sparse"]
@@ -1820,6 +1907,115 @@ def build_fallback_summary(raw_payload, language=None, model_error=None, model_e
     return summary
 
 
+def compact_window_signal_score(window):
+    return window.get("prompt_count", 0) * 2 + window.get("conclusion_count", 0) * 3
+
+
+def build_lightweight_summary(raw_payload, compact_payload, language=None):
+    language = current_language(language)
+    window_summaries = []
+    context_counter = Counter()
+    memory_candidates = []
+
+    for window in compact_payload.get("windows", []):
+        question_summary = fallback_question_summary(window, language=language)
+        main_takeaway = fallback_main_takeaway(window, language=language)
+        context_label = humanize_context_label(window.get("cwd", ""), language=language)
+        context_counter[context_label] += 1
+        window_title = fallback_window_title(
+            window,
+            question_summary=question_summary,
+            language=language,
+        )
+        window_summary = {
+            "window_id": window["window_id"],
+            "cwd": window["cwd"],
+            "window_title": window_title,
+            "question_summary": question_summary,
+            "question_count": window["prompt_count"],
+            "conclusion_count": window["conclusion_count"],
+            "keywords": [context_label][:1],
+            "main_takeaway": main_takeaway,
+            "summary_pairs": normalize_summary_pairs(
+                [],
+                question_summary=question_summary,
+                main_takeaway=main_takeaway,
+            ),
+        }
+        window_summaries.append(window_summary)
+        if window.get("prompt_count", 0) or window.get("conclusion_count", 0):
+            memory_candidates.append((compact_window_signal_score(window), window_summary, context_label))
+
+    memory_candidates.sort(
+        key=lambda item: (
+            item[0],
+            item[1].get("conclusion_count", 0),
+            item[1].get("question_count", 0),
+            item[1].get("window_id", ""),
+        ),
+        reverse=True,
+    )
+    session_memories = []
+    for _, item, context_label in memory_candidates[:LIGHTWEIGHT_SESSION_MEMORY_LIMIT]:
+        title_prefix = localized("轻量整理", "Lightweight review", language)
+        session_memories.append(
+            {
+                "title": clip_text("{}: {}".format(title_prefix, item["window_title"]), 120),
+                "memory_type": "task",
+                "priority": "medium",
+                "value_note": clip_text(item["main_takeaway"] or item["question_summary"], 220),
+                "source_window_ids": [item["window_id"]],
+                "keywords": [context_label][:1],
+            }
+        )
+
+    top_contexts = [context for context, _ in context_counter.most_common(8)]
+    if raw_payload.get("window_count", 0) == 0:
+        day_summary = localized(
+            "当日没有可整理的主窗口内容。",
+            "No main-window content was available to organize for the day.",
+            language,
+        )
+    elif language == "en":
+        day_summary = (
+            "Lightweight organization completed: read {windows} windows, {prompts} user prompts, "
+            "and {conclusions} conclusions. This result stores the reusable compact layer for later "
+            "final consolidation."
+        ).format(
+            windows=raw_payload.get("window_count", 0),
+            prompts=raw_payload.get("prompt_count", 0),
+            conclusions=raw_payload.get("conclusion_count", 0),
+        )
+    else:
+        day_summary = "轻量整理完成：读取 {} 个窗口、{} 条用户问题、{} 条结论，并写入可供后续 final 深度整理复用的压缩层。".format(
+            raw_payload.get("window_count", 0),
+            raw_payload.get("prompt_count", 0),
+            raw_payload.get("conclusion_count", 0),
+        )
+
+    return {
+        "date": raw_payload["date"],
+        "day_summary": day_summary,
+        "window_summaries": window_summaries,
+        "durable_memories": [],
+        "session_memories": session_memories,
+        "low_priority_memories": [],
+        "keywords": top_contexts,
+        "next_actions": [
+            localized(
+                "后续运行 final 深度整理时会复用本次轻量压缩层。",
+                "A later final consolidation will reuse this lightweight compact layer.",
+                language,
+            )
+        ],
+        "raw_window_count": raw_payload["window_count"],
+        "review_like_window_count": raw_payload.get("review_like_window_count", 0),
+        "model_status": "skipped_lightweight",
+        "summary_generation": "lightweight",
+        "lightweight_summary_version": LIGHTWEIGHT_SUMMARY_VERSION,
+    }
+
+
 def render_markdown(summary, language=None):
     language = current_language(language or summary.get("language"))
     learning_digest = summary.get("learning_context_digest", {})
@@ -2059,11 +2255,104 @@ def main():
         if existing_language != language:
             existing_summary = None
     cache_dir = default_cache_dir()
-    compact_payload = build_compact_payload(
+    compact_payload, compact_payload_source = build_or_reuse_daily_compact_payload(
         raw_payload,
+        summary_dir,
         language=language,
         cache_dir=cache_dir,
     )
+
+    if stage == "preliminary":
+        lightweight_learning_context = build_learning_context(
+            date_str,
+            existing_summary,
+            learn_window_days=0,
+            cache_dir=cache_dir,
+        )
+        lightweight_fingerprint = build_learning_input_fingerprint(
+            raw_payload,
+            lightweight_learning_context,
+            0,
+            language=language,
+            compact_payload=compact_payload,
+        )
+        if args.skip_if_unchanged and summary_can_skip_for_learning_input(
+            existing_summary,
+            lightweight_fingerprint,
+            stage,
+        ):
+            print(
+                "nightly_consolidate: unchanged lightweight input fingerprint for {}; skip preliminary organization.".format(
+                    date_str
+                )
+            )
+            return
+
+        candidate_summary = build_lightweight_summary(
+            raw_payload,
+            compact_payload,
+            language=language,
+        )
+        candidate_summary["language"] = language
+        candidate_summary["stage"] = stage
+        candidate_summary["codex_model"] = CODEX_MODEL
+        candidate_summary["generated_at"] = datetime.now().astimezone().isoformat()
+        candidate_summary["compact_payload_source"] = compact_payload_source
+        candidate_summary = apply_memory_mode(candidate_summary)
+        candidate_summary["learning_input_fingerprint"] = lightweight_fingerprint
+        candidate_summary["quality"] = compute_summary_quality(candidate_summary, raw_payload)
+        candidate_summary["learning_context_digest"] = build_learning_context_digest(
+            lightweight_learning_context,
+            0,
+        )
+        candidate_run = persist_summary_run(summary_dir, candidate_summary, stage, "candidate", language=language)
+
+        selected_summary, decision = choose_preferred_summary(
+            existing_summary,
+            candidate_summary,
+            raw_payload,
+        )
+        if selected_summary is existing_summary:
+            selected_summary = dict(existing_summary)
+        else:
+            selected_summary = dict(candidate_summary)
+
+        selected_summary["language"] = language
+        selected_summary["learning_input_fingerprint"] = lightweight_fingerprint
+        selected_summary["quality"] = decision["selected_quality"]
+        selected_summary["selection_decision"] = {
+            "decision": decision["decision"],
+            "reason": decision["reason"],
+            "compared_at": datetime.now().astimezone().isoformat(),
+            "candidate_run_json_path": candidate_run["json_path"],
+            "learn_window_days": 0,
+            "candidate_model_status": candidate_summary.get("model_status", "skipped_lightweight"),
+            "codex_model": candidate_summary.get("codex_model", CODEX_MODEL),
+            "compact_payload_source": compact_payload_source,
+        }
+        selected_summary["last_run_model_status"] = candidate_summary.get("model_status", "skipped_lightweight")
+        selected_summary = apply_memory_mode(selected_summary)
+        write_json(output_json_path, selected_summary)
+        atomic_write_text(summary_dir / "summary.md", render_markdown(selected_summary, language=language))
+        upsert_memory_items(date_str, selected_summary)
+        append_learning_journal(
+            {
+                "date": date_str,
+                "stage": stage,
+                "decision": decision["decision"],
+                "reason": decision["reason"],
+                "candidate_quality": decision["candidate_quality"],
+                "selected_quality": decision["selected_quality"],
+                "raw_window_count": raw_payload["window_count"],
+                "codex_model": selected_summary.get("codex_model", CODEX_MODEL),
+                "learn_window_days": 0,
+                "candidate_run_json_path": candidate_run["json_path"],
+                "selected_summary_path": str(output_json_path),
+                "compact_payload_source": compact_payload_source,
+            }
+        )
+        return
+
     learning_context = build_learning_context(
         date_str,
         existing_summary,
@@ -2185,6 +2474,7 @@ def main():
     candidate_summary["stage"] = stage
     candidate_summary["codex_model"] = CODEX_MODEL
     candidate_summary["generated_at"] = datetime.now().astimezone().isoformat()
+    candidate_summary["compact_payload_source"] = compact_payload_source
     candidate_summary = apply_memory_mode(candidate_summary)
     candidate_summary["learning_input_fingerprint"] = learning_input_fingerprint
     candidate_summary["quality"] = compute_summary_quality(candidate_summary, raw_payload)
@@ -2215,6 +2505,7 @@ def main():
         "learn_window_days": learn_window_days,
         "candidate_model_status": candidate_summary.get("model_status", "completed"),
         "codex_model": candidate_summary.get("codex_model", CODEX_MODEL),
+        "compact_payload_source": compact_payload_source,
     }
     if candidate_summary.get("model_status") == "failed":
         selected_summary["selection_decision"]["candidate_model_error"] = candidate_summary.get("model_error", "")
@@ -2242,6 +2533,7 @@ def main():
             "learn_window_days": learn_window_days,
             "candidate_run_json_path": candidate_run["json_path"],
             "selected_summary_path": str(output_json_path),
+            "compact_payload_source": compact_payload_source,
         }
     )
 

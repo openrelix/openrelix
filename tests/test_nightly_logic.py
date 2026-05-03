@@ -5614,10 +5614,10 @@ scope: Release checklist, package manifest, and public website validation.
         )
         self.assertNotIn("<h3>开启 30 分钟自动学习（推荐）</h3>", showcase)
         self.assertIn("--enable-learning-refresh", installer)
-        self.assertIn("backfill --days %s --stage final --learn-window-days 0 --jobs %s", installer)
+        self.assertIn("backfill --days %s --stage preliminary --learn-window-days 0 --jobs %s", installer)
         self.assertIn('review --stage final --learn-window-days "$LEARNING_REFRESH_WINDOW_DAYS" --jobs "$INSTALL_LEARN_JOBS"', installer)
         self.assertIn("深度回溯已在后台启动。日志:", installer)
-        self.assertIn("这一步只整理当天窗口，不做历史学习", installer)
+        self.assertIn("写入可复用压缩层", installer)
         self.assertIn('if [[ -n "$DEEP_LEARN_MEMORY_COMMAND" ]]; then', installer)
         self.assertIn("--no-learn                    Skip the post-install prompt for two-step memory backfill.", installer)
         self.assertIn('INSTALL_PROFILE="integrated"', installer)
@@ -6012,6 +6012,51 @@ scope: Release checklist, package manifest, and public website validation.
             self.assertEqual(results[0]["status"], "completed")
             self.assertEqual(results[0]["reason"], "existing_stage_below_requested")
             self.assertEqual(calls[0][-3:], ["2026-04-23", "final", "--skip-if-unchanged"])
+
+    def test_backfill_final_reuses_existing_lightweight_layer_when_available(self):
+        with TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            paths = make_runtime_paths_for_test(tmp)
+            consolidated_daily_dir = paths.consolidated_daily_dir
+            summary_dir = consolidated_daily_dir / "2026-04-23"
+            summary_dir.mkdir(parents=True)
+            paths.raw_daily_dir.mkdir(parents=True)
+            (paths.raw_daily_dir / "2026-04-23.json").write_text(
+                json.dumps({"date": "2026-04-23", "window_count": 1}),
+                encoding="utf-8",
+            )
+            (summary_dir / "compact_payload.json").write_text(
+                json.dumps({"version": 1}),
+                encoding="utf-8",
+            )
+            (summary_dir / "summary.json").write_text(
+                json.dumps({"date": "2026-04-23", "stage": "preliminary"}),
+                encoding="utf-8",
+            )
+            calls = []
+
+            def fake_run_checked_with_progress(cmd, progress_messages, interval_seconds=20, reminder_seconds=60):
+                calls.append(cmd)
+
+            with mock.patch.object(openrelix, "PATHS", paths), mock.patch.object(
+                openrelix,
+                "CONSOLIDATED_DAILY_DIR",
+                consolidated_daily_dir,
+            ), mock.patch.object(
+                openrelix,
+                "run_checked_with_progress",
+                side_effect=fake_run_checked_with_progress,
+            ), mock.patch("sys.stdout", new_callable=io.StringIO):
+                results = openrelix.run_backfill_dates(
+                    ["2026-04-23"],
+                    "final",
+                    learn_window_days=0,
+                    force=False,
+                    verbose=True,
+                )
+
+            self.assertEqual(results[0]["status"], "completed")
+            self.assertIn("--reuse-lightweight", calls[0])
 
     def test_backfill_force_disables_unchanged_skip_for_pipeline(self):
         with TemporaryDirectory() as tmpdir:
@@ -7410,6 +7455,225 @@ scope: Release checklist, package manifest, and public website validation.
 
         self.assertNotEqual(changed, first)
         self.assertEqual(clustered.call_count, 4)
+
+    def test_preliminary_consolidate_writes_lightweight_summary_without_model(self):
+        old_raw_dir = nightly_consolidate.RAW_DIR
+        old_consolidated_dir = nightly_consolidate.CONSOLIDATED_DIR
+        old_registry_dir = nightly_consolidate.REGISTRY_DIR
+        old_runtime_dir = nightly_consolidate.RUNTIME_DIR
+        old_language = nightly_consolidate.LANGUAGE
+        old_memory_mode = nightly_consolidate.MEMORY_MODE
+        old_personal_memory_enabled = nightly_consolidate.PERSONAL_MEMORY_ENABLED
+        try:
+            with TemporaryDirectory() as tmpdir:
+                tmp = Path(tmpdir)
+                nightly_consolidate.RAW_DIR = tmp / "raw"
+                nightly_consolidate.CONSOLIDATED_DIR = tmp / "consolidated" / "daily"
+                nightly_consolidate.REGISTRY_DIR = tmp / "registry"
+                nightly_consolidate.RUNTIME_DIR = tmp / "runtime"
+                nightly_consolidate.LANGUAGE = "zh"
+                nightly_consolidate.MEMORY_MODE = "integrated"
+                nightly_consolidate.PERSONAL_MEMORY_ENABLED = True
+
+                raw_daily_dir = nightly_consolidate.RAW_DIR / "daily"
+                raw_daily_dir.mkdir(parents=True)
+                raw_payload = {
+                    "date": "2026-04-28",
+                    "window_count": 1,
+                    "prompt_count": 1,
+                    "conclusion_count": 1,
+                    "review_like_window_count": 0,
+                    "windows": [
+                        {
+                            "window_id": "w1",
+                            "cwd": "/tmp/openrelix",
+                            "prompt_count": 1,
+                            "conclusion_count": 1,
+                            "prompts": [{"text": "先做轻量回溯"}],
+                            "conclusions": [{"text": "轻量层要给 final 复用"}],
+                        }
+                    ],
+                }
+                (raw_daily_dir / "2026-04-28.json").write_text(
+                    json.dumps(raw_payload),
+                    encoding="utf-8",
+                )
+
+                with mock.patch.object(nightly_consolidate, "ensure_state_layout"), mock.patch.object(
+                    nightly_consolidate,
+                    "run_codex_consolidation",
+                    side_effect=AssertionError("preliminary should not run the model"),
+                ) as run_model, mock.patch.object(
+                    sys,
+                    "argv",
+                    [
+                        "nightly_consolidate.py",
+                        "--date",
+                        "2026-04-28",
+                        "--stage",
+                        "preliminary",
+                        "--skip-if-unchanged",
+                    ],
+                ):
+                    nightly_consolidate.main()
+
+                summary_path = nightly_consolidate.CONSOLIDATED_DIR / "2026-04-28" / "summary.json"
+                compact_path = nightly_consolidate.CONSOLIDATED_DIR / "2026-04-28" / "compact_payload.json"
+                summary = json.loads(summary_path.read_text(encoding="utf-8"))
+                registry_rows = [
+                    json.loads(line)
+                    for line in (nightly_consolidate.REGISTRY_DIR / "memory_items.jsonl")
+                    .read_text(encoding="utf-8")
+                    .splitlines()
+                    if line.strip()
+                ]
+
+                run_model.assert_not_called()
+                self.assertTrue(compact_path.exists())
+                self.assertEqual(summary["stage"], "preliminary")
+                self.assertEqual(summary["model_status"], "skipped_lightweight")
+                self.assertEqual(summary["summary_generation"], "lightweight")
+                self.assertEqual(summary["compact_payload_source"], "fresh")
+                self.assertEqual(summary["window_summaries"][0]["main_takeaway"], "轻量层要给 final 复用")
+                self.assertEqual(summary["session_memories"][0]["source_window_ids"], ["w1"])
+                self.assertEqual(registry_rows[0]["bucket"], "session")
+        finally:
+            nightly_consolidate.RAW_DIR = old_raw_dir
+            nightly_consolidate.CONSOLIDATED_DIR = old_consolidated_dir
+            nightly_consolidate.REGISTRY_DIR = old_registry_dir
+            nightly_consolidate.RUNTIME_DIR = old_runtime_dir
+            nightly_consolidate.LANGUAGE = old_language
+            nightly_consolidate.MEMORY_MODE = old_memory_mode
+            nightly_consolidate.PERSONAL_MEMORY_ENABLED = old_personal_memory_enabled
+
+    def test_final_consolidate_reuses_lightweight_compact_artifact(self):
+        old_raw_dir = nightly_consolidate.RAW_DIR
+        old_consolidated_dir = nightly_consolidate.CONSOLIDATED_DIR
+        old_registry_dir = nightly_consolidate.REGISTRY_DIR
+        old_runtime_dir = nightly_consolidate.RUNTIME_DIR
+        old_language = nightly_consolidate.LANGUAGE
+        old_memory_mode = nightly_consolidate.MEMORY_MODE
+        old_personal_memory_enabled = nightly_consolidate.PERSONAL_MEMORY_ENABLED
+        try:
+            nightly_consolidate._COMPACT_PAYLOAD_CACHE.clear()
+            self.addCleanup(nightly_consolidate._COMPACT_PAYLOAD_CACHE.clear)
+            with TemporaryDirectory() as tmpdir:
+                tmp = Path(tmpdir)
+                nightly_consolidate.RAW_DIR = tmp / "raw"
+                nightly_consolidate.CONSOLIDATED_DIR = tmp / "consolidated" / "daily"
+                nightly_consolidate.REGISTRY_DIR = tmp / "registry"
+                nightly_consolidate.RUNTIME_DIR = tmp / "runtime"
+                nightly_consolidate.LANGUAGE = "zh"
+                nightly_consolidate.MEMORY_MODE = "integrated"
+                nightly_consolidate.PERSONAL_MEMORY_ENABLED = True
+
+                raw_daily_dir = nightly_consolidate.RAW_DIR / "daily"
+                summary_dir = nightly_consolidate.CONSOLIDATED_DIR / "2026-04-28"
+                raw_daily_dir.mkdir(parents=True)
+                summary_dir.mkdir(parents=True)
+                raw_payload = {
+                    "date": "2026-04-28",
+                    "window_count": 1,
+                    "prompt_count": 1,
+                    "conclusion_count": 1,
+                    "review_like_window_count": 0,
+                    "windows": [
+                        {
+                            "window_id": "w1",
+                            "cwd": "/tmp/openrelix",
+                            "prompt_count": 1,
+                            "conclusion_count": 1,
+                            "prompts": [{"text": "final 继续深度整理"}],
+                            "conclusions": [{"text": "复用 preliminary 的压缩层"}],
+                        }
+                    ],
+                }
+                (raw_daily_dir / "2026-04-28.json").write_text(
+                    json.dumps(raw_payload),
+                    encoding="utf-8",
+                )
+                compact_payload = nightly_consolidate.build_compact_payload(
+                    raw_payload,
+                    language="zh",
+                    cache_dir=tmp / "cache",
+                )
+                nightly_consolidate.write_daily_compact_payload(
+                    summary_dir,
+                    raw_payload,
+                    compact_payload,
+                    language="zh",
+                )
+                nightly_consolidate._COMPACT_PAYLOAD_CACHE.clear()
+
+                def fake_run_model(prompt, output_path, language=None, timeout_seconds=None):
+                    self.assertIn("复用 preliminary 的压缩层", prompt)
+                    output_path.write_text(
+                        json.dumps(
+                            {
+                                "date": "2026-04-28",
+                                "day_summary": "final done",
+                                "window_summaries": [
+                                    {
+                                        "window_id": "w1",
+                                        "window_title": "final",
+                                        "question_summary": "final 继续深度整理",
+                                        "main_takeaway": "复用 preliminary 的压缩层",
+                                        "keywords": ["OpenRelix"],
+                                        "summary_pairs": [
+                                            {
+                                                "question": "final 继续深度整理",
+                                                "conclusion": "复用 preliminary 的压缩层",
+                                            }
+                                        ],
+                                    }
+                                ],
+                                "durable_memories": [make_memory("final-memory")],
+                                "session_memories": [],
+                                "low_priority_memories": [],
+                                "keywords": ["OpenRelix"],
+                                "next_actions": [],
+                            }
+                        ),
+                        encoding="utf-8",
+                    )
+
+                with mock.patch.object(nightly_consolidate, "ensure_state_layout"), mock.patch.object(
+                    nightly_consolidate,
+                    "build_text_clusters",
+                    side_effect=AssertionError("final should reuse the daily compact artifact"),
+                ), mock.patch.object(
+                    nightly_consolidate,
+                    "run_codex_consolidation",
+                    side_effect=fake_run_model,
+                ), mock.patch.object(
+                    sys,
+                    "argv",
+                    [
+                        "nightly_consolidate.py",
+                        "--date",
+                        "2026-04-28",
+                        "--stage",
+                        "final",
+                    ],
+                ):
+                    nightly_consolidate.main()
+
+                summary = json.loads((summary_dir / "summary.json").read_text(encoding="utf-8"))
+                self.assertEqual(summary["stage"], "final")
+                self.assertEqual(summary["model_status"], "completed")
+                self.assertEqual(summary["compact_payload_source"], "daily_artifact")
+                self.assertEqual(
+                    summary["selection_decision"]["compact_payload_source"],
+                    "daily_artifact",
+                )
+        finally:
+            nightly_consolidate.RAW_DIR = old_raw_dir
+            nightly_consolidate.CONSOLIDATED_DIR = old_consolidated_dir
+            nightly_consolidate.REGISTRY_DIR = old_registry_dir
+            nightly_consolidate.RUNTIME_DIR = old_runtime_dir
+            nightly_consolidate.LANGUAGE = old_language
+            nightly_consolidate.MEMORY_MODE = old_memory_mode
+            nightly_consolidate.PERSONAL_MEMORY_ENABLED = old_personal_memory_enabled
 
     def test_compact_payload_cache_wrong_shape_is_ignored(self):
         raw_payload = {

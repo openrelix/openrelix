@@ -830,6 +830,14 @@ def review_summary_stage(date_str):
     return str(payload.get("stage") or "")
 
 
+def has_reusable_lightweight_compact(date_str):
+    raw_daily_path = PATHS.raw_daily_dir / "{}.json".format(date_str)
+    compact_path = CONSOLIDATED_DAILY_DIR / date_str / "compact_payload.json"
+    if not raw_daily_path.exists() or not compact_path.exists():
+        return False
+    return stage_rank(review_summary_stage(date_str)) >= STAGE_PRIORITY["preliminary"]
+
+
 def stage_rank(stage):
     return STAGE_PRIORITY.get(str(stage or ""), -1)
 
@@ -1839,6 +1847,7 @@ def pipeline_command(
     learn_window_days=0,
     defer_global_refresh=False,
     skip_learning_collect=False,
+    reuse_lightweight=False,
     skip_if_unchanged=True,
 ):
     cmd = ["/bin/zsh", str(NIGHTLY_PIPELINE_SCRIPT), date_str, stage]
@@ -1848,6 +1857,8 @@ def pipeline_command(
         cmd.append("--defer-global-refresh")
     if skip_learning_collect:
         cmd.append("--skip-learning-collect")
+    if reuse_lightweight:
+        cmd.append("--reuse-lightweight")
     if skip_if_unchanged:
         cmd.append("--skip-if-unchanged")
     else:
@@ -1947,9 +1958,14 @@ def precollect_learning_window_sources(date_strs, learn_window_days, verbose=Tru
                     index,
                     len(collect_dates),
                     date_str,
-                    localized("采集历史窗口。", "collecting historical windows."),
+                    localized(
+                        "复用轻量层。" if has_reusable_lightweight_compact(date_str) else "采集历史窗口。",
+                        "reusing lightweight layer." if has_reusable_lightweight_compact(date_str) else "collecting historical windows.",
+                    ),
                 )
             )
+        if has_reusable_lightweight_compact(date_str):
+            continue
         run_checked_quiet(
             [
                 sys.executable,
@@ -1979,6 +1995,8 @@ def command_review(args):
         args.stage,
         args.learn_window_days,
         defer_global_refresh=True,
+        skip_learning_collect=args.stage == "final" and args.learn_window_days > 0,
+        reuse_lightweight=args.stage == "final" and has_reusable_lightweight_compact(args.date),
         skip_if_unchanged=True,
     )
     pipeline_error = None
@@ -2199,6 +2217,7 @@ def run_backfill_dates(
             learn_window_days,
             defer_global_refresh=defer_global_refresh,
             skip_learning_collect=skip_learning_collect,
+            reuse_lightweight=stage == "final" and has_reusable_lightweight_compact(date_str),
             skip_if_unchanged=not force,
         )
         work_items.append(
@@ -2215,8 +2234,8 @@ def run_backfill_dates(
     if can_parallelize and verbose and work_items:
         print(
             localized(
-                "并发回溯: jobs={}，每个日期独立生成 final，汇总刷新会在最后串行执行。".format(parallel_jobs),
-                "Parallel backfill: jobs={}; each date generates its final summary independently, and global refresh runs serially at the end.".format(parallel_jobs),
+                "并发回溯: jobs={}，每个日期独立生成 {}，汇总刷新会在最后串行执行。".format(parallel_jobs, stage),
+                "Parallel backfill: jobs={}; each date generates its {} summary independently, and global refresh runs serially at the end.".format(parallel_jobs, stage),
             )
         )
 

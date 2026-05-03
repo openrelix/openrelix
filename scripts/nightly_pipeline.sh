@@ -171,6 +171,7 @@ nightly_args=()
 learn_window_days=0
 defer_global_refresh=0
 skip_learning_collect=0
+reuse_lightweight=0
 skip_unchanged="${OPENRELIX_NIGHTLY_SKIP_UNCHANGED:-1}"
 
 for ((i = 1; i <= ${#extra_args[@]}; i++)); do
@@ -192,6 +193,10 @@ for ((i = 1; i <= ${#extra_args[@]}; i++)); do
       skip_learning_collect=1
       continue
       ;;
+    --reuse-lightweight)
+      reuse_lightweight=1
+      continue
+      ;;
     --skip-if-unchanged)
       skip_unchanged=1
       continue
@@ -210,7 +215,37 @@ case "${skip_unchanged:l}" in
     ;;
 esac
 
-"$PYTHON_BIN" "$REPO_ROOT/scripts/collect_codex_activity.py" --date "$target_date" --stage "$stage"
+should_collect=1
+if [[ "$reuse_lightweight" == "1" ]]; then
+  if "$PYTHON_BIN" - "$REPO_ROOT" "$target_date" <<'PY'
+import sys
+
+repo_root = sys.argv[1]
+target_date = sys.argv[2]
+sys.path.insert(0, repo_root + "/scripts")
+
+import nightly_consolidate as nc  # noqa: E402
+
+raw_path = nc.RAW_DIR / "daily" / "{}.json".format(target_date)
+if not raw_path.exists():
+    raise SystemExit(1)
+try:
+    raw_payload = nc.load_json(raw_path)
+except Exception:
+    raise SystemExit(1)
+summary_dir = nc.CONSOLIDATED_DIR / target_date
+if nc.read_daily_compact_payload(summary_dir, raw_payload, language=nc.LANGUAGE) is None:
+    raise SystemExit(1)
+PY
+  then
+    should_collect=0
+    echo "nightly_pipeline: reusing lightweight compact layer for $target_date; skip activity collection."
+  fi
+fi
+
+if [[ "$should_collect" == "1" ]]; then
+  "$PYTHON_BIN" "$REPO_ROOT/scripts/collect_codex_activity.py" --date "$target_date" --stage "$stage"
+fi
 if [[ "$skip_learning_collect" != "1" ]] && [[ "$learn_window_days" =~ '^[0-9]+$' ]] && (( learn_window_days > 0 )); then
   "$PYTHON_BIN" - "$target_date" "$learn_window_days" <<'PY' | while IFS= read -r learning_date; do
 from datetime import date, timedelta
