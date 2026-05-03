@@ -401,27 +401,50 @@ def atomic_write_json(path: Path, payload) -> None:
 
 
 def _remove_runtime_file(path: Path) -> None:
-    if path.is_symlink() or path.exists():
+    try:
+        if not path.is_symlink() and not path.exists():
+            return
         if path.is_dir() and not path.is_symlink():
             raise IsADirectoryError(str(path))
         path.unlink()
+    except FileNotFoundError:
+        return
+
+
+def _runtime_symlink_points_to_source(link_path: Path, source: Path) -> bool:
+    if not link_path.is_symlink():
+        return False
+    try:
+        return Path(os.readlink(link_path)) == source
+    except OSError:
+        return False
 
 
 def _ensure_runtime_symlink(source: Path, link_path: Path) -> None:
-    if link_path.is_symlink():
+    if _runtime_symlink_points_to_source(link_path, source):
+        return
+    for attempt in range(2):
+        _remove_runtime_file(link_path)
         try:
-            if Path(os.readlink(link_path)) == source:
+            link_path.symlink_to(source)
+            return
+        except FileExistsError:
+            if _runtime_symlink_points_to_source(link_path, source):
                 return
-        except OSError:
-            pass
-    _remove_runtime_file(link_path)
-    link_path.symlink_to(source)
+            if attempt == 0:
+                continue
+            raise
 
 
 def _sync_runtime_text_file(source: Path, target: Path) -> None:
-    if target.is_symlink():
-        target.unlink()
-    elif target.exists() and target.is_dir():
+    try:
+        if target.is_symlink():
+            target.unlink()
+        elif target.exists() and target.is_dir():
+            raise IsADirectoryError(str(target))
+    except FileNotFoundError:
+        pass
+    if target.exists() and target.is_dir():
         raise IsADirectoryError(str(target))
     atomic_write_text(target, source.read_text(encoding="utf-8"))
     try:

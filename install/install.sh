@@ -33,6 +33,7 @@ ENABLE_NIGHTLY=0
 ENABLE_LEARNING_REFRESH=0
 ENABLE_UPDATE_CHECK=0
 LEARNING_REFRESH_WINDOW_DAYS="${OPENRELIX_REFRESH_LEARN_WINDOW_DAYS:-7}"
+INSTALL_LEARN_JOBS="${OPENRELIX_INSTALL_LEARN_JOBS:-2}"
 MEMORY_MODE_EXPLICIT=0
 KEEP_AWAKE="none"
 NIGHTLY_ORGANIZE_TIME="${OPENRELIX_NIGHTLY_ORGANIZE_TIME:-23:00}"
@@ -120,7 +121,8 @@ Options:
                                 Integrated installs enable this by default on macOS.
   --no-mac-client               Skip macOS client build.
   --no-launch                   Skip the post-install prompt to open the macOS client.
-  --no-learn                    Skip the post-install prompt to learn the last 7 days of memory.
+  --no-learn                    Skip the post-install prompt for two-step memory backfill.
+  --install-learn-jobs N        Jobs for post-install shallow backfill. Default: 2, max: 2.
   --enable-background-services  Install overview refresh and token-live LaunchAgents.
   --enable-nightly              Install nightly organize/finalize LaunchAgents.
                                 Integrated installs enable nightly by default.
@@ -519,6 +521,15 @@ while [[ $# -gt 0 ]]; do
       LEARN_AFTER_INSTALL=0
       shift
       ;;
+    --install-learn-jobs)
+      require_option_value "$1" "${2-}"
+      INSTALL_LEARN_JOBS="$2"
+      shift 2
+      ;;
+    --install-learn-jobs=*)
+      INSTALL_LEARN_JOBS="${1#*=}"
+      shift
+      ;;
     --enable-background-services)
       ENABLE_BACKGROUND_SERVICES=1
       shift
@@ -811,6 +822,15 @@ esac
 if ! [[ "$LEARNING_REFRESH_WINDOW_DAYS" =~ '^[0-9]+$' ]]; then
   echo "--learning-refresh-window-days must be a non-negative integer: $LEARNING_REFRESH_WINDOW_DAYS" >&2
   exit 1
+fi
+if ! [[ "$INSTALL_LEARN_JOBS" =~ '^[0-9]+$' ]]; then
+  echo "--install-learn-jobs must be a positive integer: $INSTALL_LEARN_JOBS" >&2
+  exit 1
+fi
+if (( INSTALL_LEARN_JOBS < 1 )); then
+  INSTALL_LEARN_JOBS=1
+elif (( INSTALL_LEARN_JOBS > 2 )); then
+  INSTALL_LEARN_JOBS=2
 fi
 if (( ENABLE_LEARNING_REFRESH )); then
   OVERVIEW_RUN_AT_LOAD="<false/>"
@@ -1150,18 +1170,53 @@ if [[ "$OSTYPE" == darwin* ]] && (( ENABLE_BACKGROUND_SERVICES || ENABLE_NIGHTLY
 fi
 
 learn_memory_command() {
-  if (( INSTALL_GLOBAL_COMMAND )); then
-    printf 'openrelix refresh --learn-memory --learn-window-days %s\n' "$LEARNING_REFRESH_WINDOW_DAYS"
+  if (( LEARNING_REFRESH_WINDOW_DAYS == 0 )); then
+    if (( INSTALL_GLOBAL_COMMAND )); then
+      printf 'openrelix review --stage final --learn-window-days 0 --jobs %s\n' "$INSTALL_LEARN_JOBS"
+      return
+    fi
+    printf 'AI_ASSET_STATE_DIR=%q CODEX_HOME=%q AI_ASSET_LANGUAGE=%q OPENRELIX_ACTIVITY_SOURCE=%q %q %q review --stage final --learn-window-days 0 --jobs %s\n' \
+      "$STATE_DIR" \
+      "$CODEX_HOME" \
+      "$LANGUAGE" \
+      "$ACTIVITY_SOURCE" \
+      "$PYTHON_BIN" \
+      "$REPO_ROOT/scripts/openrelix.py" \
+      "$INSTALL_LEARN_JOBS"
     return
   fi
-  printf 'AI_ASSET_STATE_DIR=%q CODEX_HOME=%q AI_ASSET_LANGUAGE=%q OPENRELIX_ACTIVITY_SOURCE=%q %q %q refresh --learn-memory --learn-window-days %s\n' \
+  if (( INSTALL_GLOBAL_COMMAND )); then
+    printf 'openrelix backfill --days %s --stage final --learn-window-days 0 --jobs %s\n' "$LEARNING_REFRESH_WINDOW_DAYS" "$INSTALL_LEARN_JOBS"
+    return
+  fi
+  printf 'AI_ASSET_STATE_DIR=%q CODEX_HOME=%q AI_ASSET_LANGUAGE=%q OPENRELIX_ACTIVITY_SOURCE=%q %q %q backfill --days %s --stage final --learn-window-days 0 --jobs %s\n' \
     "$STATE_DIR" \
     "$CODEX_HOME" \
     "$LANGUAGE" \
     "$ACTIVITY_SOURCE" \
     "$PYTHON_BIN" \
     "$REPO_ROOT/scripts/openrelix.py" \
-    "$LEARNING_REFRESH_WINDOW_DAYS"
+    "$LEARNING_REFRESH_WINDOW_DAYS" \
+    "$INSTALL_LEARN_JOBS"
+}
+
+deep_learn_memory_command() {
+  if (( LEARNING_REFRESH_WINDOW_DAYS == 0 )); then
+    return
+  fi
+  if (( INSTALL_GLOBAL_COMMAND )); then
+    printf 'openrelix review --stage final --learn-window-days %s --jobs %s\n' "$LEARNING_REFRESH_WINDOW_DAYS" "$INSTALL_LEARN_JOBS"
+    return
+  fi
+  printf 'AI_ASSET_STATE_DIR=%q CODEX_HOME=%q AI_ASSET_LANGUAGE=%q OPENRELIX_ACTIVITY_SOURCE=%q %q %q review --stage final --learn-window-days %s --jobs %s\n' \
+    "$STATE_DIR" \
+    "$CODEX_HOME" \
+    "$LANGUAGE" \
+    "$ACTIVITY_SOURCE" \
+    "$PYTHON_BIN" \
+    "$REPO_ROOT/scripts/openrelix.py" \
+    "$LEARNING_REFRESH_WINDOW_DAYS" \
+    "$INSTALL_LEARN_JOBS"
 }
 
 open_panel_command() {
@@ -1202,6 +1257,7 @@ is_ci_environment() {
 }
 
 LEARN_MEMORY_COMMAND="$(learn_memory_command)"
+DEEP_LEARN_MEMORY_COMMAND="$(deep_learn_memory_command)"
 OPEN_PANEL_COMMAND="$(open_panel_command)"
 MAC_APP_COMMAND="$(mac_app_command)"
 WEB_PANEL_COMMAND="$(web_panel_command)"
@@ -1209,12 +1265,20 @@ WILL_AUTO_LAUNCH=0
 if [[ "$OSTYPE" == darwin* ]] && (( MAC_CLIENT_INSTALLED )) && (( LAUNCH_AFTER_INSTALL )) && ! is_ci_environment; then
   WILL_AUTO_LAUNCH=1
 fi
-if [[ "$MEMORY_MODE" == "integrated" ]]; then
-  REVIEW_CONTEXT_NOTE_ZH="这一步会显式调用当前 Codex 适配器，学习今日和最近 ${LEARNING_REFRESH_WINDOW_DAYS} 天窗口，随后生成本地 memory / overview。当前 integrated 会同步 bounded summary，但不会把原始窗口写进 Codex 原生 memory。"
-  REVIEW_CONTEXT_NOTE_EN="This explicitly calls the current Codex adapter, learns from today plus the last ${LEARNING_REFRESH_WINDOW_DAYS} days of windows, then updates local memory / overview. The current integrated mode syncs a bounded summary, but does not write raw windows into Codex native memory."
+if (( LEARNING_REFRESH_WINDOW_DAYS == 0 )); then
+  if [[ "$MEMORY_MODE" == "integrated" ]]; then
+    REVIEW_CONTEXT_NOTE_ZH="这一步只整理当天窗口，不做历史学习。当前 integrated 会同步 bounded summary，但不会把原始窗口写进 Codex 原生 memory。"
+    REVIEW_CONTEXT_NOTE_EN="This only organizes today's window and does not run historical learning. The current integrated mode syncs a bounded summary, but does not write raw windows into Codex native memory."
+  else
+    REVIEW_CONTEXT_NOTE_ZH="这一步只整理当天窗口，不做历史学习。当前 $MEMORY_MODE 不会向 Codex context 同步摘要。"
+    REVIEW_CONTEXT_NOTE_EN="This only organizes today's window and does not run historical learning. The current $MEMORY_MODE mode does not sync a summary into Codex context."
+  fi
+elif [[ "$MEMORY_MODE" == "integrated" ]]; then
+  REVIEW_CONTEXT_NOTE_ZH="浅度回溯会整理最近 ${LEARNING_REFRESH_WINDOW_DAYS} 天当天窗口，不做历史学习；随后可运行深度学习。当前 integrated 会同步 bounded summary，但不会把原始窗口写进 Codex 原生 memory。"
+  REVIEW_CONTEXT_NOTE_EN="The shallow backfill organizes same-day windows for the last ${LEARNING_REFRESH_WINDOW_DAYS} days without historical learning; deep learning can run afterwards. The current integrated mode syncs a bounded summary, but does not write raw windows into Codex native memory."
 else
-  REVIEW_CONTEXT_NOTE_ZH="这一步会显式调用当前 Codex 适配器，学习今日和最近 ${LEARNING_REFRESH_WINDOW_DAYS} 天窗口，随后生成本地 memory / overview。当前 $MEMORY_MODE 不会向 Codex context 同步摘要。"
-  REVIEW_CONTEXT_NOTE_EN="This explicitly calls the current Codex adapter, learns from today plus the last ${LEARNING_REFRESH_WINDOW_DAYS} days of windows, then updates local memory / overview. The current $MEMORY_MODE mode does not sync a summary into Codex context."
+  REVIEW_CONTEXT_NOTE_ZH="浅度回溯会整理最近 ${LEARNING_REFRESH_WINDOW_DAYS} 天当天窗口，不做历史学习；随后可运行深度学习。当前 $MEMORY_MODE 不会向 Codex context 同步摘要。"
+  REVIEW_CONTEXT_NOTE_EN="The shallow backfill organizes same-day windows for the last ${LEARNING_REFRESH_WINDOW_DAYS} days without historical learning; deep learning can run afterwards. The current $MEMORY_MODE mode does not sync a summary into Codex context."
 fi
 
 if [[ "$LANGUAGE" == "zh" ]]; then
@@ -1253,8 +1317,16 @@ EOF
 EOF
   else
     cat <<EOF
-  2. 推荐：安装后立刻学习今日和最近 ${LEARNING_REFRESH_WINDOW_DAYS} 天窗口，刷新本地记忆：
+  2. 推荐：安装后先浅度回溯最近 ${LEARNING_REFRESH_WINDOW_DAYS} 天窗口，刷新本地记忆：
      $LEARN_MEMORY_COMMAND
+EOF
+    if [[ -n "$DEEP_LEARN_MEMORY_COMMAND" ]]; then
+      cat <<EOF
+     深度学习可随后运行：
+     $DEEP_LEARN_MEMORY_COMMAND
+EOF
+    fi
+    cat <<EOF
      $REVIEW_CONTEXT_NOTE_ZH
      默认会先尝试 Codex app-server，失败时回退 CLI history/session；如需只读稳定 CLI 文件，安装时加 --activity-source history。
 EOF
@@ -1350,8 +1422,16 @@ EOF
 EOF
   else
     cat <<EOF
-  2. Recommended: learn from today plus the last ${LEARNING_REFRESH_WINDOW_DAYS} days of windows and refresh local memory:
+  2. Recommended: first run a shallow backfill for the last ${LEARNING_REFRESH_WINDOW_DAYS} days and refresh local memory:
      $LEARN_MEMORY_COMMAND
+EOF
+    if [[ -n "$DEEP_LEARN_MEMORY_COMMAND" ]]; then
+      cat <<EOF
+     Deep learning can then run:
+     $DEEP_LEARN_MEMORY_COMMAND
+EOF
+    fi
+    cat <<EOF
      $REVIEW_CONTEXT_NOTE_EN
      By default, OpenRelix tries Codex app-server first and falls back to CLI history/session; add --activity-source history to force stable CLI files only.
 EOF
@@ -1458,29 +1538,98 @@ is_no_answer() {
   return 1
 }
 
-if (( INTERACTIVE_TTY )) && (( LEARN_AFTER_INSTALL )); then
-  if [[ "$LANGUAGE" == "en" ]]; then
-    print -r -- ""
-    print -r -- "Learn the last 7 days of memory now? This calls Codex on your"
-    print -r -- "behalf and may take 5–15 minutes. The command that will run is:"
-    print -r -- "  openrelix review --stage final --learn-window-days 7"
-    printf "Run it now? [y/N]: "
-  else
-    print -r -- ""
-    print -r -- "现在学习最近 7 天的记忆吗？这一步会调用 Codex 生成本地记忆，"
-    print -r -- "预计 5–15 分钟。将要执行的命令是："
-    print -r -- "  openrelix review --stage final --learn-window-days 7"
-    printf "是否执行？[y/N]: "
-  fi
-  LEARN_ANSWER=""
-  IFS= read -r LEARN_ANSWER || LEARN_ANSWER=""
-  if is_yes_answer "$LEARN_ANSWER"; then
+run_post_install_shallow_learning() {
+  if (( LEARNING_REFRESH_WINDOW_DAYS == 0 )); then
     AI_ASSET_STATE_DIR="$STATE_DIR" \
       CODEX_HOME="$CODEX_HOME" \
       AI_ASSET_LANGUAGE="$LANGUAGE" \
       OPENRELIX_ACTIVITY_SOURCE="$ACTIVITY_SOURCE" \
       "$PYTHON_BIN" "$REPO_ROOT/scripts/openrelix.py" \
-      review --stage final --learn-window-days 7 || true
+      review --stage final --learn-window-days 0 --jobs "$INSTALL_LEARN_JOBS"
+    return
+  fi
+  AI_ASSET_STATE_DIR="$STATE_DIR" \
+    CODEX_HOME="$CODEX_HOME" \
+    AI_ASSET_LANGUAGE="$LANGUAGE" \
+    OPENRELIX_ACTIVITY_SOURCE="$ACTIVITY_SOURCE" \
+    "$PYTHON_BIN" "$REPO_ROOT/scripts/openrelix.py" \
+    backfill --days "$LEARNING_REFRESH_WINDOW_DAYS" --stage final --learn-window-days 0 --jobs "$INSTALL_LEARN_JOBS"
+}
+
+launch_app_after_shallow_learning() {
+  if [[ "$OSTYPE" == darwin* ]] && (( WILL_AUTO_LAUNCH )) && [[ -d "$INSTALLED_MAC_CLIENT_APP" ]]; then
+    open "$INSTALLED_MAC_CLIENT_APP" >/dev/null 2>&1 || true
+    WILL_AUTO_LAUNCH=0
+  fi
+}
+
+start_post_install_deep_learning() {
+  if (( LEARNING_REFRESH_WINDOW_DAYS == 0 )); then
+    return
+  fi
+  mkdir -p "$STATE_DIR/log" "$STATE_DIR/runtime"
+  local log_path="$STATE_DIR/log/install-deep-learning.log"
+  local pid_path="$STATE_DIR/runtime/install-deep-learning.pid"
+  (
+    export AI_ASSET_STATE_DIR="$STATE_DIR"
+    export CODEX_HOME="$CODEX_HOME"
+    export AI_ASSET_LANGUAGE="$LANGUAGE"
+    export OPENRELIX_ACTIVITY_SOURCE="$ACTIVITY_SOURCE"
+    exec "$PYTHON_BIN" "$REPO_ROOT/scripts/openrelix.py" \
+      review --stage final --learn-window-days "$LEARNING_REFRESH_WINDOW_DAYS" --jobs "$INSTALL_LEARN_JOBS"
+  ) >>"$log_path" 2>&1 &
+  print -r -- "$!" >"$pid_path"
+  if [[ "$LANGUAGE" == "en" ]]; then
+    print -r -- "Deep learning backfill started in the background. Log: $log_path"
+  else
+    print -r -- "深度回溯已在后台启动。日志: $log_path"
+  fi
+}
+
+if (( INTERACTIVE_TTY )) && (( LEARN_AFTER_INSTALL )); then
+  if [[ "$LANGUAGE" == "en" ]]; then
+    print -r -- ""
+    print -r -- "Run the default two-step memory backfill now?"
+    if (( LEARNING_REFRESH_WINDOW_DAYS == 0 )); then
+      print -r -- "This runs a fast same-day review without historical learning."
+    elif (( WILL_AUTO_LAUNCH )); then
+      print -r -- "Step 1 is shallow and faster; the app opens next, then Step 2 starts deep ${LEARNING_REFRESH_WINDOW_DAYS}-day learning in the background."
+    else
+      print -r -- "Step 1 is shallow and faster; Step 2 starts deep ${LEARNING_REFRESH_WINDOW_DAYS}-day learning in the background after Step 1."
+    fi
+    print -r -- "  $LEARN_MEMORY_COMMAND"
+    if (( WILL_AUTO_LAUNCH )); then
+      print -r -- "  $MAC_APP_COMMAND"
+    fi
+    if [[ -n "$DEEP_LEARN_MEMORY_COMMAND" ]]; then
+      print -r -- "  $DEEP_LEARN_MEMORY_COMMAND"
+    fi
+    printf "Run it now? [Y/n]: "
+  else
+    print -r -- ""
+    print -r -- "现在执行默认两段式记忆回溯吗？"
+    if (( LEARNING_REFRESH_WINDOW_DAYS == 0 )); then
+      print -r -- "这会快速整理当天窗口，不做历史学习。"
+    elif (( WILL_AUTO_LAUNCH )); then
+      print -r -- "第一步浅度回溯更快；随后打开 app，并在后台触发 ${LEARNING_REFRESH_WINDOW_DAYS} 天深度学习。"
+    else
+      print -r -- "第一步浅度回溯更快；完成后会在后台触发 ${LEARNING_REFRESH_WINDOW_DAYS} 天深度学习。"
+    fi
+    print -r -- "  $LEARN_MEMORY_COMMAND"
+    if (( WILL_AUTO_LAUNCH )); then
+      print -r -- "  $MAC_APP_COMMAND"
+    fi
+    if [[ -n "$DEEP_LEARN_MEMORY_COMMAND" ]]; then
+      print -r -- "  $DEEP_LEARN_MEMORY_COMMAND"
+    fi
+    printf "是否执行？[Y/n]: "
+  fi
+  LEARN_ANSWER=""
+  IFS= read -r LEARN_ANSWER || LEARN_ANSWER=""
+  if ! is_no_answer "$LEARN_ANSWER"; then
+    run_post_install_shallow_learning || true
+    launch_app_after_shallow_learning
+    start_post_install_deep_learning
   fi
 fi
 

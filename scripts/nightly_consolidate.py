@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 
 import argparse
+import contextlib
+import fcntl
 import hashlib
 import json
 import os
@@ -62,6 +64,18 @@ COMPACT_PAYLOAD_CACHE_VERSION = 1
 RECENT_WINDOW_LEARNING_CACHE_VERSION = 1
 _COMPACT_PAYLOAD_CACHE = {}
 _RECENT_WINDOW_LEARNING_CACHE = {}
+
+
+@contextlib.contextmanager
+def registry_file_lock():
+    REGISTRY_DIR.mkdir(parents=True, exist_ok=True)
+    lock_path = REGISTRY_DIR / ".nightly-registry.lock"
+    with lock_path.open("a", encoding="utf-8") as lock_file:
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
 
 
 class CodexConsolidationError(RuntimeError):
@@ -1532,12 +1546,13 @@ def persist_summary_run(summary_dir, summary, stage, label, language=None):
 
 def append_learning_journal(entry):
     journal_path = REGISTRY_DIR / "nightly_learning_journal.jsonl"
-    existing = []
-    if journal_path.exists():
-        existing.append(journal_path.read_text(encoding="utf-8").rstrip())
-    existing.append(json.dumps(entry, ensure_ascii=False))
-    journal_path.parent.mkdir(parents=True, exist_ok=True)
-    atomic_write_text(journal_path, "\n".join(row for row in existing if row) + "\n")
+    with registry_file_lock():
+        existing = []
+        if journal_path.exists():
+            existing.append(journal_path.read_text(encoding="utf-8").rstrip())
+        existing.append(json.dumps(entry, ensure_ascii=False))
+        journal_path.parent.mkdir(parents=True, exist_ok=True)
+        atomic_write_text(journal_path, "\n".join(row for row in existing if row) + "\n")
 
 
 def build_safe_consolidation_prompt(prompt, language=None):
@@ -1967,47 +1982,48 @@ def upsert_memory_items(date_str, summary):
         return
 
     memory_path = REGISTRY_DIR / "memory_items.jsonl"
-    existing = []
-    if memory_path.exists():
-        for raw_line in memory_path.read_text(encoding="utf-8").splitlines():
-            line = raw_line.strip()
-            if not line:
-                continue
-            item = json.loads(line)
-            if item.get("date") == date_str and item.get("source") == "nightly_codex":
-                continue
-            existing.append(item)
+    with registry_file_lock():
+        existing = []
+        if memory_path.exists():
+            for raw_line in memory_path.read_text(encoding="utf-8").splitlines():
+                line = raw_line.strip()
+                if not line:
+                    continue
+                item = json.loads(line)
+                if item.get("date") == date_str and item.get("source") == "nightly_codex":
+                    continue
+                existing.append(item)
 
-    def rows_for(bucket_name, items):
-        rows = []
-        for item in items:
-            rows.append(
-                {
-                    "date": date_str,
-                    "language": summary.get("language", current_language()),
-                    "source": "nightly_codex",
-                    "bucket": bucket_name,
-                    "title": item["title"],
-                    "memory_type": item["memory_type"],
-                    "priority": item["priority"],
-                    "value_note": item["value_note"],
-                    "source_window_ids": item["source_window_ids"],
-                    "keywords": item["keywords"],
-                }
-            )
-        return rows
+        def rows_for(bucket_name, items):
+            rows = []
+            for item in items:
+                rows.append(
+                    {
+                        "date": date_str,
+                        "language": summary.get("language", current_language()),
+                        "source": "nightly_codex",
+                        "bucket": bucket_name,
+                        "title": item["title"],
+                        "memory_type": item["memory_type"],
+                        "priority": item["priority"],
+                        "value_note": item["value_note"],
+                        "source_window_ids": item["source_window_ids"],
+                        "keywords": item["keywords"],
+                    }
+                )
+            return rows
 
-    all_rows = (
-        existing
-        + rows_for("durable", summary["durable_memories"])
-        + rows_for("session", summary["session_memories"])
-        + rows_for("low_priority", summary["low_priority_memories"])
-    )
-    memory_path.parent.mkdir(parents=True, exist_ok=True)
-    atomic_write_text(
-        memory_path,
-        "\n".join(json.dumps(item, ensure_ascii=False) for item in all_rows) + "\n",
-    )
+        all_rows = (
+            existing
+            + rows_for("durable", summary["durable_memories"])
+            + rows_for("session", summary["session_memories"])
+            + rows_for("low_priority", summary["low_priority_memories"])
+        )
+        memory_path.parent.mkdir(parents=True, exist_ok=True)
+        atomic_write_text(
+            memory_path,
+            "\n".join(json.dumps(item, ensure_ascii=False) for item in all_rows) + "\n",
+        )
 
 
 def apply_memory_mode(summary):

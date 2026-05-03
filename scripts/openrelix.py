@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import argparse
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import json
 import os
 import re
@@ -69,6 +70,7 @@ TOKEN_LIVE_TEMPLATE = REPO_ROOT / "ops" / "launchd" / "{}.tmpl".format(TOKEN_LIV
 TOKEN_LIVE_HEALTH_URL = "http://127.0.0.1:8765/healthz"
 TOKEN_LIVE_STARTUP_TIMEOUT_SECONDS = 8.0
 STAGE_PRIORITY = {"manual": 0, "preliminary": 1, "final": 2}
+MAX_BACKFILL_JOBS = 2
 
 
 def current_language(language=None):
@@ -162,6 +164,15 @@ def build_parser():
             "For this manual run only, learn from recent window summaries in the previous N days before generating memories for the target date.",
         ),
     )
+    review.add_argument(
+        "--jobs",
+        type=int,
+        default=1,
+        help=localized(
+            "补齐历史 final summary 时的并发数，当前最大 2；目标日期仍串行整理。",
+            "Concurrency for backfilling historical final summaries, currently capped at 2; the target date still runs serially.",
+        ),
+    )
 
     backfill = subparsers.add_parser(
         "backfill",
@@ -219,6 +230,15 @@ def build_parser():
         help=localized(
             "每个目标日期整理前，学习前 N 天的近期窗口摘要。",
             "For each target date, learn from recent window summaries in the previous N days.",
+        ),
+    )
+    backfill.add_argument(
+        "--jobs",
+        type=int,
+        default=1,
+        help=localized(
+            "并发回溯天数，当前最大 2；仅在 --learn-window-days 0 且全局刷新延后时并发。",
+            "Number of dates to backfill concurrently, currently capped at 2; only parallelizes when --learn-window-days is 0 and global refresh is deferred.",
         ),
     )
     backfill.add_argument(
@@ -814,6 +834,14 @@ def stage_rank(stage):
     return STAGE_PRIORITY.get(str(stage or ""), -1)
 
 
+def normalize_backfill_jobs(value):
+    try:
+        jobs = int(value)
+    except (TypeError, ValueError):
+        jobs = 1
+    return max(1, min(jobs, MAX_BACKFILL_JOBS))
+
+
 def review_summary_needs_run(date_str, requested_stage, force=False):
     summary_json_path, summary_md_path = review_summary_paths(date_str)
     info = {
@@ -1260,6 +1288,15 @@ def summary_has_model_failure(summary):
         return True
     decision = summary.get("selection_decision") or {}
     return decision.get("candidate_model_status") == "failed"
+
+
+def failed_result_exit_code(results):
+    if not results:
+        return 0
+    try:
+        return max(1, int(results[0].get("returncode", 1)))
+    except (TypeError, ValueError):
+        return 1
 
 
 def summary_model_failure_hint(summary):
@@ -1818,7 +1855,7 @@ def pipeline_command(
     return cmd
 
 
-def ensure_learning_windows_final(date_strs, learn_window_days, verbose=True, defer_global_refresh=False):
+def ensure_learning_windows_final(date_strs, learn_window_days, verbose=True, defer_global_refresh=False, jobs=1):
     if learn_window_days <= 0:
         return []
     target_dates = list(date_strs)
@@ -1855,6 +1892,7 @@ def ensure_learning_windows_final(date_strs, learn_window_days, verbose=True, de
         "force": False,
         "ensure_learning_final": False,
         "verbose": verbose,
+        "jobs": jobs,
     }
     if defer_global_refresh:
         sync_kwargs["defer_global_refresh"] = True
@@ -1862,22 +1900,28 @@ def ensure_learning_windows_final(date_strs, learn_window_days, verbose=True, de
     if verbose:
         completed = sum(1 for item in sync_results if item["status"] == "completed")
         skipped = sum(1 for item in sync_results if item["status"] == "skipped_existing")
+        failed = sum(1 for item in sync_results if item["status"] == "failed")
         print(
             localized(
-                "同步回溯完成: 完成 {} 天 | 跳过 {} 天".format(completed, skipped),
-                "Backfill sync completed: completed {} | skipped {}".format(completed, skipped),
+                "同步回溯完成: 完成 {} 天 | 跳过 {} 天 | 失败 {} 天".format(completed, skipped, failed),
+                "Backfill sync completed: completed {} | skipped {} | failed {}".format(
+                    completed,
+                    skipped,
+                    failed,
+                ),
             )
         )
         print("")
     return sync_results
 
 
-def ensure_learning_window_final(date_str, learn_window_days, verbose=True, defer_global_refresh=False):
+def ensure_learning_window_final(date_str, learn_window_days, verbose=True, defer_global_refresh=False, jobs=1):
     return ensure_learning_windows_final(
         [date_str],
         learn_window_days,
         verbose=verbose,
         defer_global_refresh=defer_global_refresh,
+        jobs=jobs,
     )
 
 
@@ -1920,12 +1964,29 @@ def precollect_learning_window_sources(date_strs, learn_window_days, verbose=Tru
 
 
 def command_review(args):
+    learning_sync_results = []
     if args.learn_window_days > 0:
-        ensure_learning_window_final(args.date, args.learn_window_days, verbose=not args.json)
+        learning_sync_results = ensure_learning_window_final(
+            args.date,
+            args.learn_window_days,
+            verbose=not args.json,
+            defer_global_refresh=True,
+            jobs=args.jobs,
+        )
 
-    cmd = pipeline_command(args.date, args.stage, args.learn_window_days, skip_if_unchanged=True)
+    cmd = pipeline_command(
+        args.date,
+        args.stage,
+        args.learn_window_days,
+        defer_global_refresh=True,
+        skip_if_unchanged=True,
+    )
+    pipeline_error = None
     if args.json:
-        run_checked_with_progress(cmd, [])
+        try:
+            run_checked_with_progress(cmd, [])
+        except subprocess.CalledProcessError as exc:
+            pipeline_error = exc
     else:
         print(localized("复盘开始", "Review started"))
         print("{}: {}".format(localized("日期", "Date"), args.date))
@@ -1949,30 +2010,35 @@ def command_review(args):
             "整理中: 生成结构化摘要，历史窗口明细不会直接打印。",
             "Organizing: generating a structured summary; historical window details will not be printed directly.",
         ))
-        run_checked_with_progress(
-            cmd,
-            [
-                localized(
-                    "仍在整理: 正在归纳目标日期窗口和历史批次学习结果。",
-                    "Still organizing: summarizing target-date windows and historical batch learning.",
-                ),
-                localized(
-                    "仍在整理: 正在写入 review、记忆摘要和面板数据。",
-                    "Still organizing: writing review, memory summary, and panel data.",
-                ),
-                localized(
-                    "仍在整理: 子流程还在运行，继续等待。",
-                    "Still organizing: subprocess is still running; waiting.",
-                ),
-            ],
-        )
+        try:
+            run_checked_with_progress(
+                cmd,
+                [
+                    localized(
+                        "仍在整理: 正在归纳目标日期窗口和历史批次学习结果。",
+                        "Still organizing: summarizing target-date windows and historical batch learning.",
+                    ),
+                    localized(
+                        "仍在整理: 正在写入 review、记忆摘要和面板数据。",
+                        "Still organizing: writing review, memory summary, and panel data.",
+                    ),
+                    localized(
+                        "仍在整理: 子流程还在运行，继续等待。",
+                        "Still organizing: subprocess is still running; waiting.",
+                    ),
+                ],
+            )
+        except subprocess.CalledProcessError as exc:
+            pipeline_error = exc
     if not args.json:
         print(localized("刷新中: 同步 Codex context 摘要和面板。", "Refreshing: syncing Codex context summary and panel."))
-    sync_review_outputs()
+    sync_review_outputs(include_index=True, include_native_display=True)
     if not args.json:
         print(localized("生成完成: 读取摘要。", "Generation complete: reading summary."))
     summary_json_path, summary_md_path = review_summary_paths(args.date)
     if not summary_json_path.exists():
+        if pipeline_error is not None:
+            raise pipeline_error
         raise SystemExit(localized(
             "missing review summary: {}".format(summary_json_path),
             "missing review summary: {}".format(summary_json_path),
@@ -1980,10 +2046,13 @@ def command_review(args):
 
     summary = load_json(summary_json_path)
     model_failed = summary_has_model_failure(summary)
+    learning_failed_results = [item for item in learning_sync_results if item["status"] == "failed"]
+    exit_code = pipeline_error.returncode if pipeline_error is not None else 0
+    failure_exit_code = exit_code or failed_result_exit_code(learning_failed_results) or (1 if model_failed else 0)
     if args.json:
         print_json(summary)
-        if model_failed:
-            raise SystemExit(1)
+        if failure_exit_code:
+            raise SystemExit(failure_exit_code)
     else:
         print(localized("复盘已完成", "Review completed"))
         print("{}: {}".format(localized("日期", "Date"), summary.get("date", args.date)))
@@ -2016,11 +2085,16 @@ def command_review(args):
         if model_failed:
             print("")
             print_model_failure_warning(summary, args.date)
+        if learning_failed_results:
+            print("")
+            print(localized("历史回溯失败日期", "Failed historical backfill dates"))
+            for item in learning_failed_results[:5]:
+                print("- {} (exit {})".format(item["date"], item.get("returncode", 1)))
 
     if args.open:
         open_path(summary_md_path)
-    if model_failed:
-        raise SystemExit(1)
+    if failure_exit_code:
+        raise SystemExit(failure_exit_code)
 
 
 def run_backfill_dates(
@@ -2031,9 +2105,11 @@ def run_backfill_dates(
     ensure_learning_final=True,
     defer_global_refresh=False,
     verbose=True,
+    jobs=1,
 ):
-    results = []
     target_dates = list(dates)
+    total_dates = len(target_dates)
+    dependency_failures = []
     runnable_dates = [
         date_str
         for date_str in target_dates
@@ -2043,11 +2119,20 @@ def run_backfill_dates(
     skip_learning_collect = False
 
     if stage == "final" and target_dates and runnable_dates and ensure_learning_final and learn_window_days > 0:
-        ensure_learning_windows_final(
+        learning_sync_results = ensure_learning_windows_final(
             target_dates,
             learn_window_days,
             verbose=verbose,
             defer_global_refresh=True,
+            jobs=jobs,
+        )
+        dependency_failures.extend(
+            {
+                **item,
+                "dependency": "learning_window",
+            }
+            for item in learning_sync_results
+            if item["status"] == "failed"
         )
         batch_learning_ready = True
 
@@ -2055,36 +2140,57 @@ def run_backfill_dates(
         precollect_learning_window_sources(runnable_dates, learn_window_days, verbose=verbose)
         skip_learning_collect = True
 
+    parallel_jobs = normalize_backfill_jobs(jobs)
+    can_parallelize = (
+        parallel_jobs > 1
+        and learn_window_days <= 0
+        and defer_global_refresh
+        and len(runnable_dates) > 1
+    )
+    indexed_results = [None for _ in target_dates]
+    work_items = []
+
     for index, date_str in enumerate(target_dates, start=1):
         if ensure_learning_final and learn_window_days > 0 and not batch_learning_ready:
-            ensure_learning_window_final(date_str, learn_window_days, verbose=verbose)
+            learning_sync_results = ensure_learning_window_final(
+                date_str,
+                learn_window_days,
+                verbose=verbose,
+                jobs=jobs,
+            )
+            dependency_failures.extend(
+                {
+                    **item,
+                    "dependency": "learning_window",
+                }
+                for item in learning_sync_results
+                if item["status"] == "failed"
+            )
 
         summary_json_path, summary_md_path = review_summary_paths(date_str)
         needs_run, skip_reason, summary_info = review_summary_needs_run(date_str, stage, force=force)
         if not needs_run:
-            results.append(
-                {
-                    "date": date_str,
-                    "status": "skipped_existing",
-                    "reason": skip_reason,
-                    "existing_stage": summary_info.get("stage", ""),
-                    "requested_stage": stage,
-                    "summary_json": str(summary_json_path),
-                    "summary_md": str(summary_md_path),
-                }
-            )
+            indexed_results[index - 1] = {
+                "date": date_str,
+                "status": "skipped_existing",
+                "reason": skip_reason,
+                "existing_stage": summary_info.get("stage", ""),
+                "requested_stage": stage,
+                "summary_json": str(summary_json_path),
+                "summary_md": str(summary_md_path),
+            }
             if verbose:
                 print(
                     "[{}/{}] {} {}".format(
                         index,
-                        len(target_dates),
+                        total_dates,
                         date_str,
                         localized(
                             "已有 {} summary，跳过。".format(summary_info.get("stage") or stage),
                             "existing {} summary; skipped.".format(summary_info.get("stage") or stage),
                         ),
                     )
-            )
+                )
             continue
 
         cmd = pipeline_command(
@@ -2095,37 +2201,84 @@ def run_backfill_dates(
             skip_learning_collect=skip_learning_collect,
             skip_if_unchanged=not force,
         )
-
-        if verbose:
-            print("[{}/{}] {} {}".format(index, len(target_dates), date_str, localized("开始回溯。", "started.")))
-        run_checked_with_progress(
-            cmd,
-            [] if not verbose else [
-                localized(
-                    "{} 仍在整理: 正在归纳窗口和历史批次学习结果。".format(date_str),
-                    "{} still organizing: summarizing windows and historical batch learning.".format(date_str),
-                ),
-                localized(
-                    "{} 仍在整理: 正在写入 summary、记忆和面板数据。".format(date_str),
-                    "{} still organizing: writing summary, memories, and panel data.".format(date_str),
-                ),
-            ],
-        )
-
-        results.append(
+        work_items.append(
             {
+                "index": index,
                 "date": date_str,
-                "status": "completed",
+                "cmd": cmd,
                 "reason": skip_reason,
-                "requested_stage": stage,
                 "summary_json": str(summary_json_path),
                 "summary_md": str(summary_md_path),
             }
         )
-        if verbose:
-            print("[{}/{}] {} {}".format(index, len(target_dates), date_str, localized("完成。", "completed.")))
 
-    return results
+    if can_parallelize and verbose and work_items:
+        print(
+            localized(
+                "并发回溯: jobs={}，每个日期独立生成 final，汇总刷新会在最后串行执行。".format(parallel_jobs),
+                "Parallel backfill: jobs={}; each date generates its final summary independently, and global refresh runs serially at the end.".format(parallel_jobs),
+            )
+        )
+
+    def run_work_item(item):
+        date_str = item["date"]
+        index = item["index"]
+        if verbose:
+            print("[{}/{}] {} {}".format(index, total_dates, date_str, localized("开始回溯。", "started.")), flush=True)
+        pipeline_error = None
+        try:
+            run_checked_with_progress(
+                item["cmd"],
+                [] if not verbose else [
+                    localized(
+                        "{} 仍在整理: 正在归纳窗口和历史批次学习结果。".format(date_str),
+                        "{} still organizing: summarizing windows and historical batch learning.".format(date_str),
+                    ),
+                    localized(
+                        "{} 仍在整理: 正在写入 summary、记忆和面板数据。".format(date_str),
+                        "{} still organizing: writing summary, memories, and panel data.".format(date_str),
+                    ),
+                ],
+            )
+        except subprocess.CalledProcessError as exc:
+            pipeline_error = exc
+        if pipeline_error is not None:
+            result = {
+                "date": date_str,
+                "status": "failed",
+                "reason": item["reason"],
+                "requested_stage": stage,
+                "summary_json": item["summary_json"],
+                "summary_md": item["summary_md"],
+                "returncode": pipeline_error.returncode,
+            }
+            if verbose:
+                print("[{}/{}] {} {}".format(index, total_dates, date_str, localized("失败。", "failed.")), flush=True)
+            return index - 1, result
+        result = {
+            "date": date_str,
+            "status": "completed",
+            "reason": item["reason"],
+            "requested_stage": stage,
+            "summary_json": item["summary_json"],
+            "summary_md": item["summary_md"],
+        }
+        if verbose:
+            print("[{}/{}] {} {}".format(index, total_dates, date_str, localized("完成。", "completed.")), flush=True)
+        return index - 1, result
+
+    if can_parallelize:
+        with ThreadPoolExecutor(max_workers=parallel_jobs) as executor:
+            future_map = {executor.submit(run_work_item, item): item for item in work_items}
+            for future in as_completed(future_map):
+                result_index, result = future.result()
+                indexed_results[result_index] = result
+    else:
+        for item in work_items:
+            result_index, result = run_work_item(item)
+            indexed_results[result_index] = result
+
+    return dependency_failures + [item for item in indexed_results if item is not None]
 
 
 def command_backfill(args):
@@ -2134,6 +2287,8 @@ def command_backfill(args):
         print(localized("回溯开始", "Backfill started"))
         print("{}: {} -> {}".format(localized("日期范围", "Date range"), dates[0], dates[-1]))
         print("{}: {}".format(localized("阶段", "Stage"), args.stage))
+        if normalize_backfill_jobs(args.jobs) > 1:
+            print("{}: {}".format(localized("并发", "Jobs"), normalize_backfill_jobs(args.jobs)))
         if args.learn_window_days > 0:
             print("{}: {} days".format(localized("窗口学习", "Window learning"), args.learn_window_days))
 
@@ -2145,9 +2300,11 @@ def command_backfill(args):
         ensure_learning_final=True,
         defer_global_refresh=True,
         verbose=not args.json,
+        jobs=args.jobs,
     )
     completed = sum(1 for item in results if item["status"] == "completed")
-    if completed:
+    failed_results = [item for item in results if item["status"] == "failed"]
+    if completed or failed_results:
         if not args.json:
             print(
                 localized(
@@ -2159,14 +2316,32 @@ def command_backfill(args):
 
     if args.json:
         print_json({"dates": results})
+        if failed_results:
+            raise SystemExit(failed_result_exit_code(failed_results))
         return
 
     skipped = sum(1 for item in results if item["status"] == "skipped_existing")
+    failed = len(failed_results)
     print("")
     print(localized("回溯完成", "Backfill completed"))
-    print("{}: {} | {}: {}".format(localized("完成", "Completed"), completed, localized("跳过", "Skipped"), skipped))
+    print(
+        "{}: {} | {}: {} | {}: {}".format(
+            localized("完成", "Completed"),
+            completed,
+            localized("跳过", "Skipped"),
+            skipped,
+            localized("失败", "Failed"),
+            failed,
+        )
+    )
     print("- panel: {}".format(REPORTS_DIR / "panel.html"))
     print("- overview: {}".format(REPORTS_DIR / "overview.md"))
+    if failed_results:
+        print("")
+        print(localized("失败日期", "Failed dates"))
+        for item in failed_results[:5]:
+            print("- {} (exit {})".format(item["date"], item.get("returncode", 1)))
+        raise SystemExit(failed_result_exit_code(failed_results))
 
 
 def command_core(args):

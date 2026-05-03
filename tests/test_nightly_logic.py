@@ -454,6 +454,30 @@ class NightlyLogicTests(unittest.TestCase):
             nightly_consolidate.SCHEMA_PATH = old_schema_path
             nightly_consolidate.CODEX_MODEL = old_codex_model
 
+    def test_sync_codex_exec_home_tolerates_auth_symlink_race(self):
+        with TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            main_codex_home = root / "main-codex-home"
+            nightly_codex_home = root / "nightly-codex-home"
+            main_codex_home.mkdir()
+            nightly_codex_home.mkdir()
+            source = main_codex_home / "auth.json"
+            source.write_text("{}", encoding="utf-8")
+            original_symlink_to = Path.symlink_to
+
+            def racing_symlink_to(path, target, *args, **kwargs):
+                if path == nightly_codex_home / "auth.json" and not path.exists() and not path.is_symlink():
+                    original_symlink_to(path, target, *args, **kwargs)
+                    raise FileExistsError(str(path))
+                return original_symlink_to(path, target, *args, **kwargs)
+
+            with mock.patch.object(Path, "symlink_to", racing_symlink_to):
+                asset_runtime.sync_codex_exec_home(main_codex_home, nightly_codex_home)
+
+            auth_link = nightly_codex_home / "auth.json"
+            self.assertTrue(auth_link.is_symlink())
+            self.assertEqual(Path(os.readlink(auth_link)), source)
+
     def test_run_codex_consolidation_converts_timeout_to_model_error(self):
         old_main_codex_home = nightly_consolidate.MAIN_CODEX_HOME
         old_nightly_codex_home = nightly_consolidate.NIGHTLY_CODEX_HOME
@@ -5590,6 +5614,12 @@ scope: Release checklist, package manifest, and public website validation.
         )
         self.assertNotIn("<h3>开启 30 分钟自动学习（推荐）</h3>", showcase)
         self.assertIn("--enable-learning-refresh", installer)
+        self.assertIn("backfill --days %s --stage final --learn-window-days 0 --jobs %s", installer)
+        self.assertIn('review --stage final --learn-window-days "$LEARNING_REFRESH_WINDOW_DAYS" --jobs "$INSTALL_LEARN_JOBS"', installer)
+        self.assertIn("深度回溯已在后台启动。日志:", installer)
+        self.assertIn("这一步只整理当天窗口，不做历史学习", installer)
+        self.assertIn('if [[ -n "$DEEP_LEARN_MEMORY_COMMAND" ]]; then', installer)
+        self.assertIn("--no-learn                    Skip the post-install prompt for two-step memory backfill.", installer)
         self.assertIn('INSTALL_PROFILE="integrated"', installer)
         self.assertIn("ENABLE_NIGHTLY=1", installer)
         self.assertIn("Default: integrated", installer)
@@ -5885,9 +5915,23 @@ scope: Release checklist, package manifest, and public website validation.
                 learn_window_days=0,
                 force=False,
                 ensure_learning_final=True,
+                defer_global_refresh=False,
                 verbose=True,
+                jobs=1,
             ):
-                calls.append(("backfill", dates, stage, learn_window_days, force, ensure_learning_final, verbose))
+                calls.append(
+                    (
+                        "backfill",
+                        dates,
+                        stage,
+                        learn_window_days,
+                        force,
+                        ensure_learning_final,
+                        defer_global_refresh,
+                        verbose,
+                        jobs,
+                    )
+                )
                 return [
                     {
                         "date": date_str,
@@ -5907,6 +5951,7 @@ scope: Release checklist, package manifest, and public website validation.
                 open=False,
                 json=False,
                 learn_window_days=7,
+                jobs=2,
             )
 
             with mock.patch.object(openrelix, "CONSOLIDATED_DAILY_DIR", consolidated_daily_dir), mock.patch.object(
@@ -5933,6 +5978,8 @@ scope: Release checklist, package manifest, and public website validation.
             self.assertEqual(calls[0][3], 0)
             self.assertIs(calls[0][4], False)
             self.assertIs(calls[0][5], False)
+            self.assertIs(calls[0][6], True)
+            self.assertEqual(calls[0][8], 2)
             self.assertEqual(calls[1][0], "review")
 
     def test_backfill_reruns_existing_lower_stage_summary(self):
@@ -6044,6 +6091,67 @@ scope: Release checklist, package manifest, and public website validation.
                 self.assertIn("--defer-global-refresh", command)
                 self.assertIn("--skip-learning-collect", command)
 
+    def test_backfill_jobs_parallelize_only_shallow_deferred_runs(self):
+        with TemporaryDirectory() as tmpdir:
+            consolidated_daily_dir = Path(tmpdir) / "consolidated" / "daily"
+            pipeline_calls = []
+
+            def fake_run_checked_with_progress(cmd, progress_messages, interval_seconds=20, reminder_seconds=60):
+                pipeline_calls.append(cmd)
+
+            with mock.patch.object(openrelix, "CONSOLIDATED_DAILY_DIR", consolidated_daily_dir), mock.patch.object(
+                openrelix,
+                "run_checked_with_progress",
+                side_effect=fake_run_checked_with_progress,
+            ), mock.patch("sys.stdout", new_callable=io.StringIO):
+                results = openrelix.run_backfill_dates(
+                    ["2026-04-28", "2026-04-29"],
+                    "final",
+                    learn_window_days=0,
+                    force=False,
+                    ensure_learning_final=True,
+                    defer_global_refresh=True,
+                    verbose=True,
+                    jobs=9,
+                )
+
+            self.assertEqual([item["date"] for item in results], ["2026-04-28", "2026-04-29"])
+            self.assertEqual(len(pipeline_calls), 2)
+            self.assertEqual(openrelix.normalize_backfill_jobs(9), 2)
+            for command in pipeline_calls:
+                self.assertIn("--defer-global-refresh", command)
+                self.assertIn("--skip-if-unchanged", command)
+
+    def test_backfill_records_failed_pipeline_result(self):
+        with TemporaryDirectory() as tmpdir:
+            consolidated_daily_dir = Path(tmpdir) / "consolidated" / "daily"
+            pipeline_calls = []
+
+            def fake_run_checked_with_progress(cmd, progress_messages, interval_seconds=20, reminder_seconds=60):
+                pipeline_calls.append(cmd)
+                raise subprocess.CalledProcessError(2, cmd)
+
+            with mock.patch.object(openrelix, "CONSOLIDATED_DAILY_DIR", consolidated_daily_dir), mock.patch.object(
+                openrelix,
+                "run_checked_with_progress",
+                side_effect=fake_run_checked_with_progress,
+            ), mock.patch("sys.stdout", new_callable=io.StringIO):
+                results = openrelix.run_backfill_dates(
+                    ["2026-04-28"],
+                    "final",
+                    learn_window_days=0,
+                    force=False,
+                    ensure_learning_final=True,
+                    defer_global_refresh=True,
+                    verbose=True,
+                    jobs=1,
+                )
+
+            self.assertEqual(len(pipeline_calls), 1)
+            self.assertEqual(results[0]["status"], "failed")
+            self.assertEqual(results[0]["returncode"], 2)
+            self.assertEqual(results[0]["date"], "2026-04-28")
+
     def test_backfill_skips_existing_same_stage_summary(self):
         with TemporaryDirectory() as tmpdir:
             consolidated_daily_dir = Path(tmpdir) / "consolidated" / "daily"
@@ -6081,6 +6189,7 @@ scope: Release checklist, package manifest, and public website validation.
             ensure_learning_final=True,
             defer_global_refresh=False,
             verbose=True,
+            jobs=1,
         ):
             calls.append(
                 (
@@ -6092,6 +6201,7 @@ scope: Release checklist, package manifest, and public website validation.
                     ensure_learning_final,
                     defer_global_refresh,
                     verbose,
+                    jobs,
                 )
             )
             return [
@@ -6118,6 +6228,7 @@ scope: Release checklist, package manifest, and public website validation.
             learn_window_days=7,
             force=False,
             json=False,
+            jobs=2,
         )
 
         with mock.patch.object(
@@ -6133,7 +6244,122 @@ scope: Release checklist, package manifest, and public website validation.
 
         self.assertEqual(calls[0][0], "backfill")
         self.assertIs(calls[0][6], True)
+        self.assertEqual(calls[0][8], 2)
         self.assertEqual(calls[1], ("refresh", {"include_index": True, "include_native_display": True}))
+
+    def test_command_backfill_syncs_outputs_and_exits_when_deferred_pipeline_fails(self):
+        calls = []
+
+        def fake_run_backfill_dates(
+            dates,
+            stage,
+            learn_window_days=0,
+            force=False,
+            ensure_learning_final=True,
+            defer_global_refresh=False,
+            verbose=True,
+            jobs=1,
+        ):
+            calls.append(("backfill", defer_global_refresh, jobs))
+            return [
+                {
+                    "date": "2026-04-28",
+                    "status": "failed",
+                    "summary_json": "",
+                    "summary_md": "",
+                    "returncode": 2,
+                }
+            ]
+
+        args = argparse.Namespace(
+            dates="2026-04-28",
+            date_from=None,
+            date_to="2026-04-28",
+            days=0,
+            stage="final",
+            learn_window_days=0,
+            force=False,
+            json=False,
+            jobs=2,
+        )
+
+        with mock.patch.object(
+            openrelix,
+            "run_backfill_dates",
+            side_effect=fake_run_backfill_dates,
+        ), mock.patch.object(
+            openrelix,
+            "sync_review_outputs",
+            side_effect=lambda **kwargs: calls.append(("refresh", kwargs)),
+        ), mock.patch("sys.stdout", new_callable=io.StringIO):
+            with self.assertRaises(SystemExit) as raised:
+                openrelix.command_backfill(args)
+
+        self.assertEqual(raised.exception.code, 2)
+        self.assertEqual(calls[0], ("backfill", True, 2))
+        self.assertEqual(calls[1], ("refresh", {"include_index": True, "include_native_display": True}))
+
+    def test_command_backfill_reports_failed_historical_learning_dependency(self):
+        with TemporaryDirectory() as tmpdir:
+            consolidated_daily_dir = Path(tmpdir) / "consolidated" / "daily"
+            calls = []
+
+            def fake_ensure_learning_windows_final(
+                date_strs,
+                learn_window_days,
+                verbose=True,
+                defer_global_refresh=False,
+                jobs=1,
+            ):
+                calls.append(("ensure", date_strs, learn_window_days, defer_global_refresh, jobs))
+                return [
+                    {
+                        "date": "2026-04-21",
+                        "status": "failed",
+                        "summary_json": "",
+                        "summary_md": "",
+                        "returncode": 2,
+                    }
+                ]
+
+            def fake_run_checked_with_progress(cmd, progress_messages, interval_seconds=20, reminder_seconds=60):
+                calls.append(("pipeline", cmd))
+
+            args = argparse.Namespace(
+                dates="2026-04-28",
+                date_from=None,
+                date_to="2026-04-28",
+                days=0,
+                stage="final",
+                learn_window_days=7,
+                force=False,
+                json=False,
+                jobs=2,
+            )
+
+            with mock.patch.object(openrelix, "CONSOLIDATED_DAILY_DIR", consolidated_daily_dir), mock.patch.object(
+                openrelix,
+                "ensure_learning_windows_final",
+                side_effect=fake_ensure_learning_windows_final,
+            ), mock.patch.object(
+                openrelix,
+                "precollect_learning_window_sources",
+            ), mock.patch.object(
+                openrelix,
+                "run_checked_with_progress",
+                side_effect=fake_run_checked_with_progress,
+            ), mock.patch.object(
+                openrelix,
+                "sync_review_outputs",
+                side_effect=lambda **kwargs: calls.append(("refresh", kwargs)),
+            ), mock.patch("sys.stdout", new_callable=io.StringIO):
+                with self.assertRaises(SystemExit) as raised:
+                    openrelix.command_backfill(args)
+
+            self.assertEqual(raised.exception.code, 2)
+            self.assertEqual(calls[0], ("ensure", ["2026-04-28"], 7, True, 2))
+            self.assertEqual(calls[1][0], "pipeline")
+            self.assertEqual(calls[2], ("refresh", {"include_index": True, "include_native_display": True}))
 
     def test_review_syncs_summary_and_panel_after_pipeline(self):
         with TemporaryDirectory() as tmpdir:
@@ -6168,6 +6394,7 @@ scope: Release checklist, package manifest, and public website validation.
                 open=False,
                 json=False,
                 learn_window_days=0,
+                jobs=1,
             )
 
             with mock.patch.object(openrelix, "CONSOLIDATED_DAILY_DIR", consolidated_daily_dir), mock.patch.object(
@@ -6177,11 +6404,152 @@ scope: Release checklist, package manifest, and public website validation.
             ), mock.patch.object(
                 openrelix,
                 "sync_review_outputs",
-                side_effect=lambda: calls.append(("refresh", None)),
+                side_effect=lambda **kwargs: calls.append(("refresh", kwargs)),
             ), mock.patch("sys.stdout", new_callable=io.StringIO):
                 openrelix.command_review(args)
 
             self.assertEqual([item[0] for item in calls], ["pipeline", "refresh"])
+            self.assertEqual(calls[1][1], {"include_index": True, "include_native_display": True})
+
+    def test_review_syncs_outputs_when_deferred_pipeline_exits_after_fallback_summary(self):
+        with TemporaryDirectory() as tmpdir:
+            consolidated_daily_dir = Path(tmpdir) / "consolidated" / "daily"
+            summary_dir = consolidated_daily_dir / "2026-04-28"
+            summary_json_path = summary_dir / "summary.json"
+            summary_md_path = summary_dir / "summary.md"
+            calls = []
+
+            def fake_run_checked_with_progress(cmd, progress_messages, interval_seconds=20, reminder_seconds=60):
+                calls.append(("pipeline", cmd))
+                summary_dir.mkdir(parents=True)
+                summary_json_path.write_text(
+                    json.dumps(
+                        {
+                            "date": "2026-04-28",
+                            "stage": "final",
+                            "day_summary": "fallback",
+                            "window_summaries": [],
+                            "durable_memories": [],
+                            "session_memories": [],
+                            "low_priority_memories": [],
+                            "last_run_model_status": "failed",
+                            "last_run_model_error_hint": "auth failed",
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+                summary_md_path.write_text("# fallback\n", encoding="utf-8")
+                raise subprocess.CalledProcessError(1, cmd)
+
+            args = argparse.Namespace(
+                date="2026-04-28",
+                stage="final",
+                open=False,
+                json=False,
+                learn_window_days=0,
+                jobs=1,
+            )
+
+            with mock.patch.object(openrelix, "CONSOLIDATED_DAILY_DIR", consolidated_daily_dir), mock.patch.object(
+                openrelix,
+                "run_checked_with_progress",
+                side_effect=fake_run_checked_with_progress,
+            ), mock.patch.object(
+                openrelix,
+                "sync_review_outputs",
+                side_effect=lambda **kwargs: calls.append(("refresh", kwargs)),
+            ), mock.patch("sys.stdout", new_callable=io.StringIO), mock.patch(
+                "sys.stderr",
+                new_callable=io.StringIO,
+            ):
+                with self.assertRaises(SystemExit) as raised:
+                    openrelix.command_review(args)
+
+            self.assertEqual(raised.exception.code, 1)
+            self.assertEqual([item[0] for item in calls], ["pipeline", "refresh"])
+            self.assertEqual(calls[1][1], {"include_index": True, "include_native_display": True})
+
+    def test_review_reports_failed_historical_backfill_after_sync(self):
+        with TemporaryDirectory() as tmpdir:
+            consolidated_daily_dir = Path(tmpdir) / "consolidated" / "daily"
+            summary_dir = consolidated_daily_dir / "2026-04-28"
+            summary_json_path = summary_dir / "summary.json"
+            summary_md_path = summary_dir / "summary.md"
+            calls = []
+
+            def fake_backfill_dates(
+                dates,
+                stage,
+                learn_window_days=0,
+                force=False,
+                ensure_learning_final=True,
+                defer_global_refresh=False,
+                verbose=True,
+                jobs=1,
+            ):
+                calls.append(("backfill", dates, defer_global_refresh, jobs))
+                return [
+                    {
+                        "date": "2026-04-21",
+                        "status": "failed",
+                        "summary_json": "",
+                        "summary_md": "",
+                        "returncode": 2,
+                    }
+                ]
+
+            def fake_run_checked_with_progress(cmd, progress_messages, interval_seconds=20, reminder_seconds=60):
+                calls.append(("pipeline", cmd))
+                summary_dir.mkdir(parents=True)
+                summary_json_path.write_text(
+                    json.dumps(
+                        {
+                            "date": "2026-04-28",
+                            "stage": "final",
+                            "day_summary": "done with fallback history",
+                            "window_summaries": [],
+                            "durable_memories": [],
+                            "session_memories": [],
+                            "low_priority_memories": [],
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+                summary_md_path.write_text("# done\n", encoding="utf-8")
+
+            args = argparse.Namespace(
+                date="2026-04-28",
+                stage="final",
+                open=False,
+                json=False,
+                learn_window_days=7,
+                jobs=2,
+            )
+
+            with mock.patch.object(openrelix, "CONSOLIDATED_DAILY_DIR", consolidated_daily_dir), mock.patch.object(
+                openrelix,
+                "resolve_learning_backfill_dates_for_targets",
+                return_value=["2026-04-21"],
+            ), mock.patch.object(
+                openrelix,
+                "run_backfill_dates",
+                side_effect=fake_backfill_dates,
+            ), mock.patch.object(
+                openrelix,
+                "run_checked_with_progress",
+                side_effect=fake_run_checked_with_progress,
+            ), mock.patch.object(
+                openrelix,
+                "sync_review_outputs",
+                side_effect=lambda **kwargs: calls.append(("refresh", kwargs)),
+            ), mock.patch("sys.stdout", new_callable=io.StringIO):
+                with self.assertRaises(SystemExit) as raised:
+                    openrelix.command_review(args)
+
+            self.assertEqual(raised.exception.code, 2)
+            self.assertEqual(calls[0], ("backfill", ["2026-04-21"], True, 2))
+            self.assertEqual(calls[1][0], "pipeline")
+            self.assertEqual(calls[2], ("refresh", {"include_index": True, "include_native_display": True}))
 
     def test_review_json_syncs_outputs_without_polluting_json(self):
         with TemporaryDirectory() as tmpdir:
@@ -6214,6 +6582,7 @@ scope: Release checklist, package manifest, and public website validation.
                 open=False,
                 json=True,
                 learn_window_days=0,
+                jobs=1,
             )
 
             with mock.patch.object(openrelix, "CONSOLIDATED_DAILY_DIR", consolidated_daily_dir), mock.patch.object(
@@ -6223,11 +6592,12 @@ scope: Release checklist, package manifest, and public website validation.
             ), mock.patch.object(
                 openrelix,
                 "sync_review_outputs",
-                side_effect=lambda: calls.append(("refresh", None, None)),
+                side_effect=lambda **kwargs: calls.append(("refresh", kwargs)),
             ), mock.patch("sys.stdout", new_callable=io.StringIO) as stdout:
                 openrelix.command_review(args)
 
             self.assertEqual([item[0] for item in calls], ["pipeline", "refresh"])
+            self.assertEqual(calls[1][1], {"include_index": True, "include_native_display": True})
             self.assertEqual(calls[0][2], [])
             payload = json.loads(stdout.getvalue())
             self.assertEqual(payload["day_summary"], "json ok")

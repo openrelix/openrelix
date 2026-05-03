@@ -618,6 +618,22 @@
     <section class="section">
       <div class="inner">
         <div class="changelog-list">
+          <article class="changelog-entry is-released" id="v0-2-6">
+            <div class="changelog-meta">
+              <span class="changelog-version">v0.2.6</span>
+              <span class="changelog-date">2026-05-03</span>
+              <span class="changelog-chip">已发布</span>
+            </div>
+            <div class="changelog-body">
+              <p>加速安装速度。</p>
+              <span class="group-title">性能</span>
+              <ul>
+                <li>安装后的记忆回溯拆成浅度回溯和后台深度学习，先更快完成可用安装。</li>
+                <li>回溯流程增加受控并发和延后刷新，减少重复整理与等待时间。</li>
+              </ul>
+            </div>
+          </article>
+
           <article class="changelog-entry is-released" id="v0-2-5">
             <div class="changelog-meta">
               <span class="changelog-version">v0.2.5</span>
@@ -830,6 +846,9 @@
         "Unreleased": "Unreleased",
         "主线开发中的改动": "Mainline Changes In Progress",
         "以下改动已合入 main 分支，但尚未单独发布版本号；下一次版本号上调时这些条目会归入对应版本。": "These changes are merged into main but have not received their own version bump yet; the next release will absorb them.",
+        "加速安装速度。": "Accelerate install speed.",
+        "安装后的记忆回溯拆成浅度回溯和后台深度学习，先更快完成可用安装。": "Split post-install memory backfill into shallow backfill plus background deep learning, so the usable install finishes sooner.",
+        "回溯流程增加受控并发和延后刷新，减少重复整理与等待时间。": "Add controlled concurrency and deferred refresh to backfill, reducing repeated organization work and waiting time.",
         "发布 v0.2.4 之后合入的稳定性与性能更新：nightly 学习和固化流程更快、更稳，默认开启 nightly agents，面板交互与 macOS 外链跳转也完成一轮修复。": "Stability and performance updates merged after v0.2.4: nightly learning and consolidation are faster and steadier, nightly agents are enabled by default, and panel interactions plus macOS external-link handling got another repair pass.",
         "发布流程": "Release Flow",
         "性能": "Performance",
