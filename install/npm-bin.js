@@ -38,8 +38,8 @@ Examples:
   npx openrelix install --enable-learning-refresh --activity-source history
   npx openrelix install --disable-personal-memory
   npx openrelix install --minimal
-  npx openrelix install --enable-learning-refresh --enable-nightly --keep-awake=during-job
-  npx openrelix install --enable-learning-refresh --enable-nightly --enable-update-check
+  npx openrelix install --enable-learning-refresh --keep-awake=during-job
+  npx openrelix install --enable-learning-refresh --enable-update-check
   npx openrelix uninstall
   npx openrelix uninstall --delete-local-memory
   npx openrelix update --print-command
@@ -47,11 +47,11 @@ Examples:
   npx openrelix models
   npx openrelix index status
   npx openrelix index search-memory sqlite
-  npx openrelix install --enable-nightly --nightly-organize-time 22:30 --nightly-finalize-time 01:00
+  npx openrelix install --nightly-organize-time 22:30 --nightly-finalize-time 01:00
 
 This npm command is a thin wrapper around install/install.sh.
 Interactive installs prompt for 中文 (zh) or English (en) when --language is omitted.
-Install profile defaults to integrated: the installer sets up the openrelix shell command, user-level Codex skill symlink, bounded history config, lightweight macOS client, overview refresh service, and local reports. Use --minimal for a local-only bootstrap without shell command, macOS client, or LaunchAgents.
+Install profile defaults to integrated: the installer sets up the openrelix shell command, user-level Codex skill symlink, bounded history config, lightweight macOS client, overview refresh service, nightly organization LaunchAgents, and local reports. Use --minimal for a local-only bootstrap without shell command, macOS client, or LaunchAgents.
 Memory mode defaults to integrated: local personal memory stays on and a bounded summary is injected into Codex native context. Use --record-memory-only for strict local-only recording, or --disable-personal-memory to only visualize AI CLI memory.
 Add --enable-learning-refresh when you want the 30-minute overview-refresh LaunchAgent to call the Codex adapter and learn from a 7-day window automatically.
 Activity source defaults to auto: try Codex app-server first, then fall back to CLI history/session. Add --activity-source history to force CLI files only.
@@ -138,7 +138,6 @@ function updateArgsToInstallArgs(args) {
   if (recommended) {
     installArgs.push(
       "--enable-learning-refresh",
-      "--enable-nightly",
       "--keep-awake=during-job",
       "--enable-update-check",
       "--update-check-time=09:30"

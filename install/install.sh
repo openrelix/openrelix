@@ -123,6 +123,7 @@ Options:
   --no-learn                    Skip the post-install prompt to learn the last 7 days of memory.
   --enable-background-services  Install overview refresh and token-live LaunchAgents.
   --enable-nightly              Install nightly organize/finalize LaunchAgents.
+                                Integrated installs enable nightly by default.
   --enable-update-check         Install a daily no-mutation npm update check LaunchAgent.
   --update-check-time HH:MM     Time for the daily update check. Default: 09:30
   --enable-learning-refresh     Make the 30-minute overview refresh call the
@@ -260,6 +261,7 @@ apply_install_profile() {
       INSTALL_MAC_CLIENT=1
       ENABLE_HISTORY=1
       ENABLE_BACKGROUND_SERVICES=1
+      ENABLE_NIGHTLY=1
       ;;
     *)
       echo "Unsupported install profile: $INSTALL_PROFILE" >&2
