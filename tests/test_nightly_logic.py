@@ -6901,10 +6901,751 @@ scope: Release checklist, package manifest, and public website validation.
             )
         )
 
+    def test_compact_payload_cache_reuses_clustered_payload_and_invalidates_content(self):
+        raw_payload = {
+            "date": "2026-04-27",
+            "window_count": 1,
+            "prompt_count": 1,
+            "conclusion_count": 1,
+            "windows": [
+                {
+                    "window_id": "w1",
+                    "cwd": "/tmp/demo",
+                    "prompt_count": 1,
+                    "conclusion_count": 1,
+                    "prompts": [{"text": "cache this prompt"}],
+                    "conclusions": [{"text": "cache this conclusion"}],
+                }
+            ],
+        }
+
+        nightly_consolidate._COMPACT_PAYLOAD_CACHE.clear()
+        self.addCleanup(nightly_consolidate._COMPACT_PAYLOAD_CACHE.clear)
+        with TemporaryDirectory() as tmpdir:
+            cache_dir = Path(tmpdir) / "cache"
+            with mock.patch.object(
+                nightly_consolidate,
+                "build_text_clusters",
+                wraps=nightly_consolidate.build_text_clusters,
+            ) as clustered:
+                first = nightly_consolidate.build_compact_payload(
+                    raw_payload,
+                    language="zh",
+                    cache_dir=cache_dir,
+                )
+                self.assertEqual(clustered.call_count, 2)
+
+                nightly_consolidate._COMPACT_PAYLOAD_CACHE.clear()
+                second = nightly_consolidate.build_compact_payload(
+                    raw_payload,
+                    language="zh",
+                    cache_dir=cache_dir,
+                )
+                self.assertEqual(first, second)
+                self.assertEqual(clustered.call_count, 2)
+
+                changed_payload = json.loads(json.dumps(raw_payload))
+                changed_payload["windows"][0]["prompts"][0]["text"] = "changed prompt"
+                changed = nightly_consolidate.build_compact_payload(
+                    changed_payload,
+                    language="zh",
+                    cache_dir=cache_dir,
+                )
+
+        self.assertNotEqual(changed, first)
+        self.assertEqual(clustered.call_count, 4)
+
+    def test_compact_payload_cache_wrong_shape_is_ignored(self):
+        raw_payload = {
+            "date": "2026-04-27",
+            "window_count": 1,
+            "prompt_count": 1,
+            "conclusion_count": 1,
+            "windows": [
+                {
+                    "window_id": "w1",
+                    "cwd": "/tmp/demo",
+                    "prompt_count": 1,
+                    "conclusion_count": 1,
+                    "prompts": [{"text": "fresh prompt after bad cache"}],
+                    "conclusions": [{"text": "fresh conclusion after bad cache"}],
+                }
+            ],
+        }
+
+        nightly_consolidate._COMPACT_PAYLOAD_CACHE.clear()
+        self.addCleanup(nightly_consolidate._COMPACT_PAYLOAD_CACHE.clear)
+        with TemporaryDirectory() as tmpdir:
+            cache_dir = Path(tmpdir) / "cache"
+            fingerprint = nightly_consolidate.compact_payload_fingerprint(raw_payload, language="zh")
+            cache_path = cache_dir / "compact-payload" / "{}.json".format(fingerprint)
+            cache_path.parent.mkdir(parents=True)
+            cache_path.write_text("[]", encoding="utf-8")
+
+            with mock.patch.object(
+                nightly_consolidate,
+                "build_text_clusters",
+                wraps=nightly_consolidate.build_text_clusters,
+            ) as clustered:
+                compact = nightly_consolidate.build_compact_payload(
+                    raw_payload,
+                    language="zh",
+                    cache_dir=cache_dir,
+                )
+                self.assertEqual(clustered.call_count, 2)
+
+                nightly_consolidate._COMPACT_PAYLOAD_CACHE.clear()
+                cache_path.write_text(
+                    json.dumps(
+                        {
+                            "fingerprint": fingerprint,
+                            "compact_payload": {
+                                "date": "2026-04-27",
+                                "window_count": 1,
+                                "prompt_count": 1,
+                                "conclusion_count": 1,
+                                "windows": [],
+                            },
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+                compact_from_malformed_payload = nightly_consolidate.build_compact_payload(
+                    raw_payload,
+                    language="zh",
+                    cache_dir=cache_dir,
+                )
+                self.assertEqual(clustered.call_count, 4)
+
+                nightly_consolidate._COMPACT_PAYLOAD_CACHE.clear()
+                cache_path.write_text(
+                    json.dumps(
+                        {
+                            "fingerprint": fingerprint,
+                            "compact_payload": {
+                                "date": "2026-04-27",
+                                "window_count": 1,
+                                "prompt_count": 1,
+                                "conclusion_count": 1,
+                                "windows": [
+                                    {
+                                        "window_id": "stale-window",
+                                        "cwd": "/tmp/other",
+                                        "prompt_count": 1,
+                                        "conclusion_count": 1,
+                                        "prompt_cluster_count": 1,
+                                        "conclusion_cluster_count": 1,
+                                        "prompt_samples": ["stale prompt"],
+                                        "conclusion_samples": ["stale conclusion"],
+                                    }
+                                ],
+                            },
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+                compact_from_stale_window = nightly_consolidate.build_compact_payload(
+                    raw_payload,
+                    language="zh",
+                    cache_dir=cache_dir,
+                )
+                self.assertEqual(clustered.call_count, 6)
+
+                nightly_consolidate._COMPACT_PAYLOAD_CACHE.clear()
+                cache_path.write_text(
+                    json.dumps(
+                        {
+                            "fingerprint": fingerprint,
+                            "compact_payload": {
+                                "date": "2026-04-27",
+                                "window_count": 1,
+                                "prompt_count": 1,
+                                "conclusion_count": 1,
+                                "windows": [
+                                    {
+                                        "window_id": "w1",
+                                        "cwd": "/tmp/demo",
+                                        "prompt_count": 1,
+                                        "conclusion_count": 1,
+                                        "prompt_cluster_count": 2,
+                                        "conclusion_cluster_count": 1,
+                                        "prompt_samples": [
+                                            "fresh prompt after bad cache",
+                                            "stale extra",
+                                        ],
+                                        "conclusion_samples": ["fresh conclusion after bad cache"],
+                                    }
+                                ],
+                            },
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+                compact_from_impossible_samples = nightly_consolidate.build_compact_payload(
+                    raw_payload,
+                    language="zh",
+                    cache_dir=cache_dir,
+                )
+
+        self.assertEqual(compact["windows"][0]["prompt_samples"], ["fresh prompt after bad cache"])
+        self.assertEqual(
+            compact_from_malformed_payload["windows"][0]["prompt_samples"],
+            ["fresh prompt after bad cache"],
+        )
+        self.assertEqual(
+            compact_from_stale_window["windows"][0]["prompt_samples"],
+            ["fresh prompt after bad cache"],
+        )
+        self.assertEqual(
+            compact_from_impossible_samples["windows"][0]["prompt_samples"],
+            ["fresh prompt after bad cache"],
+        )
+        self.assertEqual(clustered.call_count, 8)
+
+    def test_nightly_cache_write_failures_do_not_break_fresh_results(self):
+        raw_payload = {
+            "date": "2026-04-27",
+            "window_count": 1,
+            "prompt_count": 1,
+            "conclusion_count": 1,
+            "windows": [
+                {
+                    "window_id": "w1",
+                    "cwd": "/tmp/demo",
+                    "prompt_count": 1,
+                    "conclusion_count": 1,
+                    "prompts": [{"text": "cache write should be optional"}],
+                    "conclusions": [{"text": "fresh compact data still returns"}],
+                }
+            ],
+        }
+
+        old_raw_dir = nightly_consolidate.RAW_DIR
+        old_consolidated_dir = nightly_consolidate.CONSOLIDATED_DIR
+        try:
+            nightly_consolidate._COMPACT_PAYLOAD_CACHE.clear()
+            nightly_consolidate._RECENT_WINDOW_LEARNING_CACHE.clear()
+            self.addCleanup(nightly_consolidate._COMPACT_PAYLOAD_CACHE.clear)
+            self.addCleanup(nightly_consolidate._RECENT_WINDOW_LEARNING_CACHE.clear)
+            with TemporaryDirectory() as tmpdir:
+                tmp = Path(tmpdir)
+                cache_dir = tmp / "cache"
+                cache_dir.mkdir()
+                (cache_dir / "compact-payload").write_text("not a directory", encoding="utf-8")
+
+                compact = nightly_consolidate.build_compact_payload(
+                    raw_payload,
+                    language="zh",
+                    cache_dir=cache_dir,
+                )
+                self.assertEqual(compact["window_count"], 1)
+                self.assertEqual(
+                    compact["windows"][0]["prompt_samples"],
+                    ["cache write should be optional"],
+                )
+
+                nightly_consolidate.RAW_DIR = tmp / "raw"
+                nightly_consolidate.CONSOLIDATED_DIR = tmp / "consolidated" / "daily"
+                raw_daily_dir = nightly_consolidate.RAW_DIR / "daily"
+                raw_daily_dir.mkdir(parents=True)
+                (raw_daily_dir / "2026-04-26.json").write_text(
+                    json.dumps(
+                        {
+                            "date": "2026-04-26",
+                            "window_count": 1,
+                            "windows": raw_payload["windows"],
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+                (cache_dir / "recent-window-learning").write_text(
+                    "not a directory",
+                    encoding="utf-8",
+                )
+
+                learning = nightly_consolidate.build_recent_window_learning(
+                    "2026-04-27",
+                    1,
+                    cache_dir=cache_dir,
+                )
+
+        finally:
+            nightly_consolidate.RAW_DIR = old_raw_dir
+            nightly_consolidate.CONSOLIDATED_DIR = old_consolidated_dir
+
+        self.assertEqual(learning["raw_window_count"], 1)
+        self.assertEqual(learning["batch_count"], 1)
+
+    def test_disable_nightly_cache_skips_cache_fingerprints(self):
+        raw_payload = {
+            "date": "2026-04-27",
+            "window_count": 1,
+            "prompt_count": 1,
+            "conclusion_count": 1,
+            "windows": [
+                {
+                    "window_id": "w1",
+                    "cwd": "/tmp/demo",
+                    "prompt_count": 1,
+                    "conclusion_count": 1,
+                    "prompts": [{"text": "cache disabled prompt"}],
+                    "conclusions": [{"text": "cache disabled conclusion"}],
+                }
+            ],
+        }
+
+        old_raw_dir = nightly_consolidate.RAW_DIR
+        old_consolidated_dir = nightly_consolidate.CONSOLIDATED_DIR
+        try:
+            with TemporaryDirectory() as tmpdir, mock.patch.dict(
+                os.environ,
+                {"OPENRELIX_DISABLE_NIGHTLY_CACHE": "1"},
+                clear=False,
+            ):
+                tmp = Path(tmpdir)
+                cache_dir = tmp / "cache"
+                with mock.patch.object(
+                    nightly_consolidate,
+                    "compact_payload_fingerprint",
+                    side_effect=AssertionError("disabled compact cache should not hash"),
+                ):
+                    compact = nightly_consolidate.build_compact_payload(
+                        raw_payload,
+                        language="zh",
+                        cache_dir=cache_dir,
+                    )
+                self.assertEqual(compact["windows"][0]["prompt_samples"], ["cache disabled prompt"])
+                self.assertFalse(cache_dir.exists())
+
+                nightly_consolidate.RAW_DIR = tmp / "raw"
+                nightly_consolidate.CONSOLIDATED_DIR = tmp / "consolidated" / "daily"
+                raw_daily_dir = nightly_consolidate.RAW_DIR / "daily"
+                raw_daily_dir.mkdir(parents=True)
+                (raw_daily_dir / "2026-04-26.json").write_text(
+                    json.dumps(
+                        {
+                            "date": "2026-04-26",
+                            "window_count": 1,
+                            "windows": raw_payload["windows"],
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+                with mock.patch.object(
+                    nightly_consolidate,
+                    "recent_window_learning_fingerprint",
+                    side_effect=AssertionError("disabled recent cache should not hash"),
+                ):
+                    learning = nightly_consolidate.build_recent_window_learning(
+                        "2026-04-27",
+                        1,
+                        cache_dir=cache_dir,
+                    )
+                self.assertEqual(learning["raw_window_count"], 1)
+                self.assertFalse(cache_dir.exists())
+        finally:
+            nightly_consolidate.RAW_DIR = old_raw_dir
+            nightly_consolidate.CONSOLIDATED_DIR = old_consolidated_dir
+
+    def test_recent_window_learning_cache_reuses_source_fingerprint_and_invalidates_summary(self):
+        old_raw_dir = nightly_consolidate.RAW_DIR
+        old_consolidated_dir = nightly_consolidate.CONSOLIDATED_DIR
+        try:
+            nightly_consolidate._RECENT_WINDOW_LEARNING_CACHE.clear()
+            self.addCleanup(nightly_consolidate._RECENT_WINDOW_LEARNING_CACHE.clear)
+            with TemporaryDirectory() as tmpdir:
+                tmp = Path(tmpdir)
+                nightly_consolidate.RAW_DIR = tmp / "raw"
+                nightly_consolidate.CONSOLIDATED_DIR = tmp / "consolidated" / "daily"
+                cache_dir = tmp / "cache"
+
+                raw_daily_dir = nightly_consolidate.RAW_DIR / "daily"
+                raw_daily_dir.mkdir(parents=True)
+                summary_dir = nightly_consolidate.CONSOLIDATED_DIR / "2026-04-26"
+                summary_dir.mkdir(parents=True)
+                (raw_daily_dir / "2026-04-26.json").write_text(
+                    json.dumps(
+                        {
+                            "date": "2026-04-26",
+                            "window_count": 1,
+                            "windows": [
+                                {
+                                    "window_id": "w1",
+                                    "cwd": "/tmp/demo",
+                                    "prompt_count": 1,
+                                    "conclusion_count": 1,
+                                    "prompts": [{"text": "learning question"}],
+                                    "conclusions": [{"text": "learning answer"}],
+                                }
+                            ],
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+                (summary_dir / "summary.json").write_text(
+                    json.dumps(
+                        {
+                            "date": "2026-04-26",
+                            "window_summaries": [
+                                {
+                                    "window_id": "w1",
+                                    "question_summary": "learning question",
+                                    "main_takeaway": "learning answer",
+                                    "keywords": ["alpha"],
+                                }
+                            ],
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+                fingerprint = nightly_consolidate.recent_window_learning_fingerprint(
+                    "2026-04-27",
+                    1,
+                    language=nightly_consolidate.LANGUAGE,
+                )
+                malformed_cache_path = cache_dir / "recent-window-learning" / "{}.json".format(
+                    fingerprint
+                )
+                malformed_cache_path.parent.mkdir(parents=True)
+                malformed_cache_path.write_text(
+                    json.dumps(
+                        {
+                            "fingerprint": fingerprint,
+                            "recent_window_learning": {},
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+
+                first = nightly_consolidate.build_recent_window_learning(
+                    "2026-04-27",
+                    1,
+                    cache_dir=cache_dir,
+                )
+                self.assertEqual(first["batch_summaries"][0]["top_keywords"], ["alpha"])
+
+                nightly_consolidate._RECENT_WINDOW_LEARNING_CACHE.clear()
+                malformed_learning = json.loads(json.dumps(first))
+                malformed_learning["coverage"]["raw_window_count"] = 0
+                malformed_learning["coverage"]["source_date_count"] = 0
+                malformed_cache_path.write_text(
+                    json.dumps(
+                        {
+                            "fingerprint": fingerprint,
+                            "recent_window_learning": malformed_learning,
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+                repaired = nightly_consolidate.build_recent_window_learning(
+                    "2026-04-27",
+                    1,
+                    cache_dir=cache_dir,
+                )
+                self.assertEqual(repaired["raw_window_count"], 1)
+                self.assertEqual(repaired["coverage"]["raw_window_count"], 1)
+                self.assertEqual(repaired["coverage"]["source_date_count"], 1)
+
+                nightly_consolidate._RECENT_WINDOW_LEARNING_CACHE.clear()
+                impossible_learning = json.loads(json.dumps(first))
+                impossible_learning["source_dates"] = ["2026-04-26"]
+                impossible_learning["coverage"]["source_dates"] = ["2026-04-25"]
+                impossible_learning["window_samples"].append(
+                    {
+                        "date": "2026-04-25",
+                        "context": "stale",
+                        "cwd": "/tmp/stale",
+                        "prompt_count": 1,
+                        "conclusion_count": 1,
+                        "question_summary": "stale",
+                        "main_takeaway": "stale",
+                        "keywords": [],
+                    }
+                )
+                impossible_learning["coverage"]["injected_window_sample_count"] = len(
+                    impossible_learning["window_samples"]
+                )
+                malformed_cache_path.write_text(
+                    json.dumps(
+                        {
+                            "fingerprint": fingerprint,
+                            "recent_window_learning": impossible_learning,
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+                repaired_impossible = nightly_consolidate.build_recent_window_learning(
+                    "2026-04-27",
+                    1,
+                    cache_dir=cache_dir,
+                )
+                self.assertEqual(repaired_impossible["source_dates"], ["2026-04-26"])
+                self.assertEqual(
+                    repaired_impossible["coverage"]["source_dates"],
+                    ["2026-04-26"],
+                )
+                self.assertEqual(len(repaired_impossible["window_samples"]), 1)
+
+                nightly_consolidate._RECENT_WINDOW_LEARNING_CACHE.clear()
+                with mock.patch.object(
+                    nightly_consolidate,
+                    "load_raw_daily_for_date",
+                    side_effect=AssertionError("cache hit should not parse raw JSON"),
+                ):
+                    second = nightly_consolidate.build_recent_window_learning(
+                        "2026-04-27",
+                        1,
+                        cache_dir=cache_dir,
+                    )
+                self.assertEqual(second, first)
+
+                (summary_dir / "summary.json").write_text(
+                    json.dumps(
+                        {
+                            "date": "2026-04-26",
+                            "window_summaries": [
+                                {
+                                    "window_id": "w1",
+                                    "question_summary": "learning question",
+                                    "main_takeaway": "learning answer",
+                                    "keywords": ["beta"],
+                                }
+                            ],
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+                nightly_consolidate._RECENT_WINDOW_LEARNING_CACHE.clear()
+                third = nightly_consolidate.build_recent_window_learning(
+                    "2026-04-27",
+                    1,
+                    cache_dir=cache_dir,
+                )
+
+        finally:
+            nightly_consolidate.RAW_DIR = old_raw_dir
+            nightly_consolidate.CONSOLIDATED_DIR = old_consolidated_dir
+
+        self.assertEqual(third["batch_summaries"][0]["top_keywords"], ["beta"])
+
+    def test_recent_window_learning_does_not_cache_when_sources_change_during_build(self):
+        old_raw_dir = nightly_consolidate.RAW_DIR
+        old_consolidated_dir = nightly_consolidate.CONSOLIDATED_DIR
+        try:
+            nightly_consolidate._RECENT_WINDOW_LEARNING_CACHE.clear()
+            self.addCleanup(nightly_consolidate._RECENT_WINDOW_LEARNING_CACHE.clear)
+            with TemporaryDirectory() as tmpdir:
+                tmp = Path(tmpdir)
+                nightly_consolidate.RAW_DIR = tmp / "raw"
+                nightly_consolidate.CONSOLIDATED_DIR = tmp / "consolidated" / "daily"
+                cache_dir = tmp / "cache"
+                raw_daily_dir = nightly_consolidate.RAW_DIR / "daily"
+                raw_daily_dir.mkdir(parents=True)
+
+                stale_fingerprint = nightly_consolidate.recent_window_learning_fingerprint(
+                    "2026-04-27",
+                    1,
+                    language=nightly_consolidate.LANGUAGE,
+                )
+                original_loader = nightly_consolidate.load_raw_daily_for_date
+
+                def create_raw_then_load(date_str):
+                    (raw_daily_dir / "{}.json".format(date_str)).write_text(
+                        json.dumps(
+                            {
+                                "date": date_str,
+                                "window_count": 1,
+                                "windows": [
+                                    {
+                                        "window_id": "w1",
+                                        "cwd": "/tmp/demo",
+                                        "prompt_count": 1,
+                                        "conclusion_count": 1,
+                                        "prompts": [{"text": "race question"}],
+                                        "conclusions": [{"text": "race answer"}],
+                                    }
+                                ],
+                            }
+                        ),
+                        encoding="utf-8",
+                    )
+                    return original_loader(date_str)
+
+                with mock.patch.object(
+                    nightly_consolidate,
+                    "load_raw_daily_for_date",
+                    side_effect=create_raw_then_load,
+                ):
+                    learning = nightly_consolidate.build_recent_window_learning(
+                        "2026-04-27",
+                        1,
+                        cache_dir=cache_dir,
+                    )
+
+                stale_cache_path = cache_dir / "recent-window-learning" / "{}.json".format(
+                    stale_fingerprint
+                )
+
+        finally:
+            nightly_consolidate.RAW_DIR = old_raw_dir
+            nightly_consolidate.CONSOLIDATED_DIR = old_consolidated_dir
+
+        self.assertEqual(learning["raw_window_count"], 1)
+        self.assertFalse(stale_cache_path.exists())
+        self.assertNotIn(stale_fingerprint, nightly_consolidate._RECENT_WINDOW_LEARNING_CACHE)
+
+    def test_recent_window_learning_cache_hit_rechecks_source_fingerprint(self):
+        old_raw_dir = nightly_consolidate.RAW_DIR
+        old_consolidated_dir = nightly_consolidate.CONSOLIDATED_DIR
+        try:
+            nightly_consolidate._RECENT_WINDOW_LEARNING_CACHE.clear()
+            self.addCleanup(nightly_consolidate._RECENT_WINDOW_LEARNING_CACHE.clear)
+            with TemporaryDirectory() as tmpdir:
+                tmp = Path(tmpdir)
+                nightly_consolidate.RAW_DIR = tmp / "raw"
+                nightly_consolidate.CONSOLIDATED_DIR = tmp / "consolidated" / "daily"
+                cache_dir = tmp / "cache"
+                raw_daily_dir = nightly_consolidate.RAW_DIR / "daily"
+                raw_daily_dir.mkdir(parents=True)
+                summary_dir = nightly_consolidate.CONSOLIDATED_DIR / "2026-04-26"
+                summary_dir.mkdir(parents=True)
+                (raw_daily_dir / "2026-04-26.json").write_text(
+                    json.dumps(
+                        {
+                            "date": "2026-04-26",
+                            "window_count": 1,
+                            "windows": [
+                                {
+                                    "window_id": "w1",
+                                    "cwd": "/tmp/demo",
+                                    "prompt_count": 1,
+                                    "conclusion_count": 1,
+                                    "prompts": [{"text": "live question"}],
+                                    "conclusions": [{"text": "live answer"}],
+                                }
+                            ],
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+                (summary_dir / "summary.json").write_text(
+                    json.dumps(
+                        {
+                            "date": "2026-04-26",
+                            "window_summaries": [
+                                {
+                                    "window_id": "w1",
+                                    "question_summary": "live question",
+                                    "main_takeaway": "live answer",
+                                    "keywords": ["live"],
+                                }
+                            ],
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+                stale_learning = {
+                    "lookback_days": 1,
+                    "scanned_date_count": 1,
+                    "source_dates": ["2026-04-26"],
+                    "raw_window_count": 1,
+                    "batch_size": nightly_consolidate.LEARNING_WINDOW_BATCH_SIZE,
+                    "batch_count": 1,
+                    "coverage": {
+                        "scanned_date_count": 1,
+                        "raw_window_count": 1,
+                        "source_date_count": 1,
+                        "source_dates": ["2026-04-26"],
+                        "context_count": 1,
+                        "batch_size": nightly_consolidate.LEARNING_WINDOW_BATCH_SIZE,
+                        "batch_count": 1,
+                        "injected_window_sample_count": 1,
+                        "injected_pattern_count": 1,
+                    },
+                    "batch_summaries": [
+                        {
+                            "batch_id": "2026-04-26#1",
+                            "date": "2026-04-26",
+                            "window_count": 1,
+                            "prompt_count": 1,
+                            "conclusion_count": 1,
+                            "contexts": [{"context": "demo", "window_count": 1}],
+                            "top_keywords": ["stale"],
+                            "sample_takeaways": ["stale answer"],
+                        }
+                    ],
+                    "window_samples": [
+                        {
+                            "date": "2026-04-26",
+                            "context": "demo",
+                            "cwd": "/tmp/demo",
+                            "prompt_count": 1,
+                            "conclusion_count": 1,
+                            "question_summary": "stale question",
+                            "main_takeaway": "stale answer",
+                            "keywords": ["stale"],
+                        }
+                    ],
+                    "context_patterns": [
+                        {
+                            "context": "demo",
+                            "window_count": 1,
+                            "prompt_count": 1,
+                            "conclusion_count": 1,
+                            "dates": ["2026-04-26"],
+                            "top_keywords": ["stale"],
+                            "sample_takeaways": ["stale answer"],
+                        }
+                    ],
+                }
+                cache_path = cache_dir / "recent-window-learning" / "stale-fingerprint.json"
+                cache_path.parent.mkdir(parents=True)
+                cache_path.write_text(
+                    json.dumps(
+                        {
+                            "fingerprint": "stale-fingerprint",
+                            "recent_window_learning": stale_learning,
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+
+                with mock.patch.object(
+                    nightly_consolidate,
+                    "recent_window_learning_fingerprint",
+                    side_effect=["stale-fingerprint", "current-fingerprint", "current-fingerprint"],
+                ):
+                    disk_result = nightly_consolidate.build_recent_window_learning(
+                        "2026-04-27",
+                        1,
+                        cache_dir=cache_dir,
+                    )
+
+                nightly_consolidate._RECENT_WINDOW_LEARNING_CACHE["stale-fingerprint"] = stale_learning
+                with mock.patch.object(
+                    nightly_consolidate,
+                    "recent_window_learning_fingerprint",
+                    side_effect=["stale-fingerprint", "current-fingerprint", "current-fingerprint"],
+                ):
+                    memory_result = nightly_consolidate.build_recent_window_learning(
+                        "2026-04-27",
+                        1,
+                        cache_dir=tmp / "missing-cache",
+                    )
+
+        finally:
+            nightly_consolidate.RAW_DIR = old_raw_dir
+            nightly_consolidate.CONSOLIDATED_DIR = old_consolidated_dir
+
+        self.assertEqual(disk_result["batch_summaries"][0]["top_keywords"], ["live"])
+        self.assertEqual(memory_result["batch_summaries"][0]["top_keywords"], ["live"])
+        self.assertNotIn("stale-fingerprint", nightly_consolidate._RECENT_WINDOW_LEARNING_CACHE)
+
     def test_nightly_consolidate_skip_if_unchanged_avoids_model_call(self):
         old_raw_dir = nightly_consolidate.RAW_DIR
         old_consolidated_dir = nightly_consolidate.CONSOLIDATED_DIR
         old_registry_dir = nightly_consolidate.REGISTRY_DIR
+        old_runtime_dir = nightly_consolidate.RUNTIME_DIR
         old_language = nightly_consolidate.LANGUAGE
         old_memory_mode = nightly_consolidate.MEMORY_MODE
         old_personal_memory_enabled = nightly_consolidate.PERSONAL_MEMORY_ENABLED
@@ -6914,6 +7655,7 @@ scope: Release checklist, package manifest, and public website validation.
                 nightly_consolidate.RAW_DIR = tmp / "raw"
                 nightly_consolidate.CONSOLIDATED_DIR = tmp / "consolidated" / "daily"
                 nightly_consolidate.REGISTRY_DIR = tmp / "registry"
+                nightly_consolidate.RUNTIME_DIR = tmp / "runtime"
                 nightly_consolidate.LANGUAGE = "zh"
                 nightly_consolidate.MEMORY_MODE = "integrated"
                 nightly_consolidate.PERSONAL_MEMORY_ENABLED = True
@@ -7013,6 +7755,7 @@ scope: Release checklist, package manifest, and public website validation.
             nightly_consolidate.RAW_DIR = old_raw_dir
             nightly_consolidate.CONSOLIDATED_DIR = old_consolidated_dir
             nightly_consolidate.REGISTRY_DIR = old_registry_dir
+            nightly_consolidate.RUNTIME_DIR = old_runtime_dir
             nightly_consolidate.LANGUAGE = old_language
             nightly_consolidate.MEMORY_MODE = old_memory_mode
             nightly_consolidate.PERSONAL_MEMORY_ENABLED = old_personal_memory_enabled
