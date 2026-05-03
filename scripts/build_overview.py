@@ -12053,17 +12053,17 @@ def make_window_summary_cards(window_overview, language=None):
             text=text_html,
         )
 
-    def render_pair_preview(pairs):
+    def render_pair_preview(pairs, hide_single_question=False):
         if not pairs:
             return ""
         pair = pairs[0]
         total = len(pairs)
         question = strip_pair_boundary_punctuation(pair.get("question", ""))
         conclusion = str(pair.get("conclusion", "") or "").strip()
-        rows = [
-            render_pair_preview_row(indexed_pair_label("问题", 1, total), question),
-            render_pair_preview_row(indexed_pair_label("结论", 1, total), conclusion),
-        ]
+        rows = []
+        if not (hide_single_question and total == 1):
+            rows.append(render_pair_preview_row(indexed_pair_label("问题", 1, total), question))
+        rows.append(render_pair_preview_row(indexed_pair_label("结论", 1, total), conclusion))
         rows = [row for row in rows if row]
         if not rows:
             return ""
@@ -12220,7 +12220,18 @@ def make_window_summary_cards(window_overview, language=None):
         resume_command = item.get("resume_command", "") or codex_resume_command(resume_id)
         resume_url = item.get("resume_url", "") or codex_resume_url(resume_id)
         resume_actions = render_resume_actions(resume_command, resume_url)
-        main_takeaway_preview_html = render_pair_preview(summary_pairs)
+        question_count = safe_int(item.get("question_count", len(summary_pairs)))
+        if question_count <= 0:
+            question_count = len([pair for pair in summary_pairs if str(pair.get("question", "") or "").strip()])
+        hide_single_summary_question = (
+            summary_status == "summarized"
+            and question_count == 1
+            and len(summary_pairs) == 1
+        )
+        main_takeaway_preview_html = render_pair_preview(
+            summary_pairs,
+            hide_single_question=hide_single_summary_question,
+        )
         if not main_takeaway_preview_html and conclusion_summary_display:
             fallback_takeaway = render_markdown_inline(
                 compact_preview_text(conclusion_summary_display, limit=360, strip_markdown=False)
