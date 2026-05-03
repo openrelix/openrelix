@@ -6014,37 +6014,42 @@ scope: Release checklist, package manifest, and public website validation.
         self.assertNotIn("trend-", html)
 
     def test_token_usage_view_includes_overview_and_hover_details(self):
-        view = build_overview.build_token_usage_view(
-            {
-                "available": True,
-                "payload": {
-                    "daily": [
-                        {
-                            "date": "Apr 26, 2026",
-                            "inputTokens": 1000,
-                            "cachedInputTokens": 250,
-                            "outputTokens": 100,
-                            "reasoningOutputTokens": 50,
-                            "totalTokens": 1100,
-                            "costUSD": 2.5,
-                        },
-                        {
-                            "date": "Apr 27, 2026",
-                            "inputTokens": 2000,
-                            "cachedInputTokens": 1500,
-                            "outputTokens": 300,
-                            "reasoningOutputTokens": 100,
-                            "totalTokens": 2300,
-                            "costUSD": 4.5,
-                        },
-                    ]
+        with mock.patch.object(
+            build_overview,
+            "current_local_datetime",
+            return_value=datetime.fromisoformat("2026-04-27T12:00:00+08:00"),
+        ):
+            view = build_overview.build_token_usage_view(
+                {
+                    "available": True,
+                    "payload": {
+                        "daily": [
+                            {
+                                "date": "Apr 26, 2026",
+                                "inputTokens": 1000,
+                                "cachedInputTokens": 250,
+                                "outputTokens": 100,
+                                "reasoningOutputTokens": 50,
+                                "totalTokens": 1100,
+                                "costUSD": 2.5,
+                            },
+                            {
+                                "date": "Apr 27, 2026",
+                                "inputTokens": 2000,
+                                "cachedInputTokens": 1500,
+                                "outputTokens": 300,
+                                "reasoningOutputTokens": 100,
+                                "totalTokens": 2300,
+                                "costUSD": 4.5,
+                            },
+                        ]
+                    },
+                    "error": "",
+                    "fetched_at": "2026-04-27T12:00:00+08:00",
+                    "window_days": 14,
                 },
-                "error": "",
-                "fetched_at": "2026-04-27T12:00:00+08:00",
-                "window_days": 14,
-            },
-            language="zh",
-        )
+                language="zh",
+            )
 
         self.assertEqual(view["today_total_tokens"], 2300)
         self.assertIn("近 7 天中 2 天有记录", view["overview_note"])
@@ -6065,6 +6070,55 @@ scope: Release checklist, package manifest, and public website validation.
             [row["tone"] for row in view["today_breakdown"]],
             ["token-input", "token-cache", "token-output", "token-reasoning"],
         )
+
+    def test_token_usage_view_filters_daily_rows_to_recent_calendar_week(self):
+        daily = []
+        for index, raw_date in enumerate(
+            [
+                "Apr 21, 2026",
+                "Apr 24, 2026",
+                "Apr 26, 2026",
+                "Apr 27, 2026",
+                "Apr 28, 2026",
+                "Apr 30, 2026",
+                "May 03, 2026",
+            ],
+            1,
+        ):
+            daily.append(
+                {
+                    "date": raw_date,
+                    "inputTokens": index * 100,
+                    "cachedInputTokens": 0,
+                    "outputTokens": 10,
+                    "reasoningOutputTokens": 5,
+                    "totalTokens": index * 1000,
+                    "costUSD": 1.0,
+                }
+            )
+
+        with mock.patch.object(
+            build_overview,
+            "current_local_datetime",
+            return_value=datetime.fromisoformat("2026-05-03T12:00:00+08:00"),
+        ):
+            view = build_overview.build_token_usage_view(
+                {
+                    "available": True,
+                    "payload": {"daily": daily},
+                    "error": "",
+                    "fetched_at": "2026-05-03T12:00:00+08:00",
+                    "window_days": 14,
+                },
+                language="zh",
+            )
+
+        self.assertEqual(
+            [row["label"] for row in view["daily_rows"]],
+            ["04-27", "04-28", "04-30", "05-03"],
+        )
+        self.assertEqual(view["window_days"], 7)
+        self.assertIn("近 7 天中 4 天有记录", view["overview_note"])
 
     def test_bar_rows_render_hover_details_when_available(self):
         html = build_overview.make_bar_group(
@@ -6377,7 +6431,7 @@ scope: Release checklist, package manifest, and public website validation.
         source = (ROOT / "scripts" / "build_overview.py").read_text(encoding="utf-8")
 
         self.assertIn(
-            'renderBarRows(elements.dailyTokenRows, (preparedTokenUsage.daily_rows || []).slice().reverse(), "token-daily-mid");',
+            'renderBarRows(elements.dailyTokenRows, (preparedTokenUsage.daily_rows || []).slice(-{token_daily_display_days}).reverse(), "token-daily-mid");',
             source,
         )
         self.assertIn("sanitizeCssClass(row.tone || accentClass, accentClass)", source)

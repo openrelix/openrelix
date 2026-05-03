@@ -55,7 +55,7 @@ RAW_DAILY_DIR = PATHS.raw_daily_dir
 TOKEN_CACHE_PATH = REPORTS_DIR / "token-usage-cache.json"
 CODEX_NATIVE_DISPLAY_CACHE_PATH = PATHS.runtime_dir / "codex-native-display-cache.json"
 CCUSAGE_TIMEZONE = "Asia/Shanghai"
-CCUSAGE_WINDOW_DAYS = 14
+CCUSAGE_WINDOW_DAYS = 7
 AUTO_REFRESH_SECONDS = 1800
 BACKFILL_LOOKBACK_DAYS = 14
 BACKFILL_LEARN_WINDOW_DAYS = 7
@@ -2833,6 +2833,21 @@ def token_breakdown_tone(kind):
     }.get(kind, "token-input")
 
 
+def recent_token_daily_rows(parsed_rows, window_days=CCUSAGE_WINDOW_DAYS):
+    window_days = max(safe_int(window_days), 1)
+    if not parsed_rows:
+        return []
+    if any(row.get("parsed_date") for row in parsed_rows):
+        start_date = current_local_datetime().date() - timedelta(days=window_days - 1)
+        rows = [
+            row for row in parsed_rows
+            if not row.get("parsed_date") or row["parsed_date"].date() >= start_date
+        ]
+    else:
+        rows = list(parsed_rows)
+    return rows[-window_days:]
+
+
 def build_token_usage_view(ccusage_result, language=None):
     language = current_language(language)
     refreshed_at = ccusage_result.get("fetched_at", "")
@@ -2858,7 +2873,7 @@ def build_token_usage_view(ccusage_result, language=None):
             ),
             "refreshed_at": refreshed_at,
             "refreshed_at_display": refreshed_at_display,
-            "window_days": ccusage_result.get("window_days", CCUSAGE_WINDOW_DAYS),
+            "window_days": CCUSAGE_WINDOW_DAYS,
         }
 
     raw_rows = ccusage_result.get("payload", {}).get("daily", [])
@@ -2879,6 +2894,7 @@ def build_token_usage_view(ccusage_result, language=None):
                 "raw_date": raw_date,
                 "date_label": label,
                 "sort_key": parsed_date.isoformat() if parsed_date else raw_date,
+                "parsed_date": parsed_date,
                 "inputTokens": total_input_tokens,
                 "totalInputTokens": total_input_tokens,
                 "uncachedInputTokens": uncached_input_tokens,
@@ -2892,6 +2908,7 @@ def build_token_usage_view(ccusage_result, language=None):
         )
 
     parsed_rows.sort(key=lambda item: item["sort_key"])
+    parsed_rows = recent_token_daily_rows(parsed_rows)
     max_daily_tokens = max((row["totalTokens"] for row in parsed_rows), default=0)
     latest = parsed_rows[-1] if parsed_rows else None
     trailing = parsed_rows[-7:]
@@ -2900,13 +2917,13 @@ def build_token_usage_view(ccusage_result, language=None):
     active_trailing_count = sum(1 for item in trailing if item["totalTokens"] > 0)
     overview_note = localized(
         "近 {} 天中 {} 天有记录 · {}".format(
-            min(7, ccusage_result.get("window_days", CCUSAGE_WINDOW_DAYS)),
+            CCUSAGE_WINDOW_DAYS,
             active_trailing_count,
             refreshed_at_display or "等待实时刷新",
         ),
         "{} days with records in the last {} days · {}".format(
             active_trailing_count,
-            min(7, ccusage_result.get("window_days", CCUSAGE_WINDOW_DAYS)),
+            CCUSAGE_WINDOW_DAYS,
             refreshed_at_display or "waiting for live refresh",
         ),
         language,
@@ -3026,7 +3043,7 @@ def build_token_usage_view(ccusage_result, language=None):
         "overview_note": overview_note,
         "refreshed_at": refreshed_at,
         "refreshed_at_display": refreshed_at_display,
-        "window_days": ccusage_result.get("window_days", CCUSAGE_WINDOW_DAYS),
+        "window_days": CCUSAGE_WINDOW_DAYS,
     }
 
 
@@ -19195,7 +19212,9 @@ def build_html(data):
 
       function prepareTokenUsageForPanel(tokenUsage, relativeUpdate) {{
         const prepared = Object.assign({{}}, tokenUsage || {{}});
-        const dailyRows = Array.isArray(prepared.daily_rows) ? prepared.daily_rows : [];
+        const dailyRows = Array.isArray(prepared.daily_rows)
+          ? prepared.daily_rows.slice(-{token_daily_display_days})
+          : [];
         const dailyMax = dailyRows.reduce(function (currentMax, row) {{
           return Math.max(currentMax, Number(row.value) || 0);
         }}, 0);
@@ -19378,7 +19397,7 @@ def build_html(data):
             : t("暂未获取到 ccusage 的日维度统计");
         }}
         renderTokenSummaryCards(preparedTokenUsage.summary_cards || []);
-        renderBarRows(elements.dailyTokenRows, (preparedTokenUsage.daily_rows || []).slice().reverse(), "token-daily-mid");
+        renderBarRows(elements.dailyTokenRows, (preparedTokenUsage.daily_rows || []).slice(-{token_daily_display_days}).reverse(), "token-daily-mid");
         renderBarRows(elements.todayTokenRows, preparedTokenUsage.today_breakdown || [], "token-input");
         if (elements.tokenHighlight) {{
           if (tokenUsage.available) {{
@@ -19813,6 +19832,7 @@ def build_html(data):
         live_token_poll_ms=LIVE_TOKEN_POLL_SECONDS * 1000,
         live_token_timeout_ms=LIVE_TOKEN_TIMEOUT_MS,
         window_days=token_usage.get("window_days", CCUSAGE_WINDOW_DAYS),
+        token_daily_display_days=CCUSAGE_WINDOW_DAYS,
         token_metric_cards="".join(token_metric_cards),
         asset_metric_cards="".join(asset_metric_cards),
         asset_ledger_kicker=panel_language_text_html("资产层", "Asset Layer"),
