@@ -424,7 +424,12 @@ class NightlyLogicTests(unittest.TestCase):
 
                 completed = subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
                 with mock.patch.object(nightly_consolidate.subprocess, "run", return_value=completed) as run:
-                    nightly_consolidate.run_codex_consolidation("prompt", output_path, language="zh")
+                    nightly_consolidate.run_codex_consolidation(
+                        "prompt",
+                        output_path,
+                        language="zh",
+                        timeout_seconds=321,
+                    )
 
                 auth_link = nightly_codex_home / "auth.json"
                 self.assertTrue(auth_link.is_symlink())
@@ -440,6 +445,7 @@ class NightlyLogicTests(unittest.TestCase):
                 self.assertEqual(command[command.index("--model") + 1], "gpt-5.4-mini")
                 self.assertIn('approval_policy="never"', command)
                 self.assertIn('history.persistence="none"', command)
+                self.assertEqual(run.call_args.kwargs["timeout"], 321)
         finally:
             nightly_consolidate.MAIN_CODEX_HOME = old_main_codex_home
             nightly_consolidate.NIGHTLY_CODEX_HOME = old_nightly_codex_home
@@ -447,6 +453,53 @@ class NightlyLogicTests(unittest.TestCase):
             nightly_consolidate.CODEX_BIN = old_codex_bin
             nightly_consolidate.SCHEMA_PATH = old_schema_path
             nightly_consolidate.CODEX_MODEL = old_codex_model
+
+    def test_run_codex_consolidation_converts_timeout_to_model_error(self):
+        old_main_codex_home = nightly_consolidate.MAIN_CODEX_HOME
+        old_nightly_codex_home = nightly_consolidate.NIGHTLY_CODEX_HOME
+        old_runtime_dir = nightly_consolidate.RUNTIME_DIR
+        old_codex_bin = nightly_consolidate.CODEX_BIN
+        old_schema_path = nightly_consolidate.SCHEMA_PATH
+        try:
+            with TemporaryDirectory() as tmpdir:
+                root = Path(tmpdir)
+                main_codex_home = root / "main-codex-home"
+                nightly_codex_home = root / "nightly-codex-home"
+                runtime_dir = root / "runtime"
+                schema_path = root / "schema.json"
+                output_path = root / "out" / "summary.json"
+                main_codex_home.mkdir()
+                schema_path.write_text("{}", encoding="utf-8")
+
+                nightly_consolidate.MAIN_CODEX_HOME = main_codex_home
+                nightly_consolidate.NIGHTLY_CODEX_HOME = nightly_codex_home
+                nightly_consolidate.RUNTIME_DIR = runtime_dir
+                nightly_consolidate.CODEX_BIN = sys.executable
+                nightly_consolidate.SCHEMA_PATH = schema_path
+
+                timeout = subprocess.TimeoutExpired(
+                    cmd=["codex", "exec"],
+                    timeout=3,
+                    output="partial output",
+                    stderr="still running",
+                )
+                with mock.patch.object(nightly_consolidate.subprocess, "run", side_effect=timeout):
+                    with self.assertRaises(nightly_consolidate.CodexConsolidationError) as raised:
+                        nightly_consolidate.run_codex_consolidation(
+                            "prompt",
+                            output_path,
+                            language="zh",
+                            timeout_seconds=3,
+                        )
+
+                self.assertEqual(raised.exception.returncode, nightly_consolidate.CODEX_EXEC_TIMEOUT_RETURN_CODE)
+                self.assertIn("timed out after 3 seconds", str(raised.exception))
+        finally:
+            nightly_consolidate.MAIN_CODEX_HOME = old_main_codex_home
+            nightly_consolidate.NIGHTLY_CODEX_HOME = old_nightly_codex_home
+            nightly_consolidate.RUNTIME_DIR = old_runtime_dir
+            nightly_consolidate.CODEX_BIN = old_codex_bin
+            nightly_consolidate.SCHEMA_PATH = old_schema_path
 
     def test_openrelix_help_uses_runtime_language(self):
         with mock.patch.object(openrelix, "LANGUAGE", "zh"):
@@ -5186,6 +5239,79 @@ scope: Release checklist, package manifest, and public website validation.
         self.assertIn("model summarization failed", result.stderr)
         self.assertIn("login required", result.stderr)
 
+    def test_nightly_pipeline_defaults_to_skip_and_consumes_no_skip_flag(self):
+        with TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            scripts_dir = root / "scripts"
+            scripts_dir.mkdir(parents=True)
+            consolidated_daily_dir = root / "consolidated" / "daily"
+            record_path = root / "nightly-args.txt"
+            pipeline_script = scripts_dir / "nightly_pipeline.sh"
+            pipeline_script.write_text(
+                (ROOT / "scripts" / "nightly_pipeline.sh").read_text(encoding="utf-8"),
+                encoding="utf-8",
+            )
+            (scripts_dir / "asset_runtime.py").write_text(
+                "\n".join(
+                    [
+                        "import os",
+                        "from pathlib import Path",
+                        "class RuntimePaths:",
+                        "    consolidated_daily_dir = Path(os.environ['OPENRELIX_TEST_CONSOLIDATED_DAILY_DIR'])",
+                        "def get_runtime_paths():",
+                        "    return RuntimePaths()",
+                        "def get_memory_mode(*args, **kwargs):",
+                        "    return 'local-only'",
+                        "def get_runtime_language(*args, **kwargs):",
+                        "    return 'en'",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            (scripts_dir / "collect_codex_activity.py").write_text("", encoding="utf-8")
+            (scripts_dir / "build_overview.py").write_text("", encoding="utf-8")
+            (scripts_dir / "build_codex_memory_summary.py").write_text("", encoding="utf-8")
+            (scripts_dir / "nightly_consolidate.py").write_text(
+                "\n".join(
+                    [
+                        "import os, sys",
+                        "from pathlib import Path",
+                        "Path(os.environ['OPENRELIX_TEST_NIGHTLY_ARGS']).write_text(",
+                        "    '\\n'.join(sys.argv[1:]),",
+                        "    encoding='utf-8',",
+                        ")",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            env = dict(os.environ)
+            env["OPENRELIX_TEST_CONSOLIDATED_DAILY_DIR"] = str(consolidated_daily_dir)
+            env["OPENRELIX_TEST_NIGHTLY_ARGS"] = str(record_path)
+
+            default_result = subprocess.run(
+                ["/bin/zsh", str(pipeline_script), "2026-04-28", "manual"],
+                cwd=str(root),
+                env=env,
+                capture_output=True,
+                text=True,
+            )
+            default_args = record_path.read_text(encoding="utf-8").splitlines()
+
+            no_skip_result = subprocess.run(
+                ["/bin/zsh", str(pipeline_script), "2026-04-28", "manual", "--no-skip-if-unchanged"],
+                cwd=str(root),
+                env=env,
+                capture_output=True,
+                text=True,
+            )
+            no_skip_args = record_path.read_text(encoding="utf-8").splitlines()
+
+        self.assertEqual(default_result.returncode, 0, default_result.stderr)
+        self.assertIn("--skip-if-unchanged", default_args)
+        self.assertEqual(no_skip_result.returncode, 0, no_skip_result.stderr)
+        self.assertNotIn("--skip-if-unchanged", no_skip_args)
+        self.assertNotIn("--no-skip-if-unchanged", no_skip_args)
+
     def test_nightly_pipeline_native_display_polish_defaults_for_chinese_integrated_mode(self):
         with TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -5656,7 +5782,38 @@ scope: Release checklist, package manifest, and public website validation.
 
             self.assertEqual(results[0]["status"], "completed")
             self.assertEqual(results[0]["reason"], "existing_stage_below_requested")
-            self.assertEqual(calls[0][-2:], ["2026-04-23", "final"])
+            self.assertEqual(calls[0][-3:], ["2026-04-23", "final", "--skip-if-unchanged"])
+
+    def test_backfill_force_disables_unchanged_skip_for_pipeline(self):
+        with TemporaryDirectory() as tmpdir:
+            consolidated_daily_dir = Path(tmpdir) / "consolidated" / "daily"
+            summary_dir = consolidated_daily_dir / "2026-04-23"
+            summary_dir.mkdir(parents=True)
+            (summary_dir / "summary.json").write_text(
+                json.dumps({"date": "2026-04-23", "stage": "final"}),
+                encoding="utf-8",
+            )
+            calls = []
+
+            def fake_run_checked_with_progress(cmd, progress_messages, interval_seconds=20, reminder_seconds=60):
+                calls.append(cmd)
+
+            with mock.patch.object(openrelix, "CONSOLIDATED_DAILY_DIR", consolidated_daily_dir), mock.patch.object(
+                openrelix,
+                "run_checked_with_progress",
+                side_effect=fake_run_checked_with_progress,
+            ), mock.patch("sys.stdout", new_callable=io.StringIO):
+                results = openrelix.run_backfill_dates(
+                    ["2026-04-23"],
+                    "final",
+                    learn_window_days=0,
+                    force=True,
+                    verbose=True,
+                )
+
+            self.assertEqual(results[0]["status"], "completed")
+            self.assertEqual(results[0]["reason"], "force")
+            self.assertEqual(calls[0][-3:], ["2026-04-23", "final", "--no-skip-if-unchanged"])
 
     def test_backfill_skips_existing_same_stage_summary(self):
         with TemporaryDirectory() as tmpdir:
@@ -6446,6 +6603,37 @@ scope: Release checklist, package manifest, and public website validation.
         self.assertEqual(digest["recent_window_learning_source_dates"], 1)
         self.assertEqual(digest["recent_window_learning_windows"], 25)
         self.assertEqual(digest["recent_window_learning_batches"], 2)
+
+    def test_summary_skip_requires_requested_stage_and_successful_model(self):
+        summary = {
+            "learning_input_fingerprint": "abc123",
+            "stage": "preliminary",
+        }
+
+        self.assertTrue(
+            nightly_consolidate.summary_can_skip_for_learning_input(
+                summary,
+                "abc123",
+                "manual",
+            )
+        )
+        self.assertFalse(
+            nightly_consolidate.summary_can_skip_for_learning_input(
+                summary,
+                "abc123",
+                "final",
+            )
+        )
+
+        summary["stage"] = "final"
+        summary["last_run_model_status"] = "failed"
+        self.assertFalse(
+            nightly_consolidate.summary_can_skip_for_learning_input(
+                summary,
+                "abc123",
+                "final",
+            )
+        )
 
     def test_nightly_consolidate_skip_if_unchanged_avoids_model_call(self):
         old_raw_dir = nightly_consolidate.RAW_DIR

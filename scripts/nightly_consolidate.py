@@ -56,6 +56,8 @@ SPARSE_WINDOW_THRESHOLD = 3
 SPARSE_PROMPT_THRESHOLD = 12
 SPARSE_CONCLUSION_THRESHOLD = 4
 STAGE_PRIORITY = {"manual": 0, "preliminary": 1, "final": 2}
+DEFAULT_CODEX_EXEC_TIMEOUT_SECONDS = 15 * 60
+CODEX_EXEC_TIMEOUT_RETURN_CODE = 124
 
 
 class CodexConsolidationError(RuntimeError):
@@ -85,8 +87,18 @@ def sanitize_process_text(text):
     return "\n".join(line.rstrip() for line in compact.splitlines() if line.strip())[-1200:]
 
 
+def process_output_to_text(value):
+    if value is None:
+        return ""
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace")
+    return str(value)
+
+
 def describe_codex_failure(stdout, stderr, returncode):
-    text = sanitize_process_text("\n".join(part for part in (stdout, stderr) if part))
+    text = sanitize_process_text(
+        "\n".join(part for part in (process_output_to_text(stdout), process_output_to_text(stderr)) if part)
+    )
     if not text:
         return "codex exec failed with exit code {}".format(returncode)
     return text
@@ -94,6 +106,12 @@ def describe_codex_failure(stdout, stderr, returncode):
 
 def codex_failure_hint(error_text, language=None):
     lowered = str(error_text or "").lower()
+    if "timed out" in lowered or "timeout" in lowered:
+        return localized(
+            "模型归纳超过超时上限，已停止等待；请稍后重试，或通过 OPENRELIX_CODEX_EXEC_TIMEOUT_SECONDS 调高超时时间。",
+            "Model summarization exceeded the timeout and stopped waiting. Retry later, or raise OPENRELIX_CODEX_EXEC_TIMEOUT_SECONDS.",
+            language,
+        )
     if "invalid_issuer" in lowered or "401" in lowered or "unauthorized" in lowered:
         return localized(
             "Codex/OpenAI 认证被拒绝。请先确认 `codex exec` 在普通终端可用；如果使用集体/代理配置，确认 `CODEX_HOME/config.toml` 中的 model_provider/base_url 与 auth.json 一起存在；如果使用官方 OpenAI API key，再清理或替换错误的 `OPENAI_API_KEY` 后重试。",
@@ -105,6 +123,17 @@ def codex_failure_hint(error_text, language=None):
         "Confirm `codex exec` works on that user's machine, then rerun this learning refresh.",
         language,
     )
+
+
+def default_codex_exec_timeout_seconds():
+    raw_value = os.environ.get("OPENRELIX_CODEX_EXEC_TIMEOUT_SECONDS", "")
+    if not raw_value:
+        return DEFAULT_CODEX_EXEC_TIMEOUT_SECONDS
+    try:
+        seconds = int(raw_value)
+    except (TypeError, ValueError):
+        return DEFAULT_CODEX_EXEC_TIMEOUT_SECONDS
+    return max(seconds, 0)
 
 
 def parse_args():
@@ -121,6 +150,12 @@ def parse_args():
         "--skip-if-unchanged",
         action="store_true",
         help="Skip model consolidation when the raw payload and learning context match the selected summary.",
+    )
+    parser.add_argument(
+        "--model-timeout-seconds",
+        type=int,
+        default=default_codex_exec_timeout_seconds(),
+        help="Maximum seconds to wait for codex exec model consolidation. Set 0 to disable the timeout.",
     )
     return parser.parse_args()
 
@@ -999,6 +1034,31 @@ def summary_matches_learning_input(summary, fingerprint):
     return summary.get("learning_input_fingerprint") == fingerprint
 
 
+def summary_has_model_failure(summary):
+    if not summary:
+        return False
+    if summary.get("last_run_model_status") == "failed" or summary.get("model_status") == "failed":
+        return True
+    decision = summary.get("selection_decision") or {}
+    return decision.get("candidate_model_status") == "failed"
+
+
+def summary_stage_satisfies(summary, requested_stage):
+    if not summary:
+        return False
+    existing_rank = STAGE_PRIORITY.get(str(summary.get("stage") or ""), -1)
+    requested_rank = STAGE_PRIORITY.get(str(requested_stage or ""), -1)
+    return existing_rank >= requested_rank
+
+
+def summary_can_skip_for_learning_input(summary, fingerprint, requested_stage):
+    return (
+        summary_matches_learning_input(summary, fingerprint)
+        and summary_stage_satisfies(summary, requested_stage)
+        and not summary_has_model_failure(summary)
+    )
+
+
 def persist_summary_run(summary_dir, summary, stage, label, language=None):
     runs_dir = summary_dir / "runs"
     runs_dir.mkdir(parents=True, exist_ok=True)
@@ -1041,12 +1101,15 @@ def build_safe_consolidation_prompt(prompt, language=None):
     return safety_preamble + prompt
 
 
-def run_codex_consolidation(prompt, output_path, language=None):
+def run_codex_consolidation(prompt, output_path, language=None, timeout_seconds=None):
     output_path.parent.mkdir(parents=True, exist_ok=True)
     RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
     sync_codex_exec_home(MAIN_CODEX_HOME, NIGHTLY_CODEX_HOME)
     env = dict(os.environ)
     env["CODEX_HOME"] = str(NIGHTLY_CODEX_HOME)
+    if timeout_seconds is None:
+        timeout_seconds = default_codex_exec_timeout_seconds()
+    timeout = timeout_seconds if timeout_seconds and timeout_seconds > 0 else None
     cmd = [
         CODEX_BIN,
         "exec",
@@ -1075,13 +1138,27 @@ def run_codex_consolidation(prompt, output_path, language=None):
         "-",
     ]
     safe_prompt = build_safe_consolidation_prompt(prompt, language=language)
-    result = subprocess.run(
-        cmd,
-        input=safe_prompt,
-        text=True,
-        capture_output=True,
-        env=env,
-    )
+    try:
+        result = subprocess.run(
+            cmd,
+            input=safe_prompt,
+            text=True,
+            capture_output=True,
+            env=env,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired as exc:
+        timeout_message = localized(
+            "codex exec timed out after {} seconds".format(timeout),
+            "codex exec timed out after {} seconds".format(timeout),
+            language,
+        )
+        stderr = "\n".join(part for part in (process_output_to_text(exc.stderr), timeout_message) if part)
+        raise CodexConsolidationError(
+            CODEX_EXEC_TIMEOUT_RETURN_CODE,
+            process_output_to_text(exc.stdout),
+            stderr,
+        ) from exc
     if result.returncode != 0:
         raise CodexConsolidationError(result.returncode, result.stdout, result.stderr)
 
@@ -1517,9 +1594,10 @@ def main():
         learn_window_days,
         language=language,
     )
-    if args.skip_if_unchanged and summary_matches_learning_input(
+    if args.skip_if_unchanged and summary_can_skip_for_learning_input(
         existing_summary,
         learning_input_fingerprint,
+        stage,
     ):
         print(
             "nightly_consolidate: unchanged input fingerprint for {}; skip model consolidation.".format(
@@ -1580,7 +1658,12 @@ def main():
         return
 
     try:
-        run_codex_consolidation(prompt, output_json_path, language=language)
+        run_codex_consolidation(
+            prompt,
+            output_json_path,
+            language=language,
+            timeout_seconds=max(args.model_timeout_seconds, 0),
+        )
         candidate_summary = load_json(output_json_path)
         candidate_summary = normalize_summary(raw_payload, candidate_summary, language=language)
         candidate_summary["model_status"] = "completed"

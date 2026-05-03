@@ -167,7 +167,9 @@ PY
 target_date="${1:-$(date +%F)}"
 stage="${2:-manual}"
 extra_args=("${@:3}")
+nightly_args=()
 learn_window_days=0
+skip_unchanged="${OPENRELIX_NIGHTLY_SKIP_UNCHANGED:-1}"
 
 for ((i = 1; i <= ${#extra_args[@]}; i++)); do
   arg="${extra_args[$i]}"
@@ -180,8 +182,23 @@ for ((i = 1; i <= ${#extra_args[@]}; i++)); do
     --learn-window-days=*)
       learn_window_days="${arg#--learn-window-days=}"
       ;;
+    --skip-if-unchanged)
+      skip_unchanged=1
+      continue
+      ;;
+    --no-skip-if-unchanged)
+      skip_unchanged=0
+      continue
+      ;;
   esac
+  nightly_args+=("$arg")
 done
+
+case "${skip_unchanged:l}" in
+  1|true|yes|on)
+    nightly_args+=(--skip-if-unchanged)
+    ;;
+esac
 
 "$PYTHON_BIN" "$REPO_ROOT/scripts/collect_codex_activity.py" --date "$target_date" --stage "$stage"
 if [[ "$learn_window_days" =~ '^[0-9]+$' ]] && (( learn_window_days > 0 )); then
@@ -197,7 +214,7 @@ PY
     "$PYTHON_BIN" "$REPO_ROOT/scripts/collect_codex_activity.py" --date "$learning_date" --stage final
   done
 fi
-"$PYTHON_BIN" "$REPO_ROOT/scripts/nightly_consolidate.py" --date "$target_date" --stage "$stage" "${extra_args[@]}"
+"$PYTHON_BIN" "$REPO_ROOT/scripts/nightly_consolidate.py" --date "$target_date" --stage "$stage" "${nightly_args[@]}"
 rebuild_sqlite_index_if_available
 sync_codex_memory_summary_if_enabled
 build_codex_native_display_cache_if_enabled
