@@ -318,6 +318,90 @@ class OpenRelixIndexTests(unittest.TestCase):
             )
             self.assertEqual(windows[0]["summary_pairs"], windows[0]["raw_summary_pairs"])
 
+    def test_lightweight_summary_is_indexed_without_model_completed_status(self):
+        with TemporaryDirectory() as tmpdir:
+            paths = runtime_paths_for_state(tmpdir)
+            asset_runtime.ensure_state_layout(paths)
+            raw_payload = {
+                "date": "2026-05-03",
+                "windows": [
+                    {
+                        "date": "2026-05-03",
+                        "window_id": "w-lightweight",
+                        "cwd": "/tmp/openrelix",
+                        "started_at": "2026-05-03T23:40:00+08:00",
+                        "prompt_count": 1,
+                        "conclusion_count": 1,
+                        "prompts": [
+                            {
+                                "local_time": "2026-05-03T23:41:00+08:00",
+                                "text": "raw lightweight question",
+                            }
+                        ],
+                        "conclusions": [
+                            {
+                                "completed_at": "2026-05-03T23:42:00+08:00",
+                                "text": "raw lightweight conclusion",
+                            }
+                        ],
+                    }
+                ],
+            }
+            (paths.raw_daily_dir / "2026-05-03.json").write_text(
+                json.dumps(raw_payload),
+                encoding="utf-8",
+            )
+            summary_dir = paths.consolidated_daily_dir / "2026-05-03"
+            summary_dir.mkdir(parents=True, exist_ok=True)
+            (summary_dir / "summary.json").write_text(
+                json.dumps(
+                    {
+                        "date": "2026-05-03",
+                        "stage": "preliminary",
+                        "model_status": "skipped_lightweight",
+                        "summary_generation": "lightweight",
+                        "window_summaries": [
+                            {
+                                "window_id": "w-lightweight",
+                                "cwd": "/tmp/openrelix",
+                                "window_title": "quick lightweight title",
+                                "question_summary": "quick lightweight question",
+                                "main_takeaway": "quick lightweight conclusion",
+                                "summary_pairs": [
+                                    {
+                                        "question": "quick lightweight question",
+                                        "conclusion": "quick lightweight conclusion",
+                                    }
+                                ],
+                                "keywords": ["lightweight"],
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            db_path = Path(tmpdir) / "runtime" / "test-index.sqlite3"
+
+            openrelix_index.rebuild_index(paths, db_path)
+            windows = openrelix_index.search_windows(
+                "quick lightweight conclusion",
+                paths=paths,
+                db_path=db_path,
+            )
+
+            self.assertEqual([item["window_id"] for item in windows], ["w-lightweight"])
+            self.assertEqual(windows[0]["summary_status"], "lightweight")
+            self.assertEqual(windows[0]["window_title"], "quick lightweight title")
+            self.assertEqual(
+                windows[0]["summary_pairs"],
+                [
+                    {
+                        "question": "quick lightweight question",
+                        "conclusion": "quick lightweight conclusion",
+                    }
+                ],
+            )
+
     def test_search_rebuilds_missing_index(self):
         with TemporaryDirectory() as tmpdir:
             paths = runtime_paths_for_state(tmpdir)
