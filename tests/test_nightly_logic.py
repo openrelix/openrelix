@@ -7946,6 +7946,46 @@ scope: Release checklist, package manifest, and public website validation.
         self.assertIn("全部UI", summary["keywords"])
         self.assertEqual(summary["durable_memories"][0]["keywords"][:4], keywords[:4])
 
+    def test_lightweight_summary_filters_sentence_like_keywords(self):
+        raw_payload = {
+            "date": "2026-05-03",
+            "window_count": 1,
+            "prompt_count": 1,
+            "conclusion_count": 1,
+        }
+        compact_payload = {
+            **raw_payload,
+            "windows": [
+                {
+                    "window_id": "w-token-cost",
+                    "cwd": "/tmp/OpenRelix",
+                    "prompt_count": 1,
+                    "conclusion_count": 1,
+                    "prompt_cluster_count": 1,
+                    "conclusion_cluster_count": 1,
+                    "prompt_samples": ["我们一般说token花销，最关注什么指标呢？ [Image]"],
+                    "conclusion_samples": [
+                        "一般说 **token 花销**，最该盯的是 Cost (USD)，其次才是 token 数量。"
+                    ],
+                }
+            ],
+        }
+
+        summary = nightly_consolidate.build_lightweight_summary(
+            raw_payload,
+            compact_payload,
+            language="zh",
+        )
+        keywords = summary["window_summaries"][0]["keywords"]
+
+        self.assertEqual(keywords[:4], ["OpenRelix", "token花销", "Cost (USD)", "token数量"])
+        self.assertNotIn("Image", keywords)
+        self.assertFalse(any("什么指标" in keyword for keyword in keywords))
+        self.assertFalse(any("一般说" in keyword for keyword in keywords))
+        self.assertFalse(any("最该盯" in keyword for keyword in keywords))
+        self.assertIn("token花销", summary["keywords"])
+
+
     def test_final_consolidate_reuses_lightweight_compact_artifact(self):
         old_raw_dir = nightly_consolidate.RAW_DIR
         old_consolidated_dir = nightly_consolidate.CONSOLIDATED_DIR
