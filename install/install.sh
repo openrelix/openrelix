@@ -214,12 +214,12 @@ handle_install_signal() {
 }
 
 run_interruptible_child() {
-  local status=0
+  local child_status=0
   "$@" &
   INSTALL_CHILD_PID=$!
-  wait "$INSTALL_CHILD_PID" || status=$?
+  wait "$INSTALL_CHILD_PID" || child_status=$?
   INSTALL_CHILD_PID=""
-  return "$status"
+  return "$child_status"
 }
 
 trap 'handle_install_signal HUP' HUP

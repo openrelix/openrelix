@@ -5745,6 +5745,8 @@ scope: Release checklist, package manifest, and public website validation.
         self.assertIn("trap '' HUP INT TERM", installer)
         self.assertIn("stop_install_child_process", installer)
         self.assertIn("run_interruptible_child \"$PYTHON_BIN\" \"$REPO_ROOT/scripts/openrelix.py\"", installer)
+        self.assertIn("local child_status=0", installer)
+        self.assertNotIn("local status=0", installer)
 
         self.assertIn("def install_termination_signal_handlers():", openrelix_cli)
         self.assertIn('for signal_name in ("SIGHUP", "SIGTERM"):', openrelix_cli)
