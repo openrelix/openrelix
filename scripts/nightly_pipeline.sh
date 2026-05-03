@@ -167,7 +167,10 @@ PY
 target_date="${1:-$(date +%F)}"
 stage="${2:-manual}"
 extra_args=("${@:3}")
+nightly_args=()
 learn_window_days=0
+defer_global_refresh=0
+skip_learning_collect=0
 
 for ((i = 1; i <= ${#extra_args[@]}; i++)); do
   arg="${extra_args[$i]}"
@@ -180,11 +183,20 @@ for ((i = 1; i <= ${#extra_args[@]}; i++)); do
     --learn-window-days=*)
       learn_window_days="${arg#--learn-window-days=}"
       ;;
+    --defer-global-refresh)
+      defer_global_refresh=1
+      continue
+      ;;
+    --skip-learning-collect)
+      skip_learning_collect=1
+      continue
+      ;;
   esac
+  nightly_args+=("$arg")
 done
 
 "$PYTHON_BIN" "$REPO_ROOT/scripts/collect_codex_activity.py" --date "$target_date" --stage "$stage"
-if [[ "$learn_window_days" =~ '^[0-9]+$' ]] && (( learn_window_days > 0 )); then
+if [[ "$skip_learning_collect" != "1" ]] && [[ "$learn_window_days" =~ '^[0-9]+$' ]] && (( learn_window_days > 0 )); then
   "$PYTHON_BIN" - "$target_date" "$learn_window_days" <<'PY' | while IFS= read -r learning_date; do
 from datetime import date, timedelta
 import sys
@@ -197,9 +209,11 @@ PY
     "$PYTHON_BIN" "$REPO_ROOT/scripts/collect_codex_activity.py" --date "$learning_date" --stage final
   done
 fi
-"$PYTHON_BIN" "$REPO_ROOT/scripts/nightly_consolidate.py" --date "$target_date" --stage "$stage" "${extra_args[@]}"
-rebuild_sqlite_index_if_available
-sync_codex_memory_summary_if_enabled
-build_codex_native_display_cache_if_enabled
-"$PYTHON_BIN" "$REPO_ROOT/scripts/build_overview.py"
+"$PYTHON_BIN" "$REPO_ROOT/scripts/nightly_consolidate.py" --date "$target_date" --stage "$stage" "${nightly_args[@]}"
+if [[ "$defer_global_refresh" != "1" ]]; then
+  rebuild_sqlite_index_if_available
+  sync_codex_memory_summary_if_enabled
+  build_codex_native_display_cache_if_enabled
+  "$PYTHON_BIN" "$REPO_ROOT/scripts/build_overview.py"
+fi
 exit_if_latest_model_run_failed

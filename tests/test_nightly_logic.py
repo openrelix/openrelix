@@ -5150,6 +5150,110 @@ scope: Release checklist, package manifest, and public website validation.
         self.assertIn("model summarization failed", result.stderr)
         self.assertIn("login required", result.stderr)
 
+    def test_nightly_pipeline_can_defer_global_refresh_and_skip_learning_collect(self):
+        with TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            scripts_dir = root / "scripts"
+            scripts_dir.mkdir(parents=True)
+            consolidated_daily_dir = root / "consolidated" / "daily"
+            collect_log = root / "collect.log"
+            nightly_args_path = root / "nightly-args.txt"
+            overview_marker = root / "overview-called"
+            pipeline_script = scripts_dir / "nightly_pipeline.sh"
+            pipeline_script.write_text(
+                (ROOT / "scripts" / "nightly_pipeline.sh").read_text(encoding="utf-8"),
+                encoding="utf-8",
+            )
+            (scripts_dir / "asset_runtime.py").write_text(
+                "\n".join(
+                    [
+                        "import os",
+                        "from pathlib import Path",
+                        "class RuntimePaths:",
+                        "    consolidated_daily_dir = Path(os.environ['OPENRELIX_TEST_CONSOLIDATED_DAILY_DIR'])",
+                        "def get_runtime_paths():",
+                        "    return RuntimePaths()",
+                        "def get_memory_mode(*args, **kwargs):",
+                        "    return 'local-only'",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            (scripts_dir / "collect_codex_activity.py").write_text(
+                "\n".join(
+                    [
+                        "import sys, os",
+                        "with open(os.environ['OPENRELIX_TEST_COLLECT_LOG'], 'a', encoding='utf-8') as fh:",
+                        "    fh.write(' '.join(sys.argv[1:]) + '\\n')",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            (scripts_dir / "build_overview.py").write_text(
+                "\n".join(
+                    [
+                        "import os",
+                        "from pathlib import Path",
+                        "Path(os.environ['OPENRELIX_TEST_OVERVIEW_MARKER']).write_text('called', encoding='utf-8')",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            (scripts_dir / "build_codex_memory_summary.py").write_text("", encoding="utf-8")
+            (scripts_dir / "nightly_consolidate.py").write_text(
+                "\n".join(
+                    [
+                        "import argparse, json, os, sys",
+                        "from pathlib import Path",
+                        "Path(os.environ['OPENRELIX_TEST_NIGHTLY_ARGS']).write_text('\\n'.join(sys.argv[1:]), encoding='utf-8')",
+                        "parser = argparse.ArgumentParser()",
+                        "parser.add_argument('--date')",
+                        "parser.add_argument('--stage')",
+                        "parser.add_argument('--learn-window-days')",
+                        "args = parser.parse_args()",
+                        "summary_dir = Path(os.environ['OPENRELIX_TEST_CONSOLIDATED_DAILY_DIR']) / args.date",
+                        "summary_dir.mkdir(parents=True, exist_ok=True)",
+                        "(summary_dir / 'summary.json').write_text(json.dumps({'date': args.date}), encoding='utf-8')",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            env = dict(os.environ)
+            env["OPENRELIX_TEST_CONSOLIDATED_DAILY_DIR"] = str(consolidated_daily_dir)
+            env["OPENRELIX_TEST_COLLECT_LOG"] = str(collect_log)
+            env["OPENRELIX_TEST_NIGHTLY_ARGS"] = str(nightly_args_path)
+            env["OPENRELIX_TEST_OVERVIEW_MARKER"] = str(overview_marker)
+
+            result = subprocess.run(
+                [
+                    "/bin/zsh",
+                    str(pipeline_script),
+                    "2026-04-28",
+                    "final",
+                    "--learn-window-days",
+                    "2",
+                    "--defer-global-refresh",
+                    "--skip-learning-collect",
+                ],
+                cwd=str(root),
+                env=env,
+                capture_output=True,
+                text=True,
+            )
+            collect_lines = collect_log.read_text(encoding="utf-8").splitlines()
+            nightly_args = nightly_args_path.read_text(encoding="utf-8").splitlines()
+            overview_exists = overview_marker.exists()
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(
+            collect_lines,
+            ["--date 2026-04-28 --stage final"],
+        )
+        self.assertIn("--learn-window-days", nightly_args)
+        self.assertNotIn("--defer-global-refresh", nightly_args)
+        self.assertNotIn("--skip-learning-collect", nightly_args)
+        self.assertFalse(overview_exists)
+
     def test_nightly_pipeline_native_display_polish_defaults_for_chinese_integrated_mode(self):
         with TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -5647,6 +5751,53 @@ scope: Release checklist, package manifest, and public website validation.
             self.assertEqual(results[0]["reason"], "existing_stage_below_requested")
             self.assertEqual(calls[0][-2:], ["2026-04-23", "final"])
 
+    def test_backfill_final_precollects_learning_once_and_defers_pipeline_refresh(self):
+        with TemporaryDirectory() as tmpdir:
+            consolidated_daily_dir = Path(tmpdir) / "consolidated" / "daily"
+            quiet_calls = []
+            pipeline_calls = []
+
+            def fake_run_checked_quiet(cmd):
+                quiet_calls.append(cmd)
+
+            def fake_run_checked_with_progress(cmd, progress_messages, interval_seconds=20, reminder_seconds=60):
+                pipeline_calls.append(cmd)
+
+            with mock.patch.object(openrelix, "CONSOLIDATED_DAILY_DIR", consolidated_daily_dir), mock.patch.object(
+                openrelix,
+                "resolve_learning_backfill_dates_for_targets",
+                return_value=[],
+            ), mock.patch.object(
+                openrelix,
+                "run_checked_quiet",
+                side_effect=fake_run_checked_quiet,
+            ), mock.patch.object(
+                openrelix,
+                "run_checked_with_progress",
+                side_effect=fake_run_checked_with_progress,
+            ):
+                results = openrelix.run_backfill_dates(
+                    ["2026-04-28", "2026-04-29"],
+                    "final",
+                    learn_window_days=2,
+                    force=False,
+                    ensure_learning_final=True,
+                    defer_global_refresh=True,
+                    verbose=False,
+                )
+
+            self.assertEqual([item["status"] for item in results], ["completed", "completed"])
+            collected_dates = [
+                call[call.index("--date") + 1]
+                for call in quiet_calls
+                if str(openrelix.COLLECT_CODEX_ACTIVITY_SCRIPT) in call
+            ]
+            self.assertEqual(collected_dates, ["2026-04-26", "2026-04-27"])
+            self.assertEqual(len(pipeline_calls), 2)
+            for command in pipeline_calls:
+                self.assertIn("--defer-global-refresh", command)
+                self.assertIn("--skip-learning-collect", command)
+
     def test_backfill_skips_existing_same_stage_summary(self):
         with TemporaryDirectory() as tmpdir:
             consolidated_daily_dir = Path(tmpdir) / "consolidated" / "daily"
@@ -5672,6 +5823,71 @@ scope: Release checklist, package manifest, and public website validation.
             self.assertEqual(results[0]["status"], "skipped_existing")
             self.assertEqual(results[0]["reason"], "existing_stage_satisfies_request")
             run_pipeline.assert_not_called()
+
+    def test_command_backfill_defers_and_refreshes_global_outputs_once(self):
+        calls = []
+
+        def fake_run_backfill_dates(
+            dates,
+            stage,
+            learn_window_days=0,
+            force=False,
+            ensure_learning_final=True,
+            defer_global_refresh=False,
+            verbose=True,
+        ):
+            calls.append(
+                (
+                    "backfill",
+                    dates,
+                    stage,
+                    learn_window_days,
+                    force,
+                    ensure_learning_final,
+                    defer_global_refresh,
+                    verbose,
+                )
+            )
+            return [
+                {
+                    "date": "2026-04-28",
+                    "status": "completed",
+                    "summary_json": "",
+                    "summary_md": "",
+                },
+                {
+                    "date": "2026-04-29",
+                    "status": "skipped_existing",
+                    "summary_json": "",
+                    "summary_md": "",
+                },
+            ]
+
+        args = argparse.Namespace(
+            dates="2026-04-28,2026-04-29",
+            date_from=None,
+            date_to="2026-04-29",
+            days=0,
+            stage="final",
+            learn_window_days=7,
+            force=False,
+            json=False,
+        )
+
+        with mock.patch.object(
+            openrelix,
+            "run_backfill_dates",
+            side_effect=fake_run_backfill_dates,
+        ), mock.patch.object(
+            openrelix,
+            "sync_review_outputs",
+            side_effect=lambda **kwargs: calls.append(("refresh", kwargs)),
+        ), mock.patch("sys.stdout", new_callable=io.StringIO):
+            openrelix.command_backfill(args)
+
+        self.assertEqual(calls[0][0], "backfill")
+        self.assertIs(calls[0][6], True)
+        self.assertEqual(calls[1], ("refresh", {"include_index": True, "include_native_display": True}))
 
     def test_review_syncs_summary_and_panel_after_pipeline(self):
         with TemporaryDirectory() as tmpdir:
