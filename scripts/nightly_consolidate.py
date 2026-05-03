@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import argparse
+import copy
 import contextlib
 import fcntl
 import hashlib
@@ -69,6 +70,7 @@ LIGHTWEIGHT_DURABLE_MEMORY_MAX = 8
 LIGHTWEIGHT_LOW_PRIORITY_MEMORY_MAX = 8
 LIGHTWEIGHT_WINDOW_KEYWORD_LIMIT = 8
 LIGHTWEIGHT_DAILY_KEYWORD_LIMIT = 16
+PRELIMINARY_MODEL_WINDOW_SUMMARY_VERSION = 1
 RECENT_WINDOW_LEARNING_CACHE_VERSION = 1
 _COMPACT_PAYLOAD_CACHE = {}
 _RECENT_WINDOW_LEARNING_CACHE = {}
@@ -162,6 +164,17 @@ def default_codex_exec_timeout_seconds():
     return max(seconds, 0)
 
 
+def env_flag(name, default=False):
+    raw_value = str(os.environ.get(name, "")).strip().lower()
+    if not raw_value:
+        return default
+    if raw_value in {"1", "true", "yes", "on", "enabled"}:
+        return True
+    if raw_value in {"0", "false", "no", "off", "disabled"}:
+        return False
+    return default
+
+
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--date", default=datetime.now().astimezone().date().isoformat())
@@ -176,6 +189,19 @@ def parse_args():
         "--skip-if-unchanged",
         action="store_true",
         help="Skip model consolidation when the raw payload and learning context match the selected summary.",
+    )
+    parser.add_argument(
+        "--preliminary-model-windows",
+        dest="preliminary_model_windows",
+        action="store_true",
+        default=env_flag("OPENRELIX_PRELIMINARY_MODEL_WINDOWS", False),
+        help="For preliminary stage, run a model pass for window summaries and keywords.",
+    )
+    parser.add_argument(
+        "--no-preliminary-model-windows",
+        dest="preliminary_model_windows",
+        action="store_false",
+        help="Disable the preliminary model window pass even when OPENRELIX_PRELIMINARY_MODEL_WINDOWS is set.",
     )
     parser.add_argument(
         "--model-timeout-seconds",
@@ -1574,6 +1600,7 @@ def build_learning_input_fingerprint(
     learn_window_days,
     language=None,
     compact_payload=None,
+    preliminary_model_windows=False,
 ):
     if compact_payload is None:
         compact_payload = build_compact_payload(raw_payload, language=language)
@@ -1587,6 +1614,8 @@ def build_learning_input_fingerprint(
         "codex_model": CODEX_MODEL,
         "learn_window_days": max(learn_window_days, 0),
         "lightweight_summary_version": LIGHTWEIGHT_SUMMARY_VERSION,
+        "preliminary_model_windows": bool(preliminary_model_windows),
+        "preliminary_model_window_summary_version": PRELIMINARY_MODEL_WINDOW_SUMMARY_VERSION,
         "daily_compact_payload": compact_payload,
         "learning_context": fingerprint_learning_context,
     }
@@ -1653,14 +1682,13 @@ def build_safe_consolidation_prompt(prompt, language=None):
         (
             "这是一个纯整理任务，不是软件工程任务。"
             "禁止调用 shell、web、MCP、apply_patch 或读取任何额外文件。"
-            "不要探索环境；唯一合法输入就是下方 learning_context_json 和 daily_compact_json。"
+            "不要探索环境；唯一合法输入就是下方提供的 JSON 输入区块。"
             "直接输出符合 schema 的 JSON。\n\n"
         ),
         (
             "This is an organization-only task, not a software engineering task. "
             "Do not call shell, web, MCP, apply_patch, or read any extra files. "
-            "Do not explore the environment; the only valid inputs are the learning_context_json "
-            "and daily_compact_json below. "
+            "Do not explore the environment; the only valid inputs are the JSON input sections below. "
             "Output only JSON that satisfies the schema.\n\n"
         ),
         language,
@@ -2690,6 +2718,121 @@ def build_lightweight_summary(raw_payload, compact_payload, language=None):
     }
 
 
+def build_preliminary_window_model_prompt(raw_payload, compact_payload, lightweight_summary, language=None):
+    language = current_language(language)
+    lightweight_windows = [
+        {
+            "window_id": item.get("window_id", ""),
+            "window_title": item.get("window_title", ""),
+            "question_summary": item.get("question_summary", ""),
+            "main_takeaway": item.get("main_takeaway", ""),
+            "summary_pairs": item.get("summary_pairs", [])[:4],
+            "keywords": item.get("keywords", [])[:8],
+        }
+        for item in lightweight_summary.get("window_summaries", [])
+    ]
+    input_payload = {
+        "date": raw_payload.get("date", ""),
+        "stage": "preliminary",
+        "daily_compact": compact_payload,
+        "lightweight_window_summaries": lightweight_windows,
+    }
+    if language == "en":
+        return """You are a lightweight backfill window summarizer. Improve only the per-window title, question/conclusion pairs, main takeaway, and keywords for the current day's windows.
+
+Rules:
+1. Preserve every input window_id and cwd exactly.
+2. Return one window_summaries item for every input window, and no extra windows.
+3. For each window, write a plain-language window_title under 100 characters.
+4. For each window, write 1-4 concise summary_pairs. Keep questions and conclusions one-to-one where possible.
+5. Generate 2-8 real keywords per window: tools, repos, modules, commands, product names, concrete topics, or stable concepts. Do not output sentence fragments, labels like "Image", generic words, or filler.
+6. This is not a deep memory pass. Keep durable_memories, session_memories, and low_priority_memories as empty arrays.
+7. Keep next_actions empty. Write a brief day_summary.
+8. Do not invent facts. Use only the compact window data and lightweight summary hints below.
+
+<preliminary_window_input_json>
+{input_json}
+</preliminary_window_input_json>
+""".format(input_json=json.dumps(input_payload, ensure_ascii=False, indent=2))
+
+    return """你是轻度回溯阶段的窗口整理器。你只负责优化当天每个窗口的标题、问题/结论对、结论摘要和关键词。
+
+规则：
+1. 必须完整保留输入里的每个 window_id 和 cwd，不要新增窗口。
+2. 每个输入窗口都要返回一个 window_summaries 项。
+3. window_title 用通俗标题概括窗口主题，最好不超过 100 字。
+4. 每个窗口写 1-4 组 summary_pairs；尽量保持问题和结论一一对应。
+5. 每个窗口生成 2-8 个真正像关键词的词：工具、仓库、模块、命令、产品名、具体主题或稳定概念。不要输出句子碎片、Image 这类标签、泛词或语气词。
+6. 这不是深度记忆归纳。durable_memories、session_memories、low_priority_memories 必须是空数组。
+7. next_actions 保持空数组。day_summary 写一句简短概览即可。
+8. 不要编造事实；只能使用下面的压缩窗口数据和轻量摘要提示。
+
+<preliminary_window_input_json>
+{input_json}
+</preliminary_window_input_json>
+""".format(input_json=json.dumps(input_payload, ensure_ascii=False, indent=2))
+
+
+def cleaned_preliminary_model_keywords(keywords, fallback_keywords, limit=LIGHTWEIGHT_WINDOW_KEYWORD_LIMIT):
+    candidates = []
+    seen = set()
+    source_keywords = keywords if isinstance(keywords, list) else []
+    fallback_keywords = fallback_keywords if isinstance(fallback_keywords, list) else []
+    for keyword in source_keywords:
+        append_lightweight_keyword(candidates, seen, keyword)
+        if len(candidates) >= limit:
+            return candidates
+    for keyword in fallback_keywords:
+        append_lightweight_keyword(candidates, seen, keyword)
+        if len(candidates) >= limit:
+            return candidates
+    return candidates[:limit]
+
+
+def merge_preliminary_model_window_summary(raw_payload, lightweight_summary, model_summary, language=None):
+    merged = copy.deepcopy(lightweight_summary)
+    normalized_model = normalize_summary(raw_payload, model_summary, language=language)
+    model_by_id = {
+        item.get("window_id", ""): item
+        for item in normalized_model.get("window_summaries", [])
+        if item.get("window_id")
+    }
+    merged_windows = []
+    keyword_counter = Counter()
+    for base_item in lightweight_summary.get("window_summaries", []):
+        window_id = base_item.get("window_id", "")
+        model_item = model_by_id.get(window_id, {})
+        current = copy.deepcopy(base_item)
+        if model_item:
+            current["window_title"] = model_item.get("window_title") or current.get("window_title", "")
+            current["question_summary"] = model_item.get("question_summary") or current.get("question_summary", "")
+            current["main_takeaway"] = model_item.get("main_takeaway") or current.get("main_takeaway", "")
+            current["summary_pairs"] = normalize_summary_pairs(
+                model_item.get("summary_pairs", []),
+                question_summary=current.get("question_summary", ""),
+                main_takeaway=current.get("main_takeaway", ""),
+            )
+            current["keywords"] = cleaned_preliminary_model_keywords(
+                model_item.get("keywords", []),
+                current.get("keywords", []),
+            )
+        keyword_counter.update(current.get("keywords", []))
+        merged_windows.append(current)
+
+    top_keywords = [
+        keyword
+        for keyword, _ in keyword_counter.most_common(LIGHTWEIGHT_DAILY_KEYWORD_LIMIT)
+        if keyword
+    ]
+    merged["window_summaries"] = merged_windows
+    if top_keywords:
+        merged["keywords"] = top_keywords
+    merged["model_status"] = "completed"
+    merged["summary_generation"] = "preliminary_model_windows"
+    merged["preliminary_model_window_summary_version"] = PRELIMINARY_MODEL_WINDOW_SUMMARY_VERSION
+    return merged
+
+
 def render_markdown(summary, language=None):
     language = current_language(language or summary.get("language"))
     learning_digest = summary.get("learning_context_digest", {})
@@ -2949,6 +3092,7 @@ def main():
             0,
             language=language,
             compact_payload=compact_payload,
+            preliminary_model_windows=args.preliminary_model_windows,
         )
         if args.skip_if_unchanged and summary_can_skip_for_learning_input(
             existing_summary,
@@ -2967,6 +3111,64 @@ def main():
             compact_payload,
             language=language,
         )
+        preliminary_window_model_run = None
+        if args.preliminary_model_windows and raw_payload.get("window_count", 0) > 0:
+            model_output_path = summary_dir / "preliminary_window_model_candidate.json"
+            model_prompt = build_preliminary_window_model_prompt(
+                raw_payload,
+                compact_payload,
+                candidate_summary,
+                language=language,
+            )
+            try:
+                run_codex_consolidation(
+                    model_prompt,
+                    model_output_path,
+                    language=language,
+                    timeout_seconds=max(args.model_timeout_seconds, 0),
+                )
+                model_summary = load_json(model_output_path)
+                candidate_summary = merge_preliminary_model_window_summary(
+                    raw_payload,
+                    candidate_summary,
+                    model_summary,
+                    language=language,
+                )
+                preliminary_window_model_run = persist_summary_run(
+                    summary_dir,
+                    candidate_summary,
+                    stage,
+                    "window-model-candidate",
+                    language=language,
+                )
+            except (CodexConsolidationError, subprocess.CalledProcessError) as exc:
+                if isinstance(exc, CodexConsolidationError):
+                    model_error = str(exc)
+                    model_exit_code = exc.returncode
+                else:
+                    model_error = describe_codex_failure(
+                        getattr(exc, "output", ""),
+                        getattr(exc, "stderr", ""),
+                        exc.returncode,
+                    )
+                    model_exit_code = exc.returncode
+                print(
+                    localized(
+                        "nightly_consolidate: preliminary 窗口模型摘要失败，已保留轻量摘要。{}".format(
+                            codex_failure_hint(model_error, language=language)
+                        ),
+                        "nightly_consolidate: preliminary window model summary failed; kept lightweight summary. {}".format(
+                            codex_failure_hint(model_error, language=language)
+                        ),
+                        language,
+                    ),
+                    file=sys.stderr,
+                )
+                candidate_summary["model_status"] = "failed"
+                candidate_summary["model_error"] = model_error
+                candidate_summary["model_error_hint"] = codex_failure_hint(model_error, language=language)
+                candidate_summary["model_exit_code"] = model_exit_code
+                candidate_summary["summary_generation"] = "preliminary_model_windows_failed"
         candidate_summary["language"] = language
         candidate_summary["stage"] = stage
         candidate_summary["codex_model"] = CODEX_MODEL
@@ -3003,8 +3205,21 @@ def main():
             "candidate_model_status": candidate_summary.get("model_status", "skipped_lightweight"),
             "codex_model": candidate_summary.get("codex_model", CODEX_MODEL),
             "compact_payload_source": compact_payload_source,
+            "preliminary_model_windows": bool(args.preliminary_model_windows),
         }
+        if preliminary_window_model_run:
+            selected_summary["selection_decision"]["preliminary_window_model_run_json_path"] = (
+                preliminary_window_model_run["json_path"]
+            )
+        if candidate_summary.get("model_status") == "failed":
+            selected_summary["selection_decision"]["candidate_model_error"] = candidate_summary.get("model_error", "")
+            selected_summary["selection_decision"]["candidate_model_error_hint"] = candidate_summary.get("model_error_hint", "")
+            selected_summary["selection_decision"]["candidate_model_exit_code"] = candidate_summary.get("model_exit_code")
         selected_summary["last_run_model_status"] = candidate_summary.get("model_status", "skipped_lightweight")
+        if candidate_summary.get("model_status") == "failed":
+            selected_summary["last_run_model_error"] = candidate_summary.get("model_error", "")
+            selected_summary["last_run_model_error_hint"] = candidate_summary.get("model_error_hint", "")
+            selected_summary["last_run_model_exit_code"] = candidate_summary.get("model_exit_code")
         selected_summary = apply_memory_mode(selected_summary)
         write_json(output_json_path, selected_summary)
         atomic_write_text(summary_dir / "summary.md", render_markdown(selected_summary, language=language))
@@ -3023,6 +3238,7 @@ def main():
                 "candidate_run_json_path": candidate_run["json_path"],
                 "selected_summary_path": str(output_json_path),
                 "compact_payload_source": compact_payload_source,
+                "preliminary_model_windows": bool(args.preliminary_model_windows),
             }
         )
         return

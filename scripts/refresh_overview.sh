@@ -34,6 +34,7 @@ stage="${OPENRELIX_REFRESH_STAGE:-manual}"
 learn_memory="${OPENRELIX_REFRESH_LEARN_MEMORY:-0}"
 learn_window_days="${OPENRELIX_REFRESH_LEARN_WINDOW_DAYS:-0}"
 skip_unchanged="${OPENRELIX_REFRESH_SKIP_UNCHANGED:-0}"
+preliminary_model_windows="${OPENRELIX_PRELIMINARY_MODEL_WINDOWS:-0}"
 
 while (( $# > 0 )); do
   case "$1" in
@@ -59,6 +60,14 @@ while (( $# > 0 )); do
       ;;
     --skip-if-unchanged)
       skip_unchanged=1
+      shift
+      ;;
+    --preliminary-model-windows)
+      preliminary_model_windows=1
+      shift
+      ;;
+    --no-preliminary-model-windows)
+      preliminary_model_windows=0
       shift
       ;;
     *)
@@ -162,6 +171,11 @@ case "${learn_memory:l}" in
     case "${skip_unchanged:l}" in
       1|true|yes|on)
         extra_args+=(--skip-if-unchanged)
+        ;;
+    esac
+    case "${preliminary_model_windows:l}" in
+      1|true|yes|on)
+        extra_args+=(--preliminary-model-windows)
         ;;
     esac
     /bin/zsh "$REPO_ROOT/scripts/nightly_pipeline.sh" "$target_date" "$stage" "${extra_args[@]}"

@@ -5768,7 +5768,9 @@ scope: Release checklist, package manifest, and public website validation.
         )
         self.assertNotIn("<h3>开启 30 分钟自动学习（推荐）</h3>", showcase)
         self.assertIn("--enable-learning-refresh", installer)
-        self.assertIn("backfill --days %s --stage preliminary --learn-window-days 0 --jobs %s", installer)
+        self.assertIn("backfill --days %s --stage preliminary --learn-window-days 0 --jobs %s%s", installer)
+        self.assertIn("--preliminary-model-windows", installer)
+        self.assertIn('OPENRELIX_PRELIMINARY_MODEL_WINDOWS="$PRELIMINARY_MODEL_WINDOWS"', installer)
         self.assertIn('INSTALL_DEEP_LEARN_JOBS=1', installer)
         self.assertIn('backfill --days "$LEARNING_REFRESH_WINDOW_DAYS" --stage final --learn-window-days "$LEARNING_REFRESH_WINDOW_DAYS" --jobs "$INSTALL_DEEP_LEARN_JOBS"', installer)
         self.assertIn("开始串行深度回溯最近 ${LEARNING_REFRESH_WINDOW_DAYS} 天，进度会继续显示在当前终端。", installer)
@@ -5951,6 +5953,8 @@ scope: Release checklist, package manifest, and public website validation.
         self.assertIn('command === "models"', npm_bin)
         self.assertIn('runPythonCli(["models", ...args.slice(1)])', npm_bin)
         self.assertIn("npx openrelix models", npm_bin)
+        self.assertIn('command === "review" || command === "backfill" || command === "refresh"', npm_bin)
+        self.assertIn('runPythonCli([command, ...args.slice(1)])', npm_bin)
 
     def test_sqlite_index_rebuild_is_warning_only_in_refresh_scripts(self):
         nightly = (ROOT / "scripts" / "nightly_pipeline.sh").read_text(encoding="utf-8")
@@ -8024,6 +8028,129 @@ scope: Release checklist, package manifest, and public website validation.
                 self.assertGreater(len(summary["window_summaries"][0]["keywords"]), 1)
                 self.assertEqual(summary["durable_memories"][0]["source_window_ids"], ["w1"])
                 self.assertEqual(registry_rows[0]["bucket"], "durable")
+        finally:
+            nightly_consolidate.RAW_DIR = old_raw_dir
+            nightly_consolidate.CONSOLIDATED_DIR = old_consolidated_dir
+            nightly_consolidate.REGISTRY_DIR = old_registry_dir
+            nightly_consolidate.RUNTIME_DIR = old_runtime_dir
+            nightly_consolidate.LANGUAGE = old_language
+            nightly_consolidate.MEMORY_MODE = old_memory_mode
+            nightly_consolidate.PERSONAL_MEMORY_ENABLED = old_personal_memory_enabled
+
+    def test_preliminary_consolidate_can_run_model_for_window_summaries(self):
+        old_raw_dir = nightly_consolidate.RAW_DIR
+        old_consolidated_dir = nightly_consolidate.CONSOLIDATED_DIR
+        old_registry_dir = nightly_consolidate.REGISTRY_DIR
+        old_runtime_dir = nightly_consolidate.RUNTIME_DIR
+        old_language = nightly_consolidate.LANGUAGE
+        old_memory_mode = nightly_consolidate.MEMORY_MODE
+        old_personal_memory_enabled = nightly_consolidate.PERSONAL_MEMORY_ENABLED
+        try:
+            with TemporaryDirectory() as tmpdir:
+                tmp = Path(tmpdir)
+                nightly_consolidate.RAW_DIR = tmp / "raw"
+                nightly_consolidate.CONSOLIDATED_DIR = tmp / "consolidated" / "daily"
+                nightly_consolidate.REGISTRY_DIR = tmp / "registry"
+                nightly_consolidate.RUNTIME_DIR = tmp / "runtime"
+                nightly_consolidate.LANGUAGE = "zh"
+                nightly_consolidate.MEMORY_MODE = "integrated"
+                nightly_consolidate.PERSONAL_MEMORY_ENABLED = True
+
+                raw_daily_dir = nightly_consolidate.RAW_DIR / "daily"
+                raw_daily_dir.mkdir(parents=True)
+                raw_payload = {
+                    "date": "2026-05-03",
+                    "window_count": 1,
+                    "prompt_count": 1,
+                    "conclusion_count": 1,
+                    "review_like_window_count": 0,
+                    "windows": [
+                        {
+                            "window_id": "w-model",
+                            "cwd": "/tmp/openrelix",
+                            "prompt_count": 1,
+                            "conclusion_count": 1,
+                            "prompts": [{"text": "keyword 部分不要出现离谱词"}],
+                            "conclusions": [{"text": "轻度回溯可以试试窗口模型摘要"}],
+                        }
+                    ],
+                }
+                (raw_daily_dir / "2026-05-03.json").write_text(
+                    json.dumps(raw_payload),
+                    encoding="utf-8",
+                )
+                prompts = []
+
+                def fake_run_model(prompt, output_path, language=None, timeout_seconds=None):
+                    prompts.append(prompt)
+                    output_path.write_text(
+                        json.dumps(
+                            {
+                                "date": "2026-05-03",
+                                "day_summary": "模型窗口摘要已完成。",
+                                "window_summaries": [
+                                    {
+                                        "window_id": "w-model",
+                                        "cwd": "/tmp/openrelix",
+                                        "window_title": "浅度回溯窗口模型摘要",
+                                        "question_summary": "问题1：轻度回溯是否要跑窗口模型摘要",
+                                        "question_count": 1,
+                                        "conclusion_count": 1,
+                                        "keywords": ["OpenRelix", "窗口摘要", "Cost (USD)", "Image"],
+                                        "main_takeaway": "结论1：可以作为实验开关试用。",
+                                        "summary_pairs": [
+                                            {
+                                                "question": "轻度回溯是否要跑窗口模型摘要",
+                                                "conclusion": "可以作为实验开关试用。",
+                                            }
+                                        ],
+                                    }
+                                ],
+                                "durable_memories": [],
+                                "session_memories": [],
+                                "low_priority_memories": [],
+                                "keywords": ["OpenRelix", "窗口摘要"],
+                                "next_actions": [],
+                            },
+                            ensure_ascii=False,
+                        ),
+                        encoding="utf-8",
+                    )
+
+                with mock.patch.object(nightly_consolidate, "ensure_state_layout"), mock.patch.object(
+                    nightly_consolidate,
+                    "run_codex_consolidation",
+                    side_effect=fake_run_model,
+                ) as run_model, mock.patch.object(
+                    sys,
+                    "argv",
+                    [
+                        "nightly_consolidate.py",
+                        "--date",
+                        "2026-05-03",
+                        "--stage",
+                        "preliminary",
+                        "--preliminary-model-windows",
+                        "--skip-if-unchanged",
+                    ],
+                ):
+                    nightly_consolidate.main()
+
+                summary_path = nightly_consolidate.CONSOLIDATED_DIR / "2026-05-03" / "summary.json"
+                summary = json.loads(summary_path.read_text(encoding="utf-8"))
+
+                run_model.assert_called_once()
+                self.assertIn("轻度回溯阶段的窗口整理器", prompts[0])
+                self.assertEqual(summary["stage"], "preliminary")
+                self.assertEqual(summary["model_status"], "completed")
+                self.assertEqual(summary["summary_generation"], "preliminary_model_windows")
+                self.assertEqual(summary["last_run_model_status"], "completed")
+                self.assertTrue(summary["selection_decision"]["preliminary_model_windows"])
+                self.assertEqual(summary["window_summaries"][0]["window_title"], "浅度回溯窗口模型摘要")
+                self.assertIn("窗口模型摘要", summary["window_summaries"][0]["question_summary"])
+                self.assertIn("Cost (USD)", summary["window_summaries"][0]["keywords"])
+                self.assertNotIn("Image", summary["window_summaries"][0]["keywords"])
+                self.assertGreaterEqual(len(summary["durable_memories"]), 1)
         finally:
             nightly_consolidate.RAW_DIR = old_raw_dir
             nightly_consolidate.CONSOLIDATED_DIR = old_consolidated_dir

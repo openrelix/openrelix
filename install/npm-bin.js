@@ -22,6 +22,8 @@ function printHelp() {
   npx openrelix install [install-options]
   npx openrelix update [--check | --recommended | --print-command]
   npx openrelix uninstall [--delete-local-memory | --keep-local-memory]
+  npx openrelix review [--stage preliminary | --preliminary-model-windows]
+  npx openrelix backfill [--days N | --from YYYY-MM-DD --to YYYY-MM-DD]
   npx openrelix app [--build | --no-open]
   npx openrelix models [--json | --bundled | --all]
   npx openrelix index status|rebuild|search-memory|search-window
@@ -34,6 +36,7 @@ Examples:
   npx openrelix install
   npx openrelix install --language en
   npx openrelix install --enable-learning-refresh
+  npx openrelix install --enable-learning-refresh --preliminary-model-windows
   npx openrelix install --record-memory-only
   npx openrelix install --enable-learning-refresh --activity-source history
   npx openrelix install --disable-personal-memory
@@ -43,6 +46,7 @@ Examples:
   npx openrelix uninstall
   npx openrelix uninstall --delete-local-memory
   npx openrelix update --print-command
+  npx openrelix backfill --days 1 --stage preliminary --preliminary-model-windows
   npx openrelix app
   npx openrelix models
   npx openrelix index status
@@ -238,6 +242,11 @@ function main() {
 
   if (command === "uninstall" || command === "remove") {
     runPythonCli(["uninstall", ...args.slice(1)]);
+    return;
+  }
+
+  if (command === "review" || command === "backfill" || command === "refresh") {
+    runPythonCli([command, ...args.slice(1)]);
     return;
   }
 

@@ -32,6 +32,7 @@ ENABLE_BACKGROUND_SERVICES=0
 ENABLE_NIGHTLY=0
 ENABLE_LEARNING_REFRESH=0
 ENABLE_UPDATE_CHECK=0
+PRELIMINARY_MODEL_WINDOWS="${OPENRELIX_PRELIMINARY_MODEL_WINDOWS:-0}"
 LEARNING_REFRESH_WINDOW_DAYS="${OPENRELIX_REFRESH_LEARN_WINDOW_DAYS:-7}"
 INSTALL_LEARN_JOBS="${OPENRELIX_INSTALL_LEARN_JOBS:-2}"
 INSTALL_DEEP_LEARN_JOBS=1
@@ -138,6 +139,10 @@ Options:
   --learning-refresh-window-days N
                                 Window days for --enable-learning-refresh.
                                 Default: 7.
+  --preliminary-model-windows   During shallow backfill, run a model pass for
+                                window summaries and keywords.
+  --no-preliminary-model-windows
+                                Keep shallow backfill on local lightweight rules.
   --disable-background-services Skip overview refresh and token-live LaunchAgents.
   --nightly-organize-time HH:MM Time for same-day nightly preview. Default: 23:00
   --nightly-finalize-time HH:MM Time for previous-day finalize. Default: 00:10
@@ -628,6 +633,14 @@ while [[ $# -gt 0 ]]; do
       LEARNING_REFRESH_WINDOW_DAYS="${1#*=}"
       shift
       ;;
+    --preliminary-model-windows)
+      PRELIMINARY_MODEL_WINDOWS=1
+      shift
+      ;;
+    --no-preliminary-model-windows)
+      PRELIMINARY_MODEL_WINDOWS=0
+      shift
+      ;;
     --disable-background-services)
       ENABLE_BACKGROUND_SERVICES=0
       ENABLE_LEARNING_REFRESH=0
@@ -890,6 +903,14 @@ fi
 if (( ENABLE_LEARNING_REFRESH )); then
   OVERVIEW_RUN_AT_LOAD="<false/>"
 fi
+case "${PRELIMINARY_MODEL_WINDOWS:l}" in
+  1|true|yes|on|enabled)
+    PRELIMINARY_MODEL_WINDOWS=1
+    ;;
+  *)
+    PRELIMINARY_MODEL_WINDOWS=0
+    ;;
+esac
 
 if (( INSTALL_GLOBAL_COMMAND )); then
   if [[ -z "$BIN_DIR" ]]; then
@@ -1225,26 +1246,31 @@ if [[ "$OSTYPE" == darwin* ]] && (( ENABLE_BACKGROUND_SERVICES || ENABLE_NIGHTLY
 fi
 
 learn_memory_command() {
+  local preliminary_model_arg=""
+  if (( PRELIMINARY_MODEL_WINDOWS )); then
+    preliminary_model_arg=" --preliminary-model-windows"
+  fi
   if (( LEARNING_REFRESH_WINDOW_DAYS == 0 )); then
     if (( INSTALL_GLOBAL_COMMAND )); then
-      printf 'openrelix review --stage preliminary --learn-window-days 0 --jobs %s\n' "$INSTALL_LEARN_JOBS"
+      printf 'openrelix review --stage preliminary --learn-window-days 0 --jobs %s%s\n' "$INSTALL_LEARN_JOBS" "$preliminary_model_arg"
       return
     fi
-    printf 'AI_ASSET_STATE_DIR=%q CODEX_HOME=%q AI_ASSET_LANGUAGE=%q OPENRELIX_ACTIVITY_SOURCE=%q %q %q review --stage preliminary --learn-window-days 0 --jobs %s\n' \
+    printf 'AI_ASSET_STATE_DIR=%q CODEX_HOME=%q AI_ASSET_LANGUAGE=%q OPENRELIX_ACTIVITY_SOURCE=%q %q %q review --stage preliminary --learn-window-days 0 --jobs %s%s\n' \
       "$STATE_DIR" \
       "$CODEX_HOME" \
       "$LANGUAGE" \
       "$ACTIVITY_SOURCE" \
       "$PYTHON_BIN" \
       "$REPO_ROOT/scripts/openrelix.py" \
-      "$INSTALL_LEARN_JOBS"
+      "$INSTALL_LEARN_JOBS" \
+      "$preliminary_model_arg"
     return
   fi
   if (( INSTALL_GLOBAL_COMMAND )); then
-    printf 'openrelix backfill --days %s --stage preliminary --learn-window-days 0 --jobs %s\n' "$LEARNING_REFRESH_WINDOW_DAYS" "$INSTALL_LEARN_JOBS"
+    printf 'openrelix backfill --days %s --stage preliminary --learn-window-days 0 --jobs %s%s\n' "$LEARNING_REFRESH_WINDOW_DAYS" "$INSTALL_LEARN_JOBS" "$preliminary_model_arg"
     return
   fi
-  printf 'AI_ASSET_STATE_DIR=%q CODEX_HOME=%q AI_ASSET_LANGUAGE=%q OPENRELIX_ACTIVITY_SOURCE=%q %q %q backfill --days %s --stage preliminary --learn-window-days 0 --jobs %s\n' \
+  printf 'AI_ASSET_STATE_DIR=%q CODEX_HOME=%q AI_ASSET_LANGUAGE=%q OPENRELIX_ACTIVITY_SOURCE=%q %q %q backfill --days %s --stage preliminary --learn-window-days 0 --jobs %s%s\n' \
     "$STATE_DIR" \
     "$CODEX_HOME" \
     "$LANGUAGE" \
@@ -1252,7 +1278,8 @@ learn_memory_command() {
     "$PYTHON_BIN" \
     "$REPO_ROOT/scripts/openrelix.py" \
     "$LEARNING_REFRESH_WINDOW_DAYS" \
-    "$INSTALL_LEARN_JOBS"
+    "$INSTALL_LEARN_JOBS" \
+    "$preliminary_model_arg"
 }
 
 deep_learn_memory_command() {
@@ -1600,6 +1627,7 @@ run_post_install_shallow_learning() {
       CODEX_HOME="$CODEX_HOME" \
       AI_ASSET_LANGUAGE="$LANGUAGE" \
       OPENRELIX_ACTIVITY_SOURCE="$ACTIVITY_SOURCE" \
+      OPENRELIX_PRELIMINARY_MODEL_WINDOWS="$PRELIMINARY_MODEL_WINDOWS" \
       run_interruptible_child "$PYTHON_BIN" "$REPO_ROOT/scripts/openrelix.py" \
       review --stage preliminary --learn-window-days 0 --jobs "$INSTALL_LEARN_JOBS"
     return
@@ -1608,6 +1636,7 @@ run_post_install_shallow_learning() {
     CODEX_HOME="$CODEX_HOME" \
     AI_ASSET_LANGUAGE="$LANGUAGE" \
     OPENRELIX_ACTIVITY_SOURCE="$ACTIVITY_SOURCE" \
+    OPENRELIX_PRELIMINARY_MODEL_WINDOWS="$PRELIMINARY_MODEL_WINDOWS" \
     run_interruptible_child "$PYTHON_BIN" "$REPO_ROOT/scripts/openrelix.py" \
     backfill --days "$LEARNING_REFRESH_WINDOW_DAYS" --stage preliminary --learn-window-days 0 --jobs "$INSTALL_LEARN_JOBS"
 }

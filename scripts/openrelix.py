@@ -178,6 +178,14 @@ def build_parser():
             "Concurrency for backfilling historical preliminary summaries, currently capped at 2; final organization always runs serially.",
         ),
     )
+    review.add_argument(
+        "--preliminary-model-windows",
+        action="store_true",
+        help=localized(
+            "preliminary 阶段额外跑一次大模型窗口摘要和关键词生成。",
+            "For preliminary stage, run an extra model pass for window summaries and keywords.",
+        ),
+    )
 
     backfill = subparsers.add_parser(
         "backfill",
@@ -260,6 +268,14 @@ def build_parser():
         help=localized(
             "打印 JSON 汇总，而不是人类可读摘要。",
             "Print a JSON summary instead of human-readable output.",
+        ),
+    )
+    backfill.add_argument(
+        "--preliminary-model-windows",
+        action="store_true",
+        help=localized(
+            "preliminary 阶段额外跑一次大模型窗口摘要和关键词生成。",
+            "For preliminary stage, run an extra model pass for window summaries and keywords.",
         ),
     )
 
@@ -358,6 +374,14 @@ def build_parser():
         help=localized(
             "learn-memory 额外参考前 N 天窗口；默认 0，保持轻量。",
             "For learn-memory, additionally learn from the previous N days; default 0 keeps it lightweight.",
+        ),
+    )
+    refresh.add_argument(
+        "--preliminary-model-windows",
+        action="store_true",
+        help=localized(
+            "learn-memory 使用 preliminary 时，额外跑大模型窗口摘要和关键词生成。",
+            "When learn-memory uses preliminary stage, run an extra model pass for window summaries and keywords.",
         ),
     )
 
@@ -2202,6 +2226,7 @@ def pipeline_command(
     skip_learning_collect=False,
     reuse_lightweight=False,
     skip_if_unchanged=True,
+    preliminary_model_windows=False,
 ):
     cmd = ["/bin/zsh", str(NIGHTLY_PIPELINE_SCRIPT), date_str, stage]
     if learn_window_days > 0:
@@ -2216,6 +2241,8 @@ def pipeline_command(
         cmd.append("--skip-if-unchanged")
     else:
         cmd.append("--no-skip-if-unchanged")
+    if stage == "preliminary" and preliminary_model_windows:
+        cmd.append("--preliminary-model-windows")
     return cmd
 
 
@@ -2425,6 +2452,7 @@ def command_review(args):
         skip_learning_collect=args.stage == "final" and args.learn_window_days > 0,
         reuse_lightweight=args.stage == "final" and has_reusable_lightweight_compact(args.date),
         skip_if_unchanged=True,
+        preliminary_model_windows=getattr(args, "preliminary_model_windows", False),
     )
     pipeline_error = None
     if args.json:
@@ -2553,6 +2581,7 @@ def run_backfill_dates(
     defer_global_refresh=False,
     verbose=True,
     jobs=1,
+    preliminary_model_windows=False,
 ):
     target_dates = list(dates)
     total_dates = len(target_dates)
@@ -2664,6 +2693,7 @@ def run_backfill_dates(
             skip_learning_collect=skip_learning_collect,
             reuse_lightweight=stage == "final" and has_reusable_lightweight_compact(date_str),
             skip_if_unchanged=not force,
+            preliminary_model_windows=preliminary_model_windows,
         )
         work_items.append(
             {
@@ -2768,16 +2798,23 @@ def command_backfill(args):
             print(localized("深度 final 回溯将按串行执行。", "Final deep backfill will run serially."))
         if args.learn_window_days > 0:
             print("{}: {} days".format(localized("窗口学习", "Window learning"), args.learn_window_days))
+        if args.stage == "preliminary" and getattr(args, "preliminary_model_windows", False):
+            print(localized("窗口模型增强: 开启", "Window model enhancement: on"))
 
+    run_kwargs = {
+        "learn_window_days": args.learn_window_days,
+        "force": args.force,
+        "ensure_learning_final": True,
+        "defer_global_refresh": True,
+        "verbose": not args.json,
+        "jobs": args.jobs,
+    }
+    if getattr(args, "preliminary_model_windows", False):
+        run_kwargs["preliminary_model_windows"] = True
     results = run_backfill_dates(
         dates,
         args.stage,
-        learn_window_days=args.learn_window_days,
-        force=args.force,
-        ensure_learning_final=True,
-        defer_global_refresh=True,
-        verbose=not args.json,
-        jobs=args.jobs,
+        **run_kwargs,
     )
     completed = sum(1 for item in results if item["status"] == "completed")
     failed_results = [item for item in results if item["status"] == "failed"]
@@ -2844,6 +2881,8 @@ def command_refresh(args):
         cmd.extend(["--learn-memory", "--date", args.date, "--stage", args.stage])
         if args.learn_window_days > 0:
             cmd.extend(["--learn-window-days", str(args.learn_window_days)])
+        if args.stage == "preliminary" and getattr(args, "preliminary_model_windows", False):
+            cmd.append("--preliminary-model-windows")
     run_checked(cmd)
     data = load_overview()
     learn_summary = load_review_summary_if_available(args.date) if args.learn_memory else None
