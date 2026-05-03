@@ -3910,12 +3910,14 @@ scope: Release checklist, package manifest, and public website validation.
         self.assertIn('class="nightly-date-input"', html)
         self.assertIn('id="window-overview-date-input"', html)
         self.assertIn('aria-label="选择窗口日期"', html)
+        self.assertIn('class="nightly-date-value" data-date-select-value>2026/04/26</span>', html)
         self.assertIn('value="2026-04-26" selected>2026/04/26</option>', html)
 
     def test_window_overview_date_control_keeps_selected_empty_state_clickable(self):
         html = build_overview.make_window_overview_date_control([], "2026-04-30")
 
         self.assertIn('id="window-overview-date-input"', html)
+        self.assertIn('data-date-select-value>2026/04/30</span>', html)
         self.assertIn('value="2026-04-30" selected>2026/04/30</option>', html)
         self.assertNotIn(" disabled", html)
 
@@ -5885,6 +5887,7 @@ scope: Release checklist, package manifest, and public website validation.
         self.assertIn('"cards_html_zh"', html)
         self.assertIn("旧窗口", html)
         self.assertIn("function renderWindowOverview(dateValue)", html)
+        self.assertIn("function syncDateControlValue(select)", html)
         self.assertIn("wireWindowOverviewDateInput();", html)
         self.assertIn("function wireExternalPanelLinks()", html)
         self.assertIn("openrelixOpenExternal", html)
