@@ -48,11 +48,11 @@
 - `usage_frequency` is a deterministic window-equivalent score. Direct source-window matches count most, text matches between memory title/keywords/value note and recent window summaries count next, and project/context matches only add a small boost.
 - The frequency window is bounded to the latest 7 daily captures for stable performance; the dashboard does not call an LLM during refresh.
 
-## Codex native memory view
+## Host native memory views
 
-- The dashboard also reads the configured Codex home, usually `~/.codex/memories/memory_summary.md`, and shows the `What's in Memory` topic items as a parallel native-memory view.
-- This view is meant to represent what Codex itself has in its user-level memory layer, rather than what the nightly asset pipeline inferred afterward.
-- In `integrated` mode, routine refresh, review, and nightly jobs may regenerate the bounded `memory_summary.md`; they should not write raw windows or the full local registry into Codex native memory files.
+- The dashboard also reads configured host-native context files: Codex usually uses `~/.codex/memories/memory_summary.md`, while Claude Code uses the OpenRelix managed block in `~/.claude/CLAUDE.md`.
+- These views represent what each host can read in its user-level context layer, rather than what the nightly asset pipeline inferred afterward.
+- In `integrated` mode, routine refresh, review, and nightly jobs may regenerate one shared bounded summary for enabled host contexts; they should not write raw windows or the full local registry into host native memory files.
 - The native-memory section keeps user profile, preferences, and general tips in the source file; the panel focuses on the topic entries that are easiest to compare with nightly memory.
 - In practice: native memory is closer to long-lived rules and rollout summaries, while the nightly registry is closer to recent task memory with source-window traceability.
 

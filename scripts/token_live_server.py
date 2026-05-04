@@ -17,7 +17,7 @@ from openrelix_overview.config import (
     LIVE_TOKEN_HOST,
     LIVE_TOKEN_PORT,
 )
-from openrelix_overview.token_fetcher import fetch_ccusage_daily
+from openrelix_overview.token_fetcher import fetch_ccusage_daily, normalize_token_provider
 from openrelix_overview.token_usage import build_token_usage_view
 from openrelix_overview.update_secret import read_or_create_update_token
 
@@ -139,16 +139,21 @@ def write_cache(payload):
     atomic_write_json(CACHE_PATH, payload)
 
 
-def cache_is_fresh(payload, window_days):
-    if not payload or payload.get("window_days") != window_days:
+def cache_is_fresh(payload, window_days, provider):
+    if (
+        not payload
+        or payload.get("window_days") != window_days
+        or normalize_token_provider(payload.get("provider")) != normalize_token_provider(provider)
+    ):
         return False
     cached_at_epoch = payload.get("_cached_at_epoch", 0)
     return (time.time() - cached_at_epoch) < CACHE_TTL_SECONDS
 
 
-def fetch_token_payload(window_days, force_refresh=False):
+def fetch_token_payload(window_days, force_refresh=False, provider="all"):
+    provider = normalize_token_provider(provider)
     cached_payload = load_cache()
-    if not force_refresh and cache_is_fresh(cached_payload, window_days):
+    if not force_refresh and cache_is_fresh(cached_payload, window_days, provider):
         cached_result = dict(cached_payload)
         cached_result["served_from_cache"] = True
         cached_result["stale"] = False
@@ -156,19 +161,20 @@ def fetch_token_payload(window_days, force_refresh=False):
 
     with FETCH_LOCK:
         cached_payload = load_cache()
-        if not force_refresh and cache_is_fresh(cached_payload, window_days):
+        if not force_refresh and cache_is_fresh(cached_payload, window_days, provider):
             cached_result = dict(cached_payload)
             cached_result["served_from_cache"] = True
             cached_result["stale"] = False
             return cached_result
 
-        ccusage_result = fetch_ccusage_daily(window_days=window_days)
+        ccusage_result = fetch_ccusage_daily(window_days=window_days, provider=provider)
         token_usage = build_token_usage_view(ccusage_result, language=LANGUAGE)
         payload = {
             "ok": bool(token_usage.get("available")),
             "stale": False,
             "error": token_usage.get("error", ""),
             "window_days": window_days,
+            "provider": provider,
             "served_from_cache": False,
             "token_usage": token_usage,
             "_cached_at_epoch": time.time(),
@@ -177,7 +183,9 @@ def fetch_token_payload(window_days, force_refresh=False):
             write_cache(payload)
             return payload
 
-        if cached_payload and cached_payload.get("window_days") == window_days:
+        if cached_payload and cached_payload.get("window_days") == window_days and normalize_token_provider(
+            cached_payload.get("provider")
+        ) == provider:
             stale_payload = dict(cached_payload)
             stale_payload["ok"] = True
             stale_payload["stale"] = True
@@ -246,12 +254,13 @@ class TokenLiveHandler(BaseHTTPRequestHandler):
 
         query = parse_qs(parsed.query)
         force_refresh = query.get("force", ["0"])[0] == "1"
+        provider = normalize_token_provider(query.get("provider", ["all"])[0])
         try:
             window_days = int(query.get("window_days", [str(CCUSAGE_WINDOW_DAYS)])[0])
         except ValueError:
             window_days = CCUSAGE_WINDOW_DAYS
 
-        payload = fetch_token_payload(window_days=window_days, force_refresh=force_refresh)
+        payload = fetch_token_payload(window_days=window_days, force_refresh=force_refresh, provider=provider)
         status_code = 200 if payload.get("ok") or payload.get("stale") else 503
         self._send_json(status_code, payload)
 

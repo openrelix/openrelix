@@ -25,7 +25,9 @@ import check_personal_info  # noqa: E402
 import openrelix  # noqa: E402
 import asset_runtime  # noqa: E402
 import nightly_consolidate  # noqa: E402
+import sync_host_memory_summary  # noqa: E402
 from openrelix_overview import contract as overview_contract  # noqa: E402
+from openrelix_overview import token_fetcher  # noqa: E402
 
 
 def make_memory(title, memory_type="semantic", priority="medium"):
@@ -59,6 +61,8 @@ def make_runtime_paths_for_test(root):
         openrelix.PATHS,
         state_root=root,
         codex_home=root / "codex-home",
+        claude_home=root / "claude-home",
+        claude_bin=str(root / "bin" / "claude"),
         raw_dir=root / "raw",
         raw_daily_dir=root / "raw" / "daily",
         raw_windows_dir=root / "raw" / "windows",
@@ -70,6 +74,7 @@ def make_runtime_paths_for_test(root):
         runtime_dir=root / "runtime",
         nightly_runner_dir=root / "runtime" / "nightly-runner",
         nightly_codex_home=root / "runtime" / "codex-nightly-home",
+        nightly_claude_home=root / "runtime" / "claude-nightly-home",
         log_dir=root / "log",
     )
 
@@ -238,6 +243,8 @@ class NightlyLogicTests(unittest.TestCase):
                 "nightly_memory_views": {},
                 "codex_native_memory": [],
                 "codex_native_memory_counts": {},
+                "claude_native_memory": [],
+                "claude_native_memory_counts": {},
             }
             (reports_dir / "overview-data.json").write_text(
                 json.dumps(overview_data),
@@ -273,6 +280,20 @@ class NightlyLogicTests(unittest.TestCase):
         self.assertEqual(asset_runtime.normalize_activity_source("read-codex-app"), "auto")
         with self.assertRaises(ValueError):
             asset_runtime.normalize_activity_source("browser", strict=True)
+        self.assertEqual(asset_runtime.normalize_activity_host(None), "all")
+        self.assertEqual(asset_runtime.normalize_activity_host("cc"), "claude")
+        self.assertEqual(asset_runtime.normalize_activity_host("both"), "all")
+        with self.assertRaises(ValueError):
+            asset_runtime.normalize_activity_host("browser", strict=True)
+        self.assertEqual(asset_runtime.normalize_model_cli(None), "codex")
+        self.assertEqual(asset_runtime.normalize_model_cli("cc"), "claude")
+        with self.assertRaises(ValueError):
+            asset_runtime.normalize_model_cli("browser", strict=True)
+        self.assertEqual(asset_runtime.normalize_claude_model(None), "sonnet")
+        self.assertEqual(asset_runtime.normalize_claude_model("opus"), "opus")
+        with self.assertRaises(ValueError):
+            asset_runtime.normalize_claude_model("bad model", strict=True)
+        self.assertEqual(asset_runtime.normalize_host_context_targets("codex,cc"), ["codex", "claude"])
         self.assertEqual(asset_runtime.normalize_codex_model(None), "gpt-5.4-mini")
         self.assertEqual(asset_runtime.normalize_codex_model("gpt5.4mini"), "gpt-5.4-mini")
         self.assertEqual(asset_runtime.normalize_codex_model("gpt5.5"), "gpt-5.5")
@@ -292,8 +313,14 @@ class NightlyLogicTests(unittest.TestCase):
                     "AI_ASSET_MEMORY_MODE": "",
                     "OPENRELIX_ACTIVITY_SOURCE": "",
                     "AI_ASSET_ACTIVITY_SOURCE": "",
+                    "OPENRELIX_ACTIVITY_HOST": "",
+                    "AI_ASSET_ACTIVITY_HOST": "",
+                    "OPENRELIX_MODEL_CLI": "",
+                    "AI_ASSET_MODEL_CLI": "",
                     "OPENRELIX_CODEX_MODEL": "",
                     "AI_ASSET_CODEX_MODEL": "",
+                    "OPENRELIX_CLAUDE_MODEL": "",
+                    "AI_ASSET_CLAUDE_MODEL": "",
                 },
             ):
                 paths = asset_runtime.get_runtime_paths()
@@ -302,7 +329,10 @@ class NightlyLogicTests(unittest.TestCase):
                     language="en",
                     memory_mode="codex",
                     activity_source="auto",
+                    activity_host="cc",
+                    model_cli="cc",
                     codex_model="gpt5.4mini",
+                    claude_model="opus",
                     memory_summary_max_tokens=8000,
                     paths=paths,
                 )
@@ -310,7 +340,11 @@ class NightlyLogicTests(unittest.TestCase):
                 self.assertEqual(config["language"], "en")
                 self.assertEqual(config["memory_mode"], "integrated")
                 self.assertEqual(config["activity_source"], "auto")
+                self.assertEqual(config["activity_host"], "claude")
+                self.assertEqual(config["model_cli"], "claude")
                 self.assertEqual(config["codex_model"], "gpt-5.4-mini")
+                self.assertEqual(config["claude_model"], "opus")
+                self.assertEqual(config["host_context_targets"], ["codex", "claude"])
                 self.assertEqual(config["memory_summary_max_tokens"], 8000)
                 self.assertTrue(config["personal_memory_enabled"])
                 self.assertTrue(config["codex_context_enabled"])
@@ -319,7 +353,11 @@ class NightlyLogicTests(unittest.TestCase):
                 self.assertEqual(asset_runtime.get_runtime_language(paths), "en")
                 self.assertEqual(asset_runtime.get_memory_mode(paths), "integrated")
                 self.assertEqual(asset_runtime.get_activity_source(paths), "auto")
+                self.assertEqual(asset_runtime.get_activity_host(paths), "claude")
+                self.assertEqual(asset_runtime.get_model_cli(paths), "claude")
                 self.assertEqual(asset_runtime.get_codex_model(paths), "gpt-5.4-mini")
+                self.assertEqual(asset_runtime.get_claude_model(paths), "opus")
+                self.assertEqual(asset_runtime.get_host_context_targets(paths), ["codex", "claude"])
                 self.assertTrue(asset_runtime.personal_memory_enabled(paths))
                 self.assertTrue(asset_runtime.codex_context_enabled(paths))
                 self.assertEqual(
@@ -486,6 +524,64 @@ class NightlyLogicTests(unittest.TestCase):
         self.assertIn("这是一个纯整理任务", chinese_prompt)
         self.assertIn("直接输出符合 schema 的 JSON", chinese_prompt)
 
+    def test_token_fetcher_merges_codex_and_claude_daily_usage(self):
+        def fake_now():
+            return datetime.fromisoformat("2026-05-04T10:00:00+08:00")
+
+        def fake_runner(cmd, **kwargs):
+            package = cmd[2]
+            if package == "@ccusage/codex@latest":
+                payload = {
+                    "daily": [
+                        {
+                            "date": "2026-05-04",
+                            "inputTokens": 100,
+                            "cachedInputTokens": 20,
+                            "outputTokens": 30,
+                            "reasoningOutputTokens": 5,
+                            "totalTokens": 135,
+                            "costUSD": 1.25,
+                        }
+                    ]
+                }
+            elif package == "ccusage@latest":
+                payload = {
+                    "daily": [
+                        {
+                            "date": "20260504",
+                            "inputTokens": 50,
+                            "cacheCreationTokens": 10,
+                            "cacheReadTokens": 5,
+                            "outputTokens": 20,
+                            "totalTokens": 85,
+                            "totalCost": 0.5,
+                        }
+                    ]
+                }
+            else:
+                raise AssertionError(cmd)
+            return subprocess.CompletedProcess(cmd, 0, stdout=json.dumps(payload), stderr="")
+
+        result = token_fetcher.fetch_ccusage_daily(
+            window_days=2,
+            now_func=fake_now,
+            resolve_npx_binary_func=lambda: "npx",
+            env_func=lambda: {},
+            runner=fake_runner,
+            provider="all",
+        )
+
+        self.assertTrue(result["available"])
+        self.assertEqual(result["provider"], "all")
+        self.assertIn("codex", result["provider_results"])
+        self.assertIn("claude", result["provider_results"])
+        merged_row = result["payload"]["daily"][0]
+        self.assertEqual(merged_row["date"], "2026-05-04")
+        self.assertEqual(merged_row["totalTokens"], 220)
+        self.assertEqual(merged_row["cachedInputTokens"], 25)
+        self.assertAlmostEqual(merged_row["costUSD"], 1.75)
+        self.assertEqual(merged_row["providers"]["claude"]["provider"], "claude")
+
     def test_run_codex_consolidation_recreates_broken_auth_symlink(self):
         old_main_codex_home = nightly_consolidate.MAIN_CODEX_HOME
         old_nightly_codex_home = nightly_consolidate.NIGHTLY_CODEX_HOME
@@ -554,6 +650,44 @@ class NightlyLogicTests(unittest.TestCase):
             nightly_consolidate.CODEX_BIN = old_codex_bin
             nightly_consolidate.SCHEMA_PATH = old_schema_path
             nightly_consolidate.CODEX_MODEL = old_codex_model
+
+    def test_run_model_consolidation_dispatches_to_configured_claude_cli(self):
+        old_model_cli = nightly_consolidate.MODEL_CLI
+        try:
+            nightly_consolidate.MODEL_CLI = "claude"
+            with TemporaryDirectory() as tmpdir:
+                output_path = Path(tmpdir) / "summary.json"
+                with mock.patch.object(nightly_consolidate, "run_claude_consolidation") as claude_run, mock.patch.object(
+                    nightly_consolidate,
+                    "run_codex_consolidation",
+                ) as codex_run:
+                    nightly_consolidate.run_model_consolidation(
+                        "prompt",
+                        output_path,
+                        language="en",
+                        timeout_seconds=12,
+                    )
+
+                claude_run.assert_called_once_with(
+                    "prompt",
+                    output_path,
+                    language="en",
+                    timeout_seconds=12,
+                )
+                codex_run.assert_not_called()
+        finally:
+            nightly_consolidate.MODEL_CLI = old_model_cli
+
+    def test_claude_result_payload_accepts_json_schema_result(self):
+        payload = {
+            "type": "result",
+            "is_error": False,
+            "result": json.dumps({"date": "2026-05-04", "window_summaries": []}),
+        }
+
+        parsed = nightly_consolidate.claude_result_payload(json.dumps(payload))
+
+        self.assertEqual(parsed["date"], "2026-05-04")
 
     def test_sync_codex_exec_home_tolerates_auth_symlink_race(self):
         with TemporaryDirectory() as tmpdir:
@@ -2361,6 +2495,103 @@ scope: Release checklist, package manifest, and public website validation.
         self.assertIn("Show 5 more items", cards_html)
         self.assertNotIn("native-brief-heading", cards_html)
 
+    def test_parse_claude_native_memory_summary_reuses_shared_personal_memory_shape(self):
+        sample = """# User Claude instructions
+
+Keep my own note.
+
+## User preferences
+
+- This user-owned Claude note must stay outside OpenRelix shared memory.
+
+<!-- openrelix:shared-memory:start -->
+# OpenRelix Shared Personal Memory
+
+## User preferences
+
+- Prefer worktree-first OpenRelix changes.
+
+## General Tips
+
+- Keep personal state outside the repo.
+
+## What's in Memory
+
+### Recent Memory Topics
+
+- OpenRelix shared personal memory: claude, codex
+  - desc: One local registry is injected into both host contexts.
+  - learnings: Claude Code reads the managed block in CLAUDE.md.
+<!-- openrelix:shared-memory:end -->
+"""
+
+        with TemporaryDirectory() as tmpdir:
+            claude_path = Path(tmpdir) / "CLAUDE.md"
+            claude_path.write_text(sample, encoding="utf-8")
+
+            parsed = build_overview.parse_claude_native_memory_summary(
+                claude_path,
+                known_project_names=["OpenRelix"],
+                language="zh",
+            )
+            comparison = build_overview.build_claude_native_memory_comparison(
+                parsed["rows"],
+                parsed["counts"],
+                "CLAUDE.md",
+                language="zh",
+            )
+
+        self.assertEqual(parsed["counts"]["topic_items"], 1)
+        self.assertEqual(parsed["counts"]["user_preferences"], 1)
+        self.assertEqual(parsed["counts"]["general_tips"], 1)
+        self.assertEqual(parsed["counts"]["total_items"], 3)
+        self.assertTrue(all(row["source_files"][0]["label"] == "CLAUDE.md" for row in parsed["rows"]))
+        self.assertIn("Claude", parsed["rows"][0]["display_bucket"])
+        self.assertIn("同一份本地个人记忆登记册", comparison["note"])
+
+    def test_sync_host_memory_summary_preserves_user_claude_file_content(self):
+        block = sync_host_memory_summary.managed_claude_block("## What's in Memory\n\n- Shared item\n")
+        existing = "# User notes\n\nKeep this line.\n"
+
+        first = sync_host_memory_summary.replace_managed_block(existing, block)
+        second = sync_host_memory_summary.replace_managed_block(first, sync_host_memory_summary.managed_claude_block("## Updated\n"))
+
+        self.assertIn("Keep this line.", second)
+        self.assertIn("## Updated", second)
+        self.assertNotIn("- Shared item", second)
+        self.assertEqual(second.count(sync_host_memory_summary.MANAGED_START), 1)
+
+    def test_sync_host_memory_summary_clear_helpers_remove_managed_surfaces(self):
+        with TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            paths = replace(
+                sync_host_memory_summary.PATHS,
+                codex_home=root / "codex-home",
+                claude_home=root / "claude-home",
+            )
+            codex_summary = paths.codex_home / "memories" / "memory_summary.md"
+            claude_summary = paths.claude_home / "CLAUDE.md"
+            codex_summary.parent.mkdir(parents=True)
+            claude_summary.parent.mkdir(parents=True)
+            codex_summary.write_text("## What's in Memory\n\n- stale shared item\n", encoding="utf-8")
+            claude_summary.write_text(
+                "# User notes\n\n"
+                + sync_host_memory_summary.managed_claude_block("## What's in Memory\n\n- stale shared item\n"),
+                encoding="utf-8",
+            )
+
+            with mock.patch.object(sync_host_memory_summary, "PATHS", paths):
+                codex_result = sync_host_memory_summary.clear_codex_summary()
+                claude_result = sync_host_memory_summary.clear_claude_summary()
+                claude_text = claude_summary.read_text(encoding="utf-8")
+
+            self.assertEqual(codex_result["status"], "removed")
+            self.assertEqual(claude_result["status"], "removed")
+            self.assertFalse(codex_summary.exists())
+            self.assertTrue(claude_summary.exists())
+            self.assertIn("# User notes", claude_text)
+            self.assertNotIn(sync_host_memory_summary.MANAGED_START, claude_text)
+
     def test_invalid_utf8_codex_memory_index_keeps_overview_available(self):
         sample_summary = """## What's in Memory
 
@@ -3188,7 +3419,7 @@ scope: Release checklist, package manifest, and public website validation.
         self.assertIn("1 条留本地，约 1 条进摘要（候选不设条数上限）", usage["mode_note_zh"])
         widget = build_overview.make_personal_memory_token_widget(usage)
         self.assertIn("memory-token-widget", widget)
-        self.assertIn("Codex context 预算", widget)
+        self.assertIn("Host context 预算", widget)
         self.assertIn("≈ ", widget)
         self.assertIn("摘要目标 6.7K / 警戒 7.4K / 上限 8K", widget)
         self.assertIn("1 条留本地，约 1 条进摘要（候选不设条数上限）", widget)
@@ -3556,7 +3787,7 @@ scope: Release checklist, package manifest, and public website validation.
         self.assertIn("window.localStorage", html)
         self.assertNotIn("side-nav-sublabel", html)
         self.assertIn("personal-memory-context-section", html)
-        self.assertIn("进入 Codex context 的记忆", html)
+        self.assertIn("进入 host context 的记忆", html)
         self.assertIn("personal-memory-durable-section", html)
         self.assertIn("codex-native-topic-section", html)
         self.assertNotIn("本期小结", html)
@@ -4123,9 +4354,9 @@ scope: Release checklist, package manifest, and public website validation.
             finally:
                 build_overview.load_window_record.cache_clear()
 
-        self.assertIn("OpenRelix · 原始窗口 ID：{}".format(thread_id), html)
+        self.assertIn("OpenRelix · Codex · 原始窗口 ID：{}".format(thread_id), html)
         self.assertLess(
-            html.index("OpenRelix · 原始窗口 ID：{}".format(thread_id)),
+            html.index("OpenRelix · Codex · 原始窗口 ID：{}".format(thread_id)),
             html.index("问题"),
         )
         self.assertNotIn('class="window-card-title-label"', html)
@@ -4555,7 +4786,7 @@ scope: Release checklist, package manifest, and public website validation.
             language="en",
         )
 
-        self.assertIn("OpenRelix · Raw Window ID: w2", html)
+        self.assertIn("OpenRelix · Codex · Raw Window ID: w2", html)
         self.assertNotIn("OpenRelix · Window 2", html)
         self.assertIn("Collection: Codex app-server · thread source: cli", html)
         self.assertIn("Window.", html)
@@ -4685,6 +4916,48 @@ scope: Release checklist, package manifest, and public website validation.
             payload = json.loads(stdout.getvalue())
             self.assertEqual(payload["codex_model"], "gpt-5.4-mini")
             self.assertEqual(payload["configured_codex_model"], "gpt-5.4-mini")
+            self.assertFalse(payload["refreshed"])
+
+    def test_openrelix_config_updates_claude_host_and_model_cli(self):
+        with TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            runtime_dir = root / "runtime"
+            runtime_dir.mkdir(parents=True)
+            paths = replace(openrelix.PATHS, state_root=root, runtime_dir=runtime_dir)
+            args = argparse.Namespace(
+                memory_summary_max_tokens=None,
+                activity_source=None,
+                activity_host="cc",
+                model_cli="cc",
+                codex_model=None,
+                claude_model="opus",
+                read_codex_app=False,
+                no_refresh=True,
+                json=True,
+            )
+
+            with mock.patch.dict(
+                os.environ,
+                {
+                    "OPENRELIX_ACTIVITY_HOST": "",
+                    "AI_ASSET_ACTIVITY_HOST": "",
+                    "OPENRELIX_MODEL_CLI": "",
+                    "AI_ASSET_MODEL_CLI": "",
+                    "OPENRELIX_CLAUDE_MODEL": "",
+                    "AI_ASSET_CLAUDE_MODEL": "",
+                },
+                clear=False,
+            ), mock.patch.object(openrelix, "PATHS", paths), mock.patch("sys.stdout", new_callable=io.StringIO) as stdout:
+                openrelix.command_config(args)
+
+            config = json.loads((runtime_dir / "config.json").read_text(encoding="utf-8"))
+            self.assertEqual(config["activity_host"], "claude")
+            self.assertEqual(config["model_cli"], "claude")
+            self.assertEqual(config["claude_model"], "opus")
+            payload = json.loads(stdout.getvalue())
+            self.assertEqual(payload["activity_host"], "claude")
+            self.assertEqual(payload["model_cli"], "claude")
+            self.assertEqual(payload["claude_model"], "opus")
             self.assertFalse(payload["refreshed"])
 
     def test_openrelix_open_panel_ensures_token_live_service(self):
@@ -5367,6 +5640,7 @@ scope: Release checklist, package manifest, and public website validation.
             (scripts_dir / "collect_codex_activity.py").write_text("", encoding="utf-8")
             (scripts_dir / "build_overview.py").write_text("", encoding="utf-8")
             (scripts_dir / "build_codex_memory_summary.py").write_text("", encoding="utf-8")
+            (scripts_dir / "sync_host_memory_summary.py").write_text("", encoding="utf-8")
             (scripts_dir / "build_codex_native_display_cache.py").write_text(
                 "\n".join(
                     [
@@ -5434,6 +5708,7 @@ scope: Release checklist, package manifest, and public website validation.
             (scripts_dir / "collect_codex_activity.py").write_text("", encoding="utf-8")
             (scripts_dir / "build_overview.py").write_text("", encoding="utf-8")
             (scripts_dir / "build_codex_memory_summary.py").write_text("", encoding="utf-8")
+            (scripts_dir / "sync_host_memory_summary.py").write_text("", encoding="utf-8")
             (scripts_dir / "nightly_consolidate.py").write_text(
                 "\n".join(
                     [
@@ -5456,6 +5731,7 @@ scope: Release checklist, package manifest, and public website validation.
                 ),
                 encoding="utf-8",
             )
+            (scripts_dir / "sync_host_memory_summary.py").write_text("", encoding="utf-8")
             env = dict(os.environ)
             env["OPENRELIX_TEST_CONSOLIDATED_DAILY_DIR"] = str(consolidated_daily_dir)
 
@@ -5610,6 +5886,7 @@ scope: Release checklist, package manifest, and public website validation.
             (scripts_dir / "collect_codex_activity.py").write_text("", encoding="utf-8")
             (scripts_dir / "build_overview.py").write_text("", encoding="utf-8")
             (scripts_dir / "build_codex_memory_summary.py").write_text("", encoding="utf-8")
+            (scripts_dir / "sync_host_memory_summary.py").write_text("", encoding="utf-8")
             (scripts_dir / "nightly_consolidate.py").write_text(
                 "\n".join(
                     [
@@ -5683,6 +5960,7 @@ scope: Release checklist, package manifest, and public website validation.
             (scripts_dir / "collect_codex_activity.py").write_text("", encoding="utf-8")
             (scripts_dir / "build_overview.py").write_text("", encoding="utf-8")
             (scripts_dir / "build_codex_memory_summary.py").write_text("", encoding="utf-8")
+            (scripts_dir / "sync_host_memory_summary.py").write_text("", encoding="utf-8")
             (scripts_dir / "build_codex_native_display_cache.py").write_text(
                 "\n".join(
                     [
@@ -5788,7 +6066,16 @@ scope: Release checklist, package manifest, and public website validation.
         self.assertIn("ENABLE_NIGHTLY=1", installer)
         self.assertIn("Default: integrated", installer)
         self.assertIn('ACTIVITY_SOURCE="${OPENRELIX_ACTIVITY_SOURCE:-${AI_ASSET_ACTIVITY_SOURCE:-auto}}"', installer)
+        self.assertIn('ACTIVITY_HOST="${OPENRELIX_ACTIVITY_HOST:-${AI_ASSET_ACTIVITY_HOST:-all}}"', installer)
+        self.assertIn('MODEL_CLI="${OPENRELIX_MODEL_CLI:-${AI_ASSET_MODEL_CLI:-}}"', installer)
+        self.assertIn("Select model CLI for memory backfill", installer)
+        self.assertIn("--model-cli CLI", installer)
+        self.assertIn("--claude-home PATH", installer)
+        self.assertIn("sync_host_memory_summary.py", installer)
         self.assertIn("Default: auto.", installer)
+        self.assertIn("OPENRELIX_ACTIVITY_HOST", launchd_template)
+        self.assertIn("OPENRELIX_MODEL_CLI", launchd_template)
+        self.assertIn("CLAUDE_HOME", launchd_template)
         self.assertIn("OPENRELIX_REFRESH_LEARN_MEMORY", launchd_template)
         self.assertIn("OPENRELIX_REFRESH_LEARN_WINDOW_DAYS", launchd_template)
         self.assertIn("OPENRELIX_REFRESH_SKIP_UNCHANGED", launchd_template)
@@ -5972,15 +6259,32 @@ scope: Release checklist, package manifest, and public website validation.
             tmp = Path(tmpdir)
             state_root = tmp / "state"
             codex_home = tmp / "codex"
+            claude_home = tmp / "claude"
             state_root.mkdir()
             (state_root / "registry").mkdir()
             (state_root / "registry" / "memory_items.jsonl").write_text("{}", encoding="utf-8")
             (codex_home / "memories").mkdir(parents=True)
             (codex_home / "memories" / "memory_summary.md").write_text("## What's in Memory\n", encoding="utf-8")
+            claude_home.mkdir(parents=True)
+            claude_file = claude_home / "CLAUDE.md"
+            claude_file.write_text(
+                "\n".join(
+                    [
+                        "# User Claude Notes",
+                        "",
+                        openrelix.CLAUDE_MANAGED_MEMORY_START,
+                        "managed OpenRelix memory",
+                        openrelix.CLAUDE_MANAGED_MEMORY_END,
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
             paths = replace(
                 openrelix.PATHS,
                 state_root=state_root,
                 codex_home=codex_home,
+                claude_home=claude_home,
             )
 
             actions = []
@@ -5993,10 +6297,30 @@ scope: Release checklist, package manifest, and public website validation.
 
             self.assertTrue(state_root.exists())
             self.assertTrue((codex_home / "memories" / "memory_summary.md").exists())
-            self.assertEqual([item["status"] for item in actions], ["would_remove", "would_remove"])
+            self.assertTrue(claude_file.exists())
+            self.assertEqual([item["status"] for item in actions], ["would_remove", "would_remove", "would_remove"])
+
+            actions = []
+            with mock.patch.object(openrelix, "PATHS", paths), mock.patch.object(
+                openrelix,
+                "local_memory_roots_for_uninstall",
+                return_value=[state_root],
+            ):
+                openrelix.remove_local_memory_for_uninstall(actions, dry_run=False)
+
+            self.assertFalse(state_root.exists())
+            self.assertFalse((codex_home / "memories" / "memory_summary.md").exists())
+            self.assertTrue(claude_file.exists())
+            self.assertIn("# User Claude Notes", claude_file.read_text(encoding="utf-8"))
+            self.assertNotIn(openrelix.CLAUDE_MANAGED_MEMORY_START, claude_file.read_text(encoding="utf-8"))
 
         actions = []
-        paths = replace(openrelix.PATHS, state_root=ROOT, codex_home=Path("/tmp/openrelix-codex-home"))
+        paths = replace(
+            openrelix.PATHS,
+            state_root=ROOT,
+            codex_home=Path("/tmp/openrelix-codex-home"),
+            claude_home=Path("/tmp/openrelix-claude-home"),
+        )
         with mock.patch.object(openrelix, "PATHS", paths), mock.patch.object(
             openrelix,
             "local_memory_roots_for_uninstall",
@@ -6668,7 +6992,7 @@ scope: Release checklist, package manifest, and public website validation.
         source = (ROOT / "scripts" / "openrelix.py").read_text(encoding="utf-8")
 
         self.assertIn("这一步可能需要几分钟", source)
-        self.assertIn("刷新提示: 最后同步会更新搜索索引、Codex context 摘要和面板", source)
+        self.assertIn("刷新提示: 最后同步会更新搜索索引、host context 摘要和面板", source)
         self.assertIn("仍在刷新: 已等待约 {} 分钟", source)
         self.assertIn("请手动刷新当前页面或 app", source)
 
@@ -7403,7 +7727,7 @@ scope: Release checklist, package manifest, and public website validation.
             )
 
         self.assertEqual(view["today_total_tokens"], 2300)
-        self.assertIn("近 7 天中 2 天有记录", view["overview_note"])
+        self.assertIn("近 14 天中 2 天有记录", view["overview_note"])
         self.assertIn("7 日账单", [card["label"] for card in view["summary_cards"]])
         self.assertEqual(view["summary_cards"][0]["value"], "$7")
         self.assertIn("3400 Token", view["summary_cards"][0]["caption"])
@@ -7466,10 +7790,10 @@ scope: Release checklist, package manifest, and public website validation.
 
         self.assertEqual(
             [row["label"] for row in view["daily_rows"]],
-            ["04-27", "04-28", "04-30", "05-03"],
+            ["04-21", "04-24", "04-26", "04-27", "04-28", "04-30", "05-03"],
         )
-        self.assertEqual(view["window_days"], 7)
-        self.assertIn("近 7 天中 4 天有记录", view["overview_note"])
+        self.assertEqual(view["window_days"], 14)
+        self.assertIn("近 14 天中 7 天有记录", view["overview_note"])
 
     def test_bar_rows_render_hover_details_when_available(self):
         html = build_overview.make_bar_group(

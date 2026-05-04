@@ -6,10 +6,15 @@ REPO_ROOT="${SCRIPT_DIR:h}"
 PYTHON_BIN="${PYTHON_BIN:-}"
 CODEX_HOME="${CODEX_HOME:-$HOME/.codex}"
 CODEX_BIN="${CODEX_BIN:-}"
+CLAUDE_HOME="${CLAUDE_HOME:-${CLAUDE_CONFIG_DIR:-$HOME/.claude}}"
+CLAUDE_BIN="${CLAUDE_BIN:-}"
+CLAUDE_MODEL="${OPENRELIX_CLAUDE_MODEL:-${AI_ASSET_CLAUDE_MODEL:-sonnet}}"
 STATE_DIR="${AI_ASSET_STATE_DIR:-}"
 LANGUAGE="${AI_ASSET_LANGUAGE:-}"
 MEMORY_MODE="${AI_ASSET_MEMORY_MODE:-}"
 ACTIVITY_SOURCE="${OPENRELIX_ACTIVITY_SOURCE:-${AI_ASSET_ACTIVITY_SOURCE:-auto}}"
+ACTIVITY_HOST="${OPENRELIX_ACTIVITY_HOST:-${AI_ASSET_ACTIVITY_HOST:-all}}"
+MODEL_CLI="${OPENRELIX_MODEL_CLI:-${AI_ASSET_MODEL_CLI:-}}"
 STATE_DIR_EXPLICIT=0
 if [[ -n "${AI_ASSET_STATE_DIR:-}" ]]; then
   STATE_DIR_EXPLICIT=1
@@ -97,20 +102,26 @@ Options:
   --codex-home PATH             Override CODEX_HOME. Default: ~/.codex
   --codex-bin PATH              Override the Codex CLI binary used by launchd jobs.
                                 If omitted, resolved from PATH plus common npm/volta/nvm/brew locations.
+  --claude-home PATH            Override CLAUDE_HOME / CLAUDE_CONFIG_DIR. Default: ~/.claude
+  --claude-bin PATH             Override the Claude Code CLI binary used by model backfill jobs.
+  --claude-model MODEL          Claude model or alias for OpenRelix internal claude -p calls.
+                                Default: sonnet.
+  --model-cli CLI               Model CLI for memory backfill: codex | claude | cc.
+                                Interactive installs prompt; non-interactive installs default to codex.
   --language CODE               Runtime language: zh | en. Controls panel rendering, local memory
                                 storage, and model-generated summaries/next-actions — not just UI strings.
                                 If omitted, interactive installs prompt; non-interactive installs default to zh.
   --memory-mode MODE            Memory mode: integrated | local-only | off.
                                 Default: integrated.
-  --record-memory-only          Record personal memory locally, but disable Codex native context injection.
+  --record-memory-only          Record personal memory locally, but disable host context injection.
                                 Alias for --memory-mode local-only.
   --use-integrated              Record personal memory and use host context injection.
                                 Alias for --memory-mode integrated.
   --disable-personal-memory     Turn off this system's local memory writes.
                                 Alias for --memory-mode off.
   --python PATH                 Override the Python binary used by launchd jobs.
-  --sync-memory-summary         Explicitly write a bounded summary into CODEX_HOME.
-  --no-memory-summary           Skip Codex memory summary sync and keep context injection off.
+  --sync-memory-summary         Explicitly write a bounded summary into enabled host context.
+  --no-memory-summary           Skip host memory summary sync and keep context injection off.
   --install-global-skills       Symlink the memory-review skill into the user Codex skill root.
   --no-global-skills            Skip global skill symlinks.
   --install-custom-prompts      Install repo-provided Codex custom prompts.
@@ -130,7 +141,7 @@ Options:
   --enable-update-check         Install a daily no-mutation npm update check LaunchAgent.
   --update-check-time HH:MM     Time for the daily update check. Default: 09:30
   --enable-learning-refresh     Make the 30-minute overview refresh call the
-                                Codex adapter and learn memory with a 7-day
+                                configured activity host adapter and learn memory with a 7-day
                                 window. Implies --enable-background-services.
   --disable-learning-refresh    Keep the 30-minute overview refresh from learning
                                 recent windows. Chinese display polish can still
@@ -150,13 +161,15 @@ Options:
                                 Default: auto.
                                 auto tries Codex app-server first and falls back
                                 to history/session files if unavailable.
+  --activity-host HOST          Activity host: codex | claude | cc | all.
+                                Default: all. Windows keep ai_host in raw payloads.
   --read-codex-app              Alias for --activity-source auto.
                                 Kept for compatibility with older install commands.
   -h, --help                    Show this help text.
 
 This __OPENRELIX_VERSION_LABEL__ preview installer currently supports macOS only.
 The installer defaults to integrated personal memory: it records into the
-configured state root and syncs a bounded summary into Codex native context.
+configured state root and syncs a bounded summary into enabled host context.
 Use --record-memory-only when you explicitly want strict local-only recording
 without context injection.
 EOF
@@ -446,6 +459,44 @@ select_runtime_language() {
   LANGUAGE="zh"
 }
 
+select_model_cli() {
+  local answer=""
+  if [[ -n "$MODEL_CLI" ]]; then
+    return
+  fi
+
+  if [[ -t 0 && -z "${CI:-}" ]]; then
+    print -r -- ""
+    print -r -- "Select model CLI for memory backfill / 选择大模型记忆回溯使用的 CLI:"
+    print -r -- "  1) Codex CLI - default"
+    print -r -- "  2) Claude Code CLI"
+    while true; do
+      printf "Model CLI [1/2/codex/claude/cc, default codex]: "
+      if ! IFS= read -r answer; then
+        print -r -- ""
+        MODEL_CLI="codex"
+        return
+      fi
+      answer="${answer:l}"
+      case "$answer" in
+        ""|1|codex|codex-cli|codex_cli)
+          MODEL_CLI="codex"
+          return
+          ;;
+        2|claude|cc|claude-code|claude_code|claude-code-cli|claude_code_cli)
+          MODEL_CLI="claude"
+          return
+          ;;
+        *)
+          print -r -- "Please enter 1/codex or 2/claude."
+          ;;
+      esac
+    done
+  fi
+
+  MODEL_CLI="codex"
+}
+
 detect_install_profile "$@"
 apply_install_profile
 if [[ -n "$MEMORY_MODE" ]]; then
@@ -478,6 +529,34 @@ while [[ $# -gt 0 ]]; do
       require_option_value "$1" "${2-}"
       CODEX_BIN="$2"
       shift 2
+      ;;
+    --claude-home)
+      require_option_value "$1" "${2-}"
+      CLAUDE_HOME="$2"
+      shift 2
+      ;;
+    --claude-bin)
+      require_option_value "$1" "${2-}"
+      CLAUDE_BIN="$2"
+      shift 2
+      ;;
+    --claude-model)
+      require_option_value "$1" "${2-}"
+      CLAUDE_MODEL="$2"
+      shift 2
+      ;;
+    --claude-model=*)
+      CLAUDE_MODEL="${1#*=}"
+      shift
+      ;;
+    --model-cli)
+      require_option_value "$1" "${2-}"
+      MODEL_CLI="$2"
+      shift 2
+      ;;
+    --model-cli=*)
+      MODEL_CLI="${1#*=}"
+      shift
       ;;
     --language)
       require_option_value "$1" "${2-}"
@@ -691,6 +770,15 @@ while [[ $# -gt 0 ]]; do
       ACTIVITY_SOURCE="${1#*=}"
       shift
       ;;
+    --activity-host)
+      require_option_value "$1" "${2-}"
+      ACTIVITY_HOST="$2"
+      shift 2
+      ;;
+    --activity-host=*)
+      ACTIVITY_HOST="${1#*=}"
+      shift
+      ;;
     --read-codex-app)
       ACTIVITY_SOURCE="auto"
       shift
@@ -738,6 +826,7 @@ if [[ "$OSTYPE" != darwin* ]]; then
 fi
 
 select_runtime_language
+select_model_cli
 
 PYTHON_BIN="$(resolve_python_bin)"
 if [[ -z "$PYTHON_BIN" ]]; then
@@ -830,6 +919,89 @@ except ValueError as exc:
     raise SystemExit(1)
 PY
 )"
+
+ACTIVITY_HOST="$(
+  "$PYTHON_BIN" - "$REPO_ROOT" "$ACTIVITY_HOST" <<'PY'
+import sys
+
+repo_root = sys.argv[1]
+activity_host = sys.argv[2]
+sys.path.insert(0, repo_root + "/scripts")
+
+from asset_runtime import normalize_activity_host  # noqa: E402
+
+try:
+    print(normalize_activity_host(activity_host, strict=True))
+except ValueError as exc:
+    print(str(exc), file=sys.stderr)
+    raise SystemExit(1)
+PY
+)"
+
+MODEL_CLI="$(
+  "$PYTHON_BIN" - "$REPO_ROOT" "$MODEL_CLI" <<'PY'
+import sys
+
+repo_root = sys.argv[1]
+model_cli = sys.argv[2]
+sys.path.insert(0, repo_root + "/scripts")
+
+from asset_runtime import normalize_model_cli  # noqa: E402
+
+try:
+    print(normalize_model_cli(model_cli, strict=True))
+except ValueError as exc:
+    print(str(exc), file=sys.stderr)
+    raise SystemExit(1)
+PY
+)"
+
+CLAUDE_MODEL="$(
+  "$PYTHON_BIN" - "$REPO_ROOT" "$CLAUDE_MODEL" <<'PY'
+import sys
+
+repo_root = sys.argv[1]
+claude_model = sys.argv[2]
+sys.path.insert(0, repo_root + "/scripts")
+
+from asset_runtime import normalize_claude_model  # noqa: E402
+
+try:
+    print(normalize_claude_model(claude_model, strict=True))
+except ValueError as exc:
+    print(str(exc), file=sys.stderr)
+    raise SystemExit(1)
+PY
+)"
+
+if [[ -z "$CLAUDE_BIN" ]]; then
+  CLAUDE_BIN="$(
+    CLAUDE_BIN="" "$PYTHON_BIN" - "$REPO_ROOT" <<'PY'
+import os
+import sys
+
+repo_root = sys.argv[1]
+sys.path.insert(0, repo_root + "/scripts")
+
+os.environ.pop("CLAUDE_BIN", None)
+from asset_runtime import default_claude_binary  # noqa: E402
+
+print(default_claude_binary())
+PY
+  )"
+fi
+if [[ "$MODEL_CLI" == "claude" ]]; then
+  if [[ -z "$CLAUDE_BIN" || ! -x "$CLAUDE_BIN" ]]; then
+    echo "Could not locate the Claude Code CLI binary." >&2
+    echo "Install Claude Code CLI or pass --claude-bin /full/path/to/claude." >&2
+    exit 1
+  fi
+fi
+CLAUDE_BIN_DIR=""
+if [[ -n "$CLAUDE_BIN" && -x "$CLAUDE_BIN" ]]; then
+  CLAUDE_BIN_DIR="${CLAUDE_BIN:h}"
+  SAFE_PATH="$CLAUDE_BIN_DIR:$SAFE_PATH"
+fi
 
 if (( CODEX_MEMORY_SUMMARY_EXPLICIT )) && (( ! ENABLE_CODEX_MEMORY_SUMMARY )) && [[ "$MEMORY_MODE" == "integrated" ]]; then
   MEMORY_MODE="local-only"
@@ -938,8 +1110,13 @@ render_plist() {
     --set "PYTHON_BIN=$PYTHON_BIN" \
     --set "CODEX_BIN=$CODEX_BIN" \
     --set "CODEX_HOME=$CODEX_HOME" \
+    --set "CLAUDE_BIN=$CLAUDE_BIN" \
+    --set "CLAUDE_HOME=$CLAUDE_HOME" \
     --set "SAFE_PATH=$SAFE_PATH" \
     --set "ACTIVITY_SOURCE=$ACTIVITY_SOURCE" \
+    --set "ACTIVITY_HOST=$ACTIVITY_HOST" \
+    --set "MODEL_CLI=$MODEL_CLI" \
+    --set "CLAUDE_MODEL=$CLAUDE_MODEL" \
     --set "LEARNING_REFRESH=$ENABLE_LEARNING_REFRESH" \
     --set "LEARNING_REFRESH_WINDOW_DAYS=$LEARNING_REFRESH_WINDOW_DAYS" \
     --set "OVERVIEW_RUN_AT_LOAD=$OVERVIEW_RUN_AT_LOAD" \
@@ -981,21 +1158,33 @@ bootstrap_launch_agent() {
 if (( ENABLE_CODEX_MEMORY_SUMMARY || DISABLE_CODEX_MEMORIES || ENABLE_MEMORIES || ENABLE_HISTORY || INSTALL_GLOBAL_SKILLS || INSTALL_CUSTOM_PROMPTS )); then
   mkdir -p "$CODEX_HOME"
 fi
+if (( ENABLE_CODEX_MEMORY_SUMMARY )); then
+  mkdir -p "$CLAUDE_HOME"
+fi
 export AI_ASSET_STATE_DIR="$STATE_DIR"
 export CODEX_HOME="$CODEX_HOME"
+export CLAUDE_HOME="$CLAUDE_HOME"
+export CLAUDE_CONFIG_DIR="$CLAUDE_HOME"
+export CLAUDE_BIN="$CLAUDE_BIN"
 export PYTHON_BIN="$PYTHON_BIN"
 export AI_ASSET_LANGUAGE="$LANGUAGE"
 export AI_ASSET_MEMORY_MODE="$MEMORY_MODE"
 export OPENRELIX_ACTIVITY_SOURCE="$ACTIVITY_SOURCE"
+export OPENRELIX_ACTIVITY_HOST="$ACTIVITY_HOST"
+export OPENRELIX_MODEL_CLI="$MODEL_CLI"
+export OPENRELIX_CLAUDE_MODEL="$CLAUDE_MODEL"
 
 initialize_state_root() {
-  "$PYTHON_BIN" - "$REPO_ROOT" "$LANGUAGE" "$MEMORY_MODE" "$ACTIVITY_SOURCE" <<'PY'
+  "$PYTHON_BIN" - "$REPO_ROOT" "$LANGUAGE" "$MEMORY_MODE" "$ACTIVITY_SOURCE" "$ACTIVITY_HOST" "$MODEL_CLI" "$CLAUDE_MODEL" <<'PY'
 import sys
 
 repo_root = sys.argv[1]
 language = sys.argv[2]
 memory_mode = sys.argv[3]
 activity_source = sys.argv[4]
+activity_host = sys.argv[5]
+model_cli = sys.argv[6]
+claude_model = sys.argv[7]
 sys.path.insert(0, repo_root + "/scripts")
 
 from asset_runtime import ensure_state_layout, write_runtime_config  # noqa: E402
@@ -1005,10 +1194,13 @@ write_runtime_config(
     language=language,
     memory_mode=memory_mode,
     activity_source=activity_source,
+    activity_host=activity_host,
+    model_cli=model_cli,
+    claude_model=claude_model,
     paths=paths,
 )
 PY
-  if ! "$PYTHON_BIN" "$REPO_ROOT/scripts/collect_codex_activity.py" --stage manual; then
+  if ! "$PYTHON_BIN" "$REPO_ROOT/scripts/collect_codex_activity.py" --stage manual --activity-host "$ACTIVITY_HOST"; then
     echo "openrelix install: initial activity collection failed; the panel will populate after the first refresh." >&2
   fi
   "$PYTHON_BIN" "$REPO_ROOT/scripts/build_overview.py"
@@ -1070,9 +1262,11 @@ run_step "$(localized_text "初始化状态目录、语言配置和第一份概�
   initialize_state_root
 
 if (( ENABLE_CODEX_MEMORY_SUMMARY )); then
-  run_step "$(localized_text "同步受控的 Codex 记忆摘要..." "Syncing the bounded Codex memory summary...")" \
-    "$PYTHON_BIN" "$REPO_ROOT/scripts/build_codex_memory_summary.py" \
-    --memory-summary "$CODEX_HOME/memories/memory_summary.md"
+  run_step "$(localized_text "同步受控的 host 记忆摘要..." "Syncing the bounded host memory summary...")" \
+    "$PYTHON_BIN" "$REPO_ROOT/scripts/sync_host_memory_summary.py"
+elif [[ "$MEMORY_MODE" != "integrated" ]]; then
+  run_step "$(localized_text "清理受控的 host 记忆摘要..." "Clearing managed host memory summaries...")" \
+    "$PYTHON_BIN" "$REPO_ROOT/scripts/sync_host_memory_summary.py"
 fi
 
 config_args=()
@@ -1119,8 +1313,13 @@ if (( INSTALL_GLOBAL_COMMAND )); then
     --set "REPO_ROOT=$REPO_ROOT" \
     --set "STATE_ROOT=$STATE_DIR" \
     --set "CODEX_HOME=$CODEX_HOME" \
+    --set "CLAUDE_HOME=$CLAUDE_HOME" \
+    --set "CLAUDE_BIN=$CLAUDE_BIN" \
     --set "PYTHON_BIN=$PYTHON_BIN" \
-    --set "ACTIVITY_SOURCE=$ACTIVITY_SOURCE"
+    --set "ACTIVITY_SOURCE=$ACTIVITY_SOURCE" \
+    --set "ACTIVITY_HOST=$ACTIVITY_HOST" \
+    --set "MODEL_CLI=$MODEL_CLI" \
+    --set "CLAUDE_MODEL=$CLAUDE_MODEL"
   chmod +x "$BIN_DIR/openrelix"
   if ! path_contains_dir "$BIN_DIR"; then
     "$PYTHON_BIN" "$REPO_ROOT/install/configure_shell_path.py" \
@@ -1230,11 +1429,17 @@ learn_memory_command() {
       printf 'openrelix review --stage preliminary --learn-window-days 0 --jobs %s\n' "$INSTALL_LEARN_JOBS"
       return
     fi
-    printf 'AI_ASSET_STATE_DIR=%q CODEX_HOME=%q AI_ASSET_LANGUAGE=%q OPENRELIX_ACTIVITY_SOURCE=%q %q %q review --stage preliminary --learn-window-days 0 --jobs %s\n' \
+    printf 'AI_ASSET_STATE_DIR=%q CODEX_HOME=%q CLAUDE_HOME=%q CLAUDE_CONFIG_DIR=%q CLAUDE_BIN=%q AI_ASSET_LANGUAGE=%q OPENRELIX_ACTIVITY_SOURCE=%q OPENRELIX_ACTIVITY_HOST=%q OPENRELIX_MODEL_CLI=%q OPENRELIX_CLAUDE_MODEL=%q %q %q review --stage preliminary --learn-window-days 0 --jobs %s\n' \
       "$STATE_DIR" \
       "$CODEX_HOME" \
+      "$CLAUDE_HOME" \
+      "$CLAUDE_HOME" \
+      "$CLAUDE_BIN" \
       "$LANGUAGE" \
       "$ACTIVITY_SOURCE" \
+      "$ACTIVITY_HOST" \
+      "$MODEL_CLI" \
+      "$CLAUDE_MODEL" \
       "$PYTHON_BIN" \
       "$REPO_ROOT/scripts/openrelix.py" \
       "$INSTALL_LEARN_JOBS"
@@ -1244,11 +1449,17 @@ learn_memory_command() {
     printf 'openrelix backfill --days %s --stage preliminary --learn-window-days 0 --jobs %s\n' "$LEARNING_REFRESH_WINDOW_DAYS" "$INSTALL_LEARN_JOBS"
     return
   fi
-  printf 'AI_ASSET_STATE_DIR=%q CODEX_HOME=%q AI_ASSET_LANGUAGE=%q OPENRELIX_ACTIVITY_SOURCE=%q %q %q backfill --days %s --stage preliminary --learn-window-days 0 --jobs %s\n' \
+  printf 'AI_ASSET_STATE_DIR=%q CODEX_HOME=%q CLAUDE_HOME=%q CLAUDE_CONFIG_DIR=%q CLAUDE_BIN=%q AI_ASSET_LANGUAGE=%q OPENRELIX_ACTIVITY_SOURCE=%q OPENRELIX_ACTIVITY_HOST=%q OPENRELIX_MODEL_CLI=%q OPENRELIX_CLAUDE_MODEL=%q %q %q backfill --days %s --stage preliminary --learn-window-days 0 --jobs %s\n' \
     "$STATE_DIR" \
     "$CODEX_HOME" \
+    "$CLAUDE_HOME" \
+    "$CLAUDE_HOME" \
+    "$CLAUDE_BIN" \
     "$LANGUAGE" \
     "$ACTIVITY_SOURCE" \
+    "$ACTIVITY_HOST" \
+    "$MODEL_CLI" \
+    "$CLAUDE_MODEL" \
     "$PYTHON_BIN" \
     "$REPO_ROOT/scripts/openrelix.py" \
     "$LEARNING_REFRESH_WINDOW_DAYS" \
@@ -1263,11 +1474,17 @@ deep_learn_memory_command() {
     printf 'openrelix backfill --days %s --stage final --learn-window-days %s --jobs %s\n' "$LEARNING_REFRESH_WINDOW_DAYS" "$LEARNING_REFRESH_WINDOW_DAYS" "$INSTALL_DEEP_LEARN_JOBS"
     return
   fi
-  printf 'AI_ASSET_STATE_DIR=%q CODEX_HOME=%q AI_ASSET_LANGUAGE=%q OPENRELIX_ACTIVITY_SOURCE=%q %q %q backfill --days %s --stage final --learn-window-days %s --jobs %s\n' \
+  printf 'AI_ASSET_STATE_DIR=%q CODEX_HOME=%q CLAUDE_HOME=%q CLAUDE_CONFIG_DIR=%q CLAUDE_BIN=%q AI_ASSET_LANGUAGE=%q OPENRELIX_ACTIVITY_SOURCE=%q OPENRELIX_ACTIVITY_HOST=%q OPENRELIX_MODEL_CLI=%q OPENRELIX_CLAUDE_MODEL=%q %q %q backfill --days %s --stage final --learn-window-days %s --jobs %s\n' \
     "$STATE_DIR" \
     "$CODEX_HOME" \
+    "$CLAUDE_HOME" \
+    "$CLAUDE_HOME" \
+    "$CLAUDE_BIN" \
     "$LANGUAGE" \
     "$ACTIVITY_SOURCE" \
+    "$ACTIVITY_HOST" \
+    "$MODEL_CLI" \
+    "$CLAUDE_MODEL" \
     "$PYTHON_BIN" \
     "$REPO_ROOT/scripts/openrelix.py" \
     "$LEARNING_REFRESH_WINDOW_DAYS" \
@@ -1323,18 +1540,18 @@ if [[ "$OSTYPE" == darwin* ]] && (( MAC_CLIENT_INSTALLED )) && (( LAUNCH_AFTER_I
 fi
 if (( LEARNING_REFRESH_WINDOW_DAYS == 0 )); then
   if [[ "$MEMORY_MODE" == "integrated" ]]; then
-    REVIEW_CONTEXT_NOTE_ZH="这一步只读取并轻量整理当天窗口，写入可复用压缩层，不做历史学习。当前 integrated 会同步 bounded summary，但不会把原始窗口写进 Codex 原生 memory。"
-    REVIEW_CONTEXT_NOTE_EN="This only reads and lightly organizes today's window, stores a reusable compact layer, and does not run historical learning. The current integrated mode syncs a bounded summary, but does not write raw windows into Codex native memory."
+    REVIEW_CONTEXT_NOTE_ZH="这一步只读取并轻量整理当天窗口，写入可复用压缩层，不做历史学习。当前 integrated 会把同一份 bounded summary 同步到启用的 host context，但不会把原始窗口写进原生 memory。"
+    REVIEW_CONTEXT_NOTE_EN="This only reads and lightly organizes today's window, stores a reusable compact layer, and does not run historical learning. The current integrated mode syncs the same bounded summary into enabled host contexts, but does not write raw windows into native memory."
   else
-    REVIEW_CONTEXT_NOTE_ZH="这一步只读取并轻量整理当天窗口，写入可复用压缩层，不做历史学习。当前 $MEMORY_MODE 不会向 Codex context 同步摘要。"
-    REVIEW_CONTEXT_NOTE_EN="This only reads and lightly organizes today's window, stores a reusable compact layer, and does not run historical learning. The current $MEMORY_MODE mode does not sync a summary into Codex context."
+    REVIEW_CONTEXT_NOTE_ZH="这一步只读取并轻量整理当天窗口，写入可复用压缩层，不做历史学习。当前 $MEMORY_MODE 不会向 host context 同步摘要。"
+    REVIEW_CONTEXT_NOTE_EN="This only reads and lightly organizes today's window, stores a reusable compact layer, and does not run historical learning. The current $MEMORY_MODE mode does not sync a summary into host context."
   fi
 elif [[ "$MEMORY_MODE" == "integrated" ]]; then
-  REVIEW_CONTEXT_NOTE_ZH="浅度回溯会读取并轻量整理最近 ${LEARNING_REFRESH_WINDOW_DAYS} 天窗口，写入可复用压缩层；随后 final 深度学习会复用这层结果。当前 integrated 会同步 bounded summary，但不会把原始窗口写进 Codex 原生 memory。"
-  REVIEW_CONTEXT_NOTE_EN="The shallow backfill reads and lightly organizes the last ${LEARNING_REFRESH_WINDOW_DAYS} days of windows, then stores a reusable compact layer for later final consolidation. The current integrated mode syncs a bounded summary, but does not write raw windows into Codex native memory."
+  REVIEW_CONTEXT_NOTE_ZH="浅度回溯会读取并轻量整理最近 ${LEARNING_REFRESH_WINDOW_DAYS} 天窗口，写入可复用压缩层；随后 final 深度学习会复用这层结果。当前 integrated 会把同一份 bounded summary 同步到启用的 host context，但不会把原始窗口写进原生 memory。"
+  REVIEW_CONTEXT_NOTE_EN="The shallow backfill reads and lightly organizes the last ${LEARNING_REFRESH_WINDOW_DAYS} days of windows, then stores a reusable compact layer for later final consolidation. The current integrated mode syncs the same bounded summary into enabled host contexts, but does not write raw windows into native memory."
 else
-  REVIEW_CONTEXT_NOTE_ZH="浅度回溯会读取并轻量整理最近 ${LEARNING_REFRESH_WINDOW_DAYS} 天窗口，写入可复用压缩层；随后 final 深度学习会复用这层结果。当前 $MEMORY_MODE 不会向 Codex context 同步摘要。"
-  REVIEW_CONTEXT_NOTE_EN="The shallow backfill reads and lightly organizes the last ${LEARNING_REFRESH_WINDOW_DAYS} days of windows, then stores a reusable compact layer for later final consolidation. The current $MEMORY_MODE mode does not sync a summary into Codex context."
+  REVIEW_CONTEXT_NOTE_ZH="浅度回溯会读取并轻量整理最近 ${LEARNING_REFRESH_WINDOW_DAYS} 天窗口，写入可复用压缩层；随后 final 深度学习会复用这层结果。当前 $MEMORY_MODE 不会向 host context 同步摘要。"
+  REVIEW_CONTEXT_NOTE_EN="The shallow backfill reads and lightly organizes the last ${LEARNING_REFRESH_WINDOW_DAYS} days of windows, then stores a reusable compact layer for later final consolidation. The current $MEMORY_MODE mode does not sync a summary into host context."
 fi
 
 if [[ "$LANGUAGE" == "zh" ]]; then
@@ -1346,9 +1563,12 @@ OpenRelix 已安装完成。
   源码目录: $REPO_ROOT
   状态目录: $STATE_DIR
   Codex 目录: $CODEX_HOME
+  Claude Code 目录: $CLAUDE_HOME
   语言: $LANGUAGE
   记忆模式: $MEMORY_MODE
   活动来源: $ACTIVITY_SOURCE
+  活动 host: $ACTIVITY_HOST
+  记忆回溯 CLI: $MODEL_CLI
   面板: $STATE_DIR/reports/panel.html
 
 建议下一步：
@@ -1369,7 +1589,7 @@ EOF
   if (( ENABLE_LEARNING_REFRESH )); then
     cat <<EOF
   2. 已开启 30 分钟自动学习刷新；首次自动学习会在下一个 30 分钟周期运行。
-     默认会先尝试 Codex app-server，失败时回退 CLI history/session；如需只读稳定 CLI 文件，安装时加 --activity-source history。
+     当前窗口 host: $ACTIVITY_HOST；模型回溯 CLI: $MODEL_CLI。Codex 窗口默认会先尝试 app-server，失败时回退 CLI history/session；如需只读稳定 CLI 文件，安装时加 --activity-source history。
 EOF
   else
     cat <<EOF
@@ -1384,7 +1604,7 @@ EOF
     fi
     cat <<EOF
      $REVIEW_CONTEXT_NOTE_ZH
-     默认会先尝试 Codex app-server，失败时回退 CLI history/session；如需只读稳定 CLI 文件，安装时加 --activity-source history。
+     当前窗口 host: $ACTIVITY_HOST；模型回溯 CLI: $MODEL_CLI。Codex 窗口默认会先尝试 app-server，失败时回退 CLI history/session；如需只读稳定 CLI 文件，安装时加 --activity-source history。
 EOF
   fi
 
@@ -1423,7 +1643,7 @@ EOF
       cat <<EOF
 
 后台刷新：
-  overview-refresh 已安装为每 30 分钟自动学习刷新一次，会调用当前 Codex 适配器并使用最近 ${LEARNING_REFRESH_WINDOW_DAYS} 天窗口。
+  overview-refresh 已安装为每 30 分钟自动学习刷新一次，会读取当前 activity host，并用 $MODEL_CLI 回溯最近 ${LEARNING_REFRESH_WINDOW_DAYS} 天窗口。
 EOF
     else
       cat <<EOF
@@ -1451,9 +1671,12 @@ Install info:
   Repo root: $REPO_ROOT
   State root: $STATE_DIR
   Codex home: $CODEX_HOME
+  Claude Code home: $CLAUDE_HOME
   Language: $LANGUAGE
   Memory mode: $MEMORY_MODE
   Activity source: $ACTIVITY_SOURCE
+  Activity host: $ACTIVITY_HOST
+  Memory backfill CLI: $MODEL_CLI
   Panel: $STATE_DIR/reports/panel.html
 
 Recommended next steps:
@@ -1474,7 +1697,7 @@ EOF
   if (( ENABLE_LEARNING_REFRESH )); then
     cat <<EOF
   2. Automatic learning refresh is enabled; the first learning run will happen on the next 30-minute interval.
-     By default, OpenRelix tries Codex app-server first and falls back to CLI history/session; add --activity-source history to force stable CLI files only.
+     Current activity host: $ACTIVITY_HOST; model backfill CLI: $MODEL_CLI. Codex windows try app-server first and fall back to CLI history/session; add --activity-source history to force stable CLI files only.
 EOF
   else
     cat <<EOF
@@ -1489,7 +1712,7 @@ EOF
     fi
     cat <<EOF
      $REVIEW_CONTEXT_NOTE_EN
-     By default, OpenRelix tries Codex app-server first and falls back to CLI history/session; add --activity-source history to force stable CLI files only.
+     Current activity host: $ACTIVITY_HOST; model backfill CLI: $MODEL_CLI. Codex windows try app-server first and fall back to CLI history/session; add --activity-source history to force stable CLI files only.
 EOF
   fi
 
@@ -1528,7 +1751,7 @@ EOF
       cat <<EOF
 
 Background refresh:
-  overview-refresh is installed to learn automatically every 30 minutes. It calls the current Codex adapter with the last ${LEARNING_REFRESH_WINDOW_DAYS} days of windows.
+  overview-refresh is installed to learn automatically every 30 minutes. It reads the current activity host and uses $MODEL_CLI for the last ${LEARNING_REFRESH_WINDOW_DAYS} days of memory backfill.
 EOF
     else
       cat <<EOF
@@ -1598,16 +1821,28 @@ run_post_install_shallow_learning() {
   if (( LEARNING_REFRESH_WINDOW_DAYS == 0 )); then
     AI_ASSET_STATE_DIR="$STATE_DIR" \
       CODEX_HOME="$CODEX_HOME" \
+      CLAUDE_HOME="$CLAUDE_HOME" \
+      CLAUDE_CONFIG_DIR="$CLAUDE_HOME" \
+      CLAUDE_BIN="$CLAUDE_BIN" \
       AI_ASSET_LANGUAGE="$LANGUAGE" \
       OPENRELIX_ACTIVITY_SOURCE="$ACTIVITY_SOURCE" \
+      OPENRELIX_ACTIVITY_HOST="$ACTIVITY_HOST" \
+      OPENRELIX_MODEL_CLI="$MODEL_CLI" \
+      OPENRELIX_CLAUDE_MODEL="$CLAUDE_MODEL" \
       run_interruptible_child "$PYTHON_BIN" "$REPO_ROOT/scripts/openrelix.py" \
       review --stage preliminary --learn-window-days 0 --jobs "$INSTALL_LEARN_JOBS"
     return
   fi
   AI_ASSET_STATE_DIR="$STATE_DIR" \
     CODEX_HOME="$CODEX_HOME" \
+    CLAUDE_HOME="$CLAUDE_HOME" \
+    CLAUDE_CONFIG_DIR="$CLAUDE_HOME" \
+    CLAUDE_BIN="$CLAUDE_BIN" \
     AI_ASSET_LANGUAGE="$LANGUAGE" \
     OPENRELIX_ACTIVITY_SOURCE="$ACTIVITY_SOURCE" \
+    OPENRELIX_ACTIVITY_HOST="$ACTIVITY_HOST" \
+    OPENRELIX_MODEL_CLI="$MODEL_CLI" \
+    OPENRELIX_CLAUDE_MODEL="$CLAUDE_MODEL" \
     run_interruptible_child "$PYTHON_BIN" "$REPO_ROOT/scripts/openrelix.py" \
     backfill --days "$LEARNING_REFRESH_WINDOW_DAYS" --stage preliminary --learn-window-days 0 --jobs "$INSTALL_LEARN_JOBS"
 }
@@ -1668,8 +1903,14 @@ run_post_install_deep_learning() {
   fi
   AI_ASSET_STATE_DIR="$STATE_DIR" \
     CODEX_HOME="$CODEX_HOME" \
+    CLAUDE_HOME="$CLAUDE_HOME" \
+    CLAUDE_CONFIG_DIR="$CLAUDE_HOME" \
+    CLAUDE_BIN="$CLAUDE_BIN" \
     AI_ASSET_LANGUAGE="$LANGUAGE" \
     OPENRELIX_ACTIVITY_SOURCE="$ACTIVITY_SOURCE" \
+    OPENRELIX_ACTIVITY_HOST="$ACTIVITY_HOST" \
+    OPENRELIX_MODEL_CLI="$MODEL_CLI" \
+    OPENRELIX_CLAUDE_MODEL="$CLAUDE_MODEL" \
     run_interruptible_child "$PYTHON_BIN" "$REPO_ROOT/scripts/openrelix.py" \
     backfill --days "$LEARNING_REFRESH_WINDOW_DAYS" --stage final --learn-window-days "$LEARNING_REFRESH_WINDOW_DAYS" --jobs "$INSTALL_DEEP_LEARN_JOBS"
   if [[ "$LANGUAGE" == "en" ]]; then

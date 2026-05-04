@@ -2,7 +2,7 @@
 
 ## 一句话说明
 
-`OpenRelix™` 意为开源的个人记忆珍藏，是一套面向 AI coding agents / AI CLI 的本地优先资产层，当前公开版本以 `package.json` 为准。它不绑定某一个 AI host；当前首个公开适配器是 Codex CLI / Codex app-server，因为 Codex 已经提供可落地的 thread、history、session、skill 和 memory 表面。
+`OpenRelix™` 意为开源的个人记忆珍藏，是一套面向 AI coding agents / AI CLI 的本地优先资产层，当前公开版本以 `package.json` 为准。它不绑定某一个 AI host；当前公开适配器覆盖 Codex CLI / Codex app-server 和 Claude Code CLI，并把不同 host 的窗口、Token、原生上下文和模型回溯映射到同一套本地资产模型。
 
 GitHub 项目页：[openrelix/openrelix](https://github.com/openrelix/openrelix)。如果这个项目对你有帮助，欢迎点星支持。
 
@@ -23,11 +23,12 @@ GitHub 项目页：[openrelix/openrelix](https://github.com/openrelix/openrelix)
 - Node.js 18+，并带有 `npm` / `npx`
 - `zsh`
 - Python 3.10+
-- 当前预览版适配器所需的 Codex CLI，以及可写的 `CODEX_HOME`，默认是 `~/.codex`
+- Codex CLI，以及可写的 `CODEX_HOME`，默认是 `~/.codex`
+- 可选 Claude Code CLI，以及可写的 `CLAUDE_HOME` / `CLAUDE_CONFIG_DIR`，默认是 `~/.claude`
 
 Linux / Windows 暂时作为后续目标，不在当前预览版对外承诺里。底层 Python 脚本仍尽量保留可配置路径，但一键安装、后台刷新、夜间整理和防睡眠策略都先按 macOS 收口。
 
-当前预览版的公开安装器先支持 Codex CLI 适配器。很多已落地能力依赖 Codex 专属表面，包括 `CODEX_HOME`、Codex history / session 文件、Codex native memory、Codex skills 和 Codex custom prompts。产品定位仍是 AI-agent-first；其他 CLI host 后续可以通过 adapter 层接入同一套本地资产模型，但不属于当前公开安装承诺。
+当前预览版的公开安装器支持 Codex 和 Claude Code 的核心本地表面。Codex 侧包括 `CODEX_HOME`、app-server threads、history/session 文件、native memory、skills 和 custom prompts；Claude Code 侧包括本地 transcript、Token 用量、`CLAUDE.md` 原生上下文和可选 `claude -p` 模型回溯。产品定位仍是 AI-agent-first；其他 CLI host 后续可以继续通过 adapter 层接入。
 
 ---
 
@@ -39,20 +40,20 @@ Linux / Windows 暂时作为后续目标，不在当前预览版对外承诺里�
 
 - **平台**：macOS。
 - **安装方式**：`npx openrelix install` 或源码目录下 `./install/install.sh`。
-- **当前适配项目**：Codex CLI / Codex app-server。默认 `auto` 会先尝试 `codex app-server` 读取 Codex threads，失败时回退到 Codex CLI 的 `history.jsonl` 和 `sessions/**/*.jsonl`，并把 repo 内维护的 skill / prompt / shell 入口安装到 Codex 用户环境。
+- **当前适配项目**：Codex CLI / Codex app-server 和 Claude Code CLI。默认 `--activity-host all` 同时读取 Codex 和 Claude Code；Codex 侧默认 `auto` 会先尝试 `codex app-server` 读取 threads，失败时回退到 Codex CLI 的 `history.jsonl` 和 `sessions/**/*.jsonl`。
 - **诊断能力**：`openrelix doctor --app-server-check` 可以实际启动一次 app-server 协议探测，用来确认 Codex 客户端采集链路。
 
-预期后续支持的项目 / host：
+当前和后续支持的项目 / host：
 
 | 项目 / host | 预期状态 | 说明 |
 | --- | --- | --- |
 | Codex CLI | 当前支持 | 当前预览版的稳定回退采集面。 |
 | Codex app-server / Codex 应用线程 | 当前支持 | 默认 `auto` 优先使用；失败时回退到 Codex CLI history/session。 |
-| Claude Code | 计划适配 | 目标是映射其本地历史、命令和 skill / memory 表面到同一套资产模型。 |
+| Claude Code | 当前支持 | 读取本地 transcript，查询 `ccusage` Token，同步 `CLAUDE.md` 受控记忆块，并可作为模型回溯 CLI。 |
 | Gemini CLI | 计划适配 | 目标是通过 adapter 层接入历史、命令和项目上下文。 |
 | 其他 AI coding agent / AI CLI | 设计预留 | 只要能提供本地活动记录、项目上下文和可复用命令入口，就可以按 adapter 方式接入。 |
 
-这些后续项目是路线图，不是当前版本的安装承诺；当前公开支持仍以 macOS + Codex CLI 为准。
+Gemini 和其他 host 是路线图；当前公开支持以 macOS + Codex / Claude Code 本地 CLI 为准。
 
 ### 上线证据清单
 
@@ -77,7 +78,7 @@ Linux / Windows 暂时作为后续目标，不在当前预览版对外承诺里�
 - 不需要手动配置 `LaunchAgent`
   启用后台服务时，installer 会自动渲染 plist 并通过 `launchctl` 注册。
 - Token 统计是可选增强
-  面板会按需通过 `npx -y @ccusage/codex@latest` 获取数据。该命令不可用、离线或首次拉包失败时，面板其他部分仍可运行，Token 卡片会显示不可用状态或最近缓存。
+  面板会按需通过 `npx -y @ccusage/codex@latest` 获取 Codex 数据，通过 `npx -y ccusage@latest` 获取 Claude Code 数据；默认会合并两者。任一命令不可用、离线或首次拉包失败时，面板其他部分仍可运行，Token 卡片会显示不可用、partial 或最近缓存。
 
 如果 macOS 上缺少 Python 3.10+，先安装 Python，再重新执行 installer：
 
@@ -180,10 +181,11 @@ npx openrelix install --language en
 npx openrelix install --profile integrated --enable-learning-refresh --enable-nightly --keep-awake=during-job
 ```
 
-默认安装会使用 `auto` 活动源：先尝试 `codex app-server` 读取 Codex threads，不可用时回退到稳定的 Codex CLI `history.jsonl` 和 `sessions/**/*.jsonl`。如果你想强制只读 CLI 文件，可以显式指定：
+默认安装会使用 `--activity-host all` 和 Codex `auto` 活动源：Claude Code 侧读取本地 transcript；Codex 侧先尝试 `codex app-server` 读取 threads，不可用时回退到稳定的 Codex CLI `history.jsonl` 和 `sessions/**/*.jsonl`。如果你想强制只读 Codex CLI 文件，或只采集某个 host，可以显式指定：
 
 ```bash
 npx openrelix install --profile integrated --enable-learning-refresh --activity-source history
+npx openrelix install --profile integrated --enable-learning-refresh --activity-host claude --model-cli claude
 ```
 
 最小安装：
@@ -196,9 +198,9 @@ npx openrelix install --profile integrated --enable-learning-refresh --activity-
 
 1. 初始化 state root
 2. 生成第一份 overview 和 panel
-3. 在当前 Codex 适配器下按默认 `integrated` 开启 memories/history，并同步一份 bounded summary
+3. 按默认 `integrated` 开启 host-native context，并把同一份 bounded summary 同步到启用的 host context
 
-默认最小安装会初始化 state root、生成第一份 overview，并在当前 Codex 适配器下开启 memories/history，把 bounded summary 同步进 `CODEX_HOME` 以便注入 host 上下文。它仍然不会安装全局命令，不会写 shell rc，也不会注册 LaunchAgent。如果只想本地记录、不注入 host context，请显式传 `--record-memory-only`。
+默认最小安装会初始化 state root、生成第一份 overview，并把 bounded summary 同步进启用的 host context 以便注入上下文。Codex 目标是 `CODEX_HOME/memories/memory_summary.md`；Claude Code 目标是 `CLAUDE_HOME/CLAUDE.md` 中的 OpenRelix 受控块。它仍然不会安装全局命令，不会写 shell rc，也不会注册 LaunchAgent。如果只想本地记录、不注入 host context，请显式传 `--record-memory-only`。
 
 从 repo checkout 本地验证“安装后能看到面板”的最小闭环时，建议使用临时烟测脚本：
 
@@ -206,7 +208,7 @@ npx openrelix install --profile integrated --enable-learning-refresh --activity-
 scripts/smoke_temp_panel.sh
 ```
 
-它会创建临时 state root 和临时 `CODEX_HOME`，执行 `--minimal --record-memory-only`，打印 `doctor` / `core` 检查结果，并打开生成的 `reports/panel.html`。不想自动打开浏览器时使用：
+它会创建临时 state root 和临时 host home，执行 `--minimal --record-memory-only`，打印 `doctor` / `core` 检查结果，并打开生成的 `reports/panel.html`。不想自动打开浏览器时使用：
 
 ```bash
 scripts/smoke_temp_panel.sh --no-open
@@ -239,9 +241,9 @@ bounded summary 的压缩策略保持轻量：同签名记忆跨天归并，dura
 ```
 
 - `--use-integrated`
-  使用当前 Codex 适配器的 host native memory context：开启 memories/history，并把 bounded summary 同步进 `CODEX_HOME`。这是当前默认模式。
+  使用当前 host native memory context：把同一份 bounded summary 同步进启用的 host context。这是当前默认模式。
 - `--record-memory-only`
-  记录个人记忆，但禁用 host native memory context，并保持 bounded summary 不同步到 `CODEX_HOME`
+  记录个人记忆，但禁用 host native memory context，并保持 bounded summary 不同步到 host context
 - `--disable-personal-memory`
   关闭本系统的个人记忆写入；仍可保留安装器、命令和面板能力
 
@@ -253,13 +255,13 @@ bounded summary 的压缩策略保持轻量：同签名记忆跨天归并，dura
 
 完整集成会额外做这些事：
 
-1. 默认补齐用于本地采集的 bounded `history` 配置，并开启当前 Codex 适配器的 native `memories` 与 bounded summary 同步
+1. 默认补齐用于本地采集的 bounded `history` 配置，并开启 host native context 与 bounded summary 同步
 2. 把 repo 内的 skills 软链接到用户级 `~/.codex/skills/`，包括 `memory-review`
 3. 把 repo 提供的 custom prompt 安装到用户级 `~/.codex/prompts/`，作为兼容 fallback
 4. 安装全局 `openrelix` 命令，并在需要时把对应用户 bin 目录写入 shell `PATH`
-5. 安装 macOS 后台 refresh 服务；加 `--enable-learning-refresh` 时，每 30 分钟自动调用当前 Codex 适配器学习最近 7 天窗口
+5. 安装 macOS 后台 refresh 服务；加 `--enable-learning-refresh` 时，每 30 分钟自动读取当前 activity host，并通过当前 `model_cli` 学习最近 7 天窗口
 
-完整集成默认会把 bounded summary 写入 `CODEX_HOME`，让当前 host 能读取压缩后的上下文。完整的结构化资产记忆仍写入 state root；面板继续把 host native memory 和本项目本地 memory registry 分层展示。需要严格隔离时，使用 `--record-memory-only` 或 `--no-memory-summary`。
+完整集成默认会把同一份 bounded summary 写入启用的 host context，让 Codex 和 Claude Code 能读取压缩后的个人记忆。完整的结构化资产记忆仍写入 state root；面板继续把 host native memory 和本项目本地 memory registry 分层展示。需要严格隔离时，使用 `--record-memory-only` 或 `--no-memory-summary`。
 
 如果你还想启用夜间整理和夜间任务执行时的防睡眠策略：
 
@@ -284,6 +286,14 @@ bounded summary 的压缩策略保持轻量：同签名记忆跨天归并，dura
   指定自定义 state root
 - `--codex-home PATH`
   指定自定义 `CODEX_HOME`
+- `--claude-home PATH`
+  指定自定义 `CLAUDE_HOME` / `CLAUDE_CONFIG_DIR`
+- `--activity-host codex|claude|all`
+  指定窗口采集 host，默认 `all`
+- `--model-cli codex|claude`
+  指定模型回溯 CLI；交互安装会提示选择，非交互默认 `codex`
+- `--claude-model MODEL`
+  指定 OpenRelix 内部 `claude -p` 使用的模型或别名，默认 `sonnet`
 - `--language zh|en`
   指定本地运行语言，默认 `zh`
 - `--memory-mode integrated|local-only|off`
@@ -297,7 +307,7 @@ bounded summary 的压缩策略保持轻量：同签名记忆跨天归并，dura
 - `--python PATH`
   指定脚本使用的 Python
 - `--sync-memory-summary`
-  显式同步 bounded summary 到 `CODEX_HOME`；主要用于覆盖组合参数时强制打开
+  显式同步 bounded summary 到 host context；主要用于覆盖组合参数时强制打开
 - `--no-memory-summary`
   跳过 bounded host memory summary 同步；用于严格控制本系统不注入 host context 的安装
 - `--no-global-skills`
@@ -435,7 +445,7 @@ openrelix open panel
 npx openrelix install --profile integrated --enable-learning-refresh
 ```
 
-这个选项是显式指令：默认后台 `overview-refresh` 不会从最近窗口学习；加 `--enable-learning-refresh` 后，30 分钟 LaunchAgent 会调用当前 Codex 适配器，读取最近 Codex 窗口，更新本系统本地 memory 和 overview。中文运行语言下，默认刷新仍会按需维护 Codex 原生记忆展示缓存。默认 `integrated` 会同步 bounded summary 到 Codex native context，但不会写入原始窗口或完整 registry；如果使用 `--record-memory-only`，则只更新本地 state root。如果没有安装全局 `openrelix` 命令，installer 会打印一条带 `AI_ASSET_STATE_DIR` / `CODEX_HOME` 的 `python3 scripts/openrelix.py ...` fallback 命令。
+这个选项是显式指令：默认后台 `overview-refresh` 不会从最近窗口学习；加 `--enable-learning-refresh` 后，30 分钟 LaunchAgent 会读取当前 activity host，通过当前 `model_cli` 更新本系统本地 memory 和 overview。中文运行语言下，默认刷新仍会按需维护 Codex 原生记忆展示缓存。默认 `integrated` 会同步 bounded summary 到 host native context，但不会写入原始窗口或完整 registry；如果使用 `--record-memory-only`，则只更新本地 state root。如果没有安装全局 `openrelix` 命令，installer 会打印一条带 `AI_ASSET_STATE_DIR` / host home 的 `python3 scripts/openrelix.py ...` fallback 命令。
 
 其中：
 
@@ -461,7 +471,7 @@ npx openrelix uninstall --keep-local-memory
 npx openrelix uninstall --delete-local-memory
 ```
 
-`--delete-local-memory` 会删除 active state root 和 OpenRelix 写入的 `CODEX_HOME/memories/memory_summary.md`，但不会删除整个 `CODEX_HOME`、Codex 登录凭据或 Codex history/session 文件。
+`--delete-local-memory` 会删除 active state root、OpenRelix 写入的 `CODEX_HOME/memories/memory_summary.md`，并移除 `CLAUDE_HOME/CLAUDE.md` 中的 OpenRelix 受控块，但不会删除整个 `CODEX_HOME`、整个 `CLAUDE_HOME`、host 登录凭据或 host history/session 文件。
 
 ---
 
@@ -472,7 +482,7 @@ npx openrelix uninstall --delete-local-memory
 ### 默认后台能力
 
 - `overview refresh`
-  默认每 30 分钟刷新一次 overview / panel 快照；安装时加 `--enable-learning-refresh` 后，每 30 分钟会调用当前 Codex 适配器并学习最近 7 天窗口
+  默认每 30 分钟刷新一次 overview / panel 快照；安装时加 `--enable-learning-refresh` 后，每 30 分钟会读取当前 activity host，并通过当前 `model_cli` 学习最近 7 天窗口
 - `token live server`
   提供本地 token 实时接口，给 panel 页面做即时刷新
 
@@ -660,6 +670,6 @@ npm pack --dry-run
 
 这两个模式的差别是：
 
-- 最小安装：初始化状态目录和 overview；在当前 Codex 适配器下开启 Codex memories/history，并同步 bounded summary；不改 shell / launchd 配置
+- 最小安装：初始化状态目录和 overview；开启 host native context，并同步 bounded summary；不改 shell / launchd 配置
 - 完整安装：再把 skill、memory、`openrelix` 命令、后台刷新、夜间整理和任务期间防睡眠一起接上
-- memory 边界：当前 Codex 适配器只向 `CODEX_HOME` 同步 bounded summary 作为轻量上下文；本项目自己的完整长期资产、复盘和夜间整理结果归 state root 管
+- memory 边界：OpenRelix 只向启用的 host context 同步 bounded summary 作为轻量上下文；本项目自己的完整长期资产、复盘和夜间整理结果归 state root 管

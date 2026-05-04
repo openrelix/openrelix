@@ -18,8 +18,10 @@ from asset_runtime import (
     atomic_write_json,
     atomic_write_text,
     ensure_state_layout,
+    get_claude_model,
     get_codex_model,
     get_memory_mode,
+    get_model_cli,
     get_runtime_language,
     get_runtime_paths,
     normalize_language,
@@ -31,15 +33,20 @@ PATHS = get_runtime_paths()
 LANGUAGE = get_runtime_language(PATHS)
 MEMORY_MODE = get_memory_mode(PATHS)
 CODEX_MODEL = get_codex_model(PATHS)
+CLAUDE_MODEL = get_claude_model(PATHS)
+MODEL_CLI = get_model_cli(PATHS)
 PERSONAL_MEMORY_ENABLED = personal_memory_enabled(PATHS)
 MAIN_CODEX_HOME = PATHS.codex_home
+MAIN_CLAUDE_HOME = PATHS.claude_home
 RAW_DIR = PATHS.raw_dir
 REGISTRY_DIR = PATHS.registry_dir
 CONSOLIDATED_DIR = PATHS.consolidated_daily_dir
 CODEX_BIN = PATHS.codex_bin
+CLAUDE_BIN = PATHS.claude_bin
 SCHEMA_PATH = PATHS.schema_path
 RUNTIME_DIR = PATHS.nightly_runner_dir
 NIGHTLY_CODEX_HOME = PATHS.nightly_codex_home
+NIGHTLY_CLAUDE_HOME = PATHS.nightly_claude_home
 CLUSTER_VARIANT_SAMPLE_LIMIT = 2
 CLUSTER_MIN_NORMALIZED_LENGTH = 24
 CLUSTER_LONG_TEXT_LENGTH = 80
@@ -1584,7 +1591,9 @@ def build_learning_input_fingerprint(
         "language": current_language(language),
         "memory_mode": MEMORY_MODE,
         "personal_memory_enabled": PERSONAL_MEMORY_ENABLED,
+        "model_cli": MODEL_CLI,
         "codex_model": CODEX_MODEL,
+        "claude_model": CLAUDE_MODEL,
         "learn_window_days": max(learn_window_days, 0),
         "lightweight_summary_version": LIGHTWEIGHT_SUMMARY_VERSION,
         "daily_compact_payload": compact_payload,
@@ -1728,6 +1737,93 @@ def run_codex_consolidation(prompt, output_path, language=None, timeout_seconds=
         ) from exc
     if result.returncode != 0:
         raise CodexConsolidationError(result.returncode, result.stdout, result.stderr)
+
+
+def claude_result_payload(stdout):
+    try:
+        payload = json.loads(stdout or "{}")
+    except json.JSONDecodeError as exc:
+        raise CodexConsolidationError(1, stdout, "claude -p returned invalid JSON: {}".format(exc)) from exc
+    if not isinstance(payload, dict):
+        raise CodexConsolidationError(1, stdout, "claude -p returned a non-object JSON payload")
+    if payload.get("is_error"):
+        raise CodexConsolidationError(1, stdout, str(payload.get("result") or "claude -p reported an error"))
+    result = payload.get("result")
+    if isinstance(result, dict):
+        return result
+    try:
+        parsed = json.loads(str(result or ""))
+    except json.JSONDecodeError as exc:
+        raise CodexConsolidationError(1, stdout, "claude -p result was not valid summary JSON: {}".format(exc)) from exc
+    if not isinstance(parsed, dict):
+        raise CodexConsolidationError(1, stdout, "claude -p result was not a JSON object")
+    return parsed
+
+
+def run_claude_consolidation(prompt, output_path, language=None, timeout_seconds=None):
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
+    MAIN_CLAUDE_HOME.mkdir(parents=True, exist_ok=True)
+    env = dict(os.environ)
+    env["CLAUDE_CONFIG_DIR"] = str(MAIN_CLAUDE_HOME)
+    if timeout_seconds is None:
+        timeout_seconds = default_codex_exec_timeout_seconds()
+    timeout = timeout_seconds if timeout_seconds and timeout_seconds > 0 else None
+    cmd = [
+        CLAUDE_BIN,
+        "-p",
+        "--output-format",
+        "json",
+        "--no-session-persistence",
+        "--tools=",
+        "--model",
+        CLAUDE_MODEL,
+        "--json-schema",
+        SCHEMA_PATH.read_text(encoding="utf-8"),
+    ]
+    safe_prompt = build_safe_consolidation_prompt(prompt, language=language)
+    try:
+        result = subprocess.run(
+            cmd,
+            input=safe_prompt,
+            text=True,
+            capture_output=True,
+            env=env,
+            timeout=timeout,
+            cwd=str(RUNTIME_DIR),
+        )
+    except subprocess.TimeoutExpired as exc:
+        timeout_message = localized(
+            "claude -p timed out after {} seconds".format(timeout),
+            "claude -p timed out after {} seconds".format(timeout),
+            language,
+        )
+        stderr = "\n".join(part for part in (process_output_to_text(exc.stderr), timeout_message) if part)
+        raise CodexConsolidationError(
+            CODEX_EXEC_TIMEOUT_RETURN_CODE,
+            process_output_to_text(exc.stdout),
+            stderr,
+        ) from exc
+    if result.returncode != 0:
+        raise CodexConsolidationError(result.returncode, result.stdout, result.stderr)
+    payload = claude_result_payload(result.stdout)
+    atomic_write_json(output_path, payload)
+
+
+def run_model_consolidation(prompt, output_path, language=None, timeout_seconds=None):
+    if MODEL_CLI == "claude":
+        return run_claude_consolidation(
+            prompt,
+            output_path,
+            language=language,
+            timeout_seconds=timeout_seconds,
+        )
+    return run_codex_consolidation(
+        prompt,
+        output_path,
+        language=language,
+        timeout_seconds=timeout_seconds,
+    )
 
 
 def fallback_question_summary(window, language=None):
@@ -2969,7 +3065,9 @@ def main():
         )
         candidate_summary["language"] = language
         candidate_summary["stage"] = stage
+        candidate_summary["model_cli"] = MODEL_CLI
         candidate_summary["codex_model"] = CODEX_MODEL
+        candidate_summary["claude_model"] = CLAUDE_MODEL
         candidate_summary["generated_at"] = datetime.now().astimezone().isoformat()
         candidate_summary["compact_payload_source"] = compact_payload_source
         candidate_summary = apply_memory_mode(candidate_summary)
@@ -2992,6 +3090,9 @@ def main():
             selected_summary = dict(candidate_summary)
 
         selected_summary["language"] = language
+        selected_summary["model_cli"] = selected_summary.get("model_cli", candidate_summary.get("model_cli", MODEL_CLI))
+        selected_summary["codex_model"] = selected_summary.get("codex_model", CODEX_MODEL)
+        selected_summary["claude_model"] = selected_summary.get("claude_model", CLAUDE_MODEL)
         selected_summary["learning_input_fingerprint"] = lightweight_fingerprint
         selected_summary["quality"] = decision["selected_quality"]
         selected_summary["selection_decision"] = {
@@ -3001,7 +3102,9 @@ def main():
             "candidate_run_json_path": candidate_run["json_path"],
             "learn_window_days": 0,
             "candidate_model_status": candidate_summary.get("model_status", "skipped_lightweight"),
+            "model_cli": candidate_summary.get("model_cli", MODEL_CLI),
             "codex_model": candidate_summary.get("codex_model", CODEX_MODEL),
+            "claude_model": candidate_summary.get("claude_model", CLAUDE_MODEL),
             "compact_payload_source": compact_payload_source,
         }
         selected_summary["last_run_model_status"] = candidate_summary.get("model_status", "skipped_lightweight")
@@ -3018,7 +3121,9 @@ def main():
                 "candidate_quality": decision["candidate_quality"],
                 "selected_quality": decision["selected_quality"],
                 "raw_window_count": raw_payload["window_count"],
+                "model_cli": selected_summary.get("model_cli", MODEL_CLI),
                 "codex_model": selected_summary.get("codex_model", CODEX_MODEL),
+                "claude_model": selected_summary.get("claude_model", CLAUDE_MODEL),
                 "learn_window_days": 0,
                 "candidate_run_json_path": candidate_run["json_path"],
                 "selected_summary_path": str(output_json_path),
@@ -3057,7 +3162,9 @@ def main():
             "date": date_str,
             "language": language,
             "stage": stage,
+            "model_cli": MODEL_CLI,
             "codex_model": CODEX_MODEL,
+            "claude_model": CLAUDE_MODEL,
             "day_summary": localized(
                 "当日没有可整理的主窗口内容。",
                 "No main-window content was available to organize for the day.",
@@ -3096,7 +3203,9 @@ def main():
                 "candidate_quality": empty_summary["quality"],
                 "selected_quality": empty_summary["quality"],
                 "raw_window_count": raw_payload["window_count"],
+                "model_cli": MODEL_CLI,
                 "codex_model": CODEX_MODEL,
+                "claude_model": CLAUDE_MODEL,
                 "learn_window_days": learn_window_days,
             }
         )
@@ -3110,7 +3219,7 @@ def main():
     )
 
     try:
-        run_codex_consolidation(
+        run_model_consolidation(
             prompt,
             output_json_path,
             language=language,
@@ -3119,6 +3228,7 @@ def main():
         candidate_summary = load_json(output_json_path)
         candidate_summary = normalize_summary(raw_payload, candidate_summary, language=language)
         candidate_summary["model_status"] = "completed"
+        candidate_summary["model_cli"] = MODEL_CLI
     except (CodexConsolidationError, subprocess.CalledProcessError) as exc:
         if isinstance(exc, CodexConsolidationError):
             model_error = str(exc)
@@ -3146,7 +3256,9 @@ def main():
         )
     candidate_summary["language"] = language
     candidate_summary["stage"] = stage
+    candidate_summary["model_cli"] = candidate_summary.get("model_cli", MODEL_CLI)
     candidate_summary["codex_model"] = CODEX_MODEL
+    candidate_summary["claude_model"] = CLAUDE_MODEL
     candidate_summary["generated_at"] = datetime.now().astimezone().isoformat()
     candidate_summary["compact_payload_source"] = compact_payload_source
     candidate_summary = apply_memory_mode(candidate_summary)
@@ -3169,6 +3281,9 @@ def main():
         selected_summary = dict(candidate_summary)
 
     selected_summary["language"] = language
+    selected_summary["model_cli"] = selected_summary.get("model_cli", candidate_summary.get("model_cli", MODEL_CLI))
+    selected_summary["codex_model"] = selected_summary.get("codex_model", CODEX_MODEL)
+    selected_summary["claude_model"] = selected_summary.get("claude_model", CLAUDE_MODEL)
     selected_summary["learning_input_fingerprint"] = learning_input_fingerprint
     selected_summary["quality"] = decision["selected_quality"]
     selected_summary["selection_decision"] = {
@@ -3178,7 +3293,9 @@ def main():
         "candidate_run_json_path": candidate_run["json_path"],
         "learn_window_days": learn_window_days,
         "candidate_model_status": candidate_summary.get("model_status", "completed"),
+        "model_cli": candidate_summary.get("model_cli", MODEL_CLI),
         "codex_model": candidate_summary.get("codex_model", CODEX_MODEL),
+        "claude_model": candidate_summary.get("claude_model", CLAUDE_MODEL),
         "compact_payload_source": compact_payload_source,
     }
     if candidate_summary.get("model_status") == "failed":
@@ -3203,7 +3320,9 @@ def main():
             "candidate_quality": decision["candidate_quality"],
             "selected_quality": decision["selected_quality"],
             "raw_window_count": raw_payload["window_count"],
+            "model_cli": selected_summary.get("model_cli", MODEL_CLI),
             "codex_model": selected_summary.get("codex_model", CODEX_MODEL),
+            "claude_model": selected_summary.get("claude_model", CLAUDE_MODEL),
             "learn_window_days": learn_window_days,
             "candidate_run_json_path": candidate_run["json_path"],
             "selected_summary_path": str(output_json_path),

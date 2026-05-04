@@ -524,8 +524,8 @@ PANEL_I18N_EN = {
     "每日资产账本": "Daily Asset Ledger",
     "今天哪些工作能复用？": "What work can be reused today?",
     "每日摘要": "Daily Summary",
-    "Codex context 预算": "Codex Context Budget",
-    "进入 Codex context 的记忆": "Memories in Codex Context",
+    "Host context 预算": "Host Context Budget",
+    "进入 host context 的记忆": "Memories in Host Context",
     "按当前 bounded summary 预算估算；按类型分组展示。": (
         "Estimated from the current bounded-summary budget and grouped by memory type."
     ),
@@ -594,8 +594,8 @@ PANEL_I18N_EN = {
     "资产记忆": "Asset Memory",
     "账本概览": "Ledger Overview",
     "资产账本概览": "Asset Ledger Overview",
-    "这里看的是已经登记到本地账本里的资产、复盘和复用记录，不是注入 Codex context 的记忆摘要。": (
-        "This shows assets, reviews, and reuse records registered in the local ledger, not the memory summary injected into Codex context."
+    "这里看的是已经登记到本地账本里的资产、复盘和复用记录，不是注入 host context 的记忆摘要。": (
+        "This shows assets, reviews, and reuse records registered in the local ledger, not the memory summary injected into host context."
     ),
     "每日 Token 消耗": "Daily Token Usage",
     "今日 Token 构成": "Today Token Breakdown",
@@ -1869,10 +1869,10 @@ def build_personal_memory_token_usage(
     elif memory_mode == "local-only":
         mode_label_zh = "本地记录"
         mode_label_en = "Local-only"
-        mode_note_zh = "{} 条只写本地，不注入 Codex context".format(row_count)
-        mode_note_en = "{} items stay local and are not injected into Codex context".format(row_count)
-        caption_zh = "Codex context 占用 0K"
-        caption_en = "Codex context usage 0K"
+        mode_note_zh = "{} 条只写本地，不注入 host context".format(row_count)
+        mode_note_en = "{} items stay local and are not injected into host context".format(row_count)
+        caption_zh = "Host context 占用 0K"
+        caption_en = "Host context usage 0K"
         status_zh = "本地"
         status_en = "Local"
         value_zh = "0K"
@@ -1883,8 +1883,8 @@ def build_personal_memory_token_usage(
         mode_label_en = "Off"
         mode_note_zh = "个人记忆已关闭"
         mode_note_en = "Personal memory is off"
-        caption_zh = "Codex context 占用 0K"
-        caption_en = "Codex context usage 0K"
+        caption_zh = "Host context 占用 0K"
+        caption_en = "Host context usage 0K"
         status_zh = "关闭"
         status_en = "Off"
         value_zh = "0K"
@@ -2311,19 +2311,21 @@ def write_token_usage_cache(payload):
     overview_token_fetcher.write_token_usage_cache(payload, TOKEN_CACHE_PATH)
 
 
-def fetch_ccusage_daily(window_days=CCUSAGE_WINDOW_DAYS):
+def fetch_ccusage_daily(window_days=CCUSAGE_WINDOW_DAYS, provider="all"):
     return overview_token_fetcher.fetch_ccusage_daily(
         window_days=window_days,
         now_func=current_local_datetime,
         resolve_npx_binary_func=resolve_npx_binary,
         env_func=build_subprocess_env,
+        provider=provider,
     )
 
 
-def resolve_ccusage_daily():
+def resolve_ccusage_daily(provider="all"):
     return overview_token_fetcher.resolve_ccusage_daily(
         cache_path=TOKEN_CACHE_PATH,
         fetch_func=fetch_ccusage_daily,
+        provider=provider,
     )
 
 
@@ -5079,19 +5081,23 @@ def parse_codex_native_memory_summary(
     memory_index_path=None,
     known_project_names=None,
     language=None,
+    summary_text=None,
 ):
     language = current_language(language)
     summary_path = Path(memory_summary_path)
-    try:
-        text = summary_path.read_text(encoding="utf-8")
-    except FileNotFoundError:
-        return empty_codex_native_memory_summary()
-    except (OSError, UnicodeDecodeError) as exc:
-        return empty_codex_native_memory_summary(
-            source_exists=True,
-            source_readable=False,
-            source_error=exc.__class__.__name__,
-        )
+    if summary_text is None:
+        try:
+            text = summary_path.read_text(encoding="utf-8")
+        except FileNotFoundError:
+            return empty_codex_native_memory_summary()
+        except (OSError, UnicodeDecodeError) as exc:
+            return empty_codex_native_memory_summary(
+                source_exists=True,
+                source_readable=False,
+                source_error=exc.__class__.__name__,
+            )
+    else:
+        text = str(summary_text)
 
     counts = {
         "topic_items": 0,
@@ -5413,6 +5419,174 @@ def parse_codex_native_memory_summary(
         "preference_rows": preference_rows,
         "tip_rows": tip_rows,
         "counts": counts,
+    }
+
+
+def relabel_native_memory_item_for_claude(item, claude_memory_path, language=None):
+    language = current_language(language)
+    current = dict(item or {})
+    source_files = current.get("source_files") or []
+    status = source_files[0].get("status") if source_files and isinstance(source_files[0], dict) else None
+    source_file = {
+        "path": str(claude_memory_path),
+        "label": "CLAUDE.md",
+    }
+    if status:
+        source_file["status"] = status
+    current["bucket"] = "native"
+    current["display_bucket"] = localized("Claude 原生", "Claude Native", language)
+    current["display_context"] = localized("Claude Code 原生记忆", "Claude Code Native Memory", language)
+    current["context_labels"] = [localized("Claude Code 原生记忆", "Claude Code Native Memory", language)]
+    current["source_fact_label"] = localized("来源文件", "Source file", language)
+    current["source_files"] = [source_file]
+    current["source_windows"] = current.get("source_windows") or []
+    current["memory_key"] = str(current.get("memory_key") or "native").replace("native::", "claude-native::", 1)
+    for key in ("meta", "submeta_zh", "submeta_en"):
+        if current.get(key):
+            current[key] = (
+                str(current[key])
+                .replace("Codex 原生", "Claude 原生")
+                .replace("Codex Native", "Claude Native")
+                .replace("Codex native", "Claude native")
+            )
+    return current
+
+
+def empty_claude_native_memory_summary(source_exists=False, source_readable=False, source_error=""):
+    return {
+        "rows": [],
+        "topic_rows": [],
+        "preference_rows": [],
+        "tip_rows": [],
+        "counts": {
+            "topic_items": 0,
+            "user_preferences": 0,
+            "general_tips": 0,
+            "total_items": 0,
+            "source_exists": source_exists,
+            "source_readable": source_readable,
+            "source_error": source_error,
+        },
+    }
+
+
+CLAUDE_MANAGED_MEMORY_START = "<!-- openrelix:shared-memory:start -->"
+CLAUDE_MANAGED_MEMORY_END = "<!-- openrelix:shared-memory:end -->"
+
+
+def extract_claude_managed_memory_text(text):
+    if CLAUDE_MANAGED_MEMORY_START not in text or CLAUDE_MANAGED_MEMORY_END not in text:
+        return "", False
+    _, _, tail = text.partition(CLAUDE_MANAGED_MEMORY_START)
+    managed_text, _, _ = tail.partition(CLAUDE_MANAGED_MEMORY_END)
+    return managed_text.strip(), True
+
+
+def parse_claude_native_memory_summary(claude_memory_path, known_project_names=None, language=None):
+    language = current_language(language)
+    path = Path(claude_memory_path)
+    try:
+        text = path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return empty_claude_native_memory_summary()
+    except (OSError, UnicodeDecodeError) as exc:
+        return empty_claude_native_memory_summary(
+            source_exists=True,
+            source_readable=False,
+            source_error=exc.__class__.__name__,
+        )
+
+    managed_text, has_managed_block = extract_claude_managed_memory_text(text)
+    if not has_managed_block:
+        return empty_claude_native_memory_summary(
+            source_exists=True,
+            source_readable=True,
+        )
+
+    parsed = parse_codex_native_memory_summary(
+        path,
+        memory_index_path=None,
+        known_project_names=known_project_names,
+        language=language,
+        summary_text=managed_text,
+    )
+    topic_rows = [
+        relabel_native_memory_item_for_claude(row, path, language=language)
+        for row in parsed.get("rows", [])
+    ]
+    preference_rows = [
+        relabel_native_memory_item_for_claude(row, path, language=language)
+        for row in make_codex_native_brief_memory_items(
+            parsed.get("preference_rows", []),
+            "preference",
+            language=language,
+        )
+    ]
+    tip_rows = [
+        relabel_native_memory_item_for_claude(row, path, language=language)
+        for row in make_codex_native_brief_memory_items(
+            parsed.get("tip_rows", []),
+            "tip",
+            language=language,
+        )
+    ]
+    rows = topic_rows + preference_rows + tip_rows
+    counts = dict(parsed.get("counts") or {})
+    counts["total_items"] = len(rows)
+    return {
+        "rows": rows,
+        "topic_rows": topic_rows,
+        "preference_rows": preference_rows,
+        "tip_rows": tip_rows,
+        "counts": counts,
+    }
+
+
+def build_claude_native_memory_comparison(native_rows, native_counts, summary_path_label, language=None):
+    language = current_language(language)
+    source_exists = native_counts.get("source_exists", bool(native_rows))
+    source_readable = native_counts.get("source_readable", source_exists)
+    source_error = native_counts.get("source_error", "")
+    if source_error and not source_readable:
+        note = localized(
+            "无法读取 {}（{}），Claude 原生记忆暂不可展示。".format(summary_path_label, source_error),
+            "Unable to read {} ({}); Claude native memory is not displayable yet.".format(summary_path_label, source_error),
+            language,
+        )
+    elif not source_exists:
+        note = localized(
+            "未检测到 {}；启用 integrated 后会写入受控共享记忆块。".format(summary_path_label),
+            "{} was not found; integrated mode writes a managed shared-memory block.".format(summary_path_label),
+            language,
+        )
+    elif not source_readable:
+        note = localized(
+            "已检测到但无法读取 {}。".format(summary_path_label),
+            "{} exists but is unreadable.".format(summary_path_label),
+            language,
+        )
+    elif not native_rows:
+        note = localized(
+            "已读取 {}，但暂未发现可展示的 OpenRelix 共享记忆条目。".format(summary_path_label),
+            "Read {}, but no displayable OpenRelix shared-memory entries were found yet.".format(summary_path_label),
+            language,
+        )
+    else:
+        note = localized(
+            "已读取 {}；下方展示 {} 条 Claude Code 原生上下文条目，来源和 Codex 共用同一份本地个人记忆登记册。".format(
+                summary_path_label,
+                len(native_rows),
+            ),
+            "Read {}; showing {} Claude Code native-context entries below. The source is the same local personal-memory registry shared with Codex.".format(
+                summary_path_label,
+                len(native_rows),
+            ),
+            language,
+        )
+    return {
+        "note": note,
+        "native_context_count": 1 if native_rows else 0,
+        "shared_context_count": 0,
     }
 
 
@@ -5984,6 +6158,9 @@ def normalize_window_activity_source(raw_window=None, daily_capture=None):
     daily_capture = daily_capture or {}
     source = str(raw_window.get("source") or "").strip()
     collection_source = str(daily_capture.get("collection_source") or "").strip()
+    ai_host = str(raw_window.get("ai_host") or "").strip().lower()
+    if ai_host == "claude" or source.startswith("claude_code") or collection_source == "claude-history":
+        return "claude-history"
     if raw_window.get("app_server") or source.startswith("codex_app_server") or collection_source == "app-server":
         return "app-server"
     if collection_source == "history_fallback":
@@ -6015,6 +6192,14 @@ def window_activity_source_label(activity_source, language=None, thread_source="
         "history": (
             "采集：Codex CLI history/session",
             "Collection: Codex CLI history/session",
+        ),
+        "claude-history": (
+            "采集：Claude Code transcript",
+            "Collection: Claude Code transcript",
+        ),
+        "mixed": (
+            "采集：Codex + Claude Code",
+            "Collection: Codex + Claude Code",
         ),
         "nightly_summary": (
             "采集：整理摘要",
@@ -6066,6 +6251,25 @@ def codex_resume_command(resume_id):
     if not resume_id:
         return ""
     return "codex resume {}".format(shlex.quote(resume_id))
+
+
+def claude_resume_command(resume_id):
+    resume_id = str(resume_id or "").strip()
+    if not resume_id:
+        return ""
+    return "claude --resume {}".format(shlex.quote(resume_id))
+
+
+def window_resume_command(ai_host, resume_id):
+    if ai_host == "claude":
+        return claude_resume_command(resume_id)
+    return codex_resume_command(resume_id)
+
+
+def window_host_label(ai_host, language=None):
+    if str(ai_host or "").strip().lower() == "claude":
+        return "Claude Code"
+    return "Codex"
 
 
 def is_codex_thread_uuid(value):
@@ -6201,6 +6405,9 @@ def build_window_items_from_daily_capture(daily_capture, latest_nightly=None, la
     codex_summary_completed = window_summary_model_completed(latest_nightly)
     for raw_window in (daily_capture or {}).get("windows", []):
         window_id = raw_window.get("window_id", "")
+        ai_host = str(raw_window.get("ai_host") or "codex").strip().lower()
+        if ai_host not in {"codex", "claude"}:
+            ai_host = "codex"
         nightly_item = nightly_map.get(window_id, {})
         latest_activity = latest_window_activity(raw_window)
         prompts = raw_window.get("prompts", [])
@@ -6231,7 +6438,7 @@ def build_window_items_from_daily_capture(daily_capture, latest_nightly=None, la
             if has_codex_summary
             else localized(
                 "暂未做二次学习和总结，当前展示原始问题和结论",
-                "Codex summary has not run yet; showing raw questions and conclusions",
+                "AI summary has not run yet; showing raw questions and conclusions",
                 language,
             )
         )
@@ -6268,6 +6475,8 @@ def build_window_items_from_daily_capture(daily_capture, latest_nightly=None, la
         items.append(
             {
                 "date": (daily_capture or {}).get("date", ""),
+                "ai_host": ai_host,
+                "ai_host_label": window_host_label(ai_host, language=language),
                 "window_id": window_id,
                 "window_id_short": window_id[:8],
                 "cwd": cwd,
@@ -6277,8 +6486,8 @@ def build_window_items_from_daily_capture(daily_capture, latest_nightly=None, la
                 "thread_source": thread_source,
                 "window_summary": window_summary,
                 "resume_id": resume_id,
-                "resume_command": codex_resume_command(resume_id),
-                "resume_url": codex_resume_url(resume_id),
+                "resume_command": window_resume_command(ai_host, resume_id),
+                "resume_url": codex_resume_url(resume_id) if ai_host == "codex" else "",
                 "activity_source_label": window_activity_source_label(
                     activity_source,
                     language,
@@ -6339,12 +6548,18 @@ def build_window_overview(latest_nightly, language=None, target_date=""):
                 if codex_summary_completed
                 else localized(
                     "暂未做二次学习和总结，当前展示原始问题和结论",
-                    "Codex summary has not run yet; showing raw questions and conclusions",
+                    "AI summary has not run yet; showing raw questions and conclusions",
                     language,
                 )
             )
+            ai_host = str(item.get("ai_host") or "codex").strip().lower()
+            if ai_host not in {"codex", "claude"}:
+                ai_host = "codex"
+            resume_id = item.get("resume_id", "") or item.get("window_id", "")
             fallback_items.append(
                 {
+                    "ai_host": ai_host,
+                    "ai_host_label": window_host_label(ai_host, language=language),
                     "window_id": item.get("window_id", ""),
                     "window_id_short": item.get("window_id", "")[:8],
                     "cwd": cwd,
@@ -6380,9 +6595,9 @@ def build_window_overview(latest_nightly, language=None, target_date=""):
                         or item.get("question_summary", "")
                         or localized("未捕获窗口摘要", "No captured window summary", language)
                     ),
-                    "resume_id": item.get("resume_id", "") or item.get("window_id", ""),
-                    "resume_command": codex_resume_command(item.get("resume_id", "") or item.get("window_id", "")),
-                    "resume_url": codex_resume_url(item.get("resume_id", "") or item.get("window_id", "")),
+                    "resume_id": resume_id,
+                    "resume_command": window_resume_command(ai_host, resume_id),
+                    "resume_url": codex_resume_url(resume_id) if ai_host == "codex" else "",
                     "keywords": [normalize_brand_display_text(keyword) for keyword in item.get("keywords", [])],
                     "latest_activity_at": "",
                     "latest_activity_display": localized("时间未知", "Unknown time", language),
@@ -7250,6 +7465,32 @@ def build_data(assets, usage_events, reviews, language=None):
     )
     codex_native_memory_comparison["note_zh"] = codex_native_memory_comparison_zh.get("note", "")
     codex_native_memory_comparison["note_en"] = codex_native_memory_comparison_en.get("note", "")
+    claude_memory_path = PATHS.claude_home / "CLAUDE.md"
+    claude_memory_path_label = render_path(claude_memory_path)
+    claude_native_memory = parse_claude_native_memory_summary(
+        claude_memory_path,
+        known_project_names=known_project_names,
+        language=language,
+    )
+    claude_native_memory_comparison_zh = build_claude_native_memory_comparison(
+        claude_native_memory["rows"],
+        claude_native_memory["counts"],
+        claude_memory_path_label,
+        language="zh",
+    )
+    claude_native_memory_comparison_en = build_claude_native_memory_comparison(
+        claude_native_memory["rows"],
+        claude_native_memory["counts"],
+        claude_memory_path_label,
+        language="en",
+    )
+    claude_native_memory_comparison = (
+        claude_native_memory_comparison_en.copy()
+        if is_english(language)
+        else claude_native_memory_comparison_zh.copy()
+    )
+    claude_native_memory_comparison["note_zh"] = claude_native_memory_comparison_zh.get("note", "")
+    claude_native_memory_comparison["note_en"] = claude_native_memory_comparison_en.get("note", "")
     summary = summarize_assets(assets)
     usage_by_asset, recorded_minutes_saved_total, recent_usage_events = summarize_usage(usage_events)
     enriched_assets = enrich_assets(
@@ -7656,6 +7897,11 @@ def build_data(assets, usage_events, reviews, language=None):
         "codex_memory_index_path": str(codex_memory_index_path),
         "codex_memory_summary_path_label": codex_memory_summary_path_label,
         "codex_memory_index_path_label": codex_memory_index_path_label,
+        "claude_native_memory": claude_native_memory["rows"],
+        "claude_native_memory_counts": claude_native_memory["counts"],
+        "claude_native_memory_comparison": claude_native_memory_comparison,
+        "claude_memory_path": str(claude_memory_path),
+        "claude_memory_path_label": claude_memory_path_label,
         "nightly_memory_views": nightly_memory_views,
         "reading_guide": [
             localized(
@@ -7829,6 +8075,36 @@ def build_markdown(data):
                     )
                 )
             hidden_native_count = len(data.get("codex_native_memory", [])) - 12
+            if hidden_native_count > 0:
+                lines.append("| {} more hidden |  |  | See the HTML panel. |".format(hidden_native_count))
+        else:
+            lines.append("| None | None | None | None |")
+
+        claude_native_note = (data.get("claude_native_memory_comparison") or {}).get("note", "")
+        claude_memory_label = data.get("claude_memory_path_label") or render_path(PATHS.claude_home / "CLAUDE.md")
+        lines.extend(
+            [
+                "",
+                "## Claude Code Native Memory",
+                "",
+                "- Overview: {}".format(markdown_inline_text(claude_native_note or "No Claude Code native memory summary.")),
+                "- Source: {}".format(markdown_inline_text(claude_memory_label)),
+                "",
+                "| Title | Recently Updated | Related Context | Summary |",
+                "| --- | --- | --- | --- |",
+            ]
+        )
+        if data.get("claude_native_memory"):
+            for item in data.get("claude_native_memory", [])[:12]:
+                lines.append(
+                    "| {} | {} | {} | {} |".format(
+                        markdown_table_cell(item.get("display_title") or item.get("title", ""), limit=92),
+                        markdown_table_cell(item.get("updated_at_display", "")),
+                        markdown_table_cell(" / ".join(item.get("context_labels", [])[:2]) or item.get("display_context", "")),
+                        markdown_table_cell(item.get("display_value_note") or item.get("value_note", ""), limit=120),
+                    )
+                )
+            hidden_native_count = len(data.get("claude_native_memory", [])) - 12
             if hidden_native_count > 0:
                 lines.append("| {} more hidden |  |  | See the HTML panel. |".format(hidden_native_count))
         else:
@@ -8044,6 +8320,38 @@ def build_markdown(data):
                 )
             )
         hidden_native_count = len(data.get("codex_native_memory", [])) - 12
+        if hidden_native_count > 0:
+            lines.append("| 另有 {} 条未展示 |  |  | 详见 HTML 面板。 |".format(hidden_native_count))
+    else:
+        lines.append("| 暂无 | 暂无 | 暂无 | 暂无 |")
+
+    claude_native_note = (data.get("claude_native_memory_comparison") or {}).get("note", "")
+    claude_memory_label = data.get("claude_memory_path_label") or render_path(PATHS.claude_home / "CLAUDE.md")
+    lines.extend(
+        [
+            "",
+            "## Claude Code 原生记忆",
+            "",
+            "- 概览: {}".format(markdown_inline_text(claude_native_note or "暂无 Claude Code 原生记忆摘要。")),
+            "- 来源: {}".format(markdown_inline_text(claude_memory_label)),
+            "",
+            "| 标题 | 最近更新 | 关联上下文 | 摘要 |",
+            "| --- | --- | --- | --- |",
+        ]
+    )
+    if data.get("claude_native_memory"):
+        for item in data.get("claude_native_memory", [])[:12]:
+            lines.append(
+                "| {} | {} | {} | {} |".format(
+                    markdown_table_cell(item.get("display_title") or item.get("title", ""), limit=92),
+                    markdown_table_cell(item.get("updated_at_display", "")),
+                    markdown_table_cell(
+                        " / ".join(item.get("context_labels", [])[:2]) or item.get("display_context", "")
+                    ),
+                    markdown_table_cell(item.get("display_value_note") or item.get("value_note", ""), limit=120),
+                )
+            )
+        hidden_native_count = len(data.get("claude_native_memory", [])) - 12
         if hidden_native_count > 0:
             lines.append("| 另有 {} 条未展示 |  |  | 详见 HTML 面板。 |".format(hidden_native_count))
     else:
@@ -9469,7 +9777,7 @@ def make_side_nav():
         ("link", "project-context-section", "项目上下文", "Context", "项目上下文", "Context"),
         ("group", "记忆层", "Memory Layer"),
         ("link", "memory-section", "个人资产记忆", "Personal Asset Memory", "个人资产记忆", "Personal Asset Memory"),
-        ("child", "personal-memory-context-section", "进入 context", "In Context", "进入 Codex context 的记忆", "Memories in Codex Context"),
+        ("child", "personal-memory-context-section", "进入 context", "In Context", "进入 host context 的记忆", "Memories in Host Context"),
         ("child", "personal-memory-durable-section", "长期记忆", "Long-term Memory", "个人资产-长期记忆", "Personal Asset - Long-term Memory"),
         ("child", "personal-memory-session-section", "短期工作记忆", "Short-term Work Memory", "个人资产-短期工作记忆", "Personal Asset - Short-term Work Memory"),
         ("child", "personal-memory-low-priority-section", "低优先级记忆", "Low-priority Memory", "个人资产-低优先级记忆", "Personal Asset - Low-priority Memory"),
@@ -9478,6 +9786,7 @@ def make_side_nav():
         ("child", "codex-native-preference-section", "用户偏好", "User Preferences", "Codex 原生记忆-用户偏好", "Codex Native Memory - User Preferences"),
         ("child", "codex-native-tip-section", "通用 tips", "General Tips", "Codex 原生记忆-通用 tips", "Codex Native Memory - General Tips"),
         ("child", "codex-native-task-group-section", "任务组", "Task Groups", "Codex 原生记忆-任务组", "Codex Native Memory - Task Groups"),
+        ("link", "claude-native-section", "Claude 原生记忆", "Claude Native Memory", "Claude Code 原生记忆", "Claude Code Native Memory"),
         ("group", "资产层", "Asset Layer"),
         ("link", "asset-overview-section", "账本概览", "Ledger Overview", "资产注册表概览", "Asset Registry Overview"),
         ("link", "assets-section", "资产明细", "Assets", "资产明细", "Assets"),
@@ -9530,7 +9839,7 @@ def make_personal_memory_token_widget(token_usage):
     if not token_usage.get("enabled"):
         return ""
 
-    title_html = panel_language_text_html("Codex context 预算", "Codex Context Budget")
+    title_html = panel_language_text_html("Host context 预算", "Host Context Budget")
     value_html = panel_language_variant_html(
         escape(token_usage.get("value_display_zh") or token_usage.get("value_display", "")),
         escape(token_usage.get("value_display_en") or token_usage.get("value_display", "")),
@@ -9567,7 +9876,7 @@ def make_personal_memory_token_widget(token_usage):
           <div class="memory-token-mode">{mode}</div>
         </aside>
     """.format(
-        aria_label=escape(panel_display_text("Codex context 预算"), quote=True),
+        aria_label=escape(panel_display_text("Host context 预算"), quote=True),
         title=escape(method_note, quote=True),
         label=title_html,
         status=status_html,
@@ -11349,6 +11658,10 @@ def make_window_summary_cards(window_overview, language=None):
     for item in window_overview.get("windows", []):
         cwd_raw = item.get("cwd", "")
         window_id = item.get("window_id", "")
+        ai_host = str(item.get("ai_host") or "codex").strip().lower()
+        if ai_host not in {"codex", "claude"}:
+            ai_host = "codex"
+        ai_host_label = item.get("ai_host_label") or window_host_label(ai_host, language=language)
         window_id_display = window_id or localized("暂无", "None", language)
         anchor_id = build_window_anchor_id(window_id)
         cwd_display = item.get("cwd_display", cwd_raw)
@@ -11425,8 +11738,8 @@ def make_window_summary_cards(window_overview, language=None):
                 or localized("未捕获窗口摘要", "No captured window summary", language)
             )
         resume_id = item.get("resume_id", "") or window_id
-        resume_command = item.get("resume_command", "") or codex_resume_command(resume_id)
-        resume_url = item.get("resume_url", "") or codex_resume_url(resume_id)
+        resume_command = item.get("resume_command", "") or window_resume_command(ai_host, resume_id)
+        resume_url = item.get("resume_url", "") or (codex_resume_url(resume_id) if ai_host == "codex" else "")
         resume_actions = render_resume_actions(resume_command, resume_url)
         question_count = safe_int(item.get("question_count", len(summary_pairs)))
         if question_count <= 0:
@@ -11478,7 +11791,7 @@ def make_window_summary_cards(window_overview, language=None):
               <summary class="window-card-trigger">
                 <div class="window-card-head">
                   <div class="window-card-copy">
-                    <div class="window-card-label">{project_label} · {window_label}{window_id_separator}{window_id_full}</div>
+                    <div class="window-card-label">{project_label} · {ai_host_label} · {window_label}{window_id_separator}{window_id_full}</div>
                     <h3 class="window-card-window-summary">{window_summary}</h3>
                     <div class="window-card-subline">
                       <span class="window-card-path">{activity_source_label}</span>
@@ -11533,6 +11846,7 @@ def make_window_summary_cards(window_overview, language=None):
                 window_id_separator=escape(localized("：", ": ", language)),
                 window_id_full=escape(window_id_display),
                 project_label=escape(project_label),
+                ai_host_label=escape(ai_host_label),
                 activity_source_label=escape(activity_source_label),
                 cwd_detail_html=cwd_detail_html,
                 summary_status_html=summary_status_html,
@@ -11877,8 +12191,14 @@ def build_html(data):
     codex_native_task_groups = data.get("codex_native_task_groups") or []
     codex_native_memory_counts = data.get("codex_native_memory_counts") or {}
     codex_native_memory_comparison = data.get("codex_native_memory_comparison") or {}
+    claude_native_memory = data.get("claude_native_memory") or []
+    claude_native_memory_counts = data.get("claude_native_memory_counts") or {}
+    claude_native_memory_comparison = data.get("claude_native_memory_comparison") or {}
     codex_memory_summary_label = data.get("codex_memory_summary_path_label") or render_path(
         PATHS.codex_home / "memories" / "memory_summary.md"
+    )
+    claude_memory_label = data.get("claude_memory_path_label") or render_path(
+        PATHS.claude_home / "CLAUDE.md"
     )
     nightly_note = data.get("nightly_note", nightly.get("date", "暂无夜间整理结果"))
     active_nightly_note = data.get("active_nightly_note", "")
@@ -12177,7 +12497,7 @@ def build_html(data):
         ],
     )
     context_memory_help = make_help_popover(
-        "进入 Codex context 的记忆",
+        "进入 host context 的记忆",
         [
             {
                 "label": "统计什么",
@@ -12301,6 +12621,43 @@ def build_html(data):
             {
                 "label": "怎么看",
                 "body": "它更像长期主题目录，不等同于某一天的 nightly memory。",
+            },
+        ],
+    )
+    claude_native_memory_note = (
+        claude_native_memory_comparison.get("note")
+        or "未检测到 {}。".format(claude_memory_label)
+    )
+    claude_native_memory_note_zh = (
+        claude_native_memory_comparison.get("note_zh")
+        or claude_native_memory_note
+    )
+    claude_native_memory_note_en = claude_native_memory_comparison.get("note_en", "")
+    claude_native_memory_note_html = panel_language_text_html(
+        claude_native_memory_note_zh,
+        claude_native_memory_note_en,
+    )
+    claude_native_help = make_help_popover(
+        "Claude Code 原生记忆",
+        [
+            {
+                "label": "统计什么",
+                "body": "直接读取 {} 中由 OpenRelix 管理的共享记忆块。".format(
+                    claude_memory_label
+                ),
+            },
+            {
+                "label": "关系",
+                "body": "这里展示的是注入 Claude Code native context 的视图；它和 Codex 使用同一份本地个人记忆登记册。",
+            },
+            {
+                "label": "当前计数",
+                "body": "共 {} 条；主题 {} 条；偏好 {} 条；通用 tips {} 条。".format(
+                    len(claude_native_memory),
+                    claude_native_memory_counts.get("topic_items", 0),
+                    claude_native_memory_counts.get("user_preferences", 0),
+                    claude_native_memory_counts.get("general_tips", 0),
+                ),
             },
         ],
     )
@@ -16821,6 +17178,16 @@ def build_html(data):
       </section>
     </section>
 
+    <section class="memory-family" id="claude-native-section">
+      {claude_native_memory_family_header}
+      <section class="panel" id="claude-native-memory-section">
+        {claude_native_memory_header}
+        <div class="native-brief-grid memory-grid">
+          {claude_native_memory_cards}
+        </div>
+      </section>
+    </section>
+
     <section class="asset-ledger-section" id="asset-overview-section">
       <div class="memory-family-head asset-ledger-head">
         <div class="memory-family-title-copy">
@@ -18950,8 +19317,8 @@ def build_html(data):
         asset_ledger_kicker=panel_language_text_html("资产层", "Asset Layer"),
         asset_ledger_title=panel_language_text_html("资产账本概览", "Asset Ledger Overview"),
         asset_ledger_note=panel_language_text_html(
-            "这里看的是已经登记到本地账本里的资产、复盘和复用记录，不是注入 Codex context 的记忆摘要。",
-            "This shows assets, reviews, and reuse records registered in the local ledger, not the memory summary injected into Codex context.",
+            "这里看的是已经登记到本地账本里的资产、复盘和复用记录，不是注入 host context 的记忆摘要。",
+            "This shows assets, reviews, and reuse records registered in the local ledger, not the memory summary injected into host context.",
         ),
         token_overview_panel=make_token_overview_panel(token_usage, token_overview_help),
         type_panel=make_bar_group(
@@ -19045,13 +19412,19 @@ def build_html(data):
             "来自 Codex 原生 memory summary 与 MEMORY.md。",
             "From Codex native memory_summary and MEMORY.md.",
         ),
+        claude_native_memory_family_header=make_memory_family_header(
+            "Claude Code 原生记忆",
+            "Claude Code Native Memory",
+            "来自 Claude Code CLAUDE.md；与 Codex 共用同一份个人记忆登记册。",
+            "From Claude Code CLAUDE.md, backed by the same personal-memory registry shared with Codex.",
+        ),
         durable_memory_header=make_panel_header(
             "个人资产-长期记忆",
             "可跨天复用的条目",
             durable_memory_help,
         ),
         context_memory_header=make_panel_header(
-            "进入 Codex context 的记忆",
+            "进入 host context 的记忆",
             "按当前 bounded summary 预算估算；按类型分组展示。",
             context_memory_help,
         ),
@@ -19129,10 +19502,16 @@ def build_html(data):
             "来自 MEMORY.md，按任务组展示",
             codex_native_task_group_help,
         ),
+        claude_native_memory_header=make_panel_header(
+            "Claude Code 原生记忆",
+            help_html=claude_native_help,
+            note_content_html=claude_native_memory_note_html,
+        ),
         codex_native_topic_cards=make_memory_cards(codex_native_memory),
         codex_native_preference_cards=codex_native_preference_cards,
         codex_native_tip_cards=codex_native_tip_cards,
         codex_native_task_group_cards=codex_native_task_group_cards,
+        claude_native_memory_cards=make_memory_cards(claude_native_memory),
         recent_asset_rows=make_asset_rows(panel_views.get("recent_assets", data["assets"]["recent"]), "recent-assets"),
         top_asset_rows=make_top_asset_rows(panel_views.get("top_assets", data["assets"]["top"]), "top-assets"),
         review_cards=make_review_cards(panel_views.get("reviews", data["reviews"])),

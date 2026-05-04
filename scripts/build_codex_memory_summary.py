@@ -104,8 +104,8 @@ def parse_args():
             "Build a bounded summary from the Codex native memory index and "
             "the local personal memory registry. "
             "By default this writes into the personal-assets runtime directory, "
-            "not into CODEX_HOME. Pass --memory-summary explicitly when syncing "
-            "the compressed summary into Codex context."
+            "not into host homes. Pass --memory-summary explicitly when syncing "
+            "the compressed summary into host context."
         )
     )
     parser.add_argument("--memory-index", default=str(DEFAULT_MEMORY_INDEX))

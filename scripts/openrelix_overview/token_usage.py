@@ -245,6 +245,7 @@ def build_token_usage_view(
     now_func=current_local_datetime,
 ):
     language = current_language(language)
+    window_days = max(safe_int(ccusage_result.get("window_days", CCUSAGE_WINDOW_DAYS)), 1)
     refreshed_at = ccusage_result.get("fetched_at", "")
     refreshed_at_display = display_local_datetime(refreshed_at)
     if not ccusage_result["available"]:
@@ -268,19 +269,25 @@ def build_token_usage_view(
             ),
             "refreshed_at": refreshed_at,
             "refreshed_at_display": refreshed_at_display,
-            "window_days": CCUSAGE_WINDOW_DAYS,
+            "window_days": window_days,
+            "provider": ccusage_result.get("provider", "all"),
+            "provider_label": ccusage_result.get("provider_label", "ccusage"),
+            "provider_results": ccusage_result.get("provider_results", {}),
+            "partial": bool(ccusage_result.get("partial")),
         }
 
     raw_rows = ccusage_result.get("payload", {}).get("daily", [])
     parsed_rows = []
     for row in raw_rows:
         raw_date = row.get("date", "")
-        try:
-            parsed_date = datetime.strptime(raw_date, "%b %d, %Y")
-            label = parsed_date.strftime("%m-%d")
-        except ValueError:
-            parsed_date = None
-            label = raw_date
+        parsed_date = None
+        for fmt in ("%b %d, %Y", "%B %d, %Y", "%Y-%m-%d", "%Y%m%d"):
+            try:
+                parsed_date = datetime.strptime(raw_date, fmt)
+                break
+            except ValueError:
+                continue
+        label = parsed_date.strftime("%m-%d") if parsed_date else raw_date
         total_input_tokens = safe_int(row.get("inputTokens", 0))
         cached_input_tokens = safe_int(row.get("cachedInputTokens", 0))
         uncached_input_tokens = max(total_input_tokens - cached_input_tokens, 0)
@@ -299,11 +306,14 @@ def build_token_usage_view(
                 "totalTokens": safe_int(row.get("totalTokens", 0)),
                 "display_total_tokens": compact_token(row.get("totalTokens", 0), language=language),
                 "costUSD": safe_float(row.get("costUSD", 0)),
+                "provider": row.get("provider", ccusage_result.get("provider", "codex")),
+                "providerLabel": row.get("providerLabel", ccusage_result.get("provider_label", "")),
+                "providers": row.get("providers", {}),
             }
         )
 
     parsed_rows.sort(key=lambda item: item["sort_key"])
-    parsed_rows = recent_token_daily_rows(parsed_rows, now_func=now_func)
+    parsed_rows = recent_token_daily_rows(parsed_rows, window_days=window_days, now_func=now_func)
     max_daily_tokens = max((row["totalTokens"] for row in parsed_rows), default=0)
     latest = parsed_rows[-1] if parsed_rows else None
     trailing = parsed_rows[-7:]
@@ -311,14 +321,16 @@ def build_token_usage_view(
     seven_day_cost = sum(safe_float(item.get("costUSD")) for item in trailing)
     active_trailing_count = sum(1 for item in trailing if item["totalTokens"] > 0)
     overview_note = localized(
-        "近 {} 天中 {} 天有记录 · {}".format(
-            CCUSAGE_WINDOW_DAYS,
+        "近 {} 天中 {} 天有记录 · {} · {}".format(
+            window_days,
             active_trailing_count,
+            ccusage_result.get("provider_label", "ccusage"),
             refreshed_at_display or "等待实时刷新",
         ),
-        "{} days with records in the last {} days · {}".format(
+        "{} days with records in the last {} days · {} · {}".format(
             active_trailing_count,
-            CCUSAGE_WINDOW_DAYS,
+            window_days,
+            ccusage_result.get("provider_label", "ccusage"),
             refreshed_at_display or "waiting for live refresh",
         ),
         language,
@@ -432,6 +444,9 @@ def build_token_usage_view(
                 "token_display": row["display_total_tokens"],
                 "costUSD": row.get("costUSD", 0),
                 "cost_display": format_usd(row.get("costUSD")),
+                "provider": row.get("provider", ""),
+                "provider_label": row.get("providerLabel", ""),
+                "providers": row.get("providers", {}),
                 "tone": token_daily_tone(row["totalTokens"], max_daily_tokens),
                 "details": build_token_breakdown_details(row, language=language),
                 "details_heading": localized(
@@ -454,5 +469,9 @@ def build_token_usage_view(
         "overview_note": overview_note,
         "refreshed_at": refreshed_at,
         "refreshed_at_display": refreshed_at_display,
-        "window_days": CCUSAGE_WINDOW_DAYS,
+        "window_days": window_days,
+        "provider": ccusage_result.get("provider", "codex"),
+        "provider_label": ccusage_result.get("provider_label", "ccusage"),
+        "provider_results": ccusage_result.get("provider_results", {}),
+        "partial": bool(ccusage_result.get("partial")),
     }

@@ -72,6 +72,7 @@
     "scripts/refresh_overview.sh",
     "scripts/run_with_optional_caffeinate.sh",
     "scripts/smoke_temp_panel.sh",
+    "scripts/sync_host_memory_summary.py",
     "scripts/token_live_server.py",
     "templates/"
   ],

@@ -8,10 +8,12 @@ import select
 import subprocess
 import time
 from datetime import datetime, timedelta
+from pathlib import Path
 
 from asset_runtime import (
     atomic_write_json,
     ensure_state_layout,
+    get_activity_host,
     get_activity_source,
     get_project_version,
     get_runtime_paths,
@@ -21,6 +23,9 @@ PATHS = get_runtime_paths()
 CODEX_HOME = PATHS.codex_home
 HISTORY_PATH = CODEX_HOME / "history.jsonl"
 SESSIONS_DIR = CODEX_HOME / "sessions"
+CLAUDE_HOME = PATHS.claude_home
+CLAUDE_HISTORY_PATH = CLAUDE_HOME / "history.jsonl"
+CLAUDE_PROJECTS_DIR = CLAUDE_HOME / "projects"
 RAW_DIR = PATHS.raw_dir
 
 REVIEW_REQUEST_PATTERNS = [
@@ -58,6 +63,16 @@ def parse_args():
             "Activity source. 'history' reads CODEX_HOME JSONL files, "
             "'app-server' reads Codex through codex app-server, and 'auto' "
             "tries app-server before falling back to history."
+        ),
+    )
+    parser.add_argument(
+        "--activity-host",
+        default=get_activity_host(PATHS),
+        choices=["codex", "claude", "all"],
+        help=(
+            "Activity host. 'codex' reads Codex windows, 'claude' reads "
+            "Claude Code transcripts, and 'all' merges both while preserving "
+            "the ai_host field on every raw window."
         ),
     )
     parser.add_argument("--app-server-page-size", type=int, default=100)
@@ -319,6 +334,7 @@ def app_server_thread_to_window(thread, target_date, stage):
         "window_summary": thread.get("preview", ""),
         "thread_title": thread.get("preview", ""),
         "cwd": thread.get("cwd", ""),
+        "ai_host": "codex",
         "originator": "codex_app_server",
         "source": "codex_app_server:{}".format(source),
         "started_at": local_datetime_from_epoch(thread.get("createdAt")) if thread.get("createdAt") else "",
@@ -489,6 +505,7 @@ def load_session_metadata_and_conclusions(session_id, target_date, stage, sessio
     metadata = {
         "window_id": session_id,
         "cwd": "",
+        "ai_host": "codex",
         "originator": "",
         "source": "",
         "started_at": "",
@@ -562,6 +579,19 @@ def looks_like_review_window(prompt_entries):
     return hits >= 2 and ratio >= 0.6
 
 
+def infer_ai_host(metadata):
+    source = str((metadata or {}).get("source") or "").lower()
+    originator = str((metadata or {}).get("originator") or "").lower()
+    if "claude" in source or "claude" in originator:
+        return "claude"
+    return "codex"
+
+
+def safe_window_filename(window_id):
+    value = str(window_id or "window").strip() or "window"
+    return re.sub(r"[^A-Za-z0-9_.-]+", "_", value)[:180]
+
+
 def build_window_payload(target_date, metadata, prompts, conclusions, raw_conclusion_count):
     review_related_window = looks_like_review_window(prompts)
     filtered_review_conclusion_count = max(0, raw_conclusion_count - len(conclusions))
@@ -570,6 +600,7 @@ def build_window_payload(target_date, metadata, prompts, conclusions, raw_conclu
         "date": target_date,
         "window_id": metadata["window_id"],
         "cwd": metadata["cwd"],
+        "ai_host": metadata.get("ai_host") or infer_ai_host(metadata),
         "originator": metadata["originator"],
         "source": metadata["source"],
         "started_at": metadata["started_at"],
@@ -590,6 +621,8 @@ def build_window_payload(target_date, metadata, prompts, conclusions, raw_conclu
     }
     if metadata.get("app_server"):
         window_payload["app_server"] = metadata["app_server"]
+    if metadata.get("claude_code"):
+        window_payload["claude_code"] = metadata["claude_code"]
     return window_payload
 
 
@@ -605,6 +638,191 @@ def load_history_windows_for_date(target_date, stage):
             session_file=session_files.get(session_id),
         )
         windows.append(build_window_payload(target_date, metadata, prompts, conclusions, raw_conclusion_count))
+    return windows
+
+
+def parse_claude_timestamp(value):
+    text = str(value or "").strip()
+    if not text:
+        return None
+    if re.search(r"[+-]\d{4}$", text):
+        text = "{}:{}".format(text[:-2], text[-2:])
+    try:
+        return datetime.fromisoformat(text.replace("Z", "+00:00")).astimezone()
+    except ValueError:
+        return None
+
+
+def claude_local_date(value):
+    parsed = parse_claude_timestamp(value)
+    return parsed.date().isoformat() if parsed else ""
+
+
+def claude_local_datetime(value):
+    parsed = parse_claude_timestamp(value)
+    return parsed.isoformat() if parsed else ""
+
+
+def claude_content_to_text(content):
+    if isinstance(content, str):
+        return content.strip()
+    parts = []
+    if isinstance(content, list):
+        for item in content:
+            if isinstance(item, str):
+                parts.append(item)
+                continue
+            if not isinstance(item, dict):
+                continue
+            item_type = item.get("type")
+            if item_type == "text":
+                text = item.get("text", "")
+                if text:
+                    parts.append(text)
+            elif item_type == "image":
+                parts.append("[Image]")
+            elif item_type == "tool_use":
+                name = item.get("name") or "tool"
+                parts.append("[Tool: {}]".format(name))
+            elif item_type == "tool_result":
+                parts.append("[Tool result]")
+    return "\n".join(str(part).strip() for part in parts if str(part).strip()).strip()
+
+
+def claude_message_text(item):
+    message = item.get("message") if isinstance(item, dict) else {}
+    if not isinstance(message, dict):
+        return ""
+    return claude_content_to_text(message.get("content"))
+
+
+def claude_session_id_from_file(session_file):
+    return Path(session_file).stem
+
+
+def claude_window_id(session_id):
+    compact = re.sub(r"[^A-Za-z0-9_.-]+", "-", str(session_id or "").strip())
+    return "claude-{}".format(compact or "session")
+
+
+def load_claude_session_items(session_file):
+    items = []
+    try:
+        lines = Path(session_file).read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeDecodeError):
+        return items
+    for raw_line in lines:
+        line = raw_line.strip()
+        if not line:
+            continue
+        try:
+            payload = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(payload, dict):
+            items.append(payload)
+    return items
+
+
+def claude_session_file_to_window(session_file, target_date, stage):
+    session_items = load_claude_session_items(session_file)
+    if not session_items:
+        return None
+
+    session_id = ""
+    cwd = ""
+    version = ""
+    summary = ""
+    prompts = []
+    conclusions = []
+    raw_conclusion_count = 0
+
+    for item in session_items:
+        if not isinstance(item, dict):
+            continue
+        item_type = item.get("type")
+        if item_type == "summary" and not summary:
+            summary = str(item.get("summary") or "").strip()
+            continue
+        session_id = session_id or str(item.get("sessionId") or "").strip()
+        cwd = cwd or str(item.get("cwd") or "").strip()
+        version = version or str(item.get("version") or "").strip()
+        timestamp = item.get("timestamp")
+        turn_id = str(item.get("uuid") or item.get("parentUuid") or "").strip()
+        if item_type == "user":
+            if claude_local_date(timestamp) != target_date:
+                continue
+            text = claude_message_text(item)
+            if text:
+                prompts.append(
+                    {
+                        "ts": int(parse_claude_timestamp(timestamp).timestamp()) if parse_claude_timestamp(timestamp) else 0,
+                        "local_time": claude_local_datetime(timestamp),
+                        "turn_id": turn_id,
+                        "text": text,
+                    }
+                )
+        elif item_type == "assistant":
+            if claude_local_date(timestamp) != target_date:
+                continue
+            text = claude_message_text(item)
+            if not text:
+                continue
+            raw_conclusion_count += 1
+            if looks_like_review_conclusion(text):
+                continue
+            conclusions.append(
+                {
+                    "turn_id": turn_id,
+                    "completed_at": claude_local_datetime(timestamp),
+                    "text": text,
+                }
+            )
+
+    if not prompts:
+        return None
+
+    session_id = session_id or claude_session_id_from_file(session_file)
+    metadata = {
+        "window_id": claude_window_id(session_id),
+        "session_id": session_id,
+        "resume_id": session_id,
+        "window_summary": summary,
+        "thread_title": summary,
+        "cwd": cwd,
+        "ai_host": "claude",
+        "originator": "claude_code",
+        "source": "claude_code:jsonl",
+        "started_at": prompts[0].get("local_time", ""),
+        "session_file": str(session_file),
+        "claude_code": {
+            "session_id": session_id,
+            "version": version,
+            "summary": summary,
+            "path": str(session_file),
+        },
+    }
+    return build_window_payload(target_date, metadata, prompts, conclusions, raw_conclusion_count)
+
+
+def iter_claude_session_files():
+    if CLAUDE_PROJECTS_DIR.exists():
+        yield from CLAUDE_PROJECTS_DIR.rglob("*.jsonl")
+    if CLAUDE_HISTORY_PATH.exists():
+        yield CLAUDE_HISTORY_PATH
+
+
+def load_claude_windows_for_date(target_date, stage):
+    windows = []
+    seen = set()
+    for session_file in iter_claude_session_files():
+        resolved = str(Path(session_file).resolve())
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        window = claude_session_file_to_window(session_file, target_date, stage)
+        if window:
+            windows.append(window)
     return windows
 
 
@@ -635,13 +853,15 @@ def main():
     args = parse_args()
     target_date = args.date
     stage = args.stage
+    activity_host = args.activity_host
     collection_source = args.activity_source
     collection_errors = []
     excluded_windows = []
+    windows = []
 
-    if args.activity_source in {"app-server", "auto"}:
+    if activity_host in {"codex", "all"} and args.activity_source in {"app-server", "auto"}:
         try:
-            windows = load_app_server_windows_for_date(
+            codex_windows = load_app_server_windows_for_date(
                 target_date,
                 stage,
                 page_size=args.app_server_page_size,
@@ -654,17 +874,34 @@ def main():
             if args.activity_source == "app-server":
                 raise AppServerError(message) from exc
             collection_errors.append(message)
-            windows = load_history_windows_for_date(target_date, stage)
+            codex_windows = load_history_windows_for_date(target_date, stage)
             collection_source = "history_fallback"
-    else:
-        windows = load_history_windows_for_date(target_date, stage)
+        windows.extend(codex_windows)
+    elif activity_host in {"codex", "all"}:
+        windows.extend(load_history_windows_for_date(target_date, stage))
         collection_source = "history"
+
+    if activity_host in {"claude", "all"}:
+        claude_windows = load_claude_windows_for_date(target_date, stage)
+        windows.extend(claude_windows)
+        if activity_host == "claude":
+            collection_source = "claude-history"
+        else:
+            collection_source = "mixed"
+
+    if activity_host == "all" and not windows and not collection_errors:
+        collection_errors.append("No Codex or Claude Code windows were found for {}".format(target_date))
+
+    host_counts = {}
+    for window in windows:
+        host = window.get("ai_host") or "codex"
+        host_counts[host] = host_counts.get(host, 0) + 1
 
     review_like_windows = review_like_window_rows(windows)
 
     for window_payload in windows:
         write_json(
-            RAW_DIR / "windows" / target_date / "{}.json".format(window_payload["window_id"]),
+            RAW_DIR / "windows" / target_date / "{}.json".format(safe_window_filename(window_payload["window_id"])),
             window_payload,
         )
 
@@ -674,6 +911,8 @@ def main():
         "generated_at": datetime.now().astimezone().isoformat(),
         "timezone": str(datetime.now().astimezone().tzinfo),
         "collection_source": collection_source,
+        "activity_host": activity_host,
+        "host_counts": host_counts,
         "collection_errors": collection_errors,
         "window_count": len(windows),
         "excluded_window_count": len(excluded_windows),

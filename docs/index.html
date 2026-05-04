@@ -3235,9 +3235,9 @@
         </div>
         <p
           class="hero-note"
-          data-version-template-zh="{version} 预览版：产品定位不绑定单一 AI host；当前首个公开适配器是 Codex CLI 和 Codex app-server，Claude Code、Gemini CLI 等其他 AI CLI / coding-agent host 在后续适配计划中。本页预览使用脱敏示例面板，不包含真实项目、账号、路径、日志或工作内容。"
-          data-version-template-en="{version} preview: the product is not tied to one AI host; the first public adapter is Codex CLI and Codex app-server, with Claude Code, Gemini CLI, and other AI CLI / coding-agent hosts on the adapter roadmap. This page uses sanitized sample panels and contains no real projects, accounts, paths, logs, or work content."
-        >当前预览版：产品定位不绑定单一 AI host；当前首个公开适配器是 Codex CLI 和 Codex app-server，Claude Code、Gemini CLI 等其他 AI CLI / coding-agent host 在后续适配计划中。本页预览使用脱敏示例面板，不包含真实项目、账号、路径、日志或工作内容。</p>
+          data-version-template-zh="{version} 预览版：产品定位不绑定单一 AI host；当前公开适配器覆盖 Codex CLI / Codex app-server 和 Claude Code CLI，Gemini CLI 等其他 AI CLI / coding-agent host 在后续适配计划中。本页预览使用脱敏示例面板，不包含真实项目、账号、路径、日志或工作内容。"
+          data-version-template-en="{version} preview: the product is not tied to one AI host; current public adapters cover Codex CLI / Codex app-server and Claude Code CLI, with Gemini CLI and other AI CLI / coding-agent hosts on the adapter roadmap. This page uses sanitized sample panels and contains no real projects, accounts, paths, logs, or work content."
+        >当前预览版：产品定位不绑定单一 AI host；当前公开适配器覆盖 Codex CLI / Codex app-server 和 Claude Code CLI，Gemini CLI 等其他 AI CLI / coding-agent host 在后续适配计划中。本页预览使用脱敏示例面板，不包含真实项目、账号、路径、日志或工作内容。</p>
       </div>
     </section>
 
@@ -3282,7 +3282,7 @@
             <div class="section-kicker">它是什么</div>
             <h2>它是 AI CLI 的本地个人资产层，不是另一个云端知识库。</h2>
           </div>
-          <p class="lead">仓库只放可复用能力；用户自己的运行状态写到独立状态目录。默认开启本地个人记忆，当前 Codex 适配器只把压缩后的有界摘要同步进 host 原生上下文。</p>
+          <p class="lead">仓库只放可复用能力；用户自己的运行状态写到独立状态目录。默认开启本地个人记忆，同一份压缩后的有界摘要同步进启用的 host 原生上下文。</p>
         </div>
         <div class="compare">
           <article class="tile">
@@ -3319,7 +3319,7 @@
           <p class="lead">OpenRelix 不会把所有聊天都塞回上下文。它先把工作记录留在本机，再按固定节奏整理：平时每 30 分钟做小结，深夜做当天总账；需要时也能手动立刻生成。</p>
         </div>
         <div class="workflow memory-flow">
-          <div class="stage"><strong>先把这段工作记下来</strong><span>从 AI CLI 已保存的会话记录里读取刚做过的窗口，标清日期、项目和主题；Codex 应用里的对话只有你开启后才会读。</span></div>
+          <div class="stage"><strong>先把这段工作记下来</strong><span>从 AI CLI 已保存的会话记录里读取刚做过的窗口，标清日期、项目和主题；Codex 与 Claude Code 来源会在窗口里分开标记。</span></div>
           <div class="stage"><strong>每 30 分钟做一次小结</strong><span>开启后台学习刷新后，它会每 30 分钟看一眼最近窗口，把新结论、待跟进事项和可复用做法整理进本地记忆和面板。</span></div>
           <div class="stage"><strong>深夜把一天收成总账</strong><span>晚上 23:00 先整理当天窗口，00:10 再把前一天结果固定下来，生成长期记忆、短期跟进、报告和面板。</span></div>
           <div class="stage"><strong>着急时手动跑一次</strong><span>不想等后台任务时，直接运行 review 或 refresh，就能马上从当前窗口生成记忆；默认只同步压缩摘要，local-only 时只留本地。</span></div>
@@ -3579,13 +3579,13 @@
             <div class="section-kicker">安装</div>
             <h2>安装方式。</h2>
           </div>
-          <p class="lead">推荐命令会安装 `openrelix`、创建本地资产账本，开启每 30 分钟的增量学习，并把 Codex 应用对话也纳入整理。</p>
+          <p class="lead">推荐命令会安装 `openrelix`、创建本地资产账本，开启每 30 分钟的增量学习，并把 Codex 与 Claude Code 本地窗口纳入整理。</p>
         </div>
         <div class="install-module" aria-label="安装方式">
           <article class="install-path featured">
             <span class="chip">推荐安装</span>
             <h3>一行命令安装。</h3>
-              <p>已经有 Node.js 18+ 和 Python 3.10+ 的 macOS 用户，直接跑这一行。它会安装 `openrelix` 命令、创建本地资产账本、开启每 30 分钟的增量学习，并读取 Codex CLI 和 Codex 应用的本地记录。</p>
+              <p>已经有 Node.js 18+ 和 Python 3.10+ 的 macOS 用户，直接跑这一行。它会安装 `openrelix` 命令、创建本地资产账本、开启每 30 分钟的增量学习，并读取 Codex 与 Claude Code 的本地记录。</p>
             <div class="command-row inline-command" aria-label="npx 安装命令">
               <code class="command-code">npx openrelix@latest install --enable-learning-refresh</code>
               <button class="command-copy" type="button" aria-label="复制 npx 安装命令"><span data-copy-label aria-live="polite">复制</span></button>
@@ -3604,7 +3604,7 @@
               <li><span class="install-step-index">2</span><span>进入解压后的仓库目录。</span></li>
               <li><span class="install-step-index">3</span><span>执行安装脚本。</span></li>
             </ol>
-            <p class="install-hint">源码安装也一样：执行下面这行，直接启用自动学习并读取 Codex 应用记录。</p>
+            <p class="install-hint">源码安装也一样：执行下面这行，直接启用自动学习并读取 Codex 与 Claude Code 本地记录。</p>
             <div class="command-row inline-command" aria-label="GitHub 手动下载与安装命令">
               <code class="command-code">./install/install.sh --enable-learning-refresh</code>
               <button class="command-copy" type="button" aria-label="复制安装脚本命令"><span data-copy-label aria-live="polite">复制</span></button>
@@ -3621,14 +3621,14 @@
             <div class="section-kicker">快速上手</div>
             <h2>安装后运行顺序。</h2>
           </div>
-          <p class="lead">安装完成后，先执行一次近 7 天终版整理，把已有 Codex 窗口写入本地账本；整理完成后打开面板确认结果。</p>
+          <p class="lead">安装完成后，先执行一次近 7 天终版整理，把已有 Codex / Claude Code 窗口写入本地账本；整理完成后打开面板确认结果。</p>
         </div>
         <div class="tips">
           <div class="mode-list" aria-label="快速上手教程">
             <article class="mode-card">
               <span class="mode-kicker">第一步</span>
               <h3>整理最近 7 天</h3>
-              <p>先手动跑一次近 7 天终版回溯，把最近 7 天的 Codex 记录整理进 OpenRelix 本地账本和面板。默认 auto 会先尝试 Codex app-server，失败时回退到 Codex CLI history/session。</p>
+              <p>先手动跑一次近 7 天终版回溯，把最近 7 天的 Codex / Claude Code 记录整理进 OpenRelix 本地账本和面板。默认 all 会区分 host；Codex 侧 auto 会先尝试 app-server，失败时回退 CLI history/session。</p>
               <div class="command-row inline-command">
                 <code class="command-code">openrelix backfill --days 7 --stage final --learn-window-days 7</code>
                 <button class="command-copy" type="button" aria-label="复制学习窗口命令"><span data-copy-label aria-live="polite">复制</span></button>
@@ -3809,13 +3809,13 @@
               <p>把 Codex CLI 与 Codex 软件的活动来源、线程读取、上下文同步和异常回退做得更稳定，同时优化记忆去重、压缩预算、短期/长期分层和面板呈现。</p>
             </div>
           </article>
-          <article class="roadmap-item">
+          <article class="roadmap-item is-released">
             <div class="roadmap-marker" aria-hidden="true"></div>
             <div class="roadmap-content">
-              <span class="chip amber">v0.3.0</span>
-              <span class="roadmap-status">预计一周内 · 约 2026/05/05 前</span>
+              <span class="chip amber">v0.3.0 已发布</span>
+              <span class="roadmap-status">已发布 · 2026/05/04</span>
               <h3>适配 Claude Code CLI + Claude 软件</h3>
-              <p>新增 Claude Code CLI 与 Claude 软件 adapter，把 history、session、工作流和 memory/context 表面映射到同一套本地资产模型，验证跨 host 迁移路径。</p>
+              <p>新增 Claude Code CLI adapter，把 transcript、Token、`CLAUDE.md` 原生上下文和模型回溯映射到同一套本地资产模型，并与 Codex 共用一份个人记忆摘要。</p>
             </div>
           </article>
           <article class="roadmap-item">
@@ -3855,7 +3855,7 @@
           <article class="tile">
             <span class="chip blue" data-version-template-zh="{version} 预览版" data-version-template-en="{version} Preview">当前预览版</span>
             <h3>AI CLI 优先</h3>
-            <p>当前首个公开适配器是 Codex CLI 和 Codex app-server；默认 auto 优先读取 Codex app-server，Claude Code、Gemini CLI 等其他 AI CLI / coding-agent host 是后续适配目标。</p>
+            <p>当前公开适配器覆盖 Codex CLI / Codex app-server 和 Claude Code CLI；默认 all 会区分 host 采集窗口，Gemini CLI 等其他 AI CLI / coding-agent host 是后续适配目标。</p>
           </article>
           <article class="tile">
             <span class="chip amber">留在本地</span>
@@ -3971,7 +3971,7 @@
         "OpenRelix 个人记忆需要账本": "OpenRelix memory needs a ledger",
         "你需要看见哪些方法最常复用、节省了多少时间、哪些经验值得升级成技能，同时不挤占过多上下文。": "You need to see which methods are reused, how much time they save, and what should become a skill without overloading model context.",
         "它是 AI CLI 的本地个人资产层，不是另一个云端知识库。": "It is a local personal asset layer for AI CLIs, not another cloud knowledge base.",
-        "仓库只放可复用能力；用户自己的运行状态写到独立状态目录。默认开启本地个人记忆，当前 Codex 适配器只把压缩后的有界摘要同步进 host 原生上下文。": "The repo stores reusable capabilities; user runtime state goes to an external state root. Local personal memory is on by default, and the current Codex adapter syncs only a compressed bounded summary into host-native context.",
+        "仓库只放可复用能力；用户自己的运行状态写到独立状态目录。默认开启本地个人记忆，同一份压缩后的有界摘要同步进启用的 host 原生上下文。": "The repo stores reusable capabilities; user runtime state goes to an external state root. Local personal memory is on by default, and the same compressed bounded summary syncs into enabled host-native contexts.",
         "源码仓库": "Source repo",
         "可开源能力层": "Open-source capability layer",
         "安装器、技能、模板、LaunchAgent 模板、自动化脚本和产品文档都能公开审阅。": "Installers, skills, templates, LaunchAgent templates, automation scripts, and product docs can be publicly reviewed.",
@@ -3983,9 +3983,9 @@
         "默认 integrated：本地记忆入库，轻量摘要进入当前 host 上下文；需要隔离时再显式使用 local-only 或 off。": "Default is integrated: local memory is recorded, a lightweight summary enters the current host context, and local-only or off are explicit isolation choices.",
         "个人归属": "Ownership",
         "资产永远归个人": "Assets remain personal",
-        "方法手册、技能、模板、自动化和记忆账本不绑定单一平台，未来可迁移到 Claude Code、其他 CLI 或团队工作流。": "Playbooks, skills, templates, automations, and the memory ledger are not tied to one platform and can move to Claude Code, other CLIs, or team workflows later.",
+        "方法手册、技能、模板、自动化和记忆账本不绑定单一平台，可在 Codex、Claude Code、其他 CLI 或团队工作流之间迁移。": "Playbooks, skills, templates, automations, and the memory ledger are not tied to one platform and can move across Codex, Claude Code, other CLIs, or team workflows.",
         "按 AI host 适配和个人记忆系统两条主线推进。": "Advance along two tracks: AI host adapters and the personal memory system.",
-        "更新计划从 2026/04/28 v0.1.0 公开预览版起步，2026/04/29 完成 v0.2.0 Codex 深度适配；接下来扩展到 Claude 生态，最后收口成正式版个人记忆系统。": "The update plan kicks off with the v0.1.0 public preview on 2026/04/28 and ships v0.2.0 (deep Codex adaptation) on 2026/04/29; next, it expands into the Claude ecosystem and lands the official personal memory system.",
+        "更新计划从 2026/04/28 v0.1.0 公开预览版起步，2026/04/29 完成 v0.2.0 Codex 深度适配，2026/05/04 接入 Claude Code CLI；接下来收口成正式版个人记忆系统。": "The update plan kicks off with the v0.1.0 public preview on 2026/04/28, ships v0.2.0 (deep Codex adaptation) on 2026/04/29, and adds Claude Code CLI on 2026/05/04; next, it lands the official personal memory system.",
         "v0.1.0 已发布": "v0.1.0 Released",
         "v0.2.0 已发布": "v0.2.0 Released",
         "已发布 · 2026/04/28": "Released · 2026/04/28",
@@ -3994,9 +3994,10 @@
         "跑通本地优先个人 AI 资产系统的最小完整闭环：一键安装、Codex CLI 工作窗口采集、任务复盘、资产登记、记忆分层、面板可视化和 macOS 后台自动化。": "Delivered the smallest complete loop for a local-first personal AI asset system: one-command install, Codex CLI work-window collection, task reviews, asset registry, memory layering, dashboard visualization, and macOS background automation.",
         "深度适配 Codex 软件": "Deep Codex App Adaptation",
         "把 Codex CLI 与 Codex 软件的活动来源、线程读取、上下文同步和异常回退做得更稳定，同时优化记忆去重、压缩预算、短期/长期分层和面板呈现。": "Make Codex CLI and the Codex app more stable across activity sources, thread reading, context sync, and fallback behavior, while improving memory deduplication, compression budgets, short/long-term layering, and panel presentation.",
-        "预计一周内 · 约 2026/05/05 前": "Expected within one week · around 2026/05/05",
+        "已发布 · 2026/05/04": "Released · 2026/05/04",
+        "v0.3.0 已发布": "v0.3.0 Released",
         "适配 Claude Code CLI + Claude 软件": "Adapt Claude Code CLI + Claude App",
-        "新增 Claude Code CLI 与 Claude 软件 adapter，把 history、session、工作流和 memory/context 表面映射到同一套本地资产模型，验证跨 host 迁移路径。": "Add Claude Code CLI and Claude app adapters, mapping history, sessions, workflows, and memory/context surfaces into the same local asset model to validate cross-host migration.",
+        "新增 Claude Code CLI adapter，把 transcript、Token、`CLAUDE.md` 原生上下文和模型回溯映射到同一套本地资产模型，并与 Codex 共用一份个人记忆摘要。": "Add the Claude Code CLI adapter, mapping transcripts, Token usage, `CLAUDE.md` native context, and model backfill into the same local asset model while sharing one personal-memory summary with Codex.",
         "预计 1-2 周 · 约 2026/05/05 - 2026/05/12": "Expected in 1-2 weeks · around 2026/05/05 - 2026/05/12",
         "正式版：深度改造个人记忆系统": "Official Release: Deep Personal Memory System Upgrade",
         "围绕个人记忆系统做正式版收口：更清晰的长期/短期/低优先分层、更强的资产升级规则、更稳定的跨 host 记忆同步和正式发布文档。": "Finalize the official release around the personal memory system: clearer long-term / short-term / low-priority layers, stronger asset promotion rules, more stable cross-host memory sync, and official release docs.",
@@ -4004,7 +4005,7 @@
         "先沉淀成本地账本，再把必要摘要交给 AI host。": "First capture a local ledger, then hand only the necessary summary to the AI host.",
         "OpenRelix 不会把所有聊天都塞回上下文。它先把工作记录留在本机，再按固定节奏整理：平时每 30 分钟做小结，深夜做当天总账；需要时也能手动立刻生成。": "OpenRelix does not push every chat back into context. It keeps the work record on your machine first, then organizes it on a steady rhythm: short summaries every 30 minutes, a daily ledger late at night, and manual generation when you need it now.",
         "先把这段工作记下来": "First, Save This Work Session",
-        "从 AI CLI 已保存的会话记录里读取刚做过的窗口，标清日期、项目和主题；Codex 应用里的对话只有你开启后才会读。": "It reads the recent windows from saved AI CLI session records, labels the date, project, and topic, and only reads Codex app conversations after you turn that source on.",
+        "从 AI CLI 已保存的会话记录里读取刚做过的窗口，标清日期、项目和主题；Codex 与 Claude Code 来源会在窗口里分开标记。": "It reads recent windows from saved AI CLI session records, labels the date, project, and topic, and marks Codex and Claude Code sources separately.",
         "每 30 分钟做一次小结": "Summarize Every 30 Minutes",
         "开启后台学习刷新后，它会每 30 分钟看一眼最近窗口，把新结论、待跟进事项和可复用做法整理进本地记忆和面板。": "After background learning refresh is enabled, it checks recent windows every 30 minutes and organizes new conclusions, follow-ups, and reusable practices into local memory and the panel.",
         "深夜把一天收成总账": "Turn The Day Into A Ledger Late At Night",
@@ -4195,14 +4196,14 @@
         "装完后怎么用。": "What to do after install.",
         "安装后运行顺序。": "Post-install run order.",
         "安装方式。": "Install Options.",
-        "先安装 OpenRelix。推荐命令会开启 30 分钟自动 Codex 学习；如果只想手动整理，可以删掉 `--enable-learning-refresh`。默认 auto 会先尝试 Codex app-server，失败时回退到 Codex CLI history/session。": "Install OpenRelix first. The recommended command enables 30-minute automatic Codex learning; if you only want manual organization, remove `--enable-learning-refresh`. By default, auto tries Codex app-server first and falls back to Codex CLI history/session.",
-        "推荐命令会安装 `openrelix`、创建本地资产账本，并开启每 30 分钟的增量学习；默认 auto 会纳入 Codex 应用对话，失败时回退 CLI 文件。": "The recommended command installs `openrelix`, creates the local asset ledger, and enables incremental learning every 30 minutes; auto includes Codex app conversations and falls back to CLI files.",
-        "推荐命令会安装 `openrelix`、创建本地资产账本，开启每 30 分钟的增量学习，并把 Codex 应用对话也纳入整理。": "The recommended command installs `openrelix`, creates the local asset ledger, enables incremental learning every 30 minutes, and also includes Codex app conversations.",
+        "先安装 OpenRelix。推荐命令会开启 30 分钟自动学习；如果只想手动整理，可以删掉 `--enable-learning-refresh`。默认 all 会读取 Codex 与 Claude Code，Codex 侧 auto 会先尝试 app-server，失败时回退 CLI history/session。": "Install OpenRelix first. The recommended command enables 30-minute automatic learning; if you only want manual organization, remove `--enable-learning-refresh`. By default, all reads Codex and Claude Code, and Codex auto tries app-server before falling back to CLI history/session.",
+        "推荐命令会安装 `openrelix`、创建本地资产账本，并开启每 30 分钟的增量学习；默认 all 会纳入 Codex 和 Claude Code 本地窗口。": "The recommended command installs `openrelix`, creates the local asset ledger, and enables incremental learning every 30 minutes; default all includes Codex and Claude Code local windows.",
+        "推荐命令会安装 `openrelix`、创建本地资产账本，开启每 30 分钟的增量学习，并把 Codex 与 Claude Code 本地窗口纳入整理。": "The recommended command installs `openrelix`, creates the local asset ledger, enables incremental learning every 30 minutes, and includes Codex and Claude Code local windows.",
         "推荐安装": "Recommended",
         "一行命令安装。": "Install with one command.",
         "已经有 Node.js 18+ 和 Python 3.10+ 的 macOS 用户，直接跑这一行。它会安装 `openrelix` 命令、创建本地资产账本，并开启 30 分钟自动学习。这个模式会定时调用 Codex，可能消耗 token 和后台运行时间；不想自动学习时删掉 `--enable-learning-refresh`。": "If you already have Node.js 18+ and Python 3.10+ on macOS, run this line. It installs the `openrelix` command, creates the local asset ledger, and enables 30-minute automatic learning. This mode calls Codex on a schedule and may consume tokens and background runtime; remove `--enable-learning-refresh` if you do not want automatic learning.",
         "已经有 Node.js 18+ 和 Python 3.10+ 的 macOS 用户，直接跑这一行。它会安装 `openrelix` 命令、创建本地资产账本，并开启每 30 分钟的增量学习；后台运行可能消耗 token，需要纯手动模式时去掉自动学习开关。": "If you already have Node.js 18+ and Python 3.10+ on macOS, run this line. It installs the `openrelix` command, creates the local asset ledger, and enables incremental learning every 30 minutes; background runs may consume tokens, so remove the automatic-learning option for a manual-only setup.",
-        "已经有 Node.js 18+ 和 Python 3.10+ 的 macOS 用户，直接跑这一行。它会安装 `openrelix` 命令、创建本地资产账本、开启每 30 分钟的增量学习，并读取 Codex CLI 和 Codex 应用的本地记录。": "If you already have Node.js 18+ and Python 3.10+ on macOS, run this line. It installs the `openrelix` command, creates the local asset ledger, enables incremental learning every 30 minutes, and reads local records from both Codex CLI and the Codex app.",
+        "已经有 Node.js 18+ 和 Python 3.10+ 的 macOS 用户，直接跑这一行。它会安装 `openrelix` 命令、创建本地资产账本、开启每 30 分钟的增量学习，并读取 Codex 与 Claude Code 的本地记录。": "If you already have Node.js 18+ and Python 3.10+ on macOS, run this line. It installs the `openrelix` command, creates the local asset ledger, enables incremental learning every 30 minutes, and reads local records from Codex and Claude Code.",
         "# npx 快速安装": "# quick npx install",
         "如果你想强制只读 Codex CLI 本地记录，安装时加 `--activity-source history`。": "Add `--activity-source history` during install when you want to force Codex CLI local records only.",
         "手动下载": "Manual download",
@@ -4212,17 +4213,17 @@
         "下载并解压源码。": "Download and extract the source.",
         "进入解压后的仓库目录。": "Enter the extracted repository directory.",
         "执行安装脚本。": "Run the installer script.",
-        "源码安装也一样：默认会尝试读取 Codex 应用记录；需要只读 CLI 文件时加 `--activity-source history`。": "Source install works the same way: auto reads Codex app records first; add `--activity-source history` to force CLI files only.",
-        "源码安装也一样：执行下面这行，直接启用自动学习并读取 Codex 应用记录。": "Source install works the same way: run the line below to enable automatic learning and read Codex app records.",
-        "装好以后按这个顺序来：先把最近 7 天的 Codex 记录整理一次；再确认是否开启 30 分钟自动学习；最后打开面板看结果。自动学习会定时调用 Codex，不想消耗 token 时可以跳过。": "After install, use this order: organize the last 7 days of Codex records once; then confirm whether 30-minute automatic learning is enabled; finally open the panel to inspect the result. Automatic learning calls Codex on a schedule, so skip it if you do not want token usage.",
-        "安装完成后，先执行一次近 7 天整理，把已有 Codex 窗口写入本地账本；如果安装时保留 `--enable-learning-refresh`，后台会每 30 分钟增量刷新；最后打开面板确认结果。": "After install, run one 7-day organization pass to write existing Codex windows into the local ledger. If you kept `--enable-learning-refresh`, the background job refreshes incrementally every 30 minutes. Then open the panel to verify the result.",
-        "安装完成后，先执行一次近 7 天终版整理，把已有 Codex 窗口写入本地账本；整理完成后打开面板确认结果。": "After install, run one final 7-day organization pass to write existing Codex windows into the local ledger. Then open the panel to verify the result.",
+        "源码安装也一样：默认 all 会读取 Codex 与 Claude Code；需要只读 Codex CLI 文件时加 `--activity-source history`。": "Source install works the same way: default all reads Codex and Claude Code; add `--activity-source history` to force Codex CLI files only.",
+        "源码安装也一样：执行下面这行，直接启用自动学习并读取 Codex 与 Claude Code 本地记录。": "Source install works the same way: run the line below to enable automatic learning and read Codex and Claude Code local records.",
+        "装好以后按这个顺序来：先把最近 7 天的 Codex / Claude Code 记录整理一次；再确认是否开启 30 分钟自动学习；最后打开面板看结果。自动学习会定时调用当前 model_cli，不想消耗 token 时可以跳过。": "After install, use this order: organize the last 7 days of Codex / Claude Code records once; then confirm whether 30-minute automatic learning is enabled; finally open the panel to inspect the result. Automatic learning calls the current model_cli on a schedule, so skip it if you do not want token usage.",
+        "安装完成后，先执行一次近 7 天整理，把已有 Codex / Claude Code 窗口写入本地账本；如果安装时保留 `--enable-learning-refresh`，后台会每 30 分钟增量刷新；最后打开面板确认结果。": "After install, run one 7-day organization pass to write existing Codex / Claude Code windows into the local ledger. If you kept `--enable-learning-refresh`, the background job refreshes incrementally every 30 minutes. Then open the panel to verify the result.",
+        "安装完成后，先执行一次近 7 天终版整理，把已有 Codex / Claude Code 窗口写入本地账本；整理完成后打开面板确认结果。": "After install, run one final 7-day organization pass to write existing Codex / Claude Code windows into the local ledger. Then open the panel to verify the result.",
         "第一步": "Step 1",
         "先补齐最近 7 天": "Backfill the last 7 days first",
         "整理最近 7 天": "Organize the last 7 days",
-        "装完后先跑一次，把最近几天的 Codex 记录整理进 OpenRelix 本地记忆和面板。默认 auto 会先尝试 Codex app-server，失败时回退到 Codex CLI history/session。": "Run this once after install to organize recent Codex records into OpenRelix local memory and the panel. By default, auto tries Codex app-server first and falls back to Codex CLI history/session.",
+        "装完后先跑一次，把最近几天的 Codex / Claude Code 记录整理进 OpenRelix 本地记忆和面板。默认 all 会区分 host；Codex 侧 auto 会先尝试 app-server，失败时回退 CLI history/session。": "Run this once after install to organize recent Codex / Claude Code records into OpenRelix local memory and the panel. Default all distinguishes hosts; Codex auto tries app-server before falling back to CLI history/session.",
         "先手动跑一次，把最近 7 天的 Codex CLI 记录整理进 OpenRelix 本地账本和面板。默认 auto 会先尝试 Codex app-server，失败时回退到 Codex CLI history/session。": "Run this manually once to organize the last 7 days of Codex CLI records into the OpenRelix local ledger and panel. By default, auto tries Codex app-server first and falls back to Codex CLI history/session.",
-        "先手动跑一次终版 review，把最近 7 天的 Codex 记录整理进 OpenRelix 本地账本和面板。默认 auto 会先尝试 Codex app-server，失败时回退到 Codex CLI history/session。": "Run one final review manually to organize the last 7 days of Codex records into the OpenRelix local ledger and panel. By default, auto tries Codex app-server first and falls back to Codex CLI history/session.",
+        "先手动跑一次终版 review，把最近 7 天的 Codex / Claude Code 记录整理进 OpenRelix 本地账本和面板。默认 all 会区分 host；Codex 侧 auto 会先尝试 app-server，失败时回退 CLI history/session。": "Run one final review manually to organize the last 7 days of Codex / Claude Code records into the OpenRelix local ledger and panel. By default, all distinguishes hosts; Codex auto tries app-server before falling back to CLI history/session.",
         "同步正常": "Synced",
         "概览": "Overview",
         "今日 Review": "Today Review",
@@ -4236,7 +4237,7 @@
         "开启 30 分钟自动学习（推荐）": "Enable 30-minute automatic learning (recommended)",
         "如果安装命令已经带了 `--enable-learning-refresh`，这一步不用重跑。没带的话，运行下面这行开启后台自动学习；它会每 30 分钟调用 Codex 提炼记忆，可能消耗 token 和后台运行时间，不想后台调模型就跳过。": "If your install command already included `--enable-learning-refresh`, you do not need to rerun this step. If it did not, run the line below to enable background learning; it calls Codex every 30 minutes to synthesize memory, which may consume tokens and background runtime, so skip it if you do not want background model calls.",
         "30 分钟": "30 minutes",
-        "Codex 学习": "Codex learning",
+        "Host 学习": "Host learning",
         "第三步": "Step 3",
         "再打开本地面板": "Then open the local panel",
         "整理完成后打开面板，看今天整理了什么、长期和短期记忆有哪些、同步是否正常。运行命令打开网页端或桌面端，也可以在 macOS 中搜索 OpenRelix 直接启动。": "After organizing, open the panel to see what was captured today, which long-term and short-term memories exist, and whether sync is healthy. Run a command to open the web or desktop client, or search for OpenRelix on macOS to launch it directly.",
@@ -4313,7 +4314,7 @@
         "安装器 / 技能 / 模板": "Installer / Skills / Templates",
         "这些是可复用逻辑，适合随 npm 包和 GitHub 仓库一起发布。": "These are reusable logic and can ship with the npm package and GitHub repo.",
         "AI CLI 优先": "AI CLI First",
-        "当前首个公开适配器是 Codex CLI 和 Codex app-server；默认 auto 优先读取 Codex app-server，Claude Code、Gemini CLI 等其他 AI CLI / coding-agent host 是后续适配目标。": "The first public adapter is Codex CLI and Codex app-server; auto uses Codex app-server first, while Claude Code, Gemini CLI, and other AI CLI / coding-agent hosts are later adapter targets.",
+        "当前公开适配器覆盖 Codex CLI / Codex app-server 和 Claude Code CLI；默认 all 会区分 host 采集窗口，Gemini CLI 等其他 AI CLI / coding-agent host 是后续适配目标。": "Current public adapters cover Codex CLI / Codex app-server and Claude Code CLI; default all distinguishes hosts while collecting windows, and Gemini CLI plus other AI CLI / coding-agent hosts remain later adapter targets.",
         "留在本地": "Keep local",
         "注册表 / 复盘 / 原始库 / 报表": "Registry / Reviews / Raw / Reports",
         "这些包含个人工作轨迹，默认写入状态目录，不进入 npm 包和源码仓库。": "These contain personal work traces, are written to the state root by default, and do not enter the npm tarball or source repo.",

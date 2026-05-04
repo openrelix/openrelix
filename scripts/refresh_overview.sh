@@ -68,25 +68,8 @@ while (( $# > 0 )); do
   esac
 done
 
-sync_codex_memory_summary_if_enabled() {
-  local memory_mode=""
-  local codex_home="${CODEX_HOME:-$HOME/.codex}"
-  memory_mode="$(
-    "$PYTHON_BIN" - "$REPO_ROOT" <<'PY'
-import sys
-
-repo_root = sys.argv[1]
-sys.path.insert(0, repo_root + "/scripts")
-
-from asset_runtime import get_memory_mode  # noqa: E402
-
-print(get_memory_mode())
-PY
-  )"
-  if [[ "$memory_mode" == "integrated" ]]; then
-    "$PYTHON_BIN" "$REPO_ROOT/scripts/build_codex_memory_summary.py" \
-      --memory-summary "$codex_home/memories/memory_summary.md"
-  fi
+sync_host_memory_summary_state() {
+  "$PYTHON_BIN" "$REPO_ROOT/scripts/sync_host_memory_summary.py"
 }
 
 build_codex_native_display_cache_if_enabled() {
@@ -170,7 +153,7 @@ case "${learn_memory:l}" in
 esac
 
 "$PYTHON_BIN" "$REPO_ROOT/scripts/collect_codex_activity.py" --date "$target_date" --stage manual
-sync_codex_memory_summary_if_enabled
+sync_host_memory_summary_state
 build_codex_native_display_cache_if_enabled
 "$PYTHON_BIN" "$REPO_ROOT/scripts/build_overview.py"
 rebuild_sqlite_index_if_available

@@ -25,10 +25,15 @@ if str(SCRIPT_DIR) not in sys.path:
 
 from asset_runtime import (
     APP_SLUG,
+    DEFAULT_CLAUDE_MODEL,
     DEFAULT_CODEX_MODEL,
     LEGACY_APP_SLUGS,
+    atomic_write_text,
     ensure_state_layout,
+    get_activity_host,
+    get_claude_model,
     get_codex_model,
+    get_model_cli,
     get_memory_mode,
     get_memory_summary_budget,
     get_project_version,
@@ -36,21 +41,28 @@ from asset_runtime import (
     get_runtime_language,
     get_runtime_paths,
     load_runtime_config,
+    normalize_activity_host,
     normalize_activity_source,
+    normalize_claude_model,
     normalize_codex_model,
     normalize_language,
     normalize_memory_summary_max_tokens,
     normalize_memory_mode,
+    normalize_model_cli,
     PROJECT_PACKAGE_NAME,
     sync_codex_exec_home,
     write_runtime_config,
 )
+from openrelix_overview.token_fetcher import fetch_ccusage_daily, normalize_token_provider
+from openrelix_overview.token_usage import build_token_usage_view
 
 
 PATHS = get_runtime_paths()
 LANGUAGE = get_runtime_language(PATHS)
 MEMORY_MODE = get_memory_mode(PATHS)
 ACTIVITY_SOURCE = get_activity_source(PATHS)
+ACTIVITY_HOST = get_activity_host(PATHS)
+MODEL_CLI = get_model_cli(PATHS)
 REPO_ROOT = PATHS.repo_root
 REPORTS_DIR = PATHS.reports_dir
 CONSOLIDATED_DAILY_DIR = PATHS.consolidated_daily_dir
@@ -59,9 +71,12 @@ NIGHTLY_PIPELINE_SCRIPT = REPO_ROOT / "scripts" / "nightly_pipeline.sh"
 COLLECT_CODEX_ACTIVITY_SCRIPT = REPO_ROOT / "scripts" / "collect_codex_activity.py"
 BUILD_OVERVIEW_SCRIPT = REPO_ROOT / "scripts" / "build_overview.py"
 BUILD_CODEX_MEMORY_SUMMARY_SCRIPT = REPO_ROOT / "scripts" / "build_codex_memory_summary.py"
+SYNC_HOST_MEMORY_SUMMARY_SCRIPT = REPO_ROOT / "scripts" / "sync_host_memory_summary.py"
 BUILD_CODEX_NATIVE_DISPLAY_CACHE_SCRIPT = REPO_ROOT / "scripts" / "build_codex_native_display_cache.py"
 CONFIGURE_CODEX_USER_SCRIPT = REPO_ROOT / "install" / "configure_codex_user.py"
 BUILD_MACOS_CLIENT_SCRIPT = REPO_ROOT / "scripts" / "build_macos_client.sh"
+CLAUDE_MANAGED_MEMORY_START = "<!-- openrelix:shared-memory:start -->"
+CLAUDE_MANAGED_MEMORY_END = "<!-- openrelix:shared-memory:end -->"
 RENDER_TEMPLATE_SCRIPT = REPO_ROOT / "install" / "render_template.py"
 MACOS_CLIENT_APP_NAME = "OpenRelix.app"
 NPM_PACKAGE_NAME = PROJECT_PACKAGE_NAME
@@ -290,8 +305,8 @@ def build_parser():
         "--model-check",
         action="store_true",
         help=localized(
-            "实际运行一次极小的 codex exec，验证模型认证链路。",
-            "Run a tiny codex exec call to verify the model authentication path.",
+            "实际运行一次极小的当前 model_cli 调用，验证模型认证链路。",
+            "Run a tiny call through the current model_cli to verify the model authentication path.",
         ),
     )
     doctor.add_argument(
@@ -430,16 +445,16 @@ def build_parser():
         "--delete-local-memory",
         action="store_true",
         help=localized(
-            "同时删除本地 state root 和 OpenRelix 写入的 Codex memory summary。",
-            "Also delete the local state root and OpenRelix-written Codex memory summary.",
+            "同时删除本地 state root 和 OpenRelix 写入的 host memory summary。",
+            "Also delete the local state root and OpenRelix-written host memory summary.",
         ),
     )
     local_memory_group.add_argument(
         "--keep-local-memory",
         action="store_true",
         help=localized(
-            "保留本地 state root 和 Codex memory summary，不交互询问。",
-            "Keep the local state root and Codex memory summary without prompting.",
+            "保留本地 state root 和 host memory summary，不交互询问。",
+            "Keep the local state root and host memory summary without prompting.",
         ),
     )
     uninstall.add_argument(
@@ -520,6 +535,29 @@ def build_parser():
         ),
     )
     config.add_argument(
+        "--claude-model",
+        help=localized(
+            "设置 OpenRelix 内部 claude -p 使用的模型或别名；默认 {}。".format(DEFAULT_CLAUDE_MODEL),
+            "Set the model or alias used by OpenRelix internal claude -p calls. Default: {}.".format(DEFAULT_CLAUDE_MODEL),
+        ),
+    )
+    config.add_argument(
+        "--model-cli",
+        choices=["codex", "claude", "cc"],
+        help=localized(
+            "设置大模型记忆回溯使用的 CLI：codex | claude。",
+            "Set the CLI used for model-backed memory consolidation: codex | claude.",
+        ),
+    )
+    config.add_argument(
+        "--activity-host",
+        choices=["codex", "claude", "cc", "all"],
+        help=localized(
+            "设置窗口采集 host：codex | claude | all。默认 all。",
+            "Set the window collection host: codex | claude | all. Default: all.",
+        ),
+    )
+    config.add_argument(
         "--activity-source",
         choices=["history", "app-server", "auto"],
         help=localized(
@@ -576,6 +614,34 @@ def build_parser():
         "--json",
         action="store_true",
         help=localized("以 JSON 打印模型列表。", "Print the model list as JSON."),
+    )
+
+    tokens = subparsers.add_parser(
+        "tokens",
+        help=localized(
+            "查询 Codex / Claude Code Token 用量。",
+            "Query Codex / Claude Code token usage.",
+        ),
+    )
+    tokens.add_argument(
+        "--provider",
+        choices=["all", "codex", "claude", "cc"],
+        default="all",
+        help=localized(
+            "Token provider：all | codex | claude | cc。默认 all 会合并 Codex 和 Claude Code。",
+            "Token provider: all | codex | claude | cc. Default all merges Codex and Claude Code.",
+        ),
+    )
+    tokens.add_argument(
+        "--window-days",
+        type=int,
+        default=7,
+        help=localized("查询最近 N 天，默认 7。", "Query the last N days. Default: 7."),
+    )
+    tokens.add_argument(
+        "--json",
+        action="store_true",
+        help=localized("以 JSON 打印 Token 视图。", "Print the token view as JSON."),
     )
 
     index = subparsers.add_parser(
@@ -1510,8 +1576,8 @@ def sync_review_outputs(include_index=False, include_native_display=False, verbo
     if verbose:
         print(
             localized(
-                "刷新提示: 最后同步会更新搜索索引、Codex context 摘要和面板；历史数据较多时可能需要几分钟，请保持终端打开。",
-                "Refresh note: final sync updates the search index, Codex context summary, and panel; with more history this can take a few minutes, so keep this terminal open.",
+                "刷新提示: 最后同步会更新搜索索引、host context 摘要和面板；历史数据较多时可能需要几分钟，请保持终端打开。",
+                "Refresh note: final sync updates the search index, host context summary, and panel; with more history this can take a few minutes, so keep this terminal open.",
             ),
             flush=True,
         )
@@ -1519,47 +1585,36 @@ def sync_review_outputs(include_index=False, include_native_display=False, verbo
         if verbose:
             print(localized("刷新中 [1/4]: 重建搜索索引。", "Refreshing [1/4]: rebuilding the search index."), flush=True)
         rebuild_sqlite_index_if_available(verbose=verbose)
-    if get_memory_mode(PATHS) == "integrated":
-        if verbose:
-            print(
-                localized(
-                    "刷新中 [2/4]: 更新 Codex context 摘要。",
-                    "Refreshing [2/4]: updating the Codex context summary.",
-                ),
-                flush=True,
-            )
-        cmd = [
-            sys.executable,
-            str(BUILD_CODEX_MEMORY_SUMMARY_SCRIPT),
-            "--memory-summary",
-            str(PATHS.codex_home / "memories" / "memory_summary.md"),
-        ]
-        if verbose:
-            run_checked_with_progress(
-                cmd,
-                [
-                    localized(
-                        "仍在刷新: 正在汇总可注入 Codex 的记忆摘要。",
-                        "Still refreshing: building the memory summary that Codex can inject.",
-                    ),
-                    localized(
-                        "仍在刷新: Codex context 摘要还在生成，完成后会继续更新面板。",
-                        "Still refreshing: Codex context summary is still being generated; panel update will continue afterward.",
-                    ),
-                ],
-                reminder_zh="仍在刷新: 已等待约 {} 分钟，Codex context 摘要仍在生成。",
-                reminder_en="Still refreshing: waited about {} minutes; Codex context summary is still being generated.",
-            )
-        else:
-            run_checked_quiet(cmd)
-    elif verbose:
+    if verbose:
         print(
             localized(
-                "刷新中 [2/4]: 当前未启用 integrated 记忆模式，跳过 Codex context 摘要。",
-                "Refreshing [2/4]: integrated memory mode is not enabled; skipping Codex context summary.",
+                "刷新中 [2/4]: 同步或清理 host context 摘要。",
+                "Refreshing [2/4]: syncing or clearing the host context summary.",
             ),
             flush=True,
         )
+    cmd = [
+        sys.executable,
+        str(SYNC_HOST_MEMORY_SUMMARY_SCRIPT),
+    ]
+    if verbose and get_memory_mode(PATHS) == "integrated":
+        run_checked_with_progress(
+            cmd,
+            [
+                localized(
+                    "仍在刷新: 正在汇总可注入 Codex / Claude Code 的记忆摘要。",
+                    "Still refreshing: building the memory summary that Codex / Claude Code can inject.",
+                ),
+                localized(
+                    "仍在刷新: host context 摘要还在生成，完成后会继续更新面板。",
+                    "Still refreshing: host context summary is still being generated; panel update will continue afterward.",
+                ),
+            ],
+            reminder_zh="仍在刷新: 已等待约 {} 分钟，host context 摘要仍在生成。",
+            reminder_en="Still refreshing: waited about {} minutes; host context summary is still being generated.",
+        )
+    else:
+        run_checked_quiet(cmd)
     if include_native_display and verbose:
         print(
             localized(
@@ -1791,7 +1846,7 @@ def command_exists(command):
     return shutil.which(command_text) is not None
 
 
-def run_doctor_model_check():
+def run_doctor_codex_model_check():
     PATHS.nightly_runner_dir.mkdir(parents=True, exist_ok=True)
     sync_codex_exec_home(PATHS.codex_home, PATHS.nightly_codex_home)
 
@@ -1827,6 +1882,37 @@ def run_doctor_model_check():
         timeout=45,
         env=env,
     )
+
+
+def run_doctor_claude_model_check():
+    PATHS.nightly_runner_dir.mkdir(parents=True, exist_ok=True)
+    PATHS.claude_home.mkdir(parents=True, exist_ok=True)
+    env = dict(os.environ)
+    env["CLAUDE_CONFIG_DIR"] = str(PATHS.claude_home)
+    return subprocess.run(
+        [
+            PATHS.claude_bin,
+            "-p",
+            "--output-format",
+            "json",
+            "--no-session-persistence",
+            "--tools=",
+            "--model",
+            get_claude_model(PATHS),
+        ],
+        input="Reply exactly: OPENRELIX_DOCTOR_OK\n",
+        text=True,
+        capture_output=True,
+        timeout=45,
+        env=env,
+        cwd=str(PATHS.nightly_runner_dir),
+    )
+
+
+def run_doctor_model_check():
+    if get_model_cli(PATHS) == "claude":
+        return run_doctor_claude_model_check()
+    return run_doctor_codex_model_check()
 
 
 def run_codex_app_server_help_check():
@@ -1962,6 +2048,23 @@ def command_doctor(args):
     )
     append_doctor_check(
         checks,
+        "claude_bin",
+        "ok" if command_exists(PATHS.claude_bin) else "warn",
+        str(PATHS.claude_bin),
+        localized("如需用 Claude Code 做记忆回溯，请安装 Claude Code CLI，或通过 CLAUDE_BIN 指向可执行文件。", "Install Claude Code CLI, or point CLAUDE_BIN to the executable if you want Claude Code-backed memory consolidation."),
+    )
+    append_doctor_check(
+        checks,
+        "model_cli",
+        "ok",
+        get_model_cli(PATHS),
+        localized(
+            "OpenRelix 记忆回溯会使用这里配置的 CLI；可运行 openrelix config --model-cli codex|claude 切换。",
+            "OpenRelix memory consolidation uses this configured CLI; switch with openrelix config --model-cli codex|claude.",
+        ),
+    )
+    append_doctor_check(
+        checks,
         "codex_model",
         "ok",
         get_codex_model(PATHS),
@@ -1972,12 +2075,32 @@ def command_doctor(args):
     )
     append_doctor_check(
         checks,
+        "claude_model",
+        "ok",
+        get_claude_model(PATHS),
+        localized(
+            "仅当 model_cli=claude 时用于 OpenRelix 内部 claude -p 调用。",
+            "Used only when model_cli=claude for OpenRelix internal claude -p calls.",
+        ),
+    )
+    append_doctor_check(
+        checks,
         "activity_source",
         "ok",
         ACTIVITY_SOURCE,
         localized(
             "默认 auto 会优先读取 Codex 客户端 app-server，失败时回退 CLI history/session。",
             "Default auto reads Codex app-server first, then falls back to CLI history/session.",
+        ),
+    )
+    append_doctor_check(
+        checks,
+        "activity_host",
+        "ok",
+        ACTIVITY_HOST,
+        localized(
+            "默认 all 会同时读取 Codex 与 Claude Code 窗口，并在 raw window 中保留 ai_host。",
+            "Default all reads both Codex and Claude Code windows and preserves ai_host in raw windows.",
         ),
     )
     append_sqlite_index_doctor_check(checks)
@@ -2136,43 +2259,45 @@ def command_doctor(args):
         append_doctor_check(checks, "latest_learning_run", "ok", localized("未发现今天的模型失败记录。", "No model failure recorded for today."))
 
     if args.model_check:
-        if not command_exists(PATHS.codex_bin):
+        selected_cli = get_model_cli(PATHS)
+        selected_bin = PATHS.claude_bin if selected_cli == "claude" else PATHS.codex_bin
+        if not command_exists(selected_bin):
             append_doctor_check(
                 checks,
-                "codex_exec_model_check",
+                "model_cli_check",
                 "fail",
-                str(PATHS.codex_bin),
-                localized("先修复 codex_bin，再运行 --model-check。", "Fix codex_bin first, then rerun --model-check."),
+                str(selected_bin),
+                localized("先修复当前 model_cli 对应的 CLI 路径，再运行 --model-check。", "Fix the CLI path for the current model_cli first, then rerun --model-check."),
             )
         else:
             try:
                 result = run_doctor_model_check()
                 output = "\n".join(part for part in (result.stdout, result.stderr) if part).strip()
                 if result.returncode == 0:
-                    append_doctor_check(checks, "codex_exec_model_check", "ok", output[-300:])
+                    append_doctor_check(checks, "model_cli_check", "ok", output[-300:])
                 else:
                     append_doctor_check(
                         checks,
-                        "codex_exec_model_check",
+                        "model_cli_check",
                         "fail",
-                        output[-600:] or "codex exec failed with exit code {}".format(result.returncode),
+                        output[-600:] or "{} model check failed with exit code {}".format(selected_cli, result.returncode),
                         localized(
-                            "重新登录 Codex；如果使用集体/代理配置，同时检查 config.toml 的 model_provider/base_url；如果使用官方 key，再检查 OPENAI_API_KEY。",
-                            "Log in to Codex again. If you use a shared/proxy provider, also check config.toml model_provider/base_url; if you use an official key, check OPENAI_API_KEY.",
+                            "修复当前 model_cli 的登录或认证配置；Codex 检查 CODEX_HOME，Claude Code 检查 claude auth status。",
+                            "Fix login or auth for the current model_cli; check CODEX_HOME for Codex and claude auth status for Claude Code.",
                         ),
                     )
             except subprocess.TimeoutExpired:
                 append_doctor_check(
                     checks,
-                    "codex_exec_model_check",
+                    "model_cli_check",
                     "fail",
-                    "codex exec timed out after 45 seconds",
-                    localized("先确认 codex exec 在终端可交互运行。", "Confirm codex exec can run interactively in a terminal."),
+                    "{} model check timed out after 45 seconds".format(selected_cli),
+                    localized("先确认当前 model_cli 在终端可运行。", "Confirm the current model_cli can run in a terminal."),
                 )
     else:
         append_doctor_check(
             checks,
-            "codex_exec_model_check",
+            "model_cli_check",
             "warn",
             localized("未执行模型认证检查。", "Model authentication check was not run."),
             localized("需要验证 401 / invalid_issuer 时运行 openrelix doctor --model-check。", "Run openrelix doctor --model-check to verify 401 / invalid_issuer issues."),
@@ -2476,7 +2601,7 @@ def command_review(args):
         except subprocess.CalledProcessError as exc:
             pipeline_error = exc
     if not args.json:
-        print(localized("刷新中: 同步 Codex context 摘要和面板。", "Refreshing: syncing Codex context summary and panel."))
+        print(localized("刷新中: 同步 host context 摘要和面板。", "Refreshing: syncing host context summary and panel."))
     sync_review_outputs(include_index=True, include_native_display=True, verbose=not args.json)
     if not args.json:
         print(localized("生成完成: 读取摘要。", "Generation complete: reading summary."))
@@ -2785,8 +2910,8 @@ def command_backfill(args):
         if not args.json:
             print(
                 localized(
-                    "刷新中: 汇总更新索引、Codex context 摘要和面板；这一步可能需要几分钟。",
-                    "Refreshing: updating index, Codex context summary, and panel once; this may take a few minutes.",
+                    "刷新中: 汇总更新索引、host context 摘要和面板；这一步可能需要几分钟。",
+                    "Refreshing: updating index, host context summary, and panel once; this may take a few minutes.",
                 )
             )
         sync_review_outputs(include_index=True, include_native_display=True, verbose=not args.json)
@@ -3055,14 +3180,20 @@ def memory_summary_budget_payload(config=None):
     config = config or load_runtime_config(PATHS)
     budget = get_memory_summary_budget(PATHS)
     return {
-        "activity_source": normalize_activity_source(config.get("activity_source")),
+        "activity_source": get_activity_source(PATHS),
+        "activity_host": get_activity_host(PATHS),
+        "model_cli": get_model_cli(PATHS),
         "codex_model": get_codex_model(PATHS),
+        "claude_model": get_claude_model(PATHS),
         "memory_summary_max_tokens": budget["max_tokens"],
         "memory_summary_target_tokens": budget["target_tokens"],
         "memory_summary_warn_tokens": budget["warn_tokens"],
         "personal_memory_budget_tokens": budget["personal_memory_tokens"],
         "config_path": str(PATHS.runtime_dir / "config.json"),
+        "configured_model_cli": config.get("model_cli"),
         "configured_codex_model": config.get("codex_model"),
+        "configured_claude_model": config.get("claude_model"),
+        "configured_activity_host": config.get("activity_host"),
         "configured_memory_summary_max_tokens": config.get("memory_summary_max_tokens"),
     }
 
@@ -3070,15 +3201,28 @@ def memory_summary_budget_payload(config=None):
 def command_config(args):
     requested_max_tokens = args.memory_summary_max_tokens
     requested_activity_source = "auto" if args.read_codex_app else args.activity_source
+    requested_activity_host = getattr(args, "activity_host", None)
+    requested_model_cli = getattr(args, "model_cli", None)
     requested_codex_model = getattr(args, "codex_model", None)
-    if requested_max_tokens is None and requested_activity_source is None and requested_codex_model is None:
+    requested_claude_model = getattr(args, "claude_model", None)
+    if (
+        requested_max_tokens is None
+        and requested_activity_source is None
+        and requested_activity_host is None
+        and requested_model_cli is None
+        and requested_codex_model is None
+        and requested_claude_model is None
+    ):
         payload = memory_summary_budget_payload()
         if args.json:
             print_json(payload)
             return
         print(localized("OpenRelix 运行配置", "OpenRelix runtime config"))
         print("- activity_source: {}".format(payload["activity_source"]))
+        print("- activity_host: {}".format(payload["activity_host"]))
+        print("- model_cli: {}".format(payload["model_cli"]))
         print("- codex_model: {}".format(payload["codex_model"]))
+        print("- claude_model: {}".format(payload["claude_model"]))
         print("- memory_summary_max_tokens: {}".format(payload["memory_summary_max_tokens"]))
         print("- memory_summary_target_tokens: {}".format(payload["memory_summary_target_tokens"]))
         print("- memory_summary_warn_tokens: {}".format(payload["memory_summary_warn_tokens"]))
@@ -3100,6 +3244,20 @@ def command_config(args):
         except ValueError as exc:
             raise SystemExit(str(exc)) from exc
 
+    normalized_activity_host = None
+    if requested_activity_host is not None:
+        try:
+            normalized_activity_host = normalize_activity_host(requested_activity_host, strict=True)
+        except ValueError as exc:
+            raise SystemExit(str(exc)) from exc
+
+    normalized_model_cli = None
+    if requested_model_cli is not None:
+        try:
+            normalized_model_cli = normalize_model_cli(requested_model_cli, strict=True)
+        except ValueError as exc:
+            raise SystemExit(str(exc)) from exc
+
     normalized_codex_model = None
     if requested_codex_model is not None:
         try:
@@ -3107,9 +3265,19 @@ def command_config(args):
         except ValueError as exc:
             raise SystemExit(str(exc)) from exc
 
+    normalized_claude_model = None
+    if requested_claude_model is not None:
+        try:
+            normalized_claude_model = normalize_claude_model(requested_claude_model, strict=True)
+        except ValueError as exc:
+            raise SystemExit(str(exc)) from exc
+
     config = write_runtime_config(
         activity_source=normalized_activity_source,
+        activity_host=normalized_activity_host,
+        model_cli=normalized_model_cli,
         codex_model=normalized_codex_model,
+        claude_model=normalized_claude_model,
         memory_summary_max_tokens=normalized_max_tokens,
         paths=PATHS,
     )
@@ -3126,7 +3294,10 @@ def command_config(args):
 
     print(localized("OpenRelix 运行配置已更新", "OpenRelix runtime config updated"))
     print("- activity_source: {}".format(payload["activity_source"]))
+    print("- activity_host: {}".format(payload["activity_host"]))
+    print("- model_cli: {}".format(payload["model_cli"]))
     print("- codex_model: {}".format(payload["codex_model"]))
+    print("- claude_model: {}".format(payload["claude_model"]))
     print("- memory_summary_max_tokens: {}".format(payload["memory_summary_max_tokens"]))
     print("- memory_summary_target_tokens: {}".format(payload["memory_summary_target_tokens"]))
     print("- memory_summary_warn_tokens: {}".format(payload["memory_summary_warn_tokens"]))
@@ -3223,8 +3394,46 @@ def command_models(args):
             suffix_parts.append("visibility={}".format(model["visibility"]))
         suffix = " [{}]".format(" | ".join(suffix_parts)) if suffix_parts else ""
         print("- {} ({}){}".format(model["slug"], label, suffix))
-        if description:
-            print("  {}".format(description))
+
+
+def command_tokens(args):
+    provider = normalize_token_provider(getattr(args, "provider", "all"))
+    if provider not in {"all", "codex", "claude"}:
+        raise SystemExit("Unsupported token provider: {}".format(getattr(args, "provider", "")))
+    window_days = max(int(getattr(args, "window_days", 7) or 7), 1)
+    result = fetch_ccusage_daily(window_days=window_days, provider=provider)
+    view = build_token_usage_view(result, language=LANGUAGE)
+    payload = {
+        "ok": bool(view.get("available")),
+        "provider": provider,
+        "provider_label": view.get("provider_label", result.get("provider_label", "")),
+        "window_days": window_days,
+        "token_usage": view,
+        "error": view.get("error", ""),
+    }
+    if args.json:
+        print_json(payload)
+        return
+
+    print(localized("OpenRelix Token 用量", "OpenRelix token usage"))
+    print("- provider: {} ({})".format(provider, payload["provider_label"]))
+    print("- window_days: {}".format(window_days))
+    if not view.get("available"):
+        print("- status: unavailable")
+        if view.get("error"):
+            print("- error: {}".format(view.get("error")))
+        return
+    if view.get("partial") and view.get("error"):
+        print("- status: partial ({})".format(view.get("error")))
+    else:
+        print("- status: ok")
+    print("- today: {} ({})".format(view.get("today_total_tokens_display"), view.get("today_date_label")))
+    print("- 7_day: {} · {}".format(view.get("seven_day_total_tokens_display"), view.get("seven_day_cost_display")))
+    for row in view.get("daily_rows", []):
+        print("- {}: {}".format(row.get("label"), row.get("display")))
+        provider_label = row.get("provider_label", "")
+        if provider_label:
+            print("  provider: {}".format(provider_label))
 
 
 def print_index_results(kind, rows):
@@ -3665,6 +3874,7 @@ def dangerous_state_root_delete_reason(path):
         home,
         REPO_ROOT.resolve(),
         PATHS.codex_home.resolve(),
+        PATHS.claude_home.resolve(),
     }
     if path in dangerous_exact:
         return "refusing to delete a protected root"
@@ -3672,6 +3882,8 @@ def dangerous_state_root_delete_reason(path):
         return "refusing to delete a path inside the source repository"
     if path_is_relative_to(path, PATHS.codex_home):
         return "refusing to delete a path inside CODEX_HOME"
+    if path_is_relative_to(path, PATHS.claude_home):
+        return "refusing to delete a path inside CLAUDE_HOME"
     return ""
 
 
@@ -3706,13 +3918,54 @@ def should_delete_local_memory(args):
         return False
 
     print(localized(
-        "是否同时删除本地记忆？这会删除 state root，并移除 OpenRelix 写入的 Codex memory summary。",
-        "Delete local memory too? This removes the state root and the OpenRelix-written Codex memory summary.",
+        "是否同时删除本地记忆？这会删除 state root，并移除 OpenRelix 写入的 host memory summary。",
+        "Delete local memory too? This removes the state root and the OpenRelix-written host memory summary.",
     ))
     print("- state_root: {}".format(PATHS.state_root))
     print("- codex_summary: {}".format(PATHS.codex_home / "memories" / "memory_summary.md"))
+    print("- claude_summary: {}".format(PATHS.claude_home / "CLAUDE.md"))
     answer = input(localized("删除本地记忆？[y/N]: ", "Delete local memory? [y/N]: ")).strip().lower()
     return answer in {"y", "yes", "是", "是的", "好", "好的", "1"}
+
+
+def strip_managed_claude_memory_block(text):
+    if CLAUDE_MANAGED_MEMORY_START not in text or CLAUDE_MANAGED_MEMORY_END not in text:
+        return text, False
+    before, _, tail = text.partition(CLAUDE_MANAGED_MEMORY_START)
+    _, _, after = tail.partition(CLAUDE_MANAGED_MEMORY_END)
+    updated = "\n\n".join(part.strip() for part in (before, after) if part.strip())
+    return (updated + "\n" if updated else ""), True
+
+
+def remove_claude_memory_summary_for_uninstall(actions, dry_run=False):
+    summary_path = PATHS.claude_home / "CLAUDE.md"
+    if not path_exists_or_symlink(summary_path):
+        record_uninstall_action(actions, "claude_memory_summary", summary_path, "missing")
+        return
+    if summary_path.is_dir():
+        record_uninstall_action(actions, "claude_memory_summary", summary_path, "kept", "CLAUDE.md path is a directory")
+        return
+    try:
+        existing = summary_path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        record_uninstall_action(actions, "claude_memory_summary", summary_path, "error", exc)
+        return
+    updated, removed = strip_managed_claude_memory_block(existing)
+    if not removed:
+        record_uninstall_action(actions, "claude_memory_summary", summary_path, "kept", "no OpenRelix managed block")
+        return
+    if dry_run:
+        record_uninstall_action(actions, "claude_memory_summary", summary_path, "would_remove", "managed block")
+        return
+    try:
+        if updated.strip():
+            atomic_write_text(summary_path, updated)
+        else:
+            summary_path.unlink()
+    except OSError as exc:
+        record_uninstall_action(actions, "claude_memory_summary", summary_path, "error", exc)
+        return
+    record_uninstall_action(actions, "claude_memory_summary", summary_path, "removed", "managed block")
 
 
 def remove_local_memory_for_uninstall(actions, dry_run=False):
@@ -3725,6 +3978,7 @@ def remove_local_memory_for_uninstall(actions, dry_run=False):
 
     summary_path = PATHS.codex_home / "memories" / "memory_summary.md"
     remove_path_for_uninstall(summary_path, "codex_memory_summary", actions, dry_run=dry_run)
+    remove_claude_memory_summary_for_uninstall(actions, dry_run=dry_run)
 
 
 def uninstall_status_label(status):
@@ -3862,8 +4116,11 @@ def command_paths():
     print("- repo_root: {}".format(REPO_ROOT))
     print("- state_root: {}".format(PATHS.state_root))
     print("- codex_home: {}".format(PATHS.codex_home))
+    print("- claude_home: {}".format(PATHS.claude_home))
     print("- language: {}".format(LANGUAGE))
     print("- memory_mode: {}".format(MEMORY_MODE))
+    print("- model_cli: {}".format(MODEL_CLI))
+    print("- activity_host: {}".format(ACTIVITY_HOST))
     print("- command: {}".format(Path(command_path).resolve() if command_path else Path(sys.argv[0]).resolve()))
     print("- panel: {}".format(REPORTS_DIR / "panel.html"))
     print("- overview: {}".format(REPORTS_DIR / "overview.md"))
@@ -3877,7 +4134,8 @@ def main():
     args = parser.parse_args()
     read_only_index_status = args.command == "index" and getattr(args, "action", None) == "status"
     read_only_model_catalog = args.command == "models"
-    if args.command != "uninstall" and not read_only_index_status and not read_only_model_catalog:
+    read_only_token_query = args.command == "tokens"
+    if args.command != "uninstall" and not read_only_index_status and not read_only_model_catalog and not read_only_token_query:
         ensure_state_layout(PATHS)
     if args.command in (None, "help"):
         parser.print_help()
@@ -3912,6 +4170,9 @@ def main():
         return
     if args.command == "models":
         command_models(args)
+        return
+    if args.command == "tokens":
+        command_tokens(args)
         return
     if args.command == "index":
         command_index(args)

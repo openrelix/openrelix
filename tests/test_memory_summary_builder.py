@@ -80,7 +80,7 @@ They prefer direct edits when the target state is clear.
 
 
 SAMPLE_PERSONAL_MEMORY_REGISTRY = """
-{"date":"2026-04-26","source":"nightly_codex","bucket":"durable","title":"Default integrated memory mode","memory_type":"procedural","priority":"high","value_note":"Local memory stays in the state root, while a compressed bounded summary is synced into Codex context by default.","keywords":["memory","integrated","state root"]}
+{"date":"2026-04-26","source":"nightly_codex","bucket":"durable","title":"Default integrated memory mode","memory_type":"procedural","priority":"high","value_note":"Local memory stays in the state root, while a compressed bounded summary is synced into host context by default.","keywords":["memory","integrated","state root"]}
 {"date":"2026-04-25","source":"nightly_codex","bucket":"session","title":"Backfill command rollout","memory_type":"task","priority":"medium","value_note":"Users can copy a multi-day openrelix backfill command from the panel instead of executing shell from the browser.","keywords":["backfill","panel"]}
 {"date":"2026-04-24","source":"nightly_codex","bucket":"low_priority","title":"Do not inject this","memory_type":"semantic","priority":"low","value_note":"Low priority items stay out of the bounded context summary.","keywords":["skip"]}
 """

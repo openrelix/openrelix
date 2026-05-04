@@ -26,6 +26,8 @@ REQUIRED_TOP_LEVEL_KEYS = (
     "nightly_memory_views",
     "codex_native_memory",
     "codex_native_memory_counts",
+    "claude_native_memory",
+    "claude_native_memory_counts",
 )
 
 OVERVIEW_MARKERS = {
@@ -89,6 +91,8 @@ def validate_overview_data(data):
         "nightly_memory_views": dict,
         "codex_native_memory": list,
         "codex_native_memory_counts": dict,
+        "claude_native_memory": list,
+        "claude_native_memory_counts": dict,
     }
     for key, expected_types in type_checks.items():
         if not isinstance(expected_types, tuple):

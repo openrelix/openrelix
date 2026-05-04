@@ -8,7 +8,7 @@ OpenRelix™ is a local-first asset layer for AI coding agents. It turns finishe
 
 The name means open-source personal memory relics: reusable work stays organized locally, while only sanitized, bounded summaries are shared with the active AI host.
 
-The project is intentionally not tied to one AI host. The current preview ships a Codex CLI adapter first because Codex exposes the history, session, skill, and memory surfaces needed for a working local installer. Other AI CLI / agent hosts can be added through adapter layers without changing the product goal.
+The project is intentionally not tied to one AI host. The current preview supports Codex CLI / Codex app-server and Claude Code CLI for the core local-memory workflow, while keeping the adapter boundary open for other AI CLI / agent hosts.
 
 GitHub project page: [openrelix/openrelix](https://github.com/openrelix/openrelix). If this project helps your workflow, a star is welcome.
 
@@ -63,25 +63,26 @@ The current preview is macOS-only. The supported install path assumes:
 - `zsh`
 - Python 3.10+
 - Codex CLI with a writable `CODEX_HOME`, defaulting to `~/.codex`
-- For model-backed learning refresh, a working Codex model path for `codex exec`. OpenRelix pins its own internal `codex exec --model` default to `gpt-5.4-mini` for review, backfill, 30-minute learning refresh, and nightly summaries without changing the user's global Codex default. If `openrelix refresh --learn-memory` reports `401`, `Unauthorized`, or `invalid_issuer`, first confirm `codex exec` works in a normal terminal. Shared/proxy providers must keep `CODEX_HOME/auth.json` and `CODEX_HOME/config.toml` together because `model_provider/base_url` is not stored in `auth.json`; official OpenAI API key setups should also check or clear an invalid `OPENAI_API_KEY`.
+- Optional Claude Code CLI with a writable `CLAUDE_HOME` / `CLAUDE_CONFIG_DIR`, defaulting to `~/.claude`, when you want Claude Code windows, Token usage, native context, or model-backed consolidation.
+- For model-backed learning refresh, a working `model_cli`. The default is Codex through `codex exec --model gpt-5.4-mini`; `--model-cli claude` uses `claude -p --model <claude_model>` instead. OpenRelix passes the model explicitly for review, backfill, 30-minute learning refresh, and nightly summaries without changing either host's global default. If Codex reports `401`, `Unauthorized`, or `invalid_issuer`, first confirm `codex exec` works in a normal terminal. Shared/proxy Codex providers must keep `CODEX_HOME/auth.json` and `CODEX_HOME/config.toml` together because `model_provider/base_url` is not stored in `auth.json`; official OpenAI API key setups should also check or clear an invalid `OPENAI_API_KEY`.
 
 Linux and Windows support are future work. Some lower-level Python scripts are written to keep paths configurable, but the public installer and background automation should be treated as macOS-only for this release.
 
-The first public adapter targets Codex CLI and Codex app-server. Several current preview capabilities depend on Codex-specific surfaces, including `CODEX_HOME`, Codex app-server threads, Codex history/session files, Codex native memories, Codex skills, and Codex custom prompts. The product direction remains AI-agent-first: future hosts should plug in by mapping their own history, skill, memory, and command surfaces into the same local asset model.
+The current public adapters cover Codex CLI / Codex app-server and Claude Code CLI. Codex support includes `CODEX_HOME`, app-server threads, history/session files, native memories, skills, and custom prompts. Claude Code support maps local transcripts, Token usage, `CLAUDE.md` native context, and model-backed consolidation into the same OpenRelix state root. Gemini CLI and other AI CLI / coding-agent hosts remain future adapter targets.
 
-Expected adapter work after the current preview includes Claude Code, Gemini CLI, and other AI CLI / coding-agent hosts that expose local history, command, skill, or memory surfaces. These are roadmap targets, not current support guarantees.
-
-Codex app-server collection is now part of the default Codex adapter path. By default, OpenRelix uses `auto`: it tries `codex app-server` first, maps Codex threads back into the same raw window format used by the existing collector, and falls back to `CODEX_HOME/history.jsonl` plus `CODEX_HOME/sessions/**/*.jsonl` when app-server is unavailable.
+Codex app-server collection is part of the default Codex adapter path. By default, OpenRelix uses `--activity-host all` and `--activity-source auto`: it reads Claude Code transcripts when present, tries `codex app-server` for Codex threads, maps every host into the same raw window format with an `ai_host` field, and falls back to `CODEX_HOME/history.jsonl` plus `CODEX_HOME/sessions/**/*.jsonl` when app-server is unavailable.
 
 ```bash
 npx openrelix install --activity-source auto
 npx openrelix install --activity-source history
+npx openrelix install --activity-host all --model-cli claude
 python3 scripts/collect_codex_activity.py --date "$(date +%F)" --activity-source app-server
+python3 scripts/collect_codex_activity.py --date "$(date +%F)" --activity-host claude
 openrelix doctor --app-server-check
 OPENRELIX_ACTIVITY_SOURCE=app-server openrelix review --date "$(date +%F)"
 ```
 
-Use `--activity-source history` only when you want to force the stable CLI history/session collector. Use `--activity-source app-server` or `OPENRELIX_ACTIVITY_SOURCE=app-server` for a one-off strict app-server run. `--read-codex-app` remains accepted as a compatibility alias for `--activity-source auto`.
+Use `--activity-host codex`, `--activity-host claude`, or `--activity-host all` to choose which host windows are collected. Use `--activity-source history` only when you want to force Codex's stable CLI history/session collector. Use `--activity-source app-server` or `OPENRELIX_ACTIVITY_SOURCE=app-server` for a one-off strict Codex app-server run. `--read-codex-app` remains accepted as a compatibility alias for `--activity-source auto`.
 
 ## Dependency notes
 
@@ -90,7 +91,7 @@ The one-line npm install should not require a separate project setup step after 
 - No `pip install ...` step is required. The shipped Python scripts use the Python standard library.
 - No `npm install` step is required. The npm package is a bootstrapper and does not declare runtime npm dependencies.
 - No manual LaunchAgent setup is required. The installer renders and bootstraps LaunchAgents when background services are enabled.
-- Token usage metrics are optional. The panel fetches them with `npx -y @ccusage/codex@latest` on demand; if that command is unavailable or offline, the rest of the panel still works and Token cards show a fallback state or cached data.
+- Token usage metrics are optional. The panel fetches Codex data with `npx -y @ccusage/codex@latest` and Claude Code data with `npx -y ccusage@latest` on demand. The default view merges both providers; if either command is unavailable or offline, the rest of the panel still works and Token cards show a fallback, partial, or cached state.
 
 If Python 3.10+ is missing on macOS, install Python first, then rerun the installer:
 
@@ -105,10 +106,10 @@ Fresh installs should keep user state outside the repository. The installer crea
 
 - `registry/`: asset registry, usage events, and nightly memory items.
 - `reviews/`: sanitized task reviews.
-- `raw/`: collected AI host activity grouped by day and window; Codex is the current preview source.
+- `raw/`: collected AI host activity grouped by day and window, with `ai_host` distinguishing Codex and Claude Code.
 - `consolidated/`: nightly organization output.
 - `reports/`: generated overview markdown, JSON, CSV, and HTML panel.
-- `runtime/`: token cache and adapter runtime such as an isolated nightly Codex home.
+- `runtime/`: token cache and adapter runtime such as isolated nightly Codex / Claude homes.
 - `log/`: background task logs.
 
 By default the installer uses:
@@ -148,7 +149,7 @@ Minimal install:
 ./install/install.sh --minimal
 ```
 
-The default install profile is `integrated`. It installs the local shell command, global skill symlink, lightweight macOS client, background refresh services, and nightly organization LaunchAgents by default. Minimal install initializes the state root, generates the first overview, enables the current Codex adapter's memories/history, and syncs a bounded memory summary into `CODEX_HOME`. It still does not install shell commands, change shell rc files, or bootstrap LaunchAgents. Use `--minimal --record-memory-only` when you want a minimal install that records only to this system's local state root without host-context injection.
+The default install profile is `integrated`. It installs the local shell command, global skill symlink, lightweight macOS client, background refresh services, and nightly organization LaunchAgents by default. Minimal install initializes the state root, generates the first overview, enables bounded host context, and syncs one shared bounded memory summary into configured host contexts: Codex `memory_summary.md` and a managed OpenRelix block in Claude Code `CLAUDE.md`. It still does not install shell commands, change shell rc files, or bootstrap LaunchAgents. Use `--minimal --record-memory-only` when you want a minimal install that records only to this system's local state root without host-context injection.
 
 For a repo-checkout smoke test that stops at the generated panel and does not touch your real state root or real `CODEX_HOME`, run:
 
@@ -188,16 +189,16 @@ npx openrelix uninstall --keep-local-memory
 npx openrelix uninstall --delete-local-memory
 ```
 
-`--delete-local-memory` deletes the active state root and the OpenRelix-written `CODEX_HOME/memories/memory_summary.md`. It does not delete your whole `CODEX_HOME`, Codex auth, or Codex history/session files.
+`--delete-local-memory` deletes the active state root, the OpenRelix-written `CODEX_HOME/memories/memory_summary.md`, and the managed OpenRelix block inside `CLAUDE_HOME/CLAUDE.md`. It does not delete your whole `CODEX_HOME`, your whole `CLAUDE_HOME`, host auth, or host history/session files.
 
-The installer stores the selected runtime language, memory mode, activity source, Codex model, and token budget in the state root under `runtime/config.json`. Supported language values are `zh` and `en`; interactive installs prompt when no language is passed, and non-interactive installs default to `zh`. The language controls local terminal output, generated overview files, nightly summary prompts, fallback summaries, immediate task reviews, asset / usage-event human-facing fields, and the structured memory items written by the local consolidation pipeline. Stable enum keys stay canonical so automation can still classify records, while the visible fields follow the selected language.
+The installer stores the selected runtime language, memory mode, activity source, activity host, model CLI, Codex model, Claude model, and token budget in the state root under `runtime/config.json`. Supported language values are `zh` and `en`; interactive installs prompt when no language is passed, and non-interactive installs default to `zh`. The language controls local terminal output, generated overview files, nightly summary prompts, fallback summaries, immediate task reviews, asset / usage-event human-facing fields, and the structured memory items written by the local consolidation pipeline. Stable enum keys stay canonical so automation can still classify records, while the visible fields follow the selected language.
 
 ```bash
 ./install/install.sh --language zh
 ./install/install.sh --language en
 ```
 
-Memory is on by default. In the current Codex adapter, the default mode is `integrated`: the system records reusable memory into the active state root, enables Codex memories/history, and syncs a bounded summary into host-native context. Use `--record-memory-only` when you want strict local recording without context injection, or `--disable-personal-memory` to disable this system's local memory writes.
+Memory is on by default. The default mode is `integrated`: the system records one reusable personal-memory registry into the active state root, then syncs a bounded summary into enabled host-native contexts. Codex and Claude Code read the same shared personal memory summary; host-native files remain separate display/injection surfaces. Use `--record-memory-only` when you want strict local recording without context injection, or `--disable-personal-memory` to disable this system's local memory writes.
 
 The context sync is intentionally compressed: duplicate personal memories are merged by signature, durable / session items are prioritized, low-priority items stay local-only, and the injected summary targets about 6.7K tokens with an 8K hard budget.
 
@@ -206,7 +207,7 @@ The context sync is intentionally compressed: duplicate personal memories are me
 ./install/install.sh --disable-personal-memory
 ```
 
-`--record-memory-only` keeps the personal memory system on, enables enough Codex history for local collection, disables Codex native memory context, and keeps bounded memory-summary sync off. `--disable-personal-memory` records the mode as `off` and skips local memory-registry writes. `--use-integrated` is the explicit alias for the default mode.
+`--record-memory-only` keeps the personal memory system on, enables enough host history for local collection, disables host-native memory context, and keeps bounded memory-summary sync off. `--disable-personal-memory` records the mode as `off` and skips local memory-registry writes. `--use-integrated` is the explicit alias for the default mode.
 
 Recommended integrated install with global skill symlinks, bounded history config, the `openrelix` shell command, the lightweight macOS client, default nightly organization, 30-minute automatic learning refresh, a daily update check, and sleep protection while nightly jobs are running:
 
@@ -217,13 +218,13 @@ Recommended integrated install with global skill symlinks, bounded history confi
 The integrated profile does this:
 
 1. Initializes the active state root and generates the first overview.
-2. Enables bounded history and Codex native memory context by default.
+2. Enables bounded host history and host-native memory context by default.
 3. Installs the repo-provided `memory-review` skill globally by symlinking it into `~/.codex/skills/`.
 4. Installs the repo-provided custom prompt into `~/.codex/prompts/memory-review.md` as a compatibility fallback.
 5. Installs the global `openrelix` shell command and ensures the chosen user bin directory is on `PATH`.
 6. Builds the lightweight macOS client in the state root, then installs a real app bundle at `~/Applications/OpenRelix.app` when `swiftc` is available.
 7. Renders and bootstraps macOS LaunchAgents for:
-   - overview refresh every 30 minutes; with `--enable-learning-refresh`, this calls the current Codex adapter and learns from a 7-day window
+   - overview refresh every 30 minutes; with `--enable-learning-refresh`, this reads the configured activity host and runs model-backed consolidation through the configured `model_cli`
    - token live server
    - nightly preview at `23:00`
    - nightly finalize for the previous day at `00:10`
@@ -255,7 +256,7 @@ Recommended after install: the installer can enable automatic learning refresh e
 npx openrelix install --enable-learning-refresh
 ```
 
-This option is intentionally explicit: the default background `overview-refresh` does not learn memory from recent windows, while `--enable-learning-refresh` makes that 30-minute LaunchAgent call the current Codex adapter, learn from recent AI host windows, update this system's local memory and overview, and keep host-context injection bounded. Chinese runtime language may still maintain the small Codex-native display cache described above. If the global `openrelix` command was not installed, the installer prints a direct `python3 scripts/openrelix.py ...` fallback command with the selected state root and host home.
+This option is intentionally explicit: the default background `overview-refresh` does not learn memory from recent windows, while `--enable-learning-refresh` makes that 30-minute LaunchAgent read the configured activity host, learn from recent AI host windows, update this system's local memory and overview, and keep host-context injection bounded. Chinese runtime language may still maintain the small Codex-native display cache described above. If the global `openrelix` command was not installed, the installer prints a direct `python3 scripts/openrelix.py ...` fallback command with the selected state root and host homes.
 
 The integrated installer also provides a shell entrypoint:
 
@@ -279,7 +280,7 @@ For release updates, use `openrelix update --check` in automation and `openrelix
 
 If the chosen bin directory is not already on `PATH`, the installer appends a managed `PATH` block to your active shell rc file and prints the one-line `export PATH=...` command for the current shell.
 
-By default, the installer and routine `review` / `backfill` / `refresh` commands write a bounded summary into `CODEX_HOME` so Codex can read the compressed context. The full local asset memory still lives in the active state root, while Codex remains the owner of `~/.codex/memories/`. Use `--record-memory-only` or `--no-memory-summary` when you want to keep this system's memory out of Codex native context.
+By default, the installer and routine `review` / `backfill` / `refresh` commands write the same bounded summary into enabled host contexts so Codex and Claude Code can read compressed personal memory. The full local asset memory still lives in the active state root, while each host remains the owner of its native files. Use `--record-memory-only` or `--no-memory-summary` when you want to keep this system's memory out of host-native context.
 
 You can also build a custom profile by starting from the minimal default and adding explicit flags such as `--install-global-skills`, `--install-global-command`, `--enable-background-services`, `--record-memory-only`, `--disable-personal-memory`, `--enable-memories`, `--enable-history`, or `--sync-memory-summary`.
 
@@ -410,20 +411,25 @@ Backfill specific non-contiguous dates:
 openrelix backfill --dates 2026-04-21,2026-04-23,2026-04-24 --learn-window-days 7
 ```
 
-Backfill collection is local, but synthesis is not purely offline: the raw Codex activity collection is handled by local scripts, while each target date's structured summary is generated through `codex exec --ephemeral`.
+Backfill collection is local, but synthesis is not purely offline: raw AI host activity collection is handled by local scripts, while each target date's structured summary is generated through the configured `model_cli` (`codex exec --ephemeral` by default, or `claude -p` when selected).
 
-In the default `integrated` mode, review, backfill, and refresh also regenerate the bounded `memory_summary.md` under `CODEX_HOME` so Codex can read the compressed context. They still keep full local registry data under the state root and do not write raw windows into Codex native memory. Personal-memory candidates do not have a fixed item cap; the generated summary is bounded by a configurable token budget instead.
+In the default `integrated` mode, review, backfill, and refresh also regenerate the shared bounded summary for enabled host contexts. They still keep full local registry data under the state root and do not write raw windows into host-native memory. Personal-memory candidates do not have a fixed item cap; the generated summary is bounded by a configurable token budget instead.
 
 Show or update runtime config:
 
 ```bash
 openrelix config
 openrelix models
+openrelix tokens --provider all
+openrelix tokens --provider codex
+openrelix tokens --provider cc
 openrelix config --codex-model gpt-5.4-mini
+openrelix config --model-cli claude --claude-model sonnet
+openrelix config --activity-host all
 openrelix config --memory-summary-max-tokens 8000
 ```
 
-`openrelix models` reads the current local Codex CLI model catalog through `codex debug models` and prints a sanitized list of selectable model IDs. `codex_model` defaults to `gpt-5.4-mini` and is passed only to OpenRelix's internal `codex exec` jobs. `memory_summary_max_tokens` defaults to 8000 and accepts values from 2000 to 20000. Target and warning budgets are derived automatically from that max. Updating config refreshes the summary, overview, and panel by default; add `--no-refresh` when you only want to persist the config.
+`openrelix models` reads the current local Codex CLI model catalog through `codex debug models` and prints a sanitized list of selectable model IDs. `openrelix tokens` defaults to `--provider all`, merging Codex `@ccusage/codex` and Claude Code `ccusage`; pass `--provider codex` or `--provider cc` for a single host. `codex_model` defaults to `gpt-5.4-mini`, `claude_model` defaults to `sonnet`, and `model_cli` selects which CLI OpenRelix uses for internal memory consolidation. `memory_summary_max_tokens` defaults to 8000 and accepts values from 2000 to 20000. Target and warning budgets are derived automatically from that max. Updating config refreshes the summary, overview, and panel by default; add `--no-refresh` when you only want to persist the config.
 
 OpenRelix also maintains a local SQLite sidecar index for memory and window lookup. The source of truth stays in the state root's `raw/`, `registry/`, and `consolidated/` files; the database under `runtime/openrelix-index.sqlite3` is rebuildable and can be deleted. Routine `refresh` and nightly runs rebuild it on a warning-only path so search freshness does not block raw capture or JSONL memory writes.
 

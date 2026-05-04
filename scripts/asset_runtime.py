@@ -22,7 +22,13 @@ DEFAULT_MEMORY_MODE = "integrated"
 SUPPORTED_MEMORY_MODES = ("integrated", "local-only", "off")
 SUPPORTED_ACTIVITY_SOURCES = ("history", "app-server", "auto")
 DEFAULT_ACTIVITY_SOURCE = "auto"
+SUPPORTED_ACTIVITY_HOSTS = ("codex", "claude", "all")
+DEFAULT_ACTIVITY_HOST = "all"
+SUPPORTED_MODEL_CLIS = ("codex", "claude")
+DEFAULT_MODEL_CLI = "codex"
+SUPPORTED_HOST_CONTEXT_TARGETS = ("codex", "claude")
 DEFAULT_CODEX_MODEL = "gpt-5.4-mini"
+DEFAULT_CLAUDE_MODEL = "sonnet"
 DEFAULT_MEMORY_SUMMARY_MAX_TOKENS = 8000
 MIN_MEMORY_SUMMARY_MAX_TOKENS = 2000
 MAX_MEMORY_SUMMARY_MAX_TOKENS = 20000
@@ -77,6 +83,42 @@ ACTIVITY_SOURCE_ALIASES = {
     "read-codex-app": "auto",
     "read_codex_app": "auto",
 }
+ACTIVITY_HOST_ALIASES = {
+    "codex": "codex",
+    "codex-cli": "codex",
+    "codex_cli": "codex",
+    "cc": "claude",
+    "claude": "claude",
+    "claude-code": "claude",
+    "claude_code": "claude",
+    "claude-code-cli": "claude",
+    "claude_code_cli": "claude",
+    "all": "all",
+    "both": "all",
+    "merged": "all",
+}
+MODEL_CLI_ALIASES = {
+    "codex": "codex",
+    "codex-cli": "codex",
+    "codex_cli": "codex",
+    "cc": "claude",
+    "claude": "claude",
+    "claude-code": "claude",
+    "claude_code": "claude",
+    "claude-code-cli": "claude",
+    "claude_code_cli": "claude",
+}
+HOST_CONTEXT_TARGET_ALIASES = {
+    "codex": "codex",
+    "codex-cli": "codex",
+    "codex_cli": "codex",
+    "cc": "claude",
+    "claude": "claude",
+    "claude-code": "claude",
+    "claude_code": "claude",
+    "claude-code-cli": "claude",
+    "claude_code_cli": "claude",
+}
 CODEX_MODEL_ALIASES = {
     "mini": DEFAULT_CODEX_MODEL,
     "gpt54mini": DEFAULT_CODEX_MODEL,
@@ -88,6 +130,11 @@ CODEX_MODEL_ALIASES = {
     "gpt55": "gpt-5.5",
     "gpt5.3codex": "gpt-5.3-codex",
     "gpt53codex": "gpt-5.3-codex",
+}
+CLAUDE_MODEL_ALIASES = {
+    "sonnet": "sonnet",
+    "opus": "opus",
+    "haiku": "haiku",
 }
 LEGACY_REPO_STATE_ENV = "AI_ASSET_USE_REPO_STATE"
 LEGACY_STATE_DIR_NAMES = (
@@ -210,6 +257,58 @@ def normalize_activity_source(value: Optional[str], *, strict: bool = False) -> 
     return DEFAULT_ACTIVITY_SOURCE
 
 
+def normalize_activity_host(value: Optional[str], *, strict: bool = False) -> str:
+    text = str(value or "").strip().lower().replace("_", "-")
+    if not text:
+        if strict:
+            raise ValueError(
+                "Unsupported activity host: {}. Supported activity hosts: {}".format(
+                    value,
+                    ", ".join(SUPPORTED_ACTIVITY_HOSTS),
+                )
+            )
+        return DEFAULT_ACTIVITY_HOST
+
+    activity_host = ACTIVITY_HOST_ALIASES.get(text, text)
+    if activity_host in SUPPORTED_ACTIVITY_HOSTS:
+        return activity_host
+
+    if strict:
+        raise ValueError(
+            "Unsupported activity host: {}. Supported activity hosts: {}".format(
+                value,
+                ", ".join(SUPPORTED_ACTIVITY_HOSTS),
+            )
+        )
+    return DEFAULT_ACTIVITY_HOST
+
+
+def normalize_model_cli(value: Optional[str], *, strict: bool = False) -> str:
+    text = str(value or "").strip().lower().replace("_", "-")
+    if not text:
+        if strict:
+            raise ValueError(
+                "Unsupported model CLI: {}. Supported model CLIs: {}".format(
+                    value,
+                    ", ".join(SUPPORTED_MODEL_CLIS),
+                )
+            )
+        return DEFAULT_MODEL_CLI
+
+    model_cli = MODEL_CLI_ALIASES.get(text, text)
+    if model_cli in SUPPORTED_MODEL_CLIS:
+        return model_cli
+
+    if strict:
+        raise ValueError(
+            "Unsupported model CLI: {}. Supported model CLIs: {}".format(
+                value,
+                ", ".join(SUPPORTED_MODEL_CLIS),
+            )
+        )
+    return DEFAULT_MODEL_CLI
+
+
 def normalize_codex_model(value: Optional[str], *, strict: bool = False) -> str:
     text = str(value or "").strip()
     if not text:
@@ -231,6 +330,71 @@ def normalize_codex_model(value: Optional[str], *, strict: bool = False) -> str:
         return DEFAULT_CODEX_MODEL
 
     return text
+
+
+def normalize_claude_model(value: Optional[str], *, strict: bool = False) -> str:
+    text = str(value or "").strip()
+    if not text:
+        if strict:
+            raise ValueError("claude_model cannot be empty")
+        return DEFAULT_CLAUDE_MODEL
+
+    alias_key = "".join(ch for ch in text.lower() if ch.isalnum() or ch in {".", "-"})
+    if alias_key in CLAUDE_MODEL_ALIASES:
+        return CLAUDE_MODEL_ALIASES[alias_key]
+
+    if text.startswith("-") or any(ch.isspace() for ch in text):
+        if strict:
+            raise ValueError(
+                "claude_model must be a single model id or alias, for example {}".format(
+                    DEFAULT_CLAUDE_MODEL
+                )
+            )
+        return DEFAULT_CLAUDE_MODEL
+
+    return text
+
+
+def normalize_host_context_targets(value: Optional[Union[str, list, tuple]], *, strict: bool = False) -> list[str]:
+    if value is None or value == "":
+        return list(SUPPORTED_HOST_CONTEXT_TARGETS)
+    if isinstance(value, (list, tuple)):
+        raw_items = value
+    else:
+        raw_items = str(value).replace(";", ",").split(",")
+
+    targets = []
+    for raw_item in raw_items:
+        text = str(raw_item or "").strip().lower().replace("_", "-")
+        if not text:
+            continue
+        if text in {"all", "both", "merged"}:
+            for target in SUPPORTED_HOST_CONTEXT_TARGETS:
+                if target not in targets:
+                    targets.append(target)
+            continue
+        target = HOST_CONTEXT_TARGET_ALIASES.get(text, text)
+        if target in SUPPORTED_HOST_CONTEXT_TARGETS:
+            if target not in targets:
+                targets.append(target)
+            continue
+        if strict:
+            raise ValueError(
+                "Unsupported host context target: {}. Supported targets: {}".format(
+                    raw_item,
+                    ", ".join(SUPPORTED_HOST_CONTEXT_TARGETS),
+                )
+            )
+
+    if targets:
+        return targets
+    if strict:
+        raise ValueError(
+            "host context targets cannot be empty; supported targets: {}".format(
+                ", ".join(SUPPORTED_HOST_CONTEXT_TARGETS),
+            )
+        )
+    return list(SUPPORTED_HOST_CONTEXT_TARGETS)
 
 
 def _round_token_budget(value: float) -> int:
@@ -357,6 +521,37 @@ def default_codex_binary() -> str:
         if candidate and Path(candidate).exists():
             return str(Path(candidate))
     return "codex"
+
+
+def default_claude_home() -> Path:
+    explicit = os.environ.get("CLAUDE_HOME") or os.environ.get("CLAUDE_CONFIG_DIR")
+    if explicit:
+        return _expand_path(explicit)
+    return Path.home() / ".claude"
+
+
+def default_claude_binary() -> str:
+    explicit = os.environ.get("CLAUDE_BIN")
+    if explicit:
+        return str(_expand_path(explicit))
+
+    home = Path.home()
+    candidates = [
+        shutil.which("claude"),
+        str(home / ".npm-global/bin/claude"),
+        str(home / ".volta/bin/claude"),
+        str(home / ".bun/bin/claude"),
+        "/opt/homebrew/bin/claude",
+        "/usr/local/bin/claude",
+    ]
+    nvm_root = home / ".nvm" / "versions" / "node"
+    if nvm_root.is_dir():
+        for version_dir in sorted(nvm_root.iterdir(), reverse=True):
+            candidates.append(str(version_dir / "bin" / "claude"))
+    for candidate in candidates:
+        if candidate and Path(candidate).exists():
+            return str(Path(candidate))
+    return "claude"
 
 
 def default_user_skill_root() -> Path:
@@ -509,6 +704,24 @@ def get_activity_source(paths: Optional["RuntimePaths"] = None) -> str:
     return normalize_activity_source(config.get("activity_source"))
 
 
+def get_activity_host(paths: Optional["RuntimePaths"] = None) -> str:
+    explicit = os.environ.get("OPENRELIX_ACTIVITY_HOST") or os.environ.get("AI_ASSET_ACTIVITY_HOST")
+    if explicit:
+        return normalize_activity_host(explicit)
+
+    config = load_runtime_config(paths)
+    return normalize_activity_host(config.get("activity_host"))
+
+
+def get_model_cli(paths: Optional["RuntimePaths"] = None) -> str:
+    explicit = os.environ.get("OPENRELIX_MODEL_CLI") or os.environ.get("AI_ASSET_MODEL_CLI")
+    if explicit:
+        return normalize_model_cli(explicit)
+
+    config = load_runtime_config(paths)
+    return normalize_model_cli(config.get("model_cli"))
+
+
 def get_codex_model(paths: Optional["RuntimePaths"] = None) -> str:
     explicit = os.environ.get("OPENRELIX_CODEX_MODEL") or os.environ.get("AI_ASSET_CODEX_MODEL")
     if explicit:
@@ -516,6 +729,24 @@ def get_codex_model(paths: Optional["RuntimePaths"] = None) -> str:
 
     config = load_runtime_config(paths)
     return normalize_codex_model(config.get("codex_model"))
+
+
+def get_claude_model(paths: Optional["RuntimePaths"] = None) -> str:
+    explicit = os.environ.get("OPENRELIX_CLAUDE_MODEL") or os.environ.get("AI_ASSET_CLAUDE_MODEL")
+    if explicit:
+        return normalize_claude_model(explicit)
+
+    config = load_runtime_config(paths)
+    return normalize_claude_model(config.get("claude_model"))
+
+
+def get_host_context_targets(paths: Optional["RuntimePaths"] = None) -> list[str]:
+    explicit = os.environ.get("OPENRELIX_HOST_CONTEXT_TARGETS") or os.environ.get("AI_ASSET_HOST_CONTEXT_TARGETS")
+    if explicit:
+        return normalize_host_context_targets(explicit)
+
+    config = load_runtime_config(paths)
+    return normalize_host_context_targets(config.get("host_context_targets"))
 
 
 def personal_memory_enabled(paths: Optional["RuntimePaths"] = None) -> bool:
@@ -526,12 +757,20 @@ def codex_context_enabled(paths: Optional["RuntimePaths"] = None) -> bool:
     return get_memory_mode(paths) == "integrated"
 
 
+def host_context_enabled(paths: Optional["RuntimePaths"] = None) -> bool:
+    return get_memory_mode(paths) == "integrated"
+
+
 def write_runtime_config(
     language: Optional[str] = None,
     memory_mode: Optional[str] = None,
     activity_source: Optional[str] = None,
+    activity_host: Optional[str] = None,
+    model_cli: Optional[str] = None,
     codex_model: Optional[str] = None,
+    claude_model: Optional[str] = None,
     memory_summary_max_tokens: Optional[Union[int, str]] = None,
+    host_context_targets: Optional[Union[str, list, tuple]] = None,
     paths: Optional["RuntimePaths"] = None,
 ) -> dict:
     paths = paths or get_runtime_paths()
@@ -551,15 +790,35 @@ def write_runtime_config(
         if activity_source is not None
         else config.get("activity_source")
     )
+    config["activity_host"] = normalize_activity_host(
+        activity_host
+        if activity_host is not None
+        else config.get("activity_host")
+    )
+    config["model_cli"] = normalize_model_cli(
+        model_cli
+        if model_cli is not None
+        else config.get("model_cli")
+    )
     config["codex_model"] = normalize_codex_model(
         codex_model
         if codex_model is not None
         else config.get("codex_model")
     )
+    config["claude_model"] = normalize_claude_model(
+        claude_model
+        if claude_model is not None
+        else config.get("claude_model")
+    )
     config["memory_summary_max_tokens"] = normalize_memory_summary_max_tokens(
         memory_summary_max_tokens
         if memory_summary_max_tokens is not None
         else config.get("memory_summary_max_tokens")
+    )
+    config["host_context_targets"] = normalize_host_context_targets(
+        host_context_targets
+        if host_context_targets is not None
+        else config.get("host_context_targets")
     )
     atomic_write_json(runtime_config_path(paths), config)
     return config
@@ -571,6 +830,8 @@ class RuntimePaths:
     state_root: Path
     codex_home: Path
     codex_bin: str
+    claude_home: Path
+    claude_bin: str
     repo_skill_root: Path
     user_skill_root: Path
     templates_dir: Path
@@ -585,6 +846,7 @@ class RuntimePaths:
     runtime_dir: Path
     nightly_runner_dir: Path
     nightly_codex_home: Path
+    nightly_claude_home: Path
     log_dir: Path
     launch_agents_dir: Path
     schema_path: Path
@@ -597,6 +859,8 @@ def get_runtime_paths() -> RuntimePaths:
         state_root=state_root,
         codex_home=default_codex_home(),
         codex_bin=default_codex_binary(),
+        claude_home=default_claude_home(),
+        claude_bin=default_claude_binary(),
         repo_skill_root=REPO_ROOT / ".agents" / "skills",
         user_skill_root=default_user_skill_root(),
         templates_dir=REPO_ROOT / "templates",
@@ -611,6 +875,7 @@ def get_runtime_paths() -> RuntimePaths:
         runtime_dir=state_root / "runtime",
         nightly_runner_dir=state_root / "runtime" / "nightly-runner",
         nightly_codex_home=state_root / "runtime" / "codex-nightly-home",
+        nightly_claude_home=state_root / "runtime" / "claude-nightly-home",
         log_dir=state_root / "log",
         launch_agents_dir=default_launch_agents_dir(),
         schema_path=REPO_ROOT / "templates" / "nightly-summary-schema.json",
@@ -629,6 +894,7 @@ def ensure_state_layout(paths: Optional[RuntimePaths] = None) -> RuntimePaths:
         paths.runtime_dir,
         paths.nightly_runner_dir,
         paths.nightly_codex_home,
+        paths.nightly_claude_home,
         paths.log_dir,
     ):
         directory.mkdir(parents=True, exist_ok=True)

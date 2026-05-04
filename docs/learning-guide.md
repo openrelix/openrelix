@@ -260,10 +260,10 @@ open "$AI_ASSET_STATE_DIR/reports/panel.html"
 
 优先保持这些不变：
 
-- minimal 默认会写入必要的 Codex memory/history 配置和 bounded summary。
+- minimal 默认会写入必要的 host memory/history 配置和 bounded summary。
 - minimal 不写 shell rc。
 - minimal 不注册 LaunchAgent。
-- `--record-memory-only` / `--no-memory-summary` 必须能显式阻止 Codex context 注入。
+- `--record-memory-only` / `--no-memory-summary` 必须能显式阻止 host context 注入。
 - macOS-only 能力必须在文档里明确标注。
 
 验证：
@@ -408,9 +408,9 @@ python3 scripts/build_overview.py
 
 ### 为什么默认只写 bounded summary
 
-默认会接入 Codex native context，但只写压缩后的 bounded summary。完整 registry、reviews、raw windows 和 consolidated summaries 仍留在 state root；压缩策略会合并重复记忆，优先 durable / session，low-priority 默认只留本地，并把摘要控制在 6.7K target / 8K max token 左右。
+默认会接入 host native context，但只写压缩后的 bounded summary。完整 registry、reviews、raw windows 和 consolidated summaries 仍留在 state root；压缩策略会合并重复记忆，优先 durable / session，low-priority 默认只留本地，并把摘要控制在 6.7K target / 8K max token 左右。
 
-如果要严格隔离，不往 Codex context 注入摘要，用：
+如果要严格隔离，不往 host context 注入摘要，用：
 
 ```bash
 ./install/install.sh --profile integrated --record-memory-only
