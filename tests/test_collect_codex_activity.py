@@ -123,6 +123,92 @@ class CollectCodexActivityTests(unittest.TestCase):
         self.assertEqual(window["conclusion_count"], 1)
         self.assertEqual(window["claude_code"]["summary"], "Claude memory work")
 
+    def test_claude_session_ignores_tool_events_and_counts_turn_level_conclusions(self):
+        from tempfile import TemporaryDirectory
+        import json
+
+        with TemporaryDirectory() as tmpdir:
+            session_path = Path(tmpdir) / "session.jsonl"
+            rows = [
+                {
+                    "type": "user",
+                    "sessionId": "claude-session-tools",
+                    "cwd": "/tmp/project",
+                    "timestamp": "2026-05-04T09:00:00Z",
+                    "uuid": "u1",
+                    "message": {"content": [{"type": "text", "text": "查看 OpenRelix 项目用途"}]},
+                },
+                {
+                    "type": "assistant",
+                    "sessionId": "claude-session-tools",
+                    "cwd": "/tmp/project",
+                    "timestamp": "2026-05-04T09:00:05Z",
+                    "uuid": "a1",
+                    "message": {"content": [{"type": "text", "text": "我先查看项目入口。"}]},
+                },
+                {
+                    "type": "assistant",
+                    "sessionId": "claude-session-tools",
+                    "cwd": "/tmp/project",
+                    "timestamp": "2026-05-04T09:00:06Z",
+                    "uuid": "a-tool",
+                    "message": {"content": [{"type": "tool_use", "name": "Bash"}]},
+                },
+                {
+                    "type": "user",
+                    "sessionId": "claude-session-tools",
+                    "cwd": "/tmp/project",
+                    "timestamp": "2026-05-04T09:00:07Z",
+                    "uuid": "tool-result",
+                    "message": {"content": [{"type": "tool_result", "content": "README output"}]},
+                },
+                {
+                    "type": "assistant",
+                    "sessionId": "claude-session-tools",
+                    "cwd": "/tmp/project",
+                    "timestamp": "2026-05-04T09:00:08Z",
+                    "uuid": "a2",
+                    "message": {"content": [{"type": "text", "text": "OpenRelix 是本地优先的记忆与资产系统。"}]},
+                },
+                {
+                    "type": "user",
+                    "sessionId": "claude-session-tools",
+                    "cwd": "/tmp/project",
+                    "timestamp": "2026-05-04T09:02:00Z",
+                    "uuid": "u2",
+                    "message": {"content": [{"type": "text", "text": "再看安装入口"}]},
+                },
+                {
+                    "type": "assistant",
+                    "sessionId": "claude-session-tools",
+                    "cwd": "/tmp/project",
+                    "timestamp": "2026-05-04T09:02:10Z",
+                    "uuid": "a3",
+                    "message": {"content": [{"type": "text", "text": "安装入口在 install/install.sh。"}]},
+                },
+            ]
+            session_path.write_text(
+                "\n".join(json.dumps(row, ensure_ascii=False) for row in rows) + "\n",
+                encoding="utf-8",
+            )
+
+            window = collect_codex_activity.claude_session_file_to_window(
+                session_path,
+                "2026-05-04",
+                "manual",
+            )
+
+        self.assertIsNotNone(window)
+        self.assertEqual(window["prompt_count"], 2)
+        self.assertEqual(window["conclusion_count"], 2)
+        self.assertEqual(window["raw_conclusion_count"], 2)
+        self.assertEqual([item["text"] for item in window["prompts"]], ["查看 OpenRelix 项目用途", "再看安装入口"])
+        self.assertEqual(
+            [item["text"] for item in window["conclusions"]],
+            ["OpenRelix 是本地优先的记忆与资产系统。", "安装入口在 install/install.sh。"],
+        )
+        self.assertNotIn("Tool", json.dumps(window, ensure_ascii=False))
+
 
 if __name__ == "__main__":
     unittest.main()

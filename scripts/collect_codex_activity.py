@@ -663,7 +663,7 @@ def claude_local_datetime(value):
     return parsed.isoformat() if parsed else ""
 
 
-def claude_content_to_text(content):
+def claude_content_to_text(content, include_tool_events=True):
     if isinstance(content, str):
         return content.strip()
     parts = []
@@ -681,19 +681,38 @@ def claude_content_to_text(content):
                     parts.append(text)
             elif item_type == "image":
                 parts.append("[Image]")
-            elif item_type == "tool_use":
+            elif item_type == "tool_use" and include_tool_events:
                 name = item.get("name") or "tool"
                 parts.append("[Tool: {}]".format(name))
-            elif item_type == "tool_result":
+            elif item_type == "tool_result" and include_tool_events:
                 parts.append("[Tool result]")
     return "\n".join(str(part).strip() for part in parts if str(part).strip()).strip()
 
 
-def claude_message_text(item):
+def claude_message_text(item, include_tool_events=True):
     message = item.get("message") if isinstance(item, dict) else {}
     if not isinstance(message, dict):
         return ""
-    return claude_content_to_text(message.get("content"))
+    return claude_content_to_text(message.get("content"), include_tool_events=include_tool_events)
+
+
+def claude_visible_message_text(item):
+    text = claude_message_text(item, include_tool_events=False)
+    if re.fullmatch(r"\[(?:Tool result|Tool: [^\]]+)\]", text or ""):
+        return ""
+    return text
+
+
+def claude_timestamp_belongs_to_target(timestamp, target_date, stage, prompt_date=None):
+    parsed = parse_claude_timestamp(timestamp)
+    if not parsed:
+        return False
+    if parsed.date().isoformat() == target_date:
+        return True
+    if stage == "final" and prompt_date == target_date:
+        next_day = datetime.fromisoformat(target_date).date() + timedelta(days=1)
+        return parsed.date() == next_day
+    return False
 
 
 def claude_session_id_from_file(session_file):
@@ -736,6 +755,18 @@ def claude_session_file_to_window(session_file, target_date, stage):
     prompts = []
     conclusions = []
     raw_conclusion_count = 0
+    pending_conclusion = None
+    current_prompt_date = ""
+
+    def flush_pending_conclusion():
+        nonlocal pending_conclusion, raw_conclusion_count
+        if not pending_conclusion:
+            return
+        raw_conclusion_count += 1
+        text = pending_conclusion.get("text", "")
+        if not looks_like_review_conclusion(text):
+            conclusions.append(pending_conclusion)
+        pending_conclusion = None
 
     for item in session_items:
         if not isinstance(item, dict):
@@ -752,8 +783,10 @@ def claude_session_file_to_window(session_file, target_date, stage):
         if item_type == "user":
             if claude_local_date(timestamp) != target_date:
                 continue
-            text = claude_message_text(item)
+            text = claude_visible_message_text(item)
             if text:
+                flush_pending_conclusion()
+                current_prompt_date = claude_local_date(timestamp)
                 prompts.append(
                     {
                         "ts": int(parse_claude_timestamp(timestamp).timestamp()) if parse_claude_timestamp(timestamp) else 0,
@@ -763,21 +796,20 @@ def claude_session_file_to_window(session_file, target_date, stage):
                     }
                 )
         elif item_type == "assistant":
-            if claude_local_date(timestamp) != target_date:
+            if not claude_timestamp_belongs_to_target(timestamp, target_date, stage, current_prompt_date):
                 continue
-            text = claude_message_text(item)
+            text = claude_visible_message_text(item)
             if not text:
                 continue
-            raw_conclusion_count += 1
-            if looks_like_review_conclusion(text):
+            if not prompts:
                 continue
-            conclusions.append(
-                {
-                    "turn_id": turn_id,
-                    "completed_at": claude_local_datetime(timestamp),
-                    "text": text,
-                }
-            )
+            pending_conclusion = {
+                "turn_id": turn_id,
+                "completed_at": claude_local_datetime(timestamp),
+                "text": text,
+            }
+
+    flush_pending_conclusion()
 
     if not prompts:
         return None
