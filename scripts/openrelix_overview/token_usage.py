@@ -30,7 +30,8 @@ def make_token_breakdown_detail(label, value, meta="", language=None):
 def split_ccusage_input_tokens(row):
     total_input_tokens = safe_int(row.get("inputTokens", 0))
     cached_input_tokens = safe_int(row.get("cachedInputTokens", 0))
-    uncached_input_tokens = max(total_input_tokens - cached_input_tokens, 0)
+    cache_creation_tokens = safe_int(row.get("cacheCreationTokens", 0))
+    uncached_input_tokens = max(total_input_tokens - cached_input_tokens - cache_creation_tokens, 0)
     return total_input_tokens, cached_input_tokens, uncached_input_tokens
 
 
@@ -40,7 +41,9 @@ def build_token_breakdown_details(row, language=None):
     total_input_tokens, cached_input_tokens, input_tokens = split_ccusage_input_tokens(row)
     output_tokens = row.get("outputTokens", 0)
     reasoning_output_tokens = row.get("reasoningOutputTokens", 0)
+    cache_creation_tokens = safe_int(row.get("cacheCreationTokens", 0))
     cached_share = percent_of(cached_input_tokens, total_input_tokens)
+    cache_creation_share = percent_of(cache_creation_tokens, total_tokens)
     output_share = percent_of(output_tokens, total_tokens)
     reasoning_share = percent_of(reasoning_output_tokens, total_tokens)
     details = [
@@ -81,6 +84,19 @@ def build_token_breakdown_details(row, language=None):
             language=language,
         ),
     ]
+    if cache_creation_tokens > 0:
+        details.append(
+            make_token_breakdown_detail(
+                localized("缓存写入", "Cache Write", language),
+                cache_creation_tokens,
+                localized(
+                    "占总量 {}".format(format_percent(cache_creation_share, digits=1)),
+                    "{} of total".format(format_percent(cache_creation_share, digits=1)),
+                    language,
+                ),
+                language=language,
+            )
+        )
     cost = row.get("costUSD")
     if isinstance(cost, (int, float)) and cost > 0:
         details.append(
@@ -225,6 +241,7 @@ def aggregate_token_rows(rows, label, sort_key, parsed_date, raw_date, group_by,
 
     total_input_tokens = sum(safe_int(row.get("inputTokens", 0)) for row in rows)
     cached_input_tokens = sum(safe_int(row.get("cachedInputTokens", 0)) for row in rows)
+    cache_creation_tokens = sum(safe_int(row.get("cacheCreationTokens", 0)) for row in rows)
     return {
         "raw_date": raw_date,
         "date_label": label,
@@ -232,9 +249,9 @@ def aggregate_token_rows(rows, label, sort_key, parsed_date, raw_date, group_by,
         "parsed_date": parsed_date,
         "inputTokens": total_input_tokens,
         "totalInputTokens": total_input_tokens,
-        "uncachedInputTokens": max(total_input_tokens - cached_input_tokens, 0),
+        "uncachedInputTokens": max(total_input_tokens - cached_input_tokens - cache_creation_tokens, 0),
         "cachedInputTokens": cached_input_tokens,
-        "cacheCreationTokens": sum(safe_int(row.get("cacheCreationTokens", 0)) for row in rows),
+        "cacheCreationTokens": cache_creation_tokens,
         "outputTokens": sum(safe_int(row.get("outputTokens", 0)) for row in rows),
         "reasoningOutputTokens": sum(safe_int(row.get("reasoningOutputTokens", 0)) for row in rows),
         "totalTokens": sum(safe_int(row.get("totalTokens", 0)) for row in rows),
@@ -382,6 +399,7 @@ def token_breakdown_tone(kind):
     return {
         "input": "token-input",
         "cached_input": "token-cache",
+        "cache_creation": "token-cache-write",
         "output": "token-output",
         "reasoning_output": "token-reasoning",
     }.get(kind, "token-input")
@@ -557,7 +575,9 @@ def build_token_usage_view(
     today_breakdown = []
     if latest:
         total_input_tokens, cached_input_tokens, uncached_input_tokens = split_ccusage_input_tokens(latest)
+        cache_creation_tokens = safe_int(latest.get("cacheCreationTokens", 0))
         cached_share = percent_of(cached_input_tokens, total_input_tokens)
+        cache_creation_share = percent_of(cache_creation_tokens, latest["totalTokens"])
         output_share = percent_of(latest["outputTokens"], latest["totalTokens"])
         reasoning_share = percent_of(latest["reasoningOutputTokens"], latest["totalTokens"])
         today_breakdown = [
@@ -603,53 +623,83 @@ def build_token_usage_view(
                 ],
                 "details_heading": localized("缓存详情", "Cache details", language),
             },
-            {
-                "label": localized("输出", "Output", language),
-                "value": latest["outputTokens"],
-                "display": compact_token(latest["outputTokens"], language=language),
-                "tone": token_breakdown_tone("output"),
-                "details": [
-                    {
-                        "label": localized("输出", "Output", language),
-                        "value": latest["outputTokens"],
-                        "title": localized(
-                            "输出：{}".format(compact_token(latest["outputTokens"], language=language)),
-                            "Output: {}".format(compact_token(latest["outputTokens"], language=language)),
-                            language,
-                        ),
-                        "meta": localized(
-                            "占总量 {}".format(format_percent(output_share, digits=1)),
-                            "{} of total".format(format_percent(output_share, digits=1)),
-                            language,
-                        ),
-                    },
-                ],
-                "details_heading": localized("输出详情", "Output details", language),
-            },
-            {
-                "label": localized("推理输出", "Reasoning output", language),
-                "value": latest["reasoningOutputTokens"],
-                "display": compact_token(latest["reasoningOutputTokens"], language=language),
-                "tone": token_breakdown_tone("reasoning_output"),
-                "details": [
-                    {
-                        "label": localized("推理输出", "Reasoning output", language),
-                        "value": latest["reasoningOutputTokens"],
-                        "title": localized(
-                            "推理输出：{}".format(compact_token(latest["reasoningOutputTokens"], language=language)),
-                            "Reasoning output: {}".format(compact_token(latest["reasoningOutputTokens"], language=language)),
-                            language,
-                        ),
-                        "meta": localized(
-                            "占总量 {}".format(format_percent(reasoning_share, digits=1)),
-                            "{} of total".format(format_percent(reasoning_share, digits=1)),
-                            language,
-                        ),
-                    },
-                ],
-                "details_heading": localized("推理详情", "Reasoning details", language),
-            },
         ]
+        if cache_creation_tokens > 0:
+            today_breakdown.append(
+                {
+                    "label": localized("缓存写入", "Cache Write", language),
+                    "value": cache_creation_tokens,
+                    "display": compact_token(cache_creation_tokens, language=language),
+                    "tone": token_breakdown_tone("cache_creation"),
+                    "details": [
+                        {
+                            "label": localized("缓存写入", "Cache Write", language),
+                            "value": cache_creation_tokens,
+                            "title": localized(
+                                "缓存写入：{}".format(compact_token(cache_creation_tokens, language=language)),
+                                "Cache Write: {}".format(compact_token(cache_creation_tokens, language=language)),
+                                language,
+                            ),
+                            "meta": localized(
+                                "占总量 {}".format(format_percent(cache_creation_share, digits=1)),
+                                "{} of total".format(format_percent(cache_creation_share, digits=1)),
+                                language,
+                            ),
+                        },
+                    ],
+                    "details_heading": localized("缓存写入详情", "Cache write details", language),
+                }
+            )
+        today_breakdown.extend(
+            [
+                {
+                    "label": localized("输出", "Output", language),
+                    "value": latest["outputTokens"],
+                    "display": compact_token(latest["outputTokens"], language=language),
+                    "tone": token_breakdown_tone("output"),
+                    "details": [
+                        {
+                            "label": localized("输出", "Output", language),
+                            "value": latest["outputTokens"],
+                            "title": localized(
+                                "输出：{}".format(compact_token(latest["outputTokens"], language=language)),
+                                "Output: {}".format(compact_token(latest["outputTokens"], language=language)),
+                                language,
+                            ),
+                            "meta": localized(
+                                "占总量 {}".format(format_percent(output_share, digits=1)),
+                                "{} of total".format(format_percent(output_share, digits=1)),
+                                language,
+                            ),
+                        },
+                    ],
+                    "details_heading": localized("输出详情", "Output details", language),
+                },
+                {
+                    "label": localized("推理输出", "Reasoning output", language),
+                    "value": latest["reasoningOutputTokens"],
+                    "display": compact_token(latest["reasoningOutputTokens"], language=language),
+                    "tone": token_breakdown_tone("reasoning_output"),
+                    "details": [
+                        {
+                            "label": localized("推理输出", "Reasoning output", language),
+                            "value": latest["reasoningOutputTokens"],
+                            "title": localized(
+                                "推理输出：{}".format(compact_token(latest["reasoningOutputTokens"], language=language)),
+                                "Reasoning output: {}".format(compact_token(latest["reasoningOutputTokens"], language=language)),
+                                language,
+                            ),
+                            "meta": localized(
+                                "占总量 {}".format(format_percent(reasoning_share, digits=1)),
+                                "{} of total".format(format_percent(reasoning_share, digits=1)),
+                                language,
+                            ),
+                        },
+                    ],
+                    "details_heading": localized("推理详情", "Reasoning details", language),
+                },
+            ]
+        )
 
     return {
         "available": True,
@@ -664,6 +714,14 @@ def build_token_usage_view(
                 "day_count": row.get("day_count", 1),
                 "active_day_count": row.get("active_day_count", 1 if row["totalTokens"] > 0 else 0),
                 "value": row["totalTokens"],
+                "inputTokens": row.get("inputTokens", 0),
+                "totalInputTokens": row.get("totalInputTokens", row.get("inputTokens", 0)),
+                "uncachedInputTokens": row.get("uncachedInputTokens", 0),
+                "cachedInputTokens": row.get("cachedInputTokens", 0),
+                "cacheCreationTokens": row.get("cacheCreationTokens", 0),
+                "outputTokens": row.get("outputTokens", 0),
+                "reasoningOutputTokens": row.get("reasoningOutputTokens", 0),
+                "totalTokens": row["totalTokens"],
                 "display": compact_token_with_cost(row["totalTokens"], row.get("costUSD"), language=language),
                 "token_display": row["display_total_tokens"],
                 "costUSD": row.get("costUSD", 0),

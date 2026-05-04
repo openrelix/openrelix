@@ -15527,6 +15527,10 @@ def build_html(data):
       background: linear-gradient(90deg, #34c759 0%, #a4f2b0 100%);
     }}
 
+    .token-cache-write {{
+      background: linear-gradient(90deg, #00a6a6 0%, #5eead4 100%);
+    }}
+
     .token-output {{
       background: linear-gradient(90deg, #ff9f0a 0%, #ffd60a 100%);
     }}
@@ -18372,7 +18376,10 @@ def build_html(data):
 
       function tokenBreakdownLabel(rawLabel) {{
         const normalized = String(rawLabel || "").toLowerCase();
-        if (normalized.includes("缓存") || normalized.includes("cached")) {{
+        if (normalized.includes("缓存写入") || normalized.includes("cache write") || normalized.includes("cache creation")) {{
+          return currentLanguage === "en" ? "Cache Write" : "缓存写入";
+        }}
+        if (normalized.includes("缓存读取") || normalized.includes("cache read") || normalized.includes("cached")) {{
           return currentLanguage === "en" ? "Cache Read" : "缓存读取";
         }}
         if (normalized.includes("推理") || normalized.includes("reasoning")) {{
@@ -19485,7 +19492,10 @@ def build_html(data):
 
       function deriveTokenBreakdownTone(row) {{
         const label = String(row && row.label ? row.label : "").toLowerCase();
-        if (label.includes("缓存") || label.includes("cached")) {{
+        if (label.includes("缓存写入") || label.includes("cache write") || label.includes("cache creation")) {{
+          return "token-cache-write";
+        }}
+        if (label.includes("缓存读取") || label.includes("cache read") || label.includes("cached")) {{
           return "token-cache";
         }}
         if (label.includes("推理") || label.includes("reasoning")) {{
@@ -19541,7 +19551,14 @@ def build_html(data):
         }});
         const cachedRow = normalized.find(function (row) {{
           const label = String(row.label || "").toLowerCase();
-          return label.includes("缓存") || label.includes("cached");
+          return (label.includes("缓存读取") || label.includes("cache read") || label.includes("cached")) &&
+            !label.includes("缓存写入") &&
+            !label.includes("cache write") &&
+            !label.includes("cache creation");
+        }});
+        const cacheCreateRow = normalized.find(function (row) {{
+          const label = String(row.label || "").toLowerCase();
+          return label.includes("缓存写入") || label.includes("cache write") || label.includes("cache creation");
         }});
         if (inputIndex < 0 || !cachedRow) {{
           return normalized;
@@ -19549,10 +19566,11 @@ def build_html(data):
         const inputRow = normalized[inputIndex];
         const inputValue = Number(inputRow.value) || 0;
         const cachedValue = Number(cachedRow.value) || 0;
+        const cacheCreateValue = Number(cacheCreateRow && cacheCreateRow.value) || 0;
         const rowAlreadyUncached = tokenRowContainsText(inputRow, ["无缓存", "uncached"]);
         const rowLooksTotalInput = tokenRowContainsText(inputRow, ["总输入", "total input"]);
-        if (!rowAlreadyUncached && rowLooksTotalInput && inputValue >= cachedValue && cachedValue > 0) {{
-          const uncachedInput = Math.max(inputValue - cachedValue, 0);
+        if (!rowAlreadyUncached && rowLooksTotalInput && inputValue >= cachedValue + cacheCreateValue && (cachedValue > 0 || cacheCreateValue > 0)) {{
+          const uncachedInput = Math.max(inputValue - cachedValue - cacheCreateValue, 0);
           inputRow.value = uncachedInput;
           inputRow.display = compactTokenValue(uncachedInput);
           if (Array.isArray(inputRow.details) && inputRow.details.length) {{
@@ -19722,22 +19740,64 @@ def build_html(data):
         return "";
       }}
 
-      function tokenRowMetricValue(row, needles) {{
+      function tokenRowNumericValue(row, keys) {{
+        const source = row || {{}};
+        for (const key of keys) {{
+          if (Object.prototype.hasOwnProperty.call(source, key)) {{
+            const value = Number(source[key]);
+            return Number.isFinite(value) ? value : 0;
+          }}
+        }}
+        return null;
+      }}
+
+      function tokenRowDetailValue(row, matcher) {{
         const details = Array.isArray(row && row.details) ? row.details : [];
-        const normalizedNeedles = needles.map(function (needle) {{
-          return String(needle || "").toLowerCase();
+        for (const detail of details) {{
+          const label = String((detail && detail.label) || "").toLowerCase();
+          const title = String((detail && detail.title) || "").toLowerCase();
+          if (matcher(label, title)) {{
+            return Number(detail.value) || 0;
+          }}
+        }}
+        return 0;
+      }}
+
+      function tokenRowBreakdownValues(row) {{
+        const total = tokenRowNumericValue(row, ["totalTokens", "total_tokens", "value"]);
+        const cachedDirect = tokenRowNumericValue(row, ["cachedInputTokens", "cached_input_tokens", "cacheReadTokens", "cache_read_tokens"]);
+        const cacheCreateDirect = tokenRowNumericValue(row, ["cacheCreationTokens", "cache_creation_tokens", "cacheWriteTokens", "cache_write_tokens"]);
+        const outputDirect = tokenRowNumericValue(row, ["outputTokens", "output_tokens"]);
+        const reasoningDirect = tokenRowNumericValue(row, ["reasoningOutputTokens", "reasoning_output_tokens"]);
+        const totalInputDirect = tokenRowNumericValue(row, ["totalInputTokens", "total_input_tokens", "inputTokens", "input_tokens"]);
+        const cached = cachedDirect !== null ? cachedDirect : tokenRowDetailValue(row, function (label, title) {{
+          return label.includes("缓存读取") || label.includes("cache read") || label === "cached" || title.startsWith("缓存读取") || title.startsWith("cache read");
         }});
-        const match = details.find(function (detail) {{
-          const haystack = [
-            detail && detail.label,
-            detail && detail.title,
-            detail && detail.meta,
-          ].filter(Boolean).join(" ").toLowerCase();
-          return normalizedNeedles.some(function (needle) {{
-            return haystack.includes(needle);
-          }});
+        const cacheCreate = cacheCreateDirect !== null ? cacheCreateDirect : tokenRowDetailValue(row, function (label, title) {{
+          return label.includes("缓存写入") || label.includes("cache write") || label.includes("cache creation") || title.startsWith("缓存写入") || title.startsWith("cache write");
         }});
-        return match ? Number(match.value) || 0 : 0;
+        const inputDirect = tokenRowNumericValue(row, ["uncachedInputTokens", "uncached_input_tokens"]);
+        const input = inputDirect !== null
+          ? inputDirect
+          : (totalInputDirect !== null
+            ? Math.max(totalInputDirect - cached - cacheCreate, 0)
+            : tokenRowDetailValue(row, function (label, title) {{
+              return label === "输入" || label === "input" || title.startsWith("输入") || title.startsWith("input");
+            }}));
+        const output = outputDirect !== null ? outputDirect : tokenRowDetailValue(row, function (label, title) {{
+          return label === "输出" || label === "output" || title.startsWith("输出") || title.startsWith("output");
+        }});
+        const reasoning = reasoningDirect !== null ? reasoningDirect : tokenRowDetailValue(row, function (label, title) {{
+          return label.includes("推理") || label.includes("reasoning") || title.startsWith("推理") || title.startsWith("reasoning");
+        }});
+        return {{
+          total: total !== null ? total : 0,
+          input: input,
+          cached: cached,
+          cacheCreate: cacheCreate,
+          output: output,
+          reasoning: reasoning,
+        }};
       }}
 
       function buildTokenDetail(label, value, meta) {{
@@ -19751,16 +19811,18 @@ def build_html(data):
       }}
 
       function tokenBreakdownDetailsFromValues(values, heading) {{
-        const totalInput = (Number(values.input) || 0) + (Number(values.cached) || 0);
+        const totalInput = (Number(values.input) || 0) + (Number(values.cached) || 0) + (Number(values.cacheCreate) || 0);
         const total = Number(values.total) || 0;
         const cacheShare = totalInput > 0 ? (Number(values.cached) || 0) / totalInput * 100 : null;
+        const cacheCreateShare = total > 0 ? (Number(values.cacheCreate) || 0) / total * 100 : null;
         const outputShare = total > 0 ? (Number(values.output) || 0) / total * 100 : null;
         const reasoningShare = total > 0 ? (Number(values.reasoning) || 0) / total * 100 : null;
         const inputLabel = currentLanguage === "en" ? "Input" : "输入";
         const cacheLabel = currentLanguage === "en" ? "Cache Read" : "缓存读取";
+        const cacheCreateLabel = currentLanguage === "en" ? "Cache Write" : "缓存写入";
         const outputLabel = currentLanguage === "en" ? "Output" : "输出";
         const reasoningLabel = currentLanguage === "en" ? "Reasoning output" : "推理输出";
-        return [
+        const details = [
           buildTokenDetail(
             inputLabel,
             Number(values.input) || 0,
@@ -19773,6 +19835,19 @@ def build_html(data):
               ? formatPercentValue(cacheShare, 0, false) + " of total input"
               : "占总输入 " + formatPercentValue(cacheShare, 0, false)
           ),
+        ];
+        if ((Number(values.cacheCreate) || 0) > 0) {{
+          details.push(
+            buildTokenDetail(
+              cacheCreateLabel,
+              Number(values.cacheCreate) || 0,
+              currentLanguage === "en"
+                ? formatPercentValue(cacheCreateShare, 1, false) + " of total"
+                : "占总量 " + formatPercentValue(cacheCreateShare, 1, false)
+            )
+          );
+        }}
+        details.push(
           buildTokenDetail(
             outputLabel,
             Number(values.output) || 0,
@@ -19786,21 +19861,24 @@ def build_html(data):
             currentLanguage === "en"
               ? formatPercentValue(reasoningShare, 1, false) + " of total"
               : "占总量 " + formatPercentValue(reasoningShare, 1, false)
-          ),
-        ];
+          )
+        );
+        return details;
       }}
 
       function buildTokenBreakdownRows(values) {{
-        const totalInput = (Number(values.input) || 0) + (Number(values.cached) || 0);
+        const totalInput = (Number(values.input) || 0) + (Number(values.cached) || 0) + (Number(values.cacheCreate) || 0);
         const total = Number(values.total) || 0;
         const cacheShare = totalInput > 0 ? (Number(values.cached) || 0) / totalInput * 100 : null;
+        const cacheCreateShare = total > 0 ? (Number(values.cacheCreate) || 0) / total * 100 : null;
         const outputShare = total > 0 ? (Number(values.output) || 0) / total * 100 : null;
         const reasoningShare = total > 0 ? (Number(values.reasoning) || 0) / total * 100 : null;
         const inputLabel = currentLanguage === "en" ? "Input" : "输入";
         const cacheLabel = currentLanguage === "en" ? "Cache Read" : "缓存读取";
+        const cacheCreateLabel = currentLanguage === "en" ? "Cache Write" : "缓存写入";
         const outputLabel = currentLanguage === "en" ? "Output" : "输出";
         const reasoningLabel = currentLanguage === "en" ? "Reasoning output" : "推理输出";
-        return [
+        const rows = [
           {{
             label: inputLabel,
             value: Number(values.input) || 0,
@@ -19817,6 +19895,18 @@ def build_html(data):
             details: [buildTokenDetail(cacheLabel, Number(values.cached) || 0, currentLanguage === "en" ? formatPercentValue(cacheShare, 0, false) + " of total input" : "占总输入 " + formatPercentValue(cacheShare, 0, false))],
             details_heading: currentLanguage === "en" ? "Cache details" : "缓存详情",
           }},
+        ];
+        if ((Number(values.cacheCreate) || 0) > 0) {{
+          rows.push({{
+            label: cacheCreateLabel,
+            value: Number(values.cacheCreate) || 0,
+            display: compactTokenValue(values.cacheCreate),
+            tone: "token-cache-write",
+            details: [buildTokenDetail(cacheCreateLabel, Number(values.cacheCreate) || 0, currentLanguage === "en" ? formatPercentValue(cacheCreateShare, 1, false) + " of total" : "占总量 " + formatPercentValue(cacheCreateShare, 1, false))],
+            details_heading: currentLanguage === "en" ? "Cache write details" : "缓存写入详情",
+          }});
+        }}
+        rows.push(
           {{
             label: outputLabel,
             value: Number(values.output) || 0,
@@ -19833,7 +19923,8 @@ def build_html(data):
             details: [buildTokenDetail(reasoningLabel, Number(values.reasoning) || 0, currentLanguage === "en" ? formatPercentValue(reasoningShare, 1, false) + " of total" : "占总量 " + formatPercentValue(reasoningShare, 1, false))],
             details_heading: currentLanguage === "en" ? "Reasoning details" : "推理详情",
           }},
-        ];
+        );
+        return rows;
       }}
 
       function aggregateDailyRowsByMonth(rows) {{
@@ -19856,20 +19947,23 @@ def build_html(data):
               costUSD: 0,
               input: 0,
               cached: 0,
+              cacheCreate: 0,
               output: 0,
               reasoning: 0,
             }});
           }}
           const bucket = buckets.get(key);
-          const rowValue = Number(row.value) || 0;
+          const rowValues = tokenRowBreakdownValues(row);
+          const rowValue = Number(rowValues.total) || 0;
           bucket.day_count += Number(row.day_count) || 1;
           bucket.active_day_count += Number(row.active_day_count) || (rowValue > 0 ? 1 : 0);
           bucket.value += rowValue;
           bucket.costUSD += extractTokenRowCost(row);
-          bucket.input += tokenRowMetricValue(row, ["输入", "input"]);
-          bucket.cached += tokenRowMetricValue(row, ["缓存", "cache"]);
-          bucket.output += tokenRowMetricValue(row, ["输出", "output"]);
-          bucket.reasoning += tokenRowMetricValue(row, ["推理", "reasoning"]);
+          bucket.input += Number(rowValues.input) || 0;
+          bucket.cached += Number(rowValues.cached) || 0;
+          bucket.cacheCreate += Number(rowValues.cacheCreate) || 0;
+          bucket.output += Number(rowValues.output) || 0;
+          bucket.reasoning += Number(rowValues.reasoning) || 0;
         }});
         return Array.from(buckets.values()).sort(function (left, right) {{
           return String(left.sort_key).localeCompare(String(right.sort_key));
@@ -19878,10 +19972,18 @@ def build_html(data):
             total: bucket.value,
             input: bucket.input,
             cached: bucket.cached,
+            cacheCreate: bucket.cacheCreate,
             output: bucket.output,
             reasoning: bucket.reasoning,
           }};
           return Object.assign({{}}, bucket, {{
+            totalTokens: bucket.value,
+            totalInputTokens: bucket.input + bucket.cached + bucket.cacheCreate,
+            uncachedInputTokens: bucket.input,
+            cachedInputTokens: bucket.cached,
+            cacheCreationTokens: bucket.cacheCreate,
+            outputTokens: bucket.output,
+            reasoningOutputTokens: bucket.reasoning,
             display: compactTokenWithCostValue(bucket.value, bucket.costUSD),
             token_display: compactTokenValue(bucket.value),
             cost_display: formatUsdValue(bucket.costUSD),
@@ -20105,9 +20207,15 @@ def build_html(data):
           }});
         }}
 
-        const inputTokens = findTokenBreakdownValue(tokenUsage.today_breakdown, ["输入", "input"]);
-        const cachedInputTokens = findTokenBreakdownValue(tokenUsage.today_breakdown, ["缓存", "cached"]);
-        const totalInputTokens = inputTokens + cachedInputTokens;
+        const latestValues = latest ? tokenRowBreakdownValues(latest) : {{
+          input: findTokenBreakdownValue(tokenUsage.today_breakdown, ["输入", "input"]),
+          cached: findTokenBreakdownValue(tokenUsage.today_breakdown, ["缓存读取", "cache read", "cached"]),
+          cacheCreate: findTokenBreakdownValue(tokenUsage.today_breakdown, ["缓存写入", "cache write", "cache creation"]),
+        }};
+        const inputTokens = Number(latestValues.input) || 0;
+        const cachedInputTokens = Number(latestValues.cached) || 0;
+        const cacheCreationTokens = Number(latestValues.cacheCreate) || 0;
+        const totalInputTokens = inputTokens + cachedInputTokens + cacheCreationTokens;
         const cachedShare = totalInputTokens > 0 ? (cachedInputTokens / totalInputTokens) * 100 : null;
         cards.push({{
           label: currentLanguage === "en" ? "Cache Read / Total Input" : "缓存读取占总输入",
@@ -20166,13 +20274,7 @@ def build_html(data):
         derived.period_unit = periodUnit;
         derived.range_label = rangeLabel || derived.range_label || "";
         if (latest) {{
-          const latestValues = {{
-            total: Number(latest.value) || 0,
-            input: tokenRowMetricValue(latest, ["输入", "input"]),
-            cached: tokenRowMetricValue(latest, ["缓存", "cache"]),
-            output: tokenRowMetricValue(latest, ["输出", "output"]),
-            reasoning: tokenRowMetricValue(latest, ["推理", "reasoning"]),
-          }};
+          const latestValues = tokenRowBreakdownValues(latest);
           derived.today_total_tokens = latestValues.total;
           derived.today_total_tokens_display = compactTokenValue(latestValues.total);
           derived.today_date_label = latest.label || derived.today_date_label || "";

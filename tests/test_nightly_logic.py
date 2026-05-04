@@ -4397,6 +4397,9 @@ Keep my own note.
         self.assertIn("function tokenEffectiveWindowDays(filters, fallbackWindowDays)", html)
         self.assertIn("function tokenUsageMatchesRequestFilters(tokenUsage, filters)", html)
         self.assertIn("function aggregateDailyRowsByMonth(rows)", html)
+        self.assertIn("function tokenRowBreakdownValues(row)", html)
+        self.assertIn("cacheCreationTokens", html)
+        self.assertIn("token-cache-write", html)
         self.assertIn('requestUrl.searchParams.set("provider", normalizeTokenProvider(filters.provider));', html)
         self.assertIn('requestUrl.searchParams.set("group_by", "day");', html)
         self.assertIn("function tokenFilterRangeLabel(filters, tokenUsage)", html)
@@ -8644,6 +8647,7 @@ Keep my own note.
                                 "date": "2026-05-02",
                                 "inputTokens": 500,
                                 "cachedInputTokens": 125,
+                                "cacheCreationTokens": 300,
                                 "outputTokens": 100,
                                 "reasoningOutputTokens": 20,
                                 "totalTokens": 600,
@@ -8669,7 +8673,11 @@ Keep my own note.
         self.assertEqual(view["period_total_tokens"], 1200)
         self.assertEqual(view["active_period_count"], 2)
         self.assertEqual(view["today_date_label"], "2026-05")
-        self.assertEqual(view["today_breakdown"][0]["value"], 375)
+        self.assertEqual(view["daily_rows"][-1]["uncachedInputTokens"], 75)
+        self.assertEqual(view["daily_rows"][-1]["cacheCreationTokens"], 300)
+        self.assertEqual(view["today_breakdown"][0]["value"], 75)
+        self.assertEqual(view["today_breakdown"][2]["label"], "缓存写入")
+        self.assertEqual(view["today_breakdown"][2]["value"], 300)
         self.assertIn("峰值月", [card["label"] for card in view["summary_cards"]])
 
     def test_bar_rows_render_hover_details_when_available(self):
