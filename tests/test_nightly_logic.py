@@ -1866,6 +1866,38 @@ class NightlyLogicTests(unittest.TestCase):
         self.assertEqual(payload["missing_keys"], [])
         self.assertEqual(payload["items"]["preference:one"]["title_zh"], "直接改动")
 
+    def test_codex_native_display_cache_collects_claude_auto_memory_entries(self):
+        preference_source = "Prefer apply_patch for file edits."
+        with TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            claude_home = tmp / ".claude"
+            project_memory_dir = claude_home / "projects" / "-Users-ray-openrelix" / "memory"
+            project_memory_dir.mkdir(parents=True)
+            (project_memory_dir / "MEMORY.md").write_text(
+                "# User Memory\n\n- {}\n".format(preference_source),
+                encoding="utf-8",
+            )
+
+            entries = build_codex_native_display_cache.collect_entries(
+                tmp / "missing-memory_summary.md",
+                tmp / "missing-MEMORY.md",
+                20,
+                claude_memory_path=claude_home / "CLAUDE.md",
+                claude_home=claude_home,
+            )
+
+        expected_key = build_overview.codex_native_display_cache_key(
+            "preference",
+            preference_source,
+            preference_source,
+        )
+        entry_by_key = {entry["key"]: entry for entry in entries}
+        self.assertIn(expected_key, entry_by_key)
+        self.assertEqual(
+            entry_by_key[expected_key]["source_label"],
+            "Claude Code native preferences",
+        )
+
     def test_codex_native_memory_topic_cache_key_matches_compacted_title(self):
         long_title = "OpenRelix release validation package website checklist " * 4
         body = "Sample release validation note."
@@ -2882,6 +2914,55 @@ Keep my own note.
         self.assertIn("auto memory 3 条", comparison["note"])
         self.assertIn("1 个项目 / 路径", comparison["note"])
         self.assertNotIn("OpenRelix injected memory", json.dumps(parsed, ensure_ascii=False))
+
+    def test_claude_auto_memory_uses_model_display_cache_in_chinese(self):
+        preference_source = "Prefer apply_patch for file edits."
+        with TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            claude_home = tmp / ".claude"
+            project_memory_dir = claude_home / "projects" / "-Users-ray-openrelix" / "memory"
+            project_memory_dir.mkdir(parents=True)
+            claude_path = claude_home / "CLAUDE.md"
+            (project_memory_dir / "MEMORY.md").write_text(
+                "# User Memory\n\n- {}\n".format(preference_source),
+                encoding="utf-8",
+            )
+            cache_path = tmp / "codex-native-display-cache.json"
+            cache_path.write_text(
+                json.dumps(
+                    {
+                        "version": 1,
+                        "items": {
+                            build_overview.codex_native_display_cache_key(
+                                "preference",
+                                preference_source,
+                                preference_source,
+                            ): {
+                                "title_zh": "文件编辑优先补丁",
+                                "body_zh": "编辑文件时优先使用 apply_patch，只有不适合打补丁时才回退到其他写入方式。",
+                            }
+                        },
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+
+            with mock.patch.object(build_overview, "CODEX_NATIVE_DISPLAY_CACHE_PATH", cache_path):
+                build_overview.load_codex_native_display_cache.cache_clear()
+                parsed = build_overview.parse_claude_native_memory_summary(
+                    claude_path,
+                    language="zh",
+                    claude_home=claude_home,
+                )
+
+        preference = parsed["preference_rows"][0]
+        self.assertEqual(preference["display_title"], "文件编辑优先补丁")
+        self.assertEqual(
+            preference["display_value_note"],
+            "编辑文件时优先使用 apply_patch，只有不适合打补丁时才回退到其他写入方式。",
+        )
+        self.assertEqual(preference["display_value_note_en"], preference_source)
 
     def test_sync_host_memory_summary_preserves_user_claude_file_content(self):
         block = sync_host_memory_summary.managed_claude_block("## What's in Memory\n\n- Shared item\n")

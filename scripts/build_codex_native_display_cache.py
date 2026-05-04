@@ -22,16 +22,20 @@ PATHS = get_runtime_paths()
 LANGUAGE = get_runtime_language(PATHS)
 DEFAULT_MEMORY_SUMMARY = PATHS.codex_home / "memories" / "memory_summary.md"
 DEFAULT_MEMORY_INDEX = PATHS.codex_home / "memories" / "MEMORY.md"
+DEFAULT_CLAUDE_MEMORY = PATHS.claude_home / "CLAUDE.md"
+DEFAULT_CLAUDE_HOME = PATHS.claude_home
 DEFAULT_OUTPUT = PATHS.runtime_dir / "codex-native-display-cache.json"
 DEFAULT_MAX_ITEMS = 80
 
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="Generate model-polished Chinese display copy for Codex native memory cards."
+        description="Generate model-polished Chinese display copy for native memory cards."
     )
     parser.add_argument("--memory-summary", default=str(DEFAULT_MEMORY_SUMMARY))
     parser.add_argument("--memory-index", default=str(DEFAULT_MEMORY_INDEX))
+    parser.add_argument("--claude-memory", default=str(DEFAULT_CLAUDE_MEMORY))
+    parser.add_argument("--claude-home", default=str(DEFAULT_CLAUDE_HOME))
     parser.add_argument("--output", default=str(DEFAULT_OUTPUT))
     parser.add_argument("--max-items", type=int, default=DEFAULT_MAX_ITEMS)
     parser.add_argument("--print-only", action="store_true")
@@ -49,7 +53,13 @@ def source_text(*parts):
     return build_overview.codex_native_display_source_text(*parts)
 
 
-def collect_entries(memory_summary_path, memory_index_path, max_items):
+def collect_entries(
+    memory_summary_path,
+    memory_index_path,
+    max_items,
+    claude_memory_path=None,
+    claude_home=None,
+):
     entries = []
 
     def append(kind, title, body, source_label):
@@ -102,6 +112,45 @@ def collect_entries(memory_summary_path, memory_index_path, max_items):
             )
             append("task_group", title, body, "Task Groups")
 
+    claude_memory = Path(claude_memory_path) if claude_memory_path else None
+    claude_home_path = Path(claude_home) if claude_home else None
+    if claude_memory:
+        parsed = build_overview.parse_claude_native_memory_summary(
+            claude_memory,
+            language="en",
+            claude_home=claude_home_path,
+        )
+
+        for row in parsed.get("preference_rows", []):
+            body = source_text(
+                row.get("display_value_note_en")
+                or row.get("value_note_en")
+                or row.get("display_body_en")
+                or row.get("body")
+                or ""
+            )
+            append("preference", body, body, "Claude Code native preferences")
+
+        for row in parsed.get("tip_rows", []):
+            body = source_text(
+                row.get("display_value_note_en")
+                or row.get("value_note_en")
+                or row.get("display_body_en")
+                or row.get("body")
+                or ""
+            )
+            append("tip", body, body, "Claude Code native tips")
+
+        for row in parsed.get("topic_rows", []):
+            title = source_text(row.get("display_title_en") or row.get("title") or "")
+            body = source_text(
+                row.get("display_value_note_en")
+                or row.get("value_note_en")
+                or row.get("value_note")
+                or title
+            )
+            append("topic", title, body, "Claude Code native memory")
+
     deduped = []
     seen = set()
     for entry in entries:
@@ -142,7 +191,7 @@ def display_schema_path():
 
 
 def build_prompt(entries):
-    return """你是 OpenRelix 面板的中文展示文案整理器。请把 Codex native memory 的英文/混合语言条目改写成通俗、准确、可扫描的中文卡片文案。
+    return """你是 OpenRelix 面板的中文展示文案整理器。请把 Codex / Claude Code native memory 的英文/混合语言条目改写成通俗、准确、可扫描的中文卡片文案。
 
 要求：
 1. 只根据输入内容改写，不要编造新事实。
@@ -313,13 +362,26 @@ def main():
     ensure_state_layout(PATHS)
     memory_summary_path = Path(args.memory_summary).expanduser()
     memory_index_path = Path(args.memory_index).expanduser()
+    claude_memory_path = Path(args.claude_memory).expanduser()
+    claude_home_path = Path(args.claude_home).expanduser()
     output_path = Path(args.output).expanduser()
     if LANGUAGE != "zh":
         payload = empty_payload(memory_summary_path, status="skipped_non_zh")
-    elif not memory_summary_path.is_file() and not memory_index_path.is_file():
+    elif (
+        not memory_summary_path.is_file()
+        and not memory_index_path.is_file()
+        and not claude_memory_path.is_file()
+        and not build_overview.claude_auto_memory_files(claude_home_path)
+    ):
         payload = empty_payload(memory_summary_path, status="missing_source")
     else:
-        entries = collect_entries(memory_summary_path, memory_index_path, max(args.max_items, 0))
+        entries = collect_entries(
+            memory_summary_path,
+            memory_index_path,
+            max(args.max_items, 0),
+            claude_memory_path=claude_memory_path,
+            claude_home=claude_home_path,
+        )
         if not entries:
             payload = empty_payload(memory_summary_path)
         else:

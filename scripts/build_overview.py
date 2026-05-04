@@ -5705,6 +5705,23 @@ def make_claude_auto_memory_row(
         language=language,
         kind="preference" if kind == "preference" else "tip" if kind == "tip" else "",
     )
+    if kind in {"preference", "tip"}:
+        cached_display = codex_native_cached_display(
+            kind,
+            body_text,
+            body_text,
+            language=language,
+        )
+    else:
+        cached_display = codex_native_cached_display(
+            "topic",
+            display_title_en,
+            body_text,
+            language=language,
+        )
+    if cached_display:
+        display_title = cached_display.get("title_zh") or display_title
+        display_body = cached_display.get("body_zh") or display_body
     project_label = claude_auto_memory_project_label(path)
     context_labels = collect_context_labels_from_texts(
         [project_label, heading_text, body_text],
