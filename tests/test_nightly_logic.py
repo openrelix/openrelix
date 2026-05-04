@@ -289,7 +289,8 @@ class NightlyLogicTests(unittest.TestCase):
         self.assertEqual(asset_runtime.normalize_model_cli("cc"), "claude")
         with self.assertRaises(ValueError):
             asset_runtime.normalize_model_cli("browser", strict=True)
-        self.assertEqual(asset_runtime.normalize_claude_model(None), "sonnet")
+        self.assertEqual(asset_runtime.normalize_claude_model(None), "auto")
+        self.assertEqual(asset_runtime.normalize_claude_model("default"), "auto")
         self.assertEqual(asset_runtime.normalize_claude_model("opus"), "opus")
         with self.assertRaises(ValueError):
             asset_runtime.normalize_claude_model("bad model", strict=True)
@@ -321,10 +322,16 @@ class NightlyLogicTests(unittest.TestCase):
                     "AI_ASSET_CODEX_MODEL": "",
                     "OPENRELIX_CLAUDE_MODEL": "",
                     "AI_ASSET_CLAUDE_MODEL": "",
+                    "OPENRELIX_CLAUDE_SETTINGS": "",
+                    "AI_ASSET_CLAUDE_SETTINGS": "",
+                    "OPENRELIX_CLAUDE_ENV_FILE": "",
+                    "AI_ASSET_CLAUDE_ENV_FILE": "",
                 },
             ):
                 paths = asset_runtime.get_runtime_paths()
                 asset_runtime.ensure_state_layout(paths)
+                claude_settings_path = Path(tmpdir) / "claude-settings.json"
+                claude_env_path = Path(tmpdir) / "claude.env"
                 config = asset_runtime.write_runtime_config(
                     language="en",
                     memory_mode="codex",
@@ -333,6 +340,8 @@ class NightlyLogicTests(unittest.TestCase):
                     model_cli="cc",
                     codex_model="gpt5.4mini",
                     claude_model="opus",
+                    claude_settings=str(claude_settings_path),
+                    claude_env_file=str(claude_env_path),
                     memory_summary_max_tokens=8000,
                     paths=paths,
                 )
@@ -344,6 +353,8 @@ class NightlyLogicTests(unittest.TestCase):
                 self.assertEqual(config["model_cli"], "claude")
                 self.assertEqual(config["codex_model"], "gpt-5.4-mini")
                 self.assertEqual(config["claude_model"], "opus")
+                self.assertEqual(config["claude_settings"], str(claude_settings_path.resolve()))
+                self.assertEqual(config["claude_env_file"], str(claude_env_path.resolve()))
                 self.assertEqual(config["host_context_targets"], ["codex", "claude"])
                 self.assertEqual(config["memory_summary_max_tokens"], 8000)
                 self.assertTrue(config["personal_memory_enabled"])
@@ -357,6 +368,8 @@ class NightlyLogicTests(unittest.TestCase):
                 self.assertEqual(asset_runtime.get_model_cli(paths), "claude")
                 self.assertEqual(asset_runtime.get_codex_model(paths), "gpt-5.4-mini")
                 self.assertEqual(asset_runtime.get_claude_model(paths), "opus")
+                self.assertEqual(asset_runtime.get_claude_settings(paths), str(claude_settings_path.resolve()))
+                self.assertEqual(asset_runtime.get_claude_env_file(paths), str(claude_env_path.resolve()))
                 self.assertEqual(asset_runtime.get_host_context_targets(paths), ["codex", "claude"])
                 self.assertTrue(asset_runtime.personal_memory_enabled(paths))
                 self.assertTrue(asset_runtime.codex_context_enabled(paths))
@@ -688,6 +701,80 @@ class NightlyLogicTests(unittest.TestCase):
         parsed = nightly_consolidate.claude_result_payload(json.dumps(payload))
 
         self.assertEqual(parsed["date"], "2026-05-04")
+
+    def test_claude_result_payload_extracts_fenced_summary_result(self):
+        summary = {
+            "date": "2026-05-04",
+            "day_summary": "ok",
+            "window_summaries": [],
+        }
+        payload = {
+            "type": "result",
+            "is_error": False,
+            "result": "Here is the summary:\n```json\n{}\n```".format(json.dumps(summary)),
+        }
+
+        parsed = nightly_consolidate.claude_result_payload(json.dumps(payload))
+
+        self.assertEqual(parsed["day_summary"], "ok")
+
+    def test_claude_result_payload_extracts_embedded_summary_before_wrapper_tail(self):
+        summary = {
+            "date": "2026-05-04",
+            "day_summary": "ok",
+            "window_summaries": [],
+            "durable_memories": [],
+        }
+        payload = {
+            "type": "result",
+            "is_error": False,
+            "result": "{}\n{}".format(
+                json.dumps(summary),
+                json.dumps({"terminal_reason": "completed", "uuid": "example"}),
+            ),
+        }
+
+        parsed = nightly_consolidate.claude_result_payload(json.dumps(payload))
+
+        self.assertEqual(parsed["date"], "2026-05-04")
+        self.assertIn("durable_memories", parsed)
+
+    def test_claude_result_payload_unwraps_content_blocks(self):
+        summary = {
+            "date": "2026-05-04",
+            "day_summary": "ok",
+            "window_summaries": [],
+        }
+        payload = {
+            "type": "result",
+            "is_error": False,
+            "result": {
+                "content": [
+                    {"type": "text", "text": json.dumps(summary)},
+                ],
+            },
+        }
+
+        parsed = nightly_consolidate.claude_result_payload(json.dumps(payload))
+
+        self.assertEqual(parsed["date"], "2026-05-04")
+
+    def test_default_claude_binary_prefers_user_local_binary(self):
+        with TemporaryDirectory() as tmpdir:
+            home = Path(tmpdir)
+            user_bin = home / ".local" / "bin" / "claude"
+            path_bin = home / "homebrew" / "bin" / "claude"
+            user_bin.parent.mkdir(parents=True)
+            path_bin.parent.mkdir(parents=True)
+            user_bin.write_text("#!/bin/sh\n", encoding="utf-8")
+            path_bin.write_text("#!/bin/sh\n", encoding="utf-8")
+
+            with mock.patch.dict(os.environ, {"CLAUDE_BIN": ""}, clear=False), mock.patch.object(
+                asset_runtime.Path,
+                "home",
+                return_value=home,
+            ), mock.patch.object(asset_runtime.shutil, "which", return_value=str(path_bin)):
+                self.assertEqual(asset_runtime.default_claude_binary(), str(user_bin))
 
     def test_sync_codex_exec_home_tolerates_auth_symlink_race(self):
         with TemporaryDirectory() as tmpdir:
@@ -4931,6 +5018,8 @@ Keep my own note.
                 model_cli="cc",
                 codex_model=None,
                 claude_model="opus",
+                claude_settings='{"env":{"OPENRELIX_PROVIDER":"bridge"}}',
+                claude_env_file=str(root / "claude.env"),
                 read_codex_app=False,
                 no_refresh=True,
                 json=True,
@@ -4945,6 +5034,10 @@ Keep my own note.
                     "AI_ASSET_MODEL_CLI": "",
                     "OPENRELIX_CLAUDE_MODEL": "",
                     "AI_ASSET_CLAUDE_MODEL": "",
+                    "OPENRELIX_CLAUDE_SETTINGS": "",
+                    "AI_ASSET_CLAUDE_SETTINGS": "",
+                    "OPENRELIX_CLAUDE_ENV_FILE": "",
+                    "AI_ASSET_CLAUDE_ENV_FILE": "",
                 },
                 clear=False,
             ), mock.patch.object(openrelix, "PATHS", paths), mock.patch("sys.stdout", new_callable=io.StringIO) as stdout:
@@ -4954,10 +5047,14 @@ Keep my own note.
             self.assertEqual(config["activity_host"], "claude")
             self.assertEqual(config["model_cli"], "claude")
             self.assertEqual(config["claude_model"], "opus")
+            self.assertEqual(config["claude_settings"], '{"env":{"OPENRELIX_PROVIDER":"bridge"}}')
+            self.assertEqual(config["claude_env_file"], str((root / "claude.env").resolve()))
             payload = json.loads(stdout.getvalue())
             self.assertEqual(payload["activity_host"], "claude")
             self.assertEqual(payload["model_cli"], "claude")
             self.assertEqual(payload["claude_model"], "opus")
+            self.assertEqual(payload["claude_settings"], '{"env":{"OPENRELIX_PROVIDER":"bridge"}}')
+            self.assertEqual(payload["claude_env_file"], str((root / "claude.env").resolve()))
             self.assertFalse(payload["refreshed"])
 
     def test_openrelix_open_panel_ensures_token_live_service(self):
@@ -5308,6 +5405,18 @@ Keep my own note.
         self.assertEqual(raised.exception.code, 1)
         self.assertIn("latest_learning_run", stdout.getvalue())
         self.assertIn("codex login", stdout.getvalue())
+
+    def test_doctor_model_check_detail_unwraps_claude_json(self):
+        output = json.dumps(
+            {
+                "type": "result",
+                "is_error": False,
+                "result": "OPENRELIX_DOCTOR_OK",
+                "terminal_reason": "completed",
+            }
+        )
+
+        self.assertEqual(openrelix.doctor_model_check_detail("claude", output), "OPENRELIX_DOCTOR_OK")
 
     def test_openrelix_doctor_can_probe_codex_app_server(self):
         old_paths = openrelix.PATHS

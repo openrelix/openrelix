@@ -8,7 +8,9 @@ CODEX_HOME="${CODEX_HOME:-$HOME/.codex}"
 CODEX_BIN="${CODEX_BIN:-}"
 CLAUDE_HOME="${CLAUDE_HOME:-${CLAUDE_CONFIG_DIR:-$HOME/.claude}}"
 CLAUDE_BIN="${CLAUDE_BIN:-}"
-CLAUDE_MODEL="${OPENRELIX_CLAUDE_MODEL:-${AI_ASSET_CLAUDE_MODEL:-sonnet}}"
+CLAUDE_MODEL="${OPENRELIX_CLAUDE_MODEL:-${AI_ASSET_CLAUDE_MODEL:-auto}}"
+CLAUDE_SETTINGS="${OPENRELIX_CLAUDE_SETTINGS:-${AI_ASSET_CLAUDE_SETTINGS:-}}"
+CLAUDE_ENV_FILE="${OPENRELIX_CLAUDE_ENV_FILE:-${AI_ASSET_CLAUDE_ENV_FILE:-}}"
 STATE_DIR="${AI_ASSET_STATE_DIR:-}"
 LANGUAGE="${AI_ASSET_LANGUAGE:-}"
 MEMORY_MODE="${AI_ASSET_MEMORY_MODE:-}"
@@ -105,7 +107,11 @@ Options:
   --claude-home PATH            Override CLAUDE_HOME / CLAUDE_CONFIG_DIR. Default: ~/.claude
   --claude-bin PATH             Override the Claude Code CLI binary used by model backfill jobs.
   --claude-model MODEL          Claude model or alias for OpenRelix internal claude -p calls.
-                                Default: sonnet.
+                                Default: auto, which lets Claude Code choose its configured provider/model.
+  --claude-settings PATH|JSON   Extra Claude Code --settings path or JSON for third-party providers,
+                                apiKeyHelper, bridge mode, Bedrock/Vertex, etc.
+  --claude-env-file PATH        Env file loaded only for OpenRelix claude -p calls.
+                                Keep secrets outside the repo and pass the file path here.
   --model-cli CLI               Model CLI for memory backfill: codex | claude | cc.
                                 Interactive installs prompt; non-interactive installs default to codex.
   --language CODE               Runtime language: zh | en. Controls panel rendering, local memory
@@ -547,6 +553,24 @@ while [[ $# -gt 0 ]]; do
       ;;
     --claude-model=*)
       CLAUDE_MODEL="${1#*=}"
+      shift
+      ;;
+    --claude-settings)
+      require_option_value "$1" "${2-}"
+      CLAUDE_SETTINGS="$2"
+      shift 2
+      ;;
+    --claude-settings=*)
+      CLAUDE_SETTINGS="${1#*=}"
+      shift
+      ;;
+    --claude-env-file)
+      require_option_value "$1" "${2-}"
+      CLAUDE_ENV_FILE="$2"
+      shift 2
+      ;;
+    --claude-env-file=*)
+      CLAUDE_ENV_FILE="${1#*=}"
       shift
       ;;
     --model-cli)
@@ -1117,6 +1141,8 @@ render_plist() {
     --set "ACTIVITY_HOST=$ACTIVITY_HOST" \
     --set "MODEL_CLI=$MODEL_CLI" \
     --set "CLAUDE_MODEL=$CLAUDE_MODEL" \
+    --set "CLAUDE_SETTINGS=$CLAUDE_SETTINGS" \
+    --set "CLAUDE_ENV_FILE=$CLAUDE_ENV_FILE" \
     --set "LEARNING_REFRESH=$ENABLE_LEARNING_REFRESH" \
     --set "LEARNING_REFRESH_WINDOW_DAYS=$LEARNING_REFRESH_WINDOW_DAYS" \
     --set "OVERVIEW_RUN_AT_LOAD=$OVERVIEW_RUN_AT_LOAD" \
@@ -1173,9 +1199,11 @@ export OPENRELIX_ACTIVITY_SOURCE="$ACTIVITY_SOURCE"
 export OPENRELIX_ACTIVITY_HOST="$ACTIVITY_HOST"
 export OPENRELIX_MODEL_CLI="$MODEL_CLI"
 export OPENRELIX_CLAUDE_MODEL="$CLAUDE_MODEL"
+export OPENRELIX_CLAUDE_SETTINGS="$CLAUDE_SETTINGS"
+export OPENRELIX_CLAUDE_ENV_FILE="$CLAUDE_ENV_FILE"
 
 initialize_state_root() {
-  "$PYTHON_BIN" - "$REPO_ROOT" "$LANGUAGE" "$MEMORY_MODE" "$ACTIVITY_SOURCE" "$ACTIVITY_HOST" "$MODEL_CLI" "$CLAUDE_MODEL" <<'PY'
+  "$PYTHON_BIN" - "$REPO_ROOT" "$LANGUAGE" "$MEMORY_MODE" "$ACTIVITY_SOURCE" "$ACTIVITY_HOST" "$MODEL_CLI" "$CLAUDE_MODEL" "$CLAUDE_SETTINGS" "$CLAUDE_ENV_FILE" <<'PY'
 import sys
 
 repo_root = sys.argv[1]
@@ -1185,6 +1213,8 @@ activity_source = sys.argv[4]
 activity_host = sys.argv[5]
 model_cli = sys.argv[6]
 claude_model = sys.argv[7]
+claude_settings = sys.argv[8]
+claude_env_file = sys.argv[9]
 sys.path.insert(0, repo_root + "/scripts")
 
 from asset_runtime import ensure_state_layout, write_runtime_config  # noqa: E402
@@ -1197,6 +1227,8 @@ write_runtime_config(
     activity_host=activity_host,
     model_cli=model_cli,
     claude_model=claude_model,
+    claude_settings=claude_settings,
+    claude_env_file=claude_env_file,
     paths=paths,
 )
 PY
@@ -1319,7 +1351,9 @@ if (( INSTALL_GLOBAL_COMMAND )); then
     --set "ACTIVITY_SOURCE=$ACTIVITY_SOURCE" \
     --set "ACTIVITY_HOST=$ACTIVITY_HOST" \
     --set "MODEL_CLI=$MODEL_CLI" \
-    --set "CLAUDE_MODEL=$CLAUDE_MODEL"
+    --set "CLAUDE_MODEL=$CLAUDE_MODEL" \
+    --set "CLAUDE_SETTINGS=$CLAUDE_SETTINGS" \
+    --set "CLAUDE_ENV_FILE=$CLAUDE_ENV_FILE"
   chmod +x "$BIN_DIR/openrelix"
   if ! path_contains_dir "$BIN_DIR"; then
     "$PYTHON_BIN" "$REPO_ROOT/install/configure_shell_path.py" \
@@ -1429,7 +1463,7 @@ learn_memory_command() {
       printf 'openrelix review --stage preliminary --learn-window-days 0 --jobs %s\n' "$INSTALL_LEARN_JOBS"
       return
     fi
-    printf 'AI_ASSET_STATE_DIR=%q CODEX_HOME=%q CLAUDE_HOME=%q CLAUDE_CONFIG_DIR=%q CLAUDE_BIN=%q AI_ASSET_LANGUAGE=%q OPENRELIX_ACTIVITY_SOURCE=%q OPENRELIX_ACTIVITY_HOST=%q OPENRELIX_MODEL_CLI=%q OPENRELIX_CLAUDE_MODEL=%q %q %q review --stage preliminary --learn-window-days 0 --jobs %s\n' \
+    printf 'AI_ASSET_STATE_DIR=%q CODEX_HOME=%q CLAUDE_HOME=%q CLAUDE_CONFIG_DIR=%q CLAUDE_BIN=%q AI_ASSET_LANGUAGE=%q OPENRELIX_ACTIVITY_SOURCE=%q OPENRELIX_ACTIVITY_HOST=%q OPENRELIX_MODEL_CLI=%q OPENRELIX_CLAUDE_MODEL=%q OPENRELIX_CLAUDE_SETTINGS=%q OPENRELIX_CLAUDE_ENV_FILE=%q %q %q review --stage preliminary --learn-window-days 0 --jobs %s\n' \
       "$STATE_DIR" \
       "$CODEX_HOME" \
       "$CLAUDE_HOME" \
@@ -1440,6 +1474,8 @@ learn_memory_command() {
       "$ACTIVITY_HOST" \
       "$MODEL_CLI" \
       "$CLAUDE_MODEL" \
+      "$CLAUDE_SETTINGS" \
+      "$CLAUDE_ENV_FILE" \
       "$PYTHON_BIN" \
       "$REPO_ROOT/scripts/openrelix.py" \
       "$INSTALL_LEARN_JOBS"
@@ -1449,7 +1485,7 @@ learn_memory_command() {
     printf 'openrelix backfill --days %s --stage preliminary --learn-window-days 0 --jobs %s\n' "$LEARNING_REFRESH_WINDOW_DAYS" "$INSTALL_LEARN_JOBS"
     return
   fi
-  printf 'AI_ASSET_STATE_DIR=%q CODEX_HOME=%q CLAUDE_HOME=%q CLAUDE_CONFIG_DIR=%q CLAUDE_BIN=%q AI_ASSET_LANGUAGE=%q OPENRELIX_ACTIVITY_SOURCE=%q OPENRELIX_ACTIVITY_HOST=%q OPENRELIX_MODEL_CLI=%q OPENRELIX_CLAUDE_MODEL=%q %q %q backfill --days %s --stage preliminary --learn-window-days 0 --jobs %s\n' \
+  printf 'AI_ASSET_STATE_DIR=%q CODEX_HOME=%q CLAUDE_HOME=%q CLAUDE_CONFIG_DIR=%q CLAUDE_BIN=%q AI_ASSET_LANGUAGE=%q OPENRELIX_ACTIVITY_SOURCE=%q OPENRELIX_ACTIVITY_HOST=%q OPENRELIX_MODEL_CLI=%q OPENRELIX_CLAUDE_MODEL=%q OPENRELIX_CLAUDE_SETTINGS=%q OPENRELIX_CLAUDE_ENV_FILE=%q %q %q backfill --days %s --stage preliminary --learn-window-days 0 --jobs %s\n' \
     "$STATE_DIR" \
     "$CODEX_HOME" \
     "$CLAUDE_HOME" \
@@ -1460,6 +1496,8 @@ learn_memory_command() {
     "$ACTIVITY_HOST" \
     "$MODEL_CLI" \
     "$CLAUDE_MODEL" \
+    "$CLAUDE_SETTINGS" \
+    "$CLAUDE_ENV_FILE" \
     "$PYTHON_BIN" \
     "$REPO_ROOT/scripts/openrelix.py" \
     "$LEARNING_REFRESH_WINDOW_DAYS" \
@@ -1474,7 +1512,7 @@ deep_learn_memory_command() {
     printf 'openrelix backfill --days %s --stage final --learn-window-days %s --jobs %s\n' "$LEARNING_REFRESH_WINDOW_DAYS" "$LEARNING_REFRESH_WINDOW_DAYS" "$INSTALL_DEEP_LEARN_JOBS"
     return
   fi
-  printf 'AI_ASSET_STATE_DIR=%q CODEX_HOME=%q CLAUDE_HOME=%q CLAUDE_CONFIG_DIR=%q CLAUDE_BIN=%q AI_ASSET_LANGUAGE=%q OPENRELIX_ACTIVITY_SOURCE=%q OPENRELIX_ACTIVITY_HOST=%q OPENRELIX_MODEL_CLI=%q OPENRELIX_CLAUDE_MODEL=%q %q %q backfill --days %s --stage final --learn-window-days %s --jobs %s\n' \
+  printf 'AI_ASSET_STATE_DIR=%q CODEX_HOME=%q CLAUDE_HOME=%q CLAUDE_CONFIG_DIR=%q CLAUDE_BIN=%q AI_ASSET_LANGUAGE=%q OPENRELIX_ACTIVITY_SOURCE=%q OPENRELIX_ACTIVITY_HOST=%q OPENRELIX_MODEL_CLI=%q OPENRELIX_CLAUDE_MODEL=%q OPENRELIX_CLAUDE_SETTINGS=%q OPENRELIX_CLAUDE_ENV_FILE=%q %q %q backfill --days %s --stage final --learn-window-days %s --jobs %s\n' \
     "$STATE_DIR" \
     "$CODEX_HOME" \
     "$CLAUDE_HOME" \
@@ -1485,6 +1523,8 @@ deep_learn_memory_command() {
     "$ACTIVITY_HOST" \
     "$MODEL_CLI" \
     "$CLAUDE_MODEL" \
+    "$CLAUDE_SETTINGS" \
+    "$CLAUDE_ENV_FILE" \
     "$PYTHON_BIN" \
     "$REPO_ROOT/scripts/openrelix.py" \
     "$LEARNING_REFRESH_WINDOW_DAYS" \
@@ -1829,6 +1869,8 @@ run_post_install_shallow_learning() {
       OPENRELIX_ACTIVITY_HOST="$ACTIVITY_HOST" \
       OPENRELIX_MODEL_CLI="$MODEL_CLI" \
       OPENRELIX_CLAUDE_MODEL="$CLAUDE_MODEL" \
+      OPENRELIX_CLAUDE_SETTINGS="$CLAUDE_SETTINGS" \
+      OPENRELIX_CLAUDE_ENV_FILE="$CLAUDE_ENV_FILE" \
       run_interruptible_child "$PYTHON_BIN" "$REPO_ROOT/scripts/openrelix.py" \
       review --stage preliminary --learn-window-days 0 --jobs "$INSTALL_LEARN_JOBS"
     return
@@ -1843,6 +1885,8 @@ run_post_install_shallow_learning() {
     OPENRELIX_ACTIVITY_HOST="$ACTIVITY_HOST" \
     OPENRELIX_MODEL_CLI="$MODEL_CLI" \
     OPENRELIX_CLAUDE_MODEL="$CLAUDE_MODEL" \
+    OPENRELIX_CLAUDE_SETTINGS="$CLAUDE_SETTINGS" \
+    OPENRELIX_CLAUDE_ENV_FILE="$CLAUDE_ENV_FILE" \
     run_interruptible_child "$PYTHON_BIN" "$REPO_ROOT/scripts/openrelix.py" \
     backfill --days "$LEARNING_REFRESH_WINDOW_DAYS" --stage preliminary --learn-window-days 0 --jobs "$INSTALL_LEARN_JOBS"
 }
@@ -1911,6 +1955,8 @@ run_post_install_deep_learning() {
     OPENRELIX_ACTIVITY_HOST="$ACTIVITY_HOST" \
     OPENRELIX_MODEL_CLI="$MODEL_CLI" \
     OPENRELIX_CLAUDE_MODEL="$CLAUDE_MODEL" \
+    OPENRELIX_CLAUDE_SETTINGS="$CLAUDE_SETTINGS" \
+    OPENRELIX_CLAUDE_ENV_FILE="$CLAUDE_ENV_FILE" \
     run_interruptible_child "$PYTHON_BIN" "$REPO_ROOT/scripts/openrelix.py" \
     backfill --days "$LEARNING_REFRESH_WINDOW_DAYS" --stage final --learn-window-days "$LEARNING_REFRESH_WINDOW_DAYS" --jobs "$INSTALL_DEEP_LEARN_JOBS"
   if [[ "$LANGUAGE" == "en" ]]; then

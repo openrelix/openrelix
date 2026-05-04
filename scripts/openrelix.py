@@ -31,7 +31,9 @@ from asset_runtime import (
     atomic_write_text,
     ensure_state_layout,
     get_activity_host,
+    get_claude_env_file,
     get_claude_model,
+    get_claude_settings,
     get_codex_model,
     get_model_cli,
     get_memory_mode,
@@ -537,8 +539,22 @@ def build_parser():
     config.add_argument(
         "--claude-model",
         help=localized(
-            "设置 OpenRelix 内部 claude -p 使用的模型或别名；默认 {}。".format(DEFAULT_CLAUDE_MODEL),
-            "Set the model or alias used by OpenRelix internal claude -p calls. Default: {}.".format(DEFAULT_CLAUDE_MODEL),
+            "设置 OpenRelix 内部 claude -p 使用的模型或别名；默认 {} 表示使用 Claude Code 自己的默认模型/provider。".format(DEFAULT_CLAUDE_MODEL),
+            "Set the model or alias used by OpenRelix internal claude -p calls. Default: {} means use Claude Code's own default model/provider.".format(DEFAULT_CLAUDE_MODEL),
+        ),
+    )
+    config.add_argument(
+        "--claude-settings",
+        help=localized(
+            "传给 claude -p 的 --settings 路径或 JSON；用于第三方模型、apiKeyHelper、桥接 provider 等 Claude Code 原生配置。",
+            "Path or JSON passed to claude -p --settings; useful for third-party models, apiKeyHelper, bridge providers, and other native Claude Code settings.",
+        ),
+    )
+    config.add_argument(
+        "--claude-env-file",
+        help=localized(
+            "给 claude -p 加载的环境变量文件路径；适合把 ANTHROPIC_BASE_URL / API key helper 等桥接配置放在仓库外。",
+            "Path to an env file loaded for claude -p; useful for bridge settings such as ANTHROPIC_BASE_URL or API key helpers outside the repo.",
         ),
     )
     config.add_argument(
@@ -1884,22 +1900,68 @@ def run_doctor_codex_model_check():
     )
 
 
+def parse_env_file_value(raw_value):
+    value = raw_value.strip()
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
+        return value[1:-1]
+    return value
+
+
+def load_claude_env_file(path):
+    env = {}
+    if not path:
+        return env
+    try:
+        lines = Path(path).read_text(encoding="utf-8").splitlines()
+    except (FileNotFoundError, OSError):
+        return env
+    for raw_line in lines:
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("export "):
+            line = line[len("export ") :].strip()
+        if "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        if re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", key):
+            env[key] = parse_env_file_value(value)
+    return env
+
+
+def build_doctor_claude_env():
+    env = dict(os.environ)
+    env.update(load_claude_env_file(get_claude_env_file(PATHS)))
+    env.setdefault("CLAUDE_HOME", str(PATHS.claude_home))
+    env.setdefault("CLAUDE_CONFIG_DIR", str(PATHS.claude_home))
+    return env
+
+
+def build_doctor_claude_command():
+    cmd = [
+        PATHS.claude_bin,
+        "-p",
+        "--output-format",
+        "json",
+        "--no-session-persistence",
+        "--tools=",
+    ]
+    claude_model = get_claude_model(PATHS)
+    if claude_model and claude_model != "auto":
+        cmd.extend(["--model", claude_model])
+    claude_settings = get_claude_settings(PATHS)
+    if claude_settings:
+        cmd.extend(["--settings", claude_settings])
+    return cmd
+
+
 def run_doctor_claude_model_check():
     PATHS.nightly_runner_dir.mkdir(parents=True, exist_ok=True)
     PATHS.claude_home.mkdir(parents=True, exist_ok=True)
-    env = dict(os.environ)
-    env["CLAUDE_CONFIG_DIR"] = str(PATHS.claude_home)
+    env = build_doctor_claude_env()
     return subprocess.run(
-        [
-            PATHS.claude_bin,
-            "-p",
-            "--output-format",
-            "json",
-            "--no-session-persistence",
-            "--tools=",
-            "--model",
-            get_claude_model(PATHS),
-        ],
+        build_doctor_claude_command(),
         input="Reply exactly: OPENRELIX_DOCTOR_OK\n",
         text=True,
         capture_output=True,
@@ -1913,6 +1975,27 @@ def run_doctor_model_check():
     if get_model_cli(PATHS) == "claude":
         return run_doctor_claude_model_check()
     return run_doctor_codex_model_check()
+
+
+def doctor_model_check_detail(model_cli, output):
+    text = str(output or "").strip()
+    if not text:
+        return ""
+    if "OPENRELIX_DOCTOR_OK" in text:
+        return "OPENRELIX_DOCTOR_OK"
+    if model_cli == "claude":
+        for line in text.splitlines():
+            try:
+                payload = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(payload, dict):
+                result = str(payload.get("result") or "").strip()
+                if "OPENRELIX_DOCTOR_OK" in result:
+                    return "OPENRELIX_DOCTOR_OK"
+                if result:
+                    return result[-300:]
+    return text[-300:]
 
 
 def run_codex_app_server_help_check():
@@ -2079,8 +2162,30 @@ def command_doctor(args):
         "ok",
         get_claude_model(PATHS),
         localized(
-            "仅当 model_cli=claude 时用于 OpenRelix 内部 claude -p 调用。",
-            "Used only when model_cli=claude for OpenRelix internal claude -p calls.",
+            "仅当 model_cli=claude 时用于 OpenRelix 内部 claude -p 调用；auto 表示不传 --model，使用 Claude Code 自己的 provider/model。",
+            "Used only when model_cli=claude for OpenRelix internal claude -p calls; auto means no --model is passed, so Claude Code chooses its own provider/model.",
+        ),
+    )
+    claude_settings = get_claude_settings(PATHS)
+    append_doctor_check(
+        checks,
+        "claude_settings",
+        "ok" if not claude_settings or claude_settings.startswith("{") or Path(claude_settings).exists() else "warn",
+        claude_settings or "(default)",
+        localized(
+            "第三方模型 / 桥接 provider 可通过 openrelix config --claude-settings <path-or-json> 传给 claude -p。",
+            "Third-party models and bridge providers can be passed to claude -p with openrelix config --claude-settings <path-or-json>.",
+        ),
+    )
+    claude_env_file = get_claude_env_file(PATHS)
+    append_doctor_check(
+        checks,
+        "claude_env_file",
+        "ok" if not claude_env_file or Path(claude_env_file).exists() else "warn",
+        claude_env_file or "(none)",
+        localized(
+            "需要环境变量桥接时，把变量放进仓库外 env 文件，并用 openrelix config --claude-env-file <path> 指向它。",
+            "When bridge mode depends on environment variables, put them in an env file outside the repo and point OpenRelix to it with openrelix config --claude-env-file <path>.",
         ),
     )
     append_doctor_check(
@@ -2274,7 +2379,12 @@ def command_doctor(args):
                 result = run_doctor_model_check()
                 output = "\n".join(part for part in (result.stdout, result.stderr) if part).strip()
                 if result.returncode == 0:
-                    append_doctor_check(checks, "model_cli_check", "ok", output[-300:])
+                    append_doctor_check(
+                        checks,
+                        "model_cli_check",
+                        "ok",
+                        doctor_model_check_detail(selected_cli, output),
+                    )
                 else:
                     append_doctor_check(
                         checks,
@@ -2282,8 +2392,8 @@ def command_doctor(args):
                         "fail",
                         output[-600:] or "{} model check failed with exit code {}".format(selected_cli, result.returncode),
                         localized(
-                            "修复当前 model_cli 的登录或认证配置；Codex 检查 CODEX_HOME，Claude Code 检查 claude auth status。",
-                            "Fix login or auth for the current model_cli; check CODEX_HOME for Codex and claude auth status for Claude Code.",
+                            "修复当前 model_cli 的认证或桥接配置；Claude Code 可用会员/API，也可用 --claude-settings 或 --claude-env-file 指向第三方 provider 配置。",
+                            "Fix auth or bridge settings for the current model_cli; Claude Code can use membership/API auth or third-party provider settings via --claude-settings or --claude-env-file.",
                         ),
                     )
             except subprocess.TimeoutExpired:
@@ -3185,6 +3295,8 @@ def memory_summary_budget_payload(config=None):
         "model_cli": get_model_cli(PATHS),
         "codex_model": get_codex_model(PATHS),
         "claude_model": get_claude_model(PATHS),
+        "claude_settings": get_claude_settings(PATHS),
+        "claude_env_file": get_claude_env_file(PATHS),
         "memory_summary_max_tokens": budget["max_tokens"],
         "memory_summary_target_tokens": budget["target_tokens"],
         "memory_summary_warn_tokens": budget["warn_tokens"],
@@ -3193,6 +3305,8 @@ def memory_summary_budget_payload(config=None):
         "configured_model_cli": config.get("model_cli"),
         "configured_codex_model": config.get("codex_model"),
         "configured_claude_model": config.get("claude_model"),
+        "configured_claude_settings": config.get("claude_settings"),
+        "configured_claude_env_file": config.get("claude_env_file"),
         "configured_activity_host": config.get("activity_host"),
         "configured_memory_summary_max_tokens": config.get("memory_summary_max_tokens"),
     }
@@ -3205,6 +3319,8 @@ def command_config(args):
     requested_model_cli = getattr(args, "model_cli", None)
     requested_codex_model = getattr(args, "codex_model", None)
     requested_claude_model = getattr(args, "claude_model", None)
+    requested_claude_settings = getattr(args, "claude_settings", None)
+    requested_claude_env_file = getattr(args, "claude_env_file", None)
     if (
         requested_max_tokens is None
         and requested_activity_source is None
@@ -3212,6 +3328,8 @@ def command_config(args):
         and requested_model_cli is None
         and requested_codex_model is None
         and requested_claude_model is None
+        and requested_claude_settings is None
+        and requested_claude_env_file is None
     ):
         payload = memory_summary_budget_payload()
         if args.json:
@@ -3223,6 +3341,8 @@ def command_config(args):
         print("- model_cli: {}".format(payload["model_cli"]))
         print("- codex_model: {}".format(payload["codex_model"]))
         print("- claude_model: {}".format(payload["claude_model"]))
+        print("- claude_settings: {}".format(payload["claude_settings"] or "(default)"))
+        print("- claude_env_file: {}".format(payload["claude_env_file"] or "(none)"))
         print("- memory_summary_max_tokens: {}".format(payload["memory_summary_max_tokens"]))
         print("- memory_summary_target_tokens: {}".format(payload["memory_summary_target_tokens"]))
         print("- memory_summary_warn_tokens: {}".format(payload["memory_summary_warn_tokens"]))
@@ -3278,6 +3398,8 @@ def command_config(args):
         model_cli=normalized_model_cli,
         codex_model=normalized_codex_model,
         claude_model=normalized_claude_model,
+        claude_settings=requested_claude_settings,
+        claude_env_file=requested_claude_env_file,
         memory_summary_max_tokens=normalized_max_tokens,
         paths=PATHS,
     )
@@ -3298,6 +3420,8 @@ def command_config(args):
     print("- model_cli: {}".format(payload["model_cli"]))
     print("- codex_model: {}".format(payload["codex_model"]))
     print("- claude_model: {}".format(payload["claude_model"]))
+    print("- claude_settings: {}".format(payload["claude_settings"] or "(default)"))
+    print("- claude_env_file: {}".format(payload["claude_env_file"] or "(none)"))
     print("- memory_summary_max_tokens: {}".format(payload["memory_summary_max_tokens"]))
     print("- memory_summary_target_tokens: {}".format(payload["memory_summary_target_tokens"]))
     print("- memory_summary_warn_tokens: {}".format(payload["memory_summary_warn_tokens"]))

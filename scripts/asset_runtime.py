@@ -28,7 +28,7 @@ SUPPORTED_MODEL_CLIS = ("codex", "claude")
 DEFAULT_MODEL_CLI = "codex"
 SUPPORTED_HOST_CONTEXT_TARGETS = ("codex", "claude")
 DEFAULT_CODEX_MODEL = "gpt-5.4-mini"
-DEFAULT_CLAUDE_MODEL = "sonnet"
+DEFAULT_CLAUDE_MODEL = "auto"
 DEFAULT_MEMORY_SUMMARY_MAX_TOKENS = 8000
 MIN_MEMORY_SUMMARY_MAX_TOKENS = 2000
 MAX_MEMORY_SUMMARY_MAX_TOKENS = 20000
@@ -132,6 +132,10 @@ CODEX_MODEL_ALIASES = {
     "gpt53codex": "gpt-5.3-codex",
 }
 CLAUDE_MODEL_ALIASES = {
+    "auto": "auto",
+    "default": "auto",
+    "native": "auto",
+    "none": "auto",
     "sonnet": "sonnet",
     "opus": "opus",
     "haiku": "haiku",
@@ -335,8 +339,6 @@ def normalize_codex_model(value: Optional[str], *, strict: bool = False) -> str:
 def normalize_claude_model(value: Optional[str], *, strict: bool = False) -> str:
     text = str(value or "").strip()
     if not text:
-        if strict:
-            raise ValueError("claude_model cannot be empty")
         return DEFAULT_CLAUDE_MODEL
 
     alias_key = "".join(ch for ch in text.lower() if ch.isalnum() or ch in {".", "-"})
@@ -353,6 +355,22 @@ def normalize_claude_model(value: Optional[str], *, strict: bool = False) -> str
         return DEFAULT_CLAUDE_MODEL
 
     return text
+
+
+def normalize_optional_path_or_json(value: Optional[str]) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    if text.startswith("{"):
+        return text
+    return str(_expand_path(text))
+
+
+def normalize_optional_path(value: Optional[str]) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    return str(_expand_path(text))
 
 
 def normalize_host_context_targets(value: Optional[Union[str, list, tuple]], *, strict: bool = False) -> list[str]:
@@ -537,10 +555,12 @@ def default_claude_binary() -> str:
 
     home = Path.home()
     candidates = [
-        shutil.which("claude"),
+        str(home / ".local/bin/claude"),
+        str(home / "bin/claude"),
         str(home / ".npm-global/bin/claude"),
         str(home / ".volta/bin/claude"),
         str(home / ".bun/bin/claude"),
+        shutil.which("claude"),
         "/opt/homebrew/bin/claude",
         "/usr/local/bin/claude",
     ]
@@ -740,6 +760,24 @@ def get_claude_model(paths: Optional["RuntimePaths"] = None) -> str:
     return normalize_claude_model(config.get("claude_model"))
 
 
+def get_claude_settings(paths: Optional["RuntimePaths"] = None) -> str:
+    explicit = os.environ.get("OPENRELIX_CLAUDE_SETTINGS") or os.environ.get("AI_ASSET_CLAUDE_SETTINGS")
+    if explicit:
+        return normalize_optional_path_or_json(explicit)
+
+    config = load_runtime_config(paths)
+    return normalize_optional_path_or_json(config.get("claude_settings"))
+
+
+def get_claude_env_file(paths: Optional["RuntimePaths"] = None) -> str:
+    explicit = os.environ.get("OPENRELIX_CLAUDE_ENV_FILE") or os.environ.get("AI_ASSET_CLAUDE_ENV_FILE")
+    if explicit:
+        return normalize_optional_path(explicit)
+
+    config = load_runtime_config(paths)
+    return normalize_optional_path(config.get("claude_env_file"))
+
+
 def get_host_context_targets(paths: Optional["RuntimePaths"] = None) -> list[str]:
     explicit = os.environ.get("OPENRELIX_HOST_CONTEXT_TARGETS") or os.environ.get("AI_ASSET_HOST_CONTEXT_TARGETS")
     if explicit:
@@ -769,6 +807,8 @@ def write_runtime_config(
     model_cli: Optional[str] = None,
     codex_model: Optional[str] = None,
     claude_model: Optional[str] = None,
+    claude_settings: Optional[str] = None,
+    claude_env_file: Optional[str] = None,
     memory_summary_max_tokens: Optional[Union[int, str]] = None,
     host_context_targets: Optional[Union[str, list, tuple]] = None,
     paths: Optional["RuntimePaths"] = None,
@@ -809,6 +849,16 @@ def write_runtime_config(
         claude_model
         if claude_model is not None
         else config.get("claude_model")
+    )
+    config["claude_settings"] = normalize_optional_path_or_json(
+        claude_settings
+        if claude_settings is not None
+        else config.get("claude_settings")
+    )
+    config["claude_env_file"] = normalize_optional_path(
+        claude_env_file
+        if claude_env_file is not None
+        else config.get("claude_env_file")
     )
     config["memory_summary_max_tokens"] = normalize_memory_summary_max_tokens(
         memory_summary_max_tokens

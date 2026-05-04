@@ -18,7 +18,9 @@ from asset_runtime import (
     atomic_write_json,
     atomic_write_text,
     ensure_state_layout,
+    get_claude_env_file,
     get_claude_model,
+    get_claude_settings,
     get_codex_model,
     get_memory_mode,
     get_model_cli,
@@ -34,6 +36,8 @@ LANGUAGE = get_runtime_language(PATHS)
 MEMORY_MODE = get_memory_mode(PATHS)
 CODEX_MODEL = get_codex_model(PATHS)
 CLAUDE_MODEL = get_claude_model(PATHS)
+CLAUDE_SETTINGS = get_claude_settings(PATHS)
+CLAUDE_ENV_FILE = get_claude_env_file(PATHS)
 MODEL_CLI = get_model_cli(PATHS)
 PERSONAL_MEMORY_ENABLED = personal_memory_enabled(PATHS)
 MAIN_CODEX_HOME = PATHS.codex_home
@@ -137,18 +141,37 @@ def describe_codex_failure(stdout, stderr, returncode):
     return text
 
 
-def codex_failure_hint(error_text, language=None):
+def codex_failure_hint(error_text, language=None, model_cli=None):
+    active_model_cli = model_cli or MODEL_CLI
     lowered = str(error_text or "").lower()
     if "timed out" in lowered or "timeout" in lowered:
+        if active_model_cli == "claude":
+            return localized(
+                "Claude Code 归纳超过超时上限，已停止等待；请稍后重试，或通过 OPENRELIX_CODEX_EXEC_TIMEOUT_SECONDS 调高超时时间。",
+                "Claude Code summarization exceeded the timeout and stopped waiting. Retry later, or raise OPENRELIX_CODEX_EXEC_TIMEOUT_SECONDS.",
+                language,
+            )
         return localized(
-            "模型归纳超过超时上限，已停止等待；请稍后重试，或通过 OPENRELIX_CODEX_EXEC_TIMEOUT_SECONDS 调高超时时间。",
-            "Model summarization exceeded the timeout and stopped waiting. Retry later, or raise OPENRELIX_CODEX_EXEC_TIMEOUT_SECONDS.",
+            "Codex 归纳超过超时上限，已停止等待；请稍后重试，或通过 OPENRELIX_CODEX_EXEC_TIMEOUT_SECONDS 调高超时时间。",
+            "Codex summarization exceeded the timeout and stopped waiting. Retry later, or raise OPENRELIX_CODEX_EXEC_TIMEOUT_SECONDS.",
             language,
         )
     if "invalid_issuer" in lowered or "401" in lowered or "unauthorized" in lowered:
+        if active_model_cli == "claude":
+            return localized(
+                "Claude Code 认证或 provider 配置被拒绝。请先确认 `claude -p` 在普通终端可用；如果使用桥接或第三方模型，可用 `openrelix config --claude-settings <path-or-json>` 或 `--claude-env-file <path>` 指向仓库外配置。",
+                "Claude Code auth or provider settings were rejected. First confirm `claude -p` works in a normal terminal. If you use a bridge or third-party model, point OpenRelix at external config with `openrelix config --claude-settings <path-or-json>` or `--claude-env-file <path>`.",
+                language,
+            )
         return localized(
             "Codex/OpenAI 认证被拒绝。请先确认 `codex exec` 在普通终端可用；如果使用集体/代理配置，确认 `CODEX_HOME/config.toml` 中的 model_provider/base_url 与 auth.json 一起存在；如果使用官方 OpenAI API key，再清理或替换错误的 `OPENAI_API_KEY` 后重试。",
             "Codex/OpenAI authentication was rejected. First confirm `codex exec` works in a normal terminal. If you use a shared/proxy provider, make sure `CODEX_HOME/config.toml` keeps the matching model_provider/base_url together with auth.json. If you use an official OpenAI API key, clear or replace an invalid `OPENAI_API_KEY`, then retry.",
+            language,
+        )
+    if active_model_cli == "claude":
+        return localized(
+            "请先确认 `claude -p` 在该用户机器上可用；如果使用桥接或第三方模型，把 Claude Code 的 provider/settings/env 配置通过 `--claude-settings` 或 `--claude-env-file` 交给 OpenRelix 后重试。",
+            "Confirm `claude -p` works on that user's machine. If you use a bridge or third-party model, pass Claude Code provider/settings/env configuration to OpenRelix with `--claude-settings` or `--claude-env-file`, then retry.",
             language,
         )
     return localized(
@@ -1594,6 +1617,8 @@ def build_learning_input_fingerprint(
         "model_cli": MODEL_CLI,
         "codex_model": CODEX_MODEL,
         "claude_model": CLAUDE_MODEL,
+        "claude_settings": CLAUDE_SETTINGS,
+        "claude_env_file": CLAUDE_ENV_FILE,
         "learn_window_days": max(learn_window_days, 0),
         "lightweight_summary_version": LIGHTWEIGHT_SUMMARY_VERSION,
         "daily_compact_payload": compact_payload,
@@ -1739,36 +1764,161 @@ def run_codex_consolidation(prompt, output_path, language=None, timeout_seconds=
         raise CodexConsolidationError(result.returncode, result.stdout, result.stderr)
 
 
+SUMMARY_PAYLOAD_REQUIRED_KEYS = ("day_summary", "window_summaries")
+SUMMARY_PAYLOAD_MARKER_KEYS = {
+    "date",
+    "day_summary",
+    "window_summaries",
+    "durable_memories",
+    "session_memories",
+    "low_priority_memories",
+    "keywords",
+    "next_actions",
+}
+
+
+def summary_payload_score(value):
+    if not isinstance(value, dict):
+        return 0
+    keys = set(value.keys())
+    if not any(key in keys for key in SUMMARY_PAYLOAD_REQUIRED_KEYS):
+        return 0
+    score = len(keys & SUMMARY_PAYLOAD_MARKER_KEYS)
+    if "date" in keys:
+        score += 2
+    if "day_summary" in keys and "window_summaries" in keys:
+        score += 3
+    return score
+
+
+def iter_json_values_from_text(text):
+    raw_text = str(text or "").strip()
+    if not raw_text:
+        return
+
+    try:
+        yield json.loads(raw_text)
+    except json.JSONDecodeError:
+        pass
+
+    for match in re.finditer(r"```(?:json)?\s*(.*?)```", raw_text, flags=re.IGNORECASE | re.DOTALL):
+        fenced_text = match.group(1).strip()
+        if not fenced_text:
+            continue
+        try:
+            yield json.loads(fenced_text)
+        except json.JSONDecodeError:
+            continue
+
+    decoder = json.JSONDecoder()
+    for index, char in enumerate(raw_text):
+        if char not in "{[":
+            continue
+        try:
+            value, _ = decoder.raw_decode(raw_text[index:])
+        except json.JSONDecodeError:
+            continue
+        yield value
+
+
+def iter_summary_payload_candidates(value, depth=0):
+    if depth > 6:
+        return
+    score = summary_payload_score(value)
+    if score:
+        yield score, value
+
+    if isinstance(value, dict):
+        for nested in value.values():
+            yield from iter_summary_payload_candidates(nested, depth + 1)
+        return
+
+    if isinstance(value, list):
+        for nested in value:
+            yield from iter_summary_payload_candidates(nested, depth + 1)
+        return
+
+    if isinstance(value, str):
+        for parsed in iter_json_values_from_text(value):
+            if parsed == value:
+                continue
+            yield from iter_summary_payload_candidates(parsed, depth + 1)
+
+
+def extract_summary_payload(value):
+    best_score = 0
+    best_payload = None
+    for score, payload in iter_summary_payload_candidates(value):
+        if score > best_score:
+            best_score = score
+            best_payload = payload
+    return best_payload
+
+
 def claude_result_payload(stdout):
     try:
         payload = json.loads(stdout or "{}")
     except json.JSONDecodeError as exc:
-        raise CodexConsolidationError(1, stdout, "claude -p returned invalid JSON: {}".format(exc)) from exc
+        raise CodexConsolidationError(1, "", "claude -p returned invalid JSON: {}".format(exc)) from exc
     if not isinstance(payload, dict):
-        raise CodexConsolidationError(1, stdout, "claude -p returned a non-object JSON payload")
+        raise CodexConsolidationError(1, "", "claude -p returned a non-object JSON payload")
     if payload.get("is_error"):
-        raise CodexConsolidationError(1, stdout, str(payload.get("result") or "claude -p reported an error"))
+        raise CodexConsolidationError(1, "", str(payload.get("result") or "claude -p reported an error"))
     result = payload.get("result")
-    if isinstance(result, dict):
-        return result
+    summary_payload = extract_summary_payload(result)
+    if summary_payload is None:
+        summary_payload = extract_summary_payload(payload)
+    if summary_payload is None:
+        raise CodexConsolidationError(
+            1,
+            "",
+            "claude -p result did not contain a valid OpenRelix summary JSON object",
+        )
+    return summary_payload
+
+
+def parse_env_file_value(raw_value):
+    value = raw_value.strip()
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
+        return value[1:-1]
+    return value
+
+
+def load_env_file(path):
+    env = {}
+    if not path:
+        return env
     try:
-        parsed = json.loads(str(result or ""))
-    except json.JSONDecodeError as exc:
-        raise CodexConsolidationError(1, stdout, "claude -p result was not valid summary JSON: {}".format(exc)) from exc
-    if not isinstance(parsed, dict):
-        raise CodexConsolidationError(1, stdout, "claude -p result was not a JSON object")
-    return parsed
+        lines = Path(path).read_text(encoding="utf-8").splitlines()
+    except FileNotFoundError as exc:
+        raise CodexConsolidationError(1, "", "Claude env file not found: {}".format(path)) from exc
+    except OSError as exc:
+        raise CodexConsolidationError(1, "", "Claude env file is not readable: {}".format(path)) from exc
+    for raw_line in lines:
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("export "):
+            line = line[len("export ") :].strip()
+        if "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        if not re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", key):
+            continue
+        env[key] = parse_env_file_value(value)
+    return env
 
 
-def run_claude_consolidation(prompt, output_path, language=None, timeout_seconds=None):
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
-    MAIN_CLAUDE_HOME.mkdir(parents=True, exist_ok=True)
+def build_claude_env():
     env = dict(os.environ)
-    env["CLAUDE_CONFIG_DIR"] = str(MAIN_CLAUDE_HOME)
-    if timeout_seconds is None:
-        timeout_seconds = default_codex_exec_timeout_seconds()
-    timeout = timeout_seconds if timeout_seconds and timeout_seconds > 0 else None
+    env.update(load_env_file(CLAUDE_ENV_FILE))
+    env.setdefault("CLAUDE_HOME", str(MAIN_CLAUDE_HOME))
+    env.setdefault("CLAUDE_CONFIG_DIR", str(MAIN_CLAUDE_HOME))
+    return env
+
+
+def build_claude_command(include_schema=True):
     cmd = [
         CLAUDE_BIN,
         "-p",
@@ -1776,11 +1926,25 @@ def run_claude_consolidation(prompt, output_path, language=None, timeout_seconds
         "json",
         "--no-session-persistence",
         "--tools=",
-        "--model",
-        CLAUDE_MODEL,
-        "--json-schema",
-        SCHEMA_PATH.read_text(encoding="utf-8"),
     ]
+    if CLAUDE_MODEL and CLAUDE_MODEL != "auto":
+        cmd.extend(["--model", CLAUDE_MODEL])
+    if CLAUDE_SETTINGS:
+        cmd.extend(["--settings", CLAUDE_SETTINGS])
+    if include_schema:
+        cmd.extend(["--json-schema", SCHEMA_PATH.read_text(encoding="utf-8")])
+    return cmd
+
+
+def run_claude_consolidation(prompt, output_path, language=None, timeout_seconds=None):
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
+    MAIN_CLAUDE_HOME.mkdir(parents=True, exist_ok=True)
+    env = build_claude_env()
+    if timeout_seconds is None:
+        timeout_seconds = default_codex_exec_timeout_seconds()
+    timeout = timeout_seconds if timeout_seconds and timeout_seconds > 0 else None
+    cmd = build_claude_command(include_schema=True)
     safe_prompt = build_safe_consolidation_prompt(prompt, language=language)
     try:
         result = subprocess.run(
