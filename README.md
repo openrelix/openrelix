@@ -276,7 +276,7 @@ the same local `reports/panel.html`, so it adds no Electron runtime or hosted
 service. From a repo checkout, you can also run `./scripts/build_macos_client.sh
 --open` to build a local `dist/OpenRelix.app`.
 
-For release updates, use `openrelix update --check` in automation and `openrelix update --yes` when you actually want to reinstall the latest npm package. The daily check is intentionally no-mutation; `09:30` is the default because it avoids the `23:00` nightly preview and `00:10` previous-day finalize windows.
+For release updates, use `openrelix update --check` in automation and `openrelix update --yes` when you actually want to reinstall the latest npm package. If the package is already current but the local app, LaunchAgents, or generated panel need to be resynced, use `openrelix update --yes --force`. The in-panel update button uses that repair path automatically, then reloads the regenerated panel. The daily check is intentionally no-mutation; `09:30` is the default because it avoids the `23:00` nightly preview and `00:10` previous-day finalize windows.
 
 If the chosen bin directory is not already on `PATH`, the installer appends a managed `PATH` block to your active shell rc file and prints the one-line `export PATH=...` command for the current shell.
 

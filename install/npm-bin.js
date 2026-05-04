@@ -20,7 +20,7 @@ function readPackageVersion() {
 function printHelp() {
   console.log(`Usage:
   npx openrelix install [install-options]
-  npx openrelix update [--check | --recommended | --print-command]
+  npx openrelix update [--check | --recommended | --force | --print-command]
   npx openrelix uninstall [--delete-local-memory | --keep-local-memory]
   npx openrelix app [--build | --no-open]
   npx openrelix models [--json | --bundled | --all]
@@ -43,6 +43,7 @@ Examples:
   npx openrelix uninstall
   npx openrelix uninstall --delete-local-memory
   npx openrelix update --print-command
+  npx openrelix update --yes --force
   npx openrelix app
   npx openrelix models
   npx openrelix index status
