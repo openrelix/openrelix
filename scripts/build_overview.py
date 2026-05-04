@@ -5495,14 +5495,14 @@ def parse_codex_native_memory_summary(
     }
 
 
-def relabel_native_memory_item_for_claude(item, claude_memory_path, language=None):
+def relabel_native_memory_item_for_claude(item, claude_memory_path, language=None, source_label="CLAUDE.md"):
     language = current_language(language)
     current = dict(item or {})
     source_files = current.get("source_files") or []
     status = source_files[0].get("status") if source_files and isinstance(source_files[0], dict) else None
     source_file = {
         "path": str(claude_memory_path),
-        "label": "CLAUDE.md",
+        "label": source_label,
     }
     if status:
         source_file["status"] = status
@@ -5536,6 +5536,10 @@ def empty_claude_native_memory_summary(source_exists=False, source_readable=Fals
             "user_preferences": 0,
             "general_tips": 0,
             "total_items": 0,
+            "claude_md_items": 0,
+            "auto_memory_items": 0,
+            "auto_memory_file_count": 0,
+            "auto_memory_project_count": 0,
             "source_exists": source_exists,
             "source_readable": source_readable,
             "source_error": source_error,
@@ -5545,6 +5549,8 @@ def empty_claude_native_memory_summary(source_exists=False, source_readable=Fals
 
 CLAUDE_MANAGED_MEMORY_START = "<!-- openrelix:shared-memory:start -->"
 CLAUDE_MANAGED_MEMORY_END = "<!-- openrelix:shared-memory:end -->"
+CLAUDE_AUTO_MEMORY_LINE_LIMIT = 200
+CLAUDE_AUTO_MEMORY_BYTE_LIMIT = 25 * 1024
 
 
 def strip_claude_managed_memory_text(text):
@@ -5556,59 +5562,326 @@ def strip_claude_managed_memory_text(text):
     return (visible_text + "\n" if visible_text else ""), True
 
 
-def parse_claude_native_memory_summary(claude_memory_path, known_project_names=None, language=None):
+def claude_auto_memory_files(claude_home):
+    projects_dir = Path(claude_home) / "projects"
+    if not projects_dir.is_dir():
+        return []
+    memory_files = []
+    try:
+        project_dirs = sorted(path for path in projects_dir.iterdir() if path.is_dir())
+    except OSError:
+        return []
+    for project_dir in project_dirs:
+        memory_dir = project_dir / "memory"
+        if not memory_dir.is_dir():
+            continue
+        try:
+            for path in sorted(memory_dir.glob("*.md")):
+                if path.is_file():
+                    memory_files.append(path)
+        except OSError:
+            continue
+    return memory_files
+
+
+def claude_auto_memory_project_key(memory_path):
+    try:
+        return Path(memory_path).parent.parent.name
+    except IndexError:
+        return ""
+
+
+def claude_auto_memory_project_label(memory_path):
+    project_key = claude_auto_memory_project_key(memory_path)
+    if not project_key:
+        return "Claude Code auto memory"
+    if project_key.startswith("-Users-"):
+        parts = [part for part in project_key.split("-") if part]
+        if len(parts) >= 2:
+            return "~/" + "/".join(parts[2:])
+    return project_key
+
+
+def claude_auto_memory_source_label(memory_path):
+    path = Path(memory_path)
+    project_label = claude_auto_memory_project_label(path)
+    if project_label:
+        return "auto memory / {} / {}".format(project_label, path.name)
+    return "auto memory / {}".format(path.name)
+
+
+def read_claude_auto_memory_visible_text(memory_path):
+    path = Path(memory_path)
+    raw = path.read_bytes()
+    truncated_bytes = len(raw) > CLAUDE_AUTO_MEMORY_BYTE_LIMIT
+    raw = raw[:CLAUDE_AUTO_MEMORY_BYTE_LIMIT]
+    text = raw.decode("utf-8", errors="replace")
+    lines = text.splitlines()
+    truncated_lines = len(lines) > CLAUDE_AUTO_MEMORY_LINE_LIMIT
+    if truncated_lines:
+        lines = lines[:CLAUDE_AUTO_MEMORY_LINE_LIMIT]
+    return "\n".join(lines), truncated_bytes or truncated_lines
+
+
+def classify_claude_auto_memory_kind(body, heading="", filename=""):
+    text = " ".join(
+        normalize_brand_display_text(part).lower()
+        for part in (body, heading, filename)
+        if normalize_brand_display_text(part)
+    )
+    if any(
+        marker in text
+        for marker in (
+            "user memory",
+            "preference",
+            "prefer ",
+            "prefers",
+            "user prefers",
+            " likes ",
+            "不要",
+            "偏好",
+            "喜欢",
+            "优先",
+        )
+    ):
+        return "preference"
+    if any(
+        marker in text
+        for marker in (
+            "general tip",
+            "lesson",
+            "feedback",
+            "correction",
+            "debug",
+            "workaround",
+            "avoid",
+            "remember",
+            "注意",
+            "排障",
+            "经验",
+        )
+    ):
+        return "tip"
+    return "topic"
+
+
+def make_claude_auto_memory_row(
+    body,
+    memory_path,
+    index,
+    kind="topic",
+    heading="",
+    known_project_names=None,
+    language=None,
+):
+    language = current_language(language)
+    path = Path(memory_path)
+    body_text = compact_preview_text(normalize_brand_display_text(body), limit=260)
+    heading_text = normalize_brand_display_text(heading)
+    title_seed = heading_text or path.stem.replace("_", " ").replace("-", " ")
+    if kind == "preference":
+        memory_type = "preference"
+        display_type = localized("偏好", "Preference", language)
+        display_title = build_codex_native_bullet_title(body_text, "preference", index, language=language)
+        display_title_en = build_codex_native_bullet_title_en(body_text, "preference", index)
+    elif kind == "tip":
+        memory_type = "procedural"
+        display_type = localized("通用 tips", "General Tips", language)
+        display_title = build_codex_native_bullet_title(body_text, "tip", index, language=language)
+        display_title_en = build_codex_native_bullet_title_en(body_text, "tip", index)
+    else:
+        memory_type = classify_codex_native_memory_type(title_seed, body_text, "")
+        display_type = display_memory_type(memory_type, language=language)
+        display_title = build_codex_native_display_title(
+            title_seed or body_text,
+            language=language,
+            desc=body_text,
+        )
+        display_title_en = compact_preview_text(normalize_brand_display_text(title_seed or body_text), limit=140)
+
+    display_body = build_codex_native_display_body(
+        display_title_en,
+        body_text,
+        language=language,
+        kind="preference" if kind == "preference" else "tip" if kind == "tip" else "",
+    )
+    project_label = claude_auto_memory_project_label(path)
+    context_labels = collect_context_labels_from_texts(
+        [project_label, heading_text, body_text],
+        known_project_names,
+    )
+    return {
+        "memory_key": "claude-native::auto::{}::{}".format(
+            kind,
+            normalize_memory_signature_text("{} {}".format(str(path), body_text)) or "untitled",
+        ),
+        "bucket": "native",
+        "display_bucket": localized("Claude 原生", "Claude Native", language),
+        "memory_type": memory_type,
+        "display_memory_type": display_type,
+        "priority": "medium",
+        "display_priority": display_memory_priority("medium", language=language),
+        "title": compact_preview_text(normalize_brand_display_text(title_seed or body_text), limit=140),
+        "display_title": compact_preview_text(display_title, limit=140),
+        "display_title_en": compact_preview_text(display_title_en, limit=140),
+        "value_note": body_text,
+        "value_note_en": body_text,
+        "display_value_note": compact_preview_text(display_body, limit=260),
+        "display_value_note_en": body_text,
+        "created_at": "",
+        "updated_at": "",
+        "created_at_display": display_memory_date(""),
+        "updated_at_display": display_memory_date(""),
+        "occurrence_count": 1,
+        "occurrence_label": localized("原生归档", "Native archive", language),
+        "display_context": context_labels[0] if context_labels else localized(
+            project_label or "Claude Code auto memory",
+            project_label or "Claude Code auto memory",
+            language,
+        ),
+        "context_labels": context_labels[:3],
+        "source_windows": [],
+        "source_window_count": 0,
+        "source_fact_label": localized("来源文件", "Source file", language),
+        "source_files": [
+            {
+                "path": str(path),
+                "label": claude_auto_memory_source_label(path),
+            }
+        ],
+    }
+
+
+def parse_claude_auto_memory_file(memory_path, known_project_names=None, language=None):
+    path = Path(memory_path)
+    text, truncated = read_claude_auto_memory_visible_text(path)
+    rows = {"topic": [], "preference": [], "tip": []}
+    current_heading = ""
+    item_index = 0
+    for raw_line in text.splitlines():
+        stripped = raw_line.strip()
+        if not stripped:
+            continue
+        if stripped.startswith("#"):
+            current_heading = stripped.lstrip("#").strip()
+            continue
+        if not stripped.startswith(("- ", "* ")):
+            continue
+        body = stripped[2:].strip()
+        if not body:
+            continue
+        item_index += 1
+        kind = classify_claude_auto_memory_kind(body, current_heading, path.name)
+        rows[kind].append(
+            make_claude_auto_memory_row(
+                body,
+                path,
+                item_index,
+                kind=kind,
+                heading=current_heading,
+                known_project_names=known_project_names,
+                language=language,
+            )
+        )
+    return rows, truncated
+
+
+def parse_claude_native_memory_summary(claude_memory_path, known_project_names=None, language=None, claude_home=None):
     language = current_language(language)
     path = Path(claude_memory_path)
+    claude_home_path = Path(claude_home) if claude_home is not None else path.parent
+    topic_rows = []
+    preference_rows = []
+    tip_rows = []
+    source_exists = False
+    source_readable = True
+    source_error = ""
+    has_managed_block = False
+    claude_md_items = 0
     try:
         text = path.read_text(encoding="utf-8")
     except FileNotFoundError:
-        return empty_claude_native_memory_summary()
+        text = ""
     except (OSError, UnicodeDecodeError) as exc:
-        return empty_claude_native_memory_summary(
-            source_exists=True,
-            source_readable=False,
-            source_error=exc.__class__.__name__,
-        )
+        text = ""
+        source_exists = True
+        source_readable = False
+        source_error = exc.__class__.__name__
+    else:
+        source_exists = True
 
-    visible_text, has_managed_block = strip_claude_managed_memory_text(text)
-    if not visible_text.strip():
-        summary = empty_claude_native_memory_summary(
-            source_exists=True,
-            source_readable=True,
-        )
-        summary["counts"]["managed_block_present"] = has_managed_block
-        return summary
+    if text:
+        visible_text, has_managed_block = strip_claude_managed_memory_text(text)
+        if visible_text.strip():
+            parsed = parse_codex_native_memory_summary(
+                path,
+                memory_index_path=None,
+                known_project_names=known_project_names,
+                language=language,
+                summary_text=visible_text,
+            )
+            claude_topic_rows = [
+                relabel_native_memory_item_for_claude(row, path, language=language)
+                for row in parsed.get("rows", [])
+            ]
+            claude_preference_rows = [
+                relabel_native_memory_item_for_claude(row, path, language=language)
+                for row in make_codex_native_brief_memory_items(
+                    parsed.get("preference_rows", []),
+                    "preference",
+                    language=language,
+                )
+            ]
+            claude_tip_rows = [
+                relabel_native_memory_item_for_claude(row, path, language=language)
+                for row in make_codex_native_brief_memory_items(
+                    parsed.get("tip_rows", []),
+                    "tip",
+                    language=language,
+                )
+            ]
+            topic_rows.extend(claude_topic_rows)
+            preference_rows.extend(claude_preference_rows)
+            tip_rows.extend(claude_tip_rows)
+            claude_md_items = len(claude_topic_rows) + len(claude_preference_rows) + len(claude_tip_rows)
 
-    parsed = parse_codex_native_memory_summary(
-        path,
-        memory_index_path=None,
-        known_project_names=known_project_names,
-        language=language,
-        summary_text=visible_text,
-    )
-    topic_rows = [
-        relabel_native_memory_item_for_claude(row, path, language=language)
-        for row in parsed.get("rows", [])
-    ]
-    preference_rows = [
-        relabel_native_memory_item_for_claude(row, path, language=language)
-        for row in make_codex_native_brief_memory_items(
-            parsed.get("preference_rows", []),
-            "preference",
-            language=language,
-        )
-    ]
-    tip_rows = [
-        relabel_native_memory_item_for_claude(row, path, language=language)
-        for row in make_codex_native_brief_memory_items(
-            parsed.get("tip_rows", []),
-            "tip",
-            language=language,
-        )
-    ]
+    auto_files = claude_auto_memory_files(claude_home_path)
+    auto_project_keys = set()
+    auto_truncated_count = 0
+    for auto_file in auto_files:
+        auto_project_keys.add(claude_auto_memory_project_key(auto_file))
+        try:
+            parsed_auto, truncated = parse_claude_auto_memory_file(
+                auto_file,
+                known_project_names=known_project_names,
+                language=language,
+            )
+        except (OSError, UnicodeDecodeError) as exc:
+            source_readable = False
+            source_error = source_error or exc.__class__.__name__
+            continue
+        source_exists = True
+        if truncated:
+            auto_truncated_count += 1
+        topic_rows.extend(parsed_auto.get("topic", []))
+        preference_rows.extend(parsed_auto.get("preference", []))
+        tip_rows.extend(parsed_auto.get("tip", []))
+
     rows = topic_rows + preference_rows + tip_rows
-    counts = dict(parsed.get("counts") or {})
-    counts["managed_block_present"] = has_managed_block
+    counts = {
+        "topic_items": len(topic_rows),
+        "user_preferences": len(preference_rows),
+        "general_tips": len(tip_rows),
+        "claude_md_items": claude_md_items,
+        "auto_memory_items": len(rows) - claude_md_items,
+        "auto_memory_file_count": len(auto_files),
+        "auto_memory_project_count": len([key for key in auto_project_keys if key]),
+        "auto_memory_truncated_file_count": auto_truncated_count,
+        "source_exists": source_exists,
+        "source_readable": source_readable,
+        "source_error": source_error,
+        "managed_block_present": has_managed_block,
+    }
     counts["total_items"] = len(rows)
     return {
         "rows": rows,
@@ -5625,6 +5898,10 @@ def build_claude_native_memory_comparison(native_rows, native_counts, summary_pa
     source_readable = native_counts.get("source_readable", source_exists)
     source_error = native_counts.get("source_error", "")
     managed_block_present = bool(native_counts.get("managed_block_present"))
+    auto_memory_file_count = safe_int(native_counts.get("auto_memory_file_count", 0))
+    auto_memory_project_count = safe_int(native_counts.get("auto_memory_project_count", 0))
+    claude_md_items = safe_int(native_counts.get("claude_md_items", 0))
+    auto_memory_items = safe_int(native_counts.get("auto_memory_items", 0))
     if source_error and not source_readable:
         note = localized(
             "无法读取 {}（{}），Claude 原生记忆暂不可展示。".format(summary_path_label, source_error),
@@ -5652,8 +5929,8 @@ def build_claude_native_memory_comparison(native_rows, native_counts, summary_pa
             )
         else:
             note = localized(
-                "已读取 {}，但暂未发现可展示的用户自写 Claude 原生条目。".format(summary_path_label),
-                "Read {}, but no displayable user-authored Claude native entries were found yet.".format(summary_path_label),
+                "已读取 {}，但暂未发现可展示的 Claude Code 原生记忆条目。".format(summary_path_label),
+                "Read {}, but no displayable Claude Code native memory entries were found yet.".format(summary_path_label),
                 language,
             )
     else:
@@ -5664,11 +5941,41 @@ def build_claude_native_memory_comparison(native_rows, native_counts, summary_pa
                 language,
             ),
             localized(
-                "下方展示 {} 条用户自写 Claude 原生条目".format(len(native_rows)),
-                "showing {} user-authored Claude native entries below".format(len(native_rows)),
+                "下方展示 {} 条 Claude Code 原生记忆".format(len(native_rows)),
+                "showing {} Claude Code native memory entries below".format(len(native_rows)),
                 language,
             ),
         ]
+        if auto_memory_items:
+            note_parts.append(
+                localized(
+                    "其中 auto memory {} 条，来自 {} 个项目 / 路径".format(
+                        auto_memory_items,
+                        auto_memory_project_count,
+                    ),
+                    "{} auto memory entries from {} projects / paths".format(
+                        auto_memory_items,
+                        auto_memory_project_count,
+                    ),
+                    language,
+                )
+            )
+        if claude_md_items:
+            note_parts.append(
+                localized(
+                    "CLAUDE.md 手写条目 {} 条".format(claude_md_items),
+                    "{} hand-written CLAUDE.md entries".format(claude_md_items),
+                    language,
+                )
+            )
+        if auto_memory_file_count:
+            note_parts.append(
+                localized(
+                    "扫描 auto memory 文件 {} 个".format(auto_memory_file_count),
+                    "scanned {} auto memory files".format(auto_memory_file_count),
+                    language,
+                )
+            )
         if managed_block_present:
             note_parts.append(
                 localized(
@@ -7579,11 +7886,16 @@ def build_data(assets, usage_events, reviews, language=None):
     codex_native_memory_comparison["note_zh"] = codex_native_memory_comparison_zh.get("note", "")
     codex_native_memory_comparison["note_en"] = codex_native_memory_comparison_en.get("note", "")
     claude_memory_path = PATHS.claude_home / "CLAUDE.md"
-    claude_memory_path_label = render_path(claude_memory_path)
+    claude_auto_memory_label = render_path(PATHS.claude_home / "projects" / "*" / "memory" / "*.md")
+    claude_memory_path_label = "{} + {}".format(
+        render_path(claude_memory_path),
+        claude_auto_memory_label,
+    )
     claude_native_memory = parse_claude_native_memory_summary(
         claude_memory_path,
         known_project_names=known_project_names,
         language=language,
+        claude_home=PATHS.claude_home,
     )
     claude_native_memory_comparison_zh = build_claude_native_memory_comparison(
         claude_native_memory["rows"],
@@ -12860,13 +13172,13 @@ def build_html(data):
         [
             {
                 "label": "统计什么",
-                "body": "直接读取 {} 中用户自己写的 Claude Code 原生记忆条目；OpenRelix 注入块会被隐藏。".format(
+                "body": "读取 {} 中用户自己写的 CLAUDE.md 上下文，以及 Claude Code 按项目 / 路径生成的 auto memory；OpenRelix 注入块会被隐藏。".format(
                     claude_memory_label
                 ),
             },
             {
                 "label": "关系",
-                "body": "个人记忆仍可注入 Claude Code context，但不在本页当作 Claude 原生记忆展示。",
+                "body": "个人记忆仍可注入 Claude Code context，但不会在本页当作 Claude 原生记忆展示；auto memory 会按来源项目 / 路径保留归属。",
             },
             {
                 "label": "当前计数",
@@ -12883,11 +13195,11 @@ def build_html(data):
         [
             {
                 "label": "统计什么",
-                "body": "直接读取 CLAUDE.md 中用户自写的 User preferences。",
+                "body": "读取 CLAUDE.md 里用户自写的 User preferences，以及 Claude Code auto memory 中明显属于偏好的条目。",
             },
             {
                 "label": "怎么看",
-                "body": "这类内容更像用户长期偏好；OpenRelix 注入的个人记忆不会混进来。",
+                "body": "这类内容更像用户长期偏好；OpenRelix 注入的个人记忆不会混进来，auto memory 的项目来源会显示在卡片来源里。",
             },
         ],
     )
@@ -12896,7 +13208,7 @@ def build_html(data):
         [
             {
                 "label": "统计什么",
-                "body": "直接读取 CLAUDE.md 中用户自写的 General Tips。",
+                "body": "读取 CLAUDE.md 里用户自写的 General Tips，以及 Claude Code auto memory 中更像工作方法、排障路径或注意事项的条目。",
             },
             {
                 "label": "怎么看",
@@ -20086,8 +20398,8 @@ def build_html(data):
         claude_native_memory_family_header=make_memory_family_header(
             "Claude Code 原生记忆",
             "Claude Code Native Memory",
-            "来自 Claude Code CLAUDE.md；OpenRelix 注入的个人记忆块不在此处展示。",
-            "From Claude Code CLAUDE.md; OpenRelix-injected personal memory is hidden here.",
+            "来自 Claude Code CLAUDE.md 与 projects/*/memory/*.md；OpenRelix 注入的个人记忆块不在此处展示。",
+            "From Claude Code CLAUDE.md and projects/*/memory/*.md; OpenRelix-injected personal memory is hidden here.",
         ),
         durable_memory_header=make_panel_header(
             "个人资产-长期记忆",
@@ -20180,12 +20492,12 @@ def build_html(data):
         ),
         claude_native_preference_header=make_panel_header(
             "Claude Code 原生记忆-偏好",
-            "来自 CLAUDE.md User preferences",
+            "来自 CLAUDE.md 和 auto memory 中的偏好条目",
             claude_native_preference_help,
         ),
         claude_native_tip_header=make_panel_header(
             "Claude Code 原生记忆-通用 tips",
-            "来自 CLAUDE.md General Tips",
+            "来自 CLAUDE.md 和 auto memory 中的通用提示",
             claude_native_tip_help,
         ),
         codex_native_topic_cards=make_memory_cards(codex_native_memory),

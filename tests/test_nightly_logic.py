@@ -2790,7 +2790,7 @@ Keep my own note.
         self.assertTrue(parsed["counts"]["managed_block_present"])
         self.assertTrue(all(row["source_files"][0]["label"] == "CLAUDE.md" for row in parsed["rows"]))
         self.assertIn("Claude", parsed["rows"][0]["display_bucket"])
-        self.assertIn("用户自写 Claude 原生条目", comparison["note"])
+        self.assertIn("Claude Code 原生记忆", comparison["note"])
         self.assertIn("注入的共享个人记忆块已隐藏", comparison["note"])
         self.assertIn("Claude bridge mode reminder", parsed["topic_rows"][0]["title"])
         self.assertIn("Check the active provider", parsed["tip_rows"][0]["value_note"])
@@ -2826,6 +2826,62 @@ Keep my own note.
         self.assertEqual(parsed["rows"], [])
         self.assertTrue(parsed["counts"]["managed_block_present"])
         self.assertIn("注入的共享个人记忆块已在原生记忆视图中隐藏", comparison["note"])
+
+    def test_parse_claude_native_memory_summary_reads_project_auto_memory(self):
+        sample = """<!-- openrelix:shared-memory:start -->
+# OpenRelix Shared Personal Memory
+
+- OpenRelix injected memory should stay out of native cards.
+<!-- openrelix:shared-memory:end -->
+"""
+
+        with TemporaryDirectory() as tmpdir:
+            claude_home = Path(tmpdir) / ".claude"
+            project_memory_dir = claude_home / "projects" / "-Users-ray-openrelix" / "memory"
+            project_memory_dir.mkdir(parents=True)
+            claude_path = claude_home / "CLAUDE.md"
+            claude_path.write_text(sample, encoding="utf-8")
+            (project_memory_dir / "MEMORY.md").write_text(
+                """# User Memory
+
+- Prefer apply_patch for file edits.
+- Debug Claude Code auto memory by checking the project memory directory.
+""",
+                encoding="utf-8",
+            )
+            (project_memory_dir / "reference_build.md").write_text(
+                """# Build reference
+
+- Build overview after changing panel fields.
+""",
+                encoding="utf-8",
+            )
+
+            parsed = build_overview.parse_claude_native_memory_summary(
+                claude_path,
+                known_project_names=["OpenRelix"],
+                language="zh",
+                claude_home=claude_home,
+            )
+            comparison = build_overview.build_claude_native_memory_comparison(
+                parsed["rows"],
+                parsed["counts"],
+                "~/.claude/CLAUDE.md + ~/.claude/projects/*/memory/*.md",
+                language="zh",
+            )
+
+        self.assertEqual(parsed["counts"]["claude_md_items"], 0)
+        self.assertEqual(parsed["counts"]["auto_memory_items"], 3)
+        self.assertEqual(parsed["counts"]["auto_memory_file_count"], 2)
+        self.assertEqual(parsed["counts"]["auto_memory_project_count"], 1)
+        self.assertEqual(parsed["counts"]["user_preferences"], 2)
+        self.assertEqual(parsed["counts"]["topic_items"], 1)
+        self.assertTrue(parsed["counts"]["managed_block_present"])
+        self.assertIn("auto memory", parsed["rows"][0]["source_files"][0]["label"])
+        self.assertIn("~/openrelix", parsed["rows"][0]["source_files"][0]["label"])
+        self.assertIn("auto memory 3 条", comparison["note"])
+        self.assertIn("1 个项目 / 路径", comparison["note"])
+        self.assertNotIn("OpenRelix injected memory", json.dumps(parsed, ensure_ascii=False))
 
     def test_sync_host_memory_summary_preserves_user_claude_file_content(self):
         block = sync_host_memory_summary.managed_claude_block("## What's in Memory\n\n- Shared item\n")
@@ -3631,9 +3687,9 @@ Keep my own note.
                     "managed_block_present": True,
                 },
                 "claude_native_memory_comparison": {
-                    "note": "已读取 custom-claude/CLAUDE.md；下方展示 3 条用户自写 Claude 原生条目；OpenRelix 注入的共享个人记忆块已隐藏。",
-                    "note_zh": "已读取 custom-claude/CLAUDE.md；下方展示 3 条用户自写 Claude 原生条目；OpenRelix 注入的共享个人记忆块已隐藏。",
-                    "note_en": "Read custom-claude/CLAUDE.md; showing 3 user-authored Claude native entries below; OpenRelix-injected shared personal-memory block is hidden.",
+                    "note": "已读取 custom-claude/CLAUDE.md + custom-claude/projects/*/memory/*.md；下方展示 3 条 Claude Code 原生记忆；OpenRelix 注入的共享个人记忆块已隐藏。",
+                    "note_zh": "已读取 custom-claude/CLAUDE.md + custom-claude/projects/*/memory/*.md；下方展示 3 条 Claude Code 原生记忆；OpenRelix 注入的共享个人记忆块已隐藏。",
+                    "note_en": "Read custom-claude/CLAUDE.md + custom-claude/projects/*/memory/*.md; showing 3 Claude Code native memory entries below; OpenRelix-injected shared personal-memory block is hidden.",
                 },
                 "claude_native_memory": [],
                 "claude_native_topic_rows": [
