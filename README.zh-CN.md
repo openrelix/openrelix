@@ -196,7 +196,7 @@ installer 会把运行语言、memory mode、activity source、activity host、m
 ./install/install.sh --language en
 ```
 
-Memory 默认开启。默认模式是 `integrated`：系统把一份可复用个人记忆登记册记录到 active state root，再把 bounded summary 同步进启用的 host-native context。Codex 和 Claude Code 共享同一份个人记忆摘要；各自的原生文件只是展示和注入表面。需要严格本地记录时用 `--record-memory-only`，需要关闭本系统本地 memory 写入时用 `--disable-personal-memory`。
+Memory 默认开启。默认模式是 `integrated`：系统把一份可复用个人记忆登记册记录到 active state root，再把 bounded summary 同步进启用的 host-native context。Codex 和 Claude Code 会读取同一份个人记忆摘要用于 context 注入，但面板会把 OpenRelix 个人记忆从 host 原生记忆视图里排除。需要严格本地记录时用 `--record-memory-only`，需要关闭本系统本地 memory 写入时用 `--disable-personal-memory`。
 
 ```bash
 ./install/install.sh --record-memory-only

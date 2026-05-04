@@ -198,7 +198,7 @@ The installer stores the selected runtime language, memory mode, activity source
 ./install/install.sh --language en
 ```
 
-Memory is on by default. The default mode is `integrated`: the system records one reusable personal-memory registry into the active state root, then syncs a bounded summary into enabled host-native contexts. Codex and Claude Code read the same shared personal memory summary; host-native files remain separate display/injection surfaces. Use `--record-memory-only` when you want strict local recording without context injection, or `--disable-personal-memory` to disable this system's local memory writes.
+Memory is on by default. The default mode is `integrated`: the system records one reusable personal-memory registry into the active state root, then syncs a bounded summary into enabled host-native contexts. Codex and Claude Code read the same shared personal memory summary for context injection, but the panel keeps OpenRelix personal memory out of the host-native memory views. Use `--record-memory-only` when you want strict local recording without context injection, or `--disable-personal-memory` to disable this system's local memory writes.
 
 The context sync is intentionally compressed: duplicate personal memories are merged by signature, durable / session items are prioritized, low-priority items stay local-only, and the injected summary targets about 6.7K tokens with an 8K hard budget.
 

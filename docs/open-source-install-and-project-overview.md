@@ -261,7 +261,7 @@ bounded summary 的压缩策略保持轻量：同签名记忆跨天归并，dura
 4. 安装全局 `openrelix` 命令，并在需要时把对应用户 bin 目录写入 shell `PATH`
 5. 安装 macOS 后台 refresh 服务；加 `--enable-learning-refresh` 时，每 30 分钟自动读取当前 activity host，并通过当前 `model_cli` 学习最近 7 天窗口
 
-完整集成默认会把同一份 bounded summary 写入启用的 host context，让 Codex 和 Claude Code 能读取压缩后的个人记忆。完整的结构化资产记忆仍写入 state root；面板继续把 host native memory 和本项目本地 memory registry 分层展示。需要严格隔离时，使用 `--record-memory-only` 或 `--no-memory-summary`。
+完整集成默认会把同一份 bounded summary 写入启用的 host context，让 Codex 和 Claude Code 能读取压缩后的个人记忆。完整的结构化资产记忆仍写入 state root；面板继续把 host native memory 和本项目本地 memory registry 分层展示，并且不会把 OpenRelix 注入的个人记忆块当作 host 原生记忆卡片展示。需要严格隔离时，使用 `--record-memory-only` 或 `--no-memory-summary`。
 
 如果你还想启用夜间整理和夜间任务执行时的防睡眠策略：
 

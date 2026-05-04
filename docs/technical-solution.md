@@ -93,7 +93,7 @@ openrelix_overview/
 
 AI host 自己的用户级目录、history、session 和 native memory 由各 host adapter 负责映射。Codex 适配器由 `CODEX_HOME` 决定用户级目录，默认是 `~/.codex`；默认 `auto` 先通过 `codex app-server` 读取 threads，失败时再读取其中的 `history.jsonl` 和 `sessions/**/*.jsonl`。Claude Code 适配器由 `CLAUDE_HOME` / `CLAUDE_CONFIG_DIR` 决定用户级目录，默认读取 `projects/**/*.jsonl` 和 `history.jsonl`。raw window 会写入 `ai_host=codex|claude`，面板按 host 展示。
 
-默认安装开启本地个人记忆，并把同一份压缩后的 bounded summary 写入启用的 host context：Codex `memory_summary.md` 和 Claude Code `CLAUDE.md` 中的 OpenRelix 受控块。完整结构化记录仍保留在 state root；需要严格隔离时使用 `--record-memory-only` 或 `--no-memory-summary`。
+默认安装开启本地个人记忆，并把同一份压缩后的 bounded summary 写入启用的 host context：Codex `memory_summary.md` 和 Claude Code `CLAUDE.md` 中的 OpenRelix 受控块。完整结构化记录仍保留在 state root；面板展示 host 原生记忆时会过滤 OpenRelix 注入块，避免把个人记忆登记册误标成 Codex/Claude 原生内容。需要严格隔离时使用 `--record-memory-only` 或 `--no-memory-summary`。
 
 压缩策略保持轻量：同签名记忆跨天归并，durable / session 优先进上下文，low-priority 默认只留本地；默认 token budget 是 target 6.7K、warn 7.4K、max 8K，不把原始窗口明细塞进 host context。
 

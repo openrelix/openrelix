@@ -5072,8 +5072,14 @@ def empty_codex_native_memory_summary(source_exists=False, source_readable=False
             "source_exists": source_exists,
             "source_readable": source_readable,
             "source_error": source_error,
+            "hidden_personal_memory_items": 0,
         },
     }
+
+
+OPENRELIX_PERSONAL_MEMORY_SECTION_HEADINGS = {
+    "Local personal memory registry",
+}
 
 
 def parse_codex_native_memory_summary(
@@ -5106,6 +5112,7 @@ def parse_codex_native_memory_summary(
         "source_exists": True,
         "source_readable": True,
         "source_error": "",
+        "hidden_personal_memory_items": 0,
     }
 
     rows = []
@@ -5351,6 +5358,11 @@ def parse_codex_native_memory_summary(
             current_date = ""
             continue
 
+        if current_h3 in OPENRELIX_PERSONAL_MEMORY_SECTION_HEADINGS:
+            if line.startswith("- "):
+                counts["hidden_personal_memory_items"] += 1
+            continue
+
         if line.startswith("#### "):
             flush_current_item()
             current_h4 = line[5:].strip()
@@ -5474,12 +5486,13 @@ CLAUDE_MANAGED_MEMORY_START = "<!-- openrelix:shared-memory:start -->"
 CLAUDE_MANAGED_MEMORY_END = "<!-- openrelix:shared-memory:end -->"
 
 
-def extract_claude_managed_memory_text(text):
+def strip_claude_managed_memory_text(text):
     if CLAUDE_MANAGED_MEMORY_START not in text or CLAUDE_MANAGED_MEMORY_END not in text:
-        return "", False
-    _, _, tail = text.partition(CLAUDE_MANAGED_MEMORY_START)
-    managed_text, _, _ = tail.partition(CLAUDE_MANAGED_MEMORY_END)
-    return managed_text.strip(), True
+        return text, False
+    before, _, tail = text.partition(CLAUDE_MANAGED_MEMORY_START)
+    _, _, after = tail.partition(CLAUDE_MANAGED_MEMORY_END)
+    visible_text = "\n\n".join(part.strip() for part in (before, after) if part.strip())
+    return (visible_text + "\n" if visible_text else ""), True
 
 
 def parse_claude_native_memory_summary(claude_memory_path, known_project_names=None, language=None):
@@ -5496,19 +5509,21 @@ def parse_claude_native_memory_summary(claude_memory_path, known_project_names=N
             source_error=exc.__class__.__name__,
         )
 
-    managed_text, has_managed_block = extract_claude_managed_memory_text(text)
-    if not has_managed_block:
-        return empty_claude_native_memory_summary(
+    visible_text, has_managed_block = strip_claude_managed_memory_text(text)
+    if not visible_text.strip():
+        summary = empty_claude_native_memory_summary(
             source_exists=True,
             source_readable=True,
         )
+        summary["counts"]["managed_block_present"] = has_managed_block
+        return summary
 
     parsed = parse_codex_native_memory_summary(
         path,
         memory_index_path=None,
         known_project_names=known_project_names,
         language=language,
-        summary_text=managed_text,
+        summary_text=visible_text,
     )
     topic_rows = [
         relabel_native_memory_item_for_claude(row, path, language=language)
@@ -5532,6 +5547,7 @@ def parse_claude_native_memory_summary(claude_memory_path, known_project_names=N
     ]
     rows = topic_rows + preference_rows + tip_rows
     counts = dict(parsed.get("counts") or {})
+    counts["managed_block_present"] = has_managed_block
     counts["total_items"] = len(rows)
     return {
         "rows": rows,
@@ -5547,6 +5563,7 @@ def build_claude_native_memory_comparison(native_rows, native_counts, summary_pa
     source_exists = native_counts.get("source_exists", bool(native_rows))
     source_readable = native_counts.get("source_readable", source_exists)
     source_error = native_counts.get("source_error", "")
+    managed_block_present = bool(native_counts.get("managed_block_present"))
     if source_error and not source_readable:
         note = localized(
             "无法读取 {}（{}），Claude 原生记忆暂不可展示。".format(summary_path_label, source_error),
@@ -5555,8 +5572,8 @@ def build_claude_native_memory_comparison(native_rows, native_counts, summary_pa
         )
     elif not source_exists:
         note = localized(
-            "未检测到 {}；启用 integrated 后会写入受控共享记忆块。".format(summary_path_label),
-            "{} was not found; integrated mode writes a managed shared-memory block.".format(summary_path_label),
+            "未检测到 {}；Claude 原生记忆暂不可展示。".format(summary_path_label),
+            "{} was not found; Claude native memory is not displayable yet.".format(summary_path_label),
             language,
         )
     elif not source_readable:
@@ -5566,27 +5583,45 @@ def build_claude_native_memory_comparison(native_rows, native_counts, summary_pa
             language,
         )
     elif not native_rows:
-        note = localized(
-            "已读取 {}，但暂未发现可展示的 OpenRelix 共享记忆条目。".format(summary_path_label),
-            "Read {}, but no displayable OpenRelix shared-memory entries were found yet.".format(summary_path_label),
-            language,
-        )
+        if managed_block_present:
+            note = localized(
+                "已读取 {}；OpenRelix 注入的共享个人记忆块已在原生记忆视图中隐藏，暂未发现用户自写的 Claude 原生条目。".format(summary_path_label),
+                "Read {}; the OpenRelix-injected shared personal-memory block is hidden from the native-memory view, and no user-authored Claude native entries were found.".format(summary_path_label),
+                language,
+            )
+        else:
+            note = localized(
+                "已读取 {}，但暂未发现可展示的用户自写 Claude 原生条目。".format(summary_path_label),
+                "Read {}, but no displayable user-authored Claude native entries were found yet.".format(summary_path_label),
+                language,
+            )
     else:
-        note = localized(
-            "已读取 {}；下方展示 {} 条 Claude Code 原生上下文条目，来源和 Codex 共用同一份本地个人记忆登记册。".format(
-                summary_path_label,
-                len(native_rows),
+        note_parts = [
+            localized(
+                "已读取 {}".format(summary_path_label),
+                "Read {}".format(summary_path_label),
+                language,
             ),
-            "Read {}; showing {} Claude Code native-context entries below. The source is the same local personal-memory registry shared with Codex.".format(
-                summary_path_label,
-                len(native_rows),
+            localized(
+                "下方展示 {} 条用户自写 Claude 原生条目".format(len(native_rows)),
+                "showing {} user-authored Claude native entries below".format(len(native_rows)),
+                language,
             ),
-            language,
-        )
+        ]
+        if managed_block_present:
+            note_parts.append(
+                localized(
+                    "OpenRelix 注入的共享个人记忆块已隐藏",
+                    "OpenRelix-injected shared personal-memory block is hidden",
+                    language,
+                )
+            )
+        note = ("; ".join(note_parts) + ".") if is_english(language) else ("；".join(note_parts) + "。")
     return {
         "note": note,
         "native_context_count": 1 if native_rows else 0,
         "shared_context_count": 0,
+        "managed_block_hidden": managed_block_present,
     }
 
 
@@ -5837,6 +5872,7 @@ def build_codex_native_memory_comparison(
     source_exists = native_counts.get("source_exists", bool(native_rows))
     source_readable = native_counts.get("source_readable", source_exists)
     source_error = native_counts.get("source_error", "")
+    hidden_personal_memory_items = native_counts.get("hidden_personal_memory_items", 0)
     index_source_error = index_stats.get("source_error", "")
     index_unreadable = (
         index_source_error and not index_stats.get("source_readable", False)
@@ -5913,6 +5949,14 @@ def build_codex_native_memory_comparison(
         ]
         if index_unreadable_note:
             note_parts.append(index_unreadable_note)
+        if hidden_personal_memory_items:
+            note_parts.append(
+                localized(
+                    "OpenRelix 本地个人记忆登记册已在原生视图中隐藏",
+                    "OpenRelix local personal-memory registry is hidden from this native view",
+                    language,
+                )
+            )
         note = ("; ".join(note_parts) + ".") if is_english(language) else ("；".join(note_parts) + "。")
     else:
         note_parts = [
@@ -5942,6 +5986,14 @@ def build_codex_native_memory_comparison(
             )
         elif index_unreadable_note:
             note_parts.append(index_unreadable_note)
+        if hidden_personal_memory_items:
+            note_parts.append(
+                localized(
+                    "OpenRelix 本地个人记忆登记册已隐藏",
+                    "OpenRelix local personal-memory registry is hidden",
+                    language,
+                )
+            )
         note_parts.append(
             localized(
                 "偏好、tips、任务组以简短列表展示",
@@ -12559,7 +12611,7 @@ def build_html(data):
         [
             {
                 "label": "统计什么",
-                "body": "直接读取 {} 的“What's in Memory”主题项。".format(
+                "body": "直接读取 {} 的“What's in Memory”主题项，但跳过 OpenRelix 的 Local personal memory registry 注入段。".format(
                     codex_memory_summary_label
                 ),
             },
@@ -12642,13 +12694,13 @@ def build_html(data):
         [
             {
                 "label": "统计什么",
-                "body": "直接读取 {} 中由 OpenRelix 管理的共享记忆块。".format(
+                "body": "直接读取 {} 中用户自己写的 Claude Code 原生上下文；OpenRelix 注入块会被隐藏。".format(
                     claude_memory_label
                 ),
             },
             {
                 "label": "关系",
-                "body": "这里展示的是注入 Claude Code native context 的视图；它和 Codex 使用同一份本地个人记忆登记册。",
+                "body": "个人记忆仍可注入 Claude Code context，但不在本页当作 Claude 原生记忆展示。",
             },
             {
                 "label": "当前计数",
@@ -19424,8 +19476,8 @@ def build_html(data):
         claude_native_memory_family_header=make_memory_family_header(
             "Claude Code 原生记忆",
             "Claude Code Native Memory",
-            "来自 Claude Code CLAUDE.md；与 Codex 共用同一份个人记忆登记册。",
-            "From Claude Code CLAUDE.md, backed by the same personal-memory registry shared with Codex.",
+            "来自 Claude Code CLAUDE.md；OpenRelix 注入的个人记忆块不在此处展示。",
+            "From Claude Code CLAUDE.md; OpenRelix-injected personal memory is hidden here.",
         ),
         durable_memory_header=make_panel_header(
             "个人资产-长期记忆",

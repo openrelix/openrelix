@@ -1406,7 +1406,7 @@ class NightlyLogicTests(unittest.TestCase):
     def test_codex_native_structured_memory_uses_generic_chinese_fallback(self):
         sample_summary = """## What's in Memory
 
-### Local personal memory registry
+### Recent Memory Topics
 
 - [durable/semantic/high] Example release validation rule - Keep public release notes minimal and verify package contents before publishing.
 """
@@ -1429,7 +1429,7 @@ class NightlyLogicTests(unittest.TestCase):
     def test_codex_native_structured_chinese_memory_keeps_meaningful_title_and_body(self):
         sample_summary = """## What's in Memory
 
-### Local personal memory registry
+### Recent Memory Topics
 
 - [durable/semantic/high] 正常 git push 和 npm publish 不会上传 OpenRelix state root
 """
@@ -1448,6 +1448,37 @@ class NightlyLogicTests(unittest.TestCase):
         )
         self.assertNotIn("[durable/semantic/high]", row["display_title"])
         self.assertNotEqual(row["display_value_note"], "原生记忆摘要")
+
+    def test_codex_native_memory_hides_local_personal_memory_registry_section(self):
+        sample_summary = """## What's in Memory
+
+### Local personal memory registry
+
+- [durable/semantic/high] Injected OpenRelix personal memory - should not be native.
+
+### Recent Memory Topics
+
+- Native host memory topic
+"""
+
+        with TemporaryDirectory() as tmpdir:
+            summary_path = Path(tmpdir) / "memory_summary.md"
+            summary_path.write_text(sample_summary, encoding="utf-8")
+
+            parsed = build_overview.parse_codex_native_memory_summary(summary_path, language="zh")
+            comparison = build_overview.build_codex_native_memory_comparison(
+                parsed["rows"],
+                [],
+                parsed["counts"],
+                {},
+                language="zh",
+            )
+
+        self.assertEqual(len(parsed["rows"]), 1)
+        self.assertEqual(parsed["rows"][0]["title"], "Native host memory topic")
+        self.assertEqual(parsed["counts"]["hidden_personal_memory_items"], 1)
+        self.assertIn("个人记忆登记册已隐藏", comparison["note"])
+        self.assertNotIn("Injected OpenRelix personal memory", json.dumps(parsed, ensure_ascii=False))
 
     def test_codex_native_memory_summary_bullets_get_chinese_display_body(self):
         self._use_personal_codex_rules(
@@ -2584,7 +2615,7 @@ scope: Release checklist, package manifest, and public website validation.
         self.assertIn("Show 5 more items", cards_html)
         self.assertNotIn("native-brief-heading", cards_html)
 
-    def test_parse_claude_native_memory_summary_reuses_shared_personal_memory_shape(self):
+    def test_parse_claude_native_memory_summary_hides_openrelix_managed_block(self):
         sample = """# User Claude instructions
 
 Keep my own note.
@@ -2630,13 +2661,47 @@ Keep my own note.
                 language="zh",
             )
 
-        self.assertEqual(parsed["counts"]["topic_items"], 1)
+        self.assertEqual(parsed["counts"]["topic_items"], 0)
         self.assertEqual(parsed["counts"]["user_preferences"], 1)
-        self.assertEqual(parsed["counts"]["general_tips"], 1)
-        self.assertEqual(parsed["counts"]["total_items"], 3)
+        self.assertEqual(parsed["counts"]["general_tips"], 0)
+        self.assertEqual(parsed["counts"]["total_items"], 1)
+        self.assertTrue(parsed["counts"]["managed_block_present"])
         self.assertTrue(all(row["source_files"][0]["label"] == "CLAUDE.md" for row in parsed["rows"]))
         self.assertIn("Claude", parsed["rows"][0]["display_bucket"])
-        self.assertIn("同一份本地个人记忆登记册", comparison["note"])
+        self.assertIn("用户自写 Claude 原生条目", comparison["note"])
+        self.assertIn("注入的共享个人记忆块已隐藏", comparison["note"])
+        self.assertNotIn("OpenRelix shared personal memory", json.dumps(parsed, ensure_ascii=False))
+
+    def test_parse_claude_native_memory_summary_only_managed_block_has_no_native_rows(self):
+        sample = """<!-- openrelix:shared-memory:start -->
+# OpenRelix Shared Personal Memory
+
+## What's in Memory
+
+### Recent Memory Topics
+
+- OpenRelix injected memory should stay out of native cards.
+<!-- openrelix:shared-memory:end -->
+"""
+
+        with TemporaryDirectory() as tmpdir:
+            claude_path = Path(tmpdir) / "CLAUDE.md"
+            claude_path.write_text(sample, encoding="utf-8")
+
+            parsed = build_overview.parse_claude_native_memory_summary(
+                claude_path,
+                language="zh",
+            )
+            comparison = build_overview.build_claude_native_memory_comparison(
+                parsed["rows"],
+                parsed["counts"],
+                "CLAUDE.md",
+                language="zh",
+            )
+
+        self.assertEqual(parsed["rows"], [])
+        self.assertTrue(parsed["counts"]["managed_block_present"])
+        self.assertIn("注入的共享个人记忆块已在原生记忆视图中隐藏", comparison["note"])
 
     def test_sync_host_memory_summary_preserves_user_claude_file_content(self):
         block = sync_host_memory_summary.managed_claude_block("## What's in Memory\n\n- Shared item\n")
