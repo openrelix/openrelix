@@ -374,12 +374,16 @@ class NightlyLogicTests(unittest.TestCase):
     def test_redaction_preserves_public_project_links_in_href(self):
         html = (
             '<a href="https://www.npmjs.com/~kk_kais" target="_blank">kk_kais</a> '
+            'const url = "https://registry.npmjs.org/" + encodeURIComponent(pkg) + "/latest"; '
+            '<a href="https://registry.npmjs.org/@private-scope/internal-tool/latest">private package</a> '
             '<a href="https://example.com/private">private</a>'
         )
 
         redacted = build_overview.normalize_brand_display_text(html)
 
         self.assertIn('href="https://www.npmjs.com/~kk_kais"', redacted)
+        self.assertIn('"https://registry.npmjs.org/"', redacted)
+        self.assertNotIn("https://registry.npmjs.org/@private-scope/internal-tool/latest", redacted)
         self.assertIn('href="<link>"', redacted)
 
     def test_repo_panel_entrypoint_is_not_written_by_default(self):

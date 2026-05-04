@@ -90,6 +90,7 @@ def redact_personal_text(value, patterns=(), redaction_label=PERSONAL_REDACTION_
             or lowered.startswith("http://localhost")
             or lowered.startswith("https://github.com/openrelix/")
             or lowered.startswith("https://openrelix.org")
+            or lowered == "https://registry.npmjs.org/"
             or lowered.startswith("https://www.npmjs.com/~kk_kais")
         ):
             return url
