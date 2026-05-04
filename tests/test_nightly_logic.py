@@ -1421,7 +1421,7 @@ class NightlyLogicTests(unittest.TestCase):
         row = parsed["rows"][0]
         self.assertEqual(row["memory_type"], "semantic")
         self.assertEqual(row["priority"], "high")
-        self.assertEqual(row["display_title"], "Codex 原生主题")
+        self.assertEqual(row["display_title"], "Codex 原生记忆条目")
         self.assertIn("英文原文已折叠", row["display_value_note"])
         self.assertIn("Example release validation rule", row["display_title_en"])
         self.assertIn("Keep public release notes minimal", row["display_value_note_en"])
@@ -1887,8 +1887,8 @@ class NightlyLogicTests(unittest.TestCase):
         html = build_overview.make_codex_native_brief_cards(rows, "task_group", language="zh")
 
         self.assertIn("Example task group", html)
-        self.assertNotIn("历史任务组 1", html)
-        self.assertIn("来自 MEMORY.md 的历史任务组索引", html)
+        self.assertNotIn("历史任务 1", html)
+        self.assertIn("来自 MEMORY.md 的历史任务索引", html)
         self.assertNotIn("关键词：Release checklist", html)
         self.assertNotIn('data-lang-only="zh">Release checklist', html)
         self.assertIn('data-lang-only="en"><span class="native-brief-chip">Release checklist</span>', html)
@@ -2110,7 +2110,7 @@ class NightlyLogicTests(unittest.TestCase):
         )
 
         self.assertEqual(comparison["shared_context_count"], 1)
-        self.assertIn("主题项 1 条", comparison["note"])
+        self.assertIn("记忆条目 1 条", comparison["note"])
         self.assertIn("共享上下文 OpenRelix", comparison["note"])
 
     def test_codex_native_memory_comparison_localizes_generated_shared_contexts_in_english(self):
@@ -2212,7 +2212,7 @@ class NightlyLogicTests(unittest.TestCase):
 
         self.assertTrue(parsed["counts"]["source_exists"])
         self.assertIn("已读取 custom-codex/memories/memory_summary.md", empty_comparison["note"])
-        self.assertIn("暂无 What's in Memory 主题项", empty_comparison["note"])
+        self.assertIn("暂无记忆条目", empty_comparison["note"])
         self.assertNotIn("未检测到", empty_comparison["note"])
         self.assertFalse(missing["counts"]["source_exists"])
         self.assertIn("未检测到 custom-codex/memories/memory_summary.md", missing_comparison["note"])
@@ -2329,7 +2329,7 @@ class NightlyLogicTests(unittest.TestCase):
         self.assertEqual(len(parsed["rows"]), 1)
         self.assertTrue(parsed["counts"]["source_exists"])
         self.assertTrue(parsed["counts"]["source_readable"])
-        self.assertIn("主题项 1 条", comparison["note"])
+        self.assertIn("记忆条目 1 条", comparison["note"])
         self.assertNotIn("未检测到", comparison["note"])
 
     def test_unreadable_codex_memory_index_keeps_overview_available(self):
@@ -2378,7 +2378,7 @@ class NightlyLogicTests(unittest.TestCase):
         self.assertFalse(index_stats["source_readable"])
         self.assertEqual(index_stats["task_group_count"], 0)
         self.assertIn("custom-codex/memories/MEMORY.md 无法读取", comparison["note"])
-        self.assertIn("任务组统计暂不可用", comparison["note"])
+        self.assertIn("历史任务索引统计暂不可用", comparison["note"])
 
     def test_codex_memory_index_exists_false_return_still_reads_file(self):
         sample_summary = """## What's in Memory
@@ -2424,7 +2424,7 @@ class NightlyLogicTests(unittest.TestCase):
         self.assertEqual(index_stats["task_group_count"], 1)
         self.assertEqual(len(index_stats["task_groups"]), 1)
         self.assertEqual(index_stats["task_groups"][0]["title"], "Demo")
-        self.assertIn("1 个任务组", comparison["note"])
+        self.assertIn("历史任务索引 1 条", comparison["note"])
 
     def test_codex_memory_index_exposes_task_group_rows(self):
         self._use_personal_codex_rules(
@@ -2496,8 +2496,8 @@ scope: Release checklist, package manifest, and public website validation.
 
         row = index_stats["task_groups"][0]
         self.assertEqual(row["display_title"], "Example release surface and package validation")
-        self.assertNotIn("历史任务组 1", row["display_title"])
-        self.assertIn("来自 MEMORY.md 的历史任务组索引", row["display_body"])
+        self.assertNotIn("历史任务 1", row["display_title"])
+        self.assertIn("来自 MEMORY.md 的历史任务索引", row["display_body"])
         self.assertIn("包含 1 个任务", row["display_body"])
         self.assertIn("1 个来源", row["display_body"])
         self.assertIn("Release checklist", row["display_body_en"])
@@ -2538,7 +2538,7 @@ scope: {body}
                                 ),
                             ): {
                                 "title_zh": "发布检查与包验证",
-                                "body_zh": "这个任务组沉淀发布清单、包配置和公开页面验证经验。",
+                                "body_zh": "这个历史任务索引沉淀发布清单、包配置和公开页面验证经验。",
                             }
                         },
                     },
@@ -2553,9 +2553,9 @@ scope: {body}
 
         row = index_stats["task_groups"][0]
         self.assertEqual(row["display_title"], "发布检查与包验证")
-        self.assertEqual(row["display_body"], "这个任务组沉淀发布清单、包配置和公开页面验证经验。")
-        self.assertNotIn("历史任务组", row["display_title"])
-        self.assertNotIn("来自 MEMORY.md 的历史任务组索引", row["display_body"])
+        self.assertEqual(row["display_body"], "这个历史任务索引沉淀发布清单、包配置和公开页面验证经验。")
+        self.assertNotIn("历史任务索引", row["display_title"])
+        self.assertNotIn("来自 MEMORY.md 的历史任务索引", row["display_body"])
 
     def test_codex_memory_index_task_group_uses_external_label_rules(self):
         self._use_personal_codex_rules(
@@ -2582,7 +2582,7 @@ scope: Release checklist, package manifest, and public website validation.
             index_stats = build_overview.load_codex_memory_index_stats(index_path, language="zh")
 
         row = index_stats["task_groups"][0]
-        self.assertEqual(row["display_title"], "发布面 / 包检查任务组")
+        self.assertEqual(row["display_title"], "发布面 / 包检查历史任务")
         self.assertIn("主题：发布面、包检查", row["display_body"])
         self.assertNotIn("Release checklist", row["display_body"])
 
@@ -2599,8 +2599,8 @@ scope: Release checklist, package manifest, and public website validation.
             index_stats = build_overview.load_codex_memory_index_stats(index_path)
 
         row = index_stats["task_groups"][0]
-        self.assertEqual(row["display_body"], "MEMORY.md 中登记的历史任务组。")
-        self.assertEqual(row["display_body_en"], "Historical task group registered in MEMORY.md.")
+        self.assertEqual(row["display_body"], "MEMORY.md 中登记的历史任务索引。")
+        self.assertEqual(row["display_body_en"], "Historical task index entry registered in MEMORY.md.")
 
         rows = [dict(row, title="Legacy group {}".format(index)) for index in range(9)]
         cards_html = build_overview.make_memory_cards(
@@ -2608,7 +2608,7 @@ scope: Release checklist, package manifest, and public website validation.
         )
 
         self.assertIn(
-            '<p><span data-lang-only="zh">MEMORY.md 中登记的历史任务组。</span><span data-lang-only="en">Historical task group registered in MEMORY.md.</span></p>',
+            '<p><span data-lang-only="zh">MEMORY.md 中登记的历史任务索引。</span><span data-lang-only="en">Historical task index entry registered in MEMORY.md.</span></p>',
             cards_html,
         )
         self.assertIn("查看更多 5 条", cards_html)
@@ -2620,9 +2620,20 @@ scope: Release checklist, package manifest, and public website validation.
 
 Keep my own note.
 
+## What's in Memory
+
+### Claude Code local notes
+
+- Claude bridge mode reminder: cc, bridge, provider
+  - desc: User-authored Claude memory should stay visible as Claude native memory.
+
 ## User preferences
 
 - This user-owned Claude note must stay outside OpenRelix shared memory.
+
+## General Tips
+
+- Check the active provider before assuming Claude Code login state.
 
 <!-- openrelix:shared-memory:start -->
 # OpenRelix Shared Personal Memory
@@ -2661,15 +2672,20 @@ Keep my own note.
                 language="zh",
             )
 
-        self.assertEqual(parsed["counts"]["topic_items"], 0)
+        self.assertEqual(parsed["counts"]["topic_items"], 1)
         self.assertEqual(parsed["counts"]["user_preferences"], 1)
-        self.assertEqual(parsed["counts"]["general_tips"], 0)
-        self.assertEqual(parsed["counts"]["total_items"], 1)
+        self.assertEqual(parsed["counts"]["general_tips"], 1)
+        self.assertEqual(parsed["counts"]["total_items"], 3)
+        self.assertEqual(len(parsed["topic_rows"]), 1)
+        self.assertEqual(len(parsed["preference_rows"]), 1)
+        self.assertEqual(len(parsed["tip_rows"]), 1)
         self.assertTrue(parsed["counts"]["managed_block_present"])
         self.assertTrue(all(row["source_files"][0]["label"] == "CLAUDE.md" for row in parsed["rows"]))
         self.assertIn("Claude", parsed["rows"][0]["display_bucket"])
         self.assertIn("用户自写 Claude 原生条目", comparison["note"])
         self.assertIn("注入的共享个人记忆块已隐藏", comparison["note"])
+        self.assertIn("Claude bridge mode reminder", parsed["topic_rows"][0]["title"])
+        self.assertIn("Check the active provider", parsed["tip_rows"][0]["value_note"])
         self.assertNotIn("OpenRelix shared personal memory", json.dumps(parsed, ensure_ascii=False))
 
     def test_parse_claude_native_memory_summary_only_managed_block_has_no_native_rows(self):
@@ -2812,7 +2828,7 @@ Keep my own note.
         self.assertEqual(len(parsed["rows"]), 1)
         self.assertFalse(index_stats["source_exists"])
         self.assertIn("custom-codex/memories/MEMORY.md 未检测到", comparison["note"])
-        self.assertIn("任务组统计暂不可用", comparison["note"])
+        self.assertIn("历史任务索引统计暂不可用", comparison["note"])
 
     def test_codex_native_memory_without_date_heading_uses_unknown_date(self):
         sample_summary = """## What's in Memory
@@ -2876,9 +2892,9 @@ Keep my own note.
                 "project_contexts": [],
                 "memory_registry": [],
                 "codex_native_memory_comparison": {
-                    "note": "主题项 1 条；原生偏长期规则，nightly 偏近期整理。",
-                    "note_zh": "主题项 1 条；原生偏长期规则，nightly 偏近期整理。",
-                    "note_en": "1 topic item; native memory leans toward long-term rules.",
+                    "note": "记忆条目 1 条；原生偏长期规则，nightly 偏近期整理。",
+                    "note_zh": "记忆条目 1 条；原生偏长期规则，nightly 偏近期整理。",
+                    "note_en": "1 memory item; native memory leans toward long-term rules.",
                 },
                 "codex_memory_summary_path_label": "custom|codex/<x>/memory_summary.md",
                 "codex_memory_index_path_label": "custom`codex`/MEMORY.md",
@@ -2920,7 +2936,7 @@ Keep my own note.
                 "mix": {"type": [], "context": [], "month": []},
                 "project_contexts": [],
                 "memory_registry": [],
-                "codex_native_memory_comparison": {"note": "主题项 1 条。"},
+                "codex_native_memory_comparison": {"note": "记忆条目 1 条。"},
                 "codex_memory_summary_path_label": "custom-codex/memories/memory_summary.md",
                 "codex_memory_index_path_label": "custom-codex/memories/MEMORY.md",
                 "codex_native_memory": [
@@ -3452,9 +3468,9 @@ Keep my own note.
                     "source_readable": True,
                 },
                 "codex_native_memory_comparison": {
-                    "note": "主题项 1 条；原生偏长期规则，nightly 偏近期整理。",
-                    "note_zh": "主题项 1 条；原生偏长期规则，nightly 偏近期整理。",
-                    "note_en": "1 topic item; native memory leans toward long-term rules.",
+                    "note": "记忆条目 1 条；原生偏长期规则，nightly 偏近期整理。",
+                    "note_zh": "记忆条目 1 条；原生偏长期规则，nightly 偏近期整理。",
+                    "note_en": "1 memory item; native memory leans toward long-term rules.",
                 },
                 "codex_memory_summary_path_label": "custom-codex/memories/memory_summary.md",
                 "codex_native_memory": [
@@ -3491,10 +3507,69 @@ Keep my own note.
                 ],
                 "codex_native_task_groups": [
                     {
-                        "display_title": "Example task group",
+                        "display_title": "Example historical work",
                         "display_body": "Example dashboard and memory runtime.",
                         "meta": "1 个任务；1 个来源",
                         "keywords": ["dashboard"],
+                    }
+                ],
+                "claude_memory_path_label": "custom-claude/CLAUDE.md",
+                "claude_native_memory_counts": {
+                    "topic_items": 1,
+                    "user_preferences": 1,
+                    "general_tips": 1,
+                    "source_exists": True,
+                    "source_readable": True,
+                    "managed_block_present": True,
+                },
+                "claude_native_memory_comparison": {
+                    "note": "已读取 custom-claude/CLAUDE.md；下方展示 3 条用户自写 Claude 原生条目；OpenRelix 注入的共享个人记忆块已隐藏。",
+                    "note_zh": "已读取 custom-claude/CLAUDE.md；下方展示 3 条用户自写 Claude 原生条目；OpenRelix 注入的共享个人记忆块已隐藏。",
+                    "note_en": "Read custom-claude/CLAUDE.md; showing 3 user-authored Claude native entries below; OpenRelix-injected shared personal-memory block is hidden.",
+                },
+                "claude_native_memory": [],
+                "claude_native_topic_rows": [
+                    {
+                        "title": "Claude native project note",
+                        "display_title": "Claude 项目记忆",
+                        "display_bucket": "Claude 原生",
+                        "display_memory_type": "语义",
+                        "display_priority": "中优先",
+                        "created_at_display": "2026-04-27",
+                        "updated_at_display": "2026-04-27",
+                        "occurrence_label": "原生归档",
+                        "context_labels": ["Claude"],
+                        "display_context": "Claude",
+                        "value_note": "User-authored Claude note.",
+                        "display_value_note": "用户自写 Claude 记忆。",
+                        "source_windows": [],
+                        "source_files": [],
+                    }
+                ],
+                "claude_native_preference_rows": [
+                    {
+                        "title": "Claude preference",
+                        "display_title": "Claude 偏好",
+                        "display_bucket": "Claude 原生",
+                        "display_memory_type": "偏好",
+                        "display_priority": "中优先",
+                        "value_note": "Keep Claude answers concise.",
+                        "display_value_note": "Claude 回答保持简洁。",
+                        "source_windows": [],
+                        "source_files": [],
+                    }
+                ],
+                "claude_native_tip_rows": [
+                    {
+                        "title": "Claude tip",
+                        "display_title": "Claude 通用 tip",
+                        "display_bucket": "Claude 原生",
+                        "display_memory_type": "通用 tips",
+                        "display_priority": "中优先",
+                        "value_note": "Check bridge mode before assuming login.",
+                        "display_value_note": "先检查桥接模式再判断登录态。",
+                        "source_windows": [],
+                        "source_files": [],
                     }
                 ],
                 "assets": {"recent": [], "top": []},
@@ -3504,10 +3579,10 @@ Keep my own note.
             }
         )
 
-        self.assertIn("Codex 原生记忆-主题项", html)
+        self.assertIn("Codex 原生记忆-记忆条目", html)
         self.assertIn("Codex 原生记忆-偏好", html)
         self.assertIn("Codex 原生记忆-通用 tips", html)
-        self.assertIn("Codex 原生记忆-任务组", html)
+        self.assertIn("Codex 原生记忆-历史任务索引", html)
         self.assertNotIn("memory-card-native", html)
         self.assertNotIn("memory-native-strip", html)
         self.assertIn("示例面板与 LaunchAgent 运行时", html)
@@ -3515,21 +3590,21 @@ Keep my own note.
         self.assertIn("Demo value note", html)
         self.assertIn('data-lang-only="en"', html)
         self.assertNotIn(
-            '<div class="panel-note"><span data-lang-only="zh">主题项 1 条；原生偏长期规则，nightly 偏近期整理。</span><span data-lang-only="en">1 topic item; native memory leans toward long-term rules.</span></div>',
+            '<div class="panel-note"><span data-lang-only="zh">记忆条目 1 条；原生偏长期规则，nightly 偏近期整理。</span><span data-lang-only="en">1 memory item; native memory leans toward long-term rules.</span></div>',
             html,
         )
         self.assertIn("用户偏好", html)
         self.assertIn("直接给出关键结论。", html)
         self.assertIn("通用 tips", html)
         self.assertIn("优先用 rg 查找文件。", html)
-        self.assertIn("任务组", html)
-        self.assertIn("Task Groups", html)
-        self.assertNotIn("历史任务组 1", html)
-        self.assertIn("Example task group", html)
+        self.assertIn("历史任务索引", html)
+        self.assertIn("Historical Task Index", html)
+        self.assertNotIn("历史任务 1", html)
+        self.assertIn("Example historical work", html)
         self.assertIn("native-brief-card", html)
         self.assertIn("User Preference", html)
         self.assertIn("General Tip", html)
-        self.assertIn("Codex 原生记忆-任务组", html)
+        self.assertIn("Codex 原生记忆-历史任务索引", html)
         self.assertNotIn("关键词：dashboard", html)
         self.assertIn("keywords: dashboard", html)
         self.assertIn("1 task; 1 source", html)
@@ -3542,6 +3617,16 @@ Keep my own note.
         self.assertIn("最近工作区", html)
         self.assertIn("来源窗口", html)
         self.assertIn("Preference 1", html)
+        self.assertIn("Claude Code 原生记忆-记忆条目", html)
+        self.assertIn("Claude Code 原生记忆-偏好", html)
+        self.assertIn("Claude Code 原生记忆-通用 tips", html)
+        self.assertIn("Claude 项目记忆", html)
+        self.assertIn("用户自写 Claude 记忆", html)
+        self.assertIn("Claude 偏好", html)
+        self.assertIn("Claude 回答保持简洁", html)
+        self.assertIn("Claude 通用 tip", html)
+        self.assertIn("先检查桥接模式再判断登录态", html)
+        self.assertNotIn("claude-native-memory-section", html)
 
     def test_personal_memory_token_widget_shows_bounded_context_budget(self):
         test_summary_budget = asset_runtime.memory_summary_budget_from_max(None)

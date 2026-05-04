@@ -454,16 +454,18 @@ PANEL_I18N_EN = {
     "收起更多上下文": "Collapse more contexts",
     "用户偏好": "User Preferences",
     "通用 tips": "General Tips",
-    "任务组": "Task Group",
+    "历史任务索引": "Historical Task Index",
+    "历史任务": "Historical Task",
+    "记忆条目": "Memory Items",
     "来自 User preferences，默认展示前 4 条": "From User preferences. Showing the first 4 by default.",
     "来自 General Tips，默认展示前 4 条": "From General Tips. Showing the first 4 by default.",
-    "来自 MEMORY.md，默认展示前 4 个任务组": "From MEMORY.md. Showing the first 4 task groups by default.",
+    "来自 MEMORY.md，默认展示前 4 条历史任务索引": "From MEMORY.md. Showing the first 4 historical task index entries by default.",
     "来自 User preferences，按卡片样式展示": "From User preferences. Shown as cards.",
     "来自 General Tips，按卡片样式展示": "From General Tips. Shown as cards.",
-    "来自 MEMORY.md，按任务组展示": "From MEMORY.md. Shown as task groups.",
+    "来自 MEMORY.md，按历史任务索引展示": "From MEMORY.md. Shown as a historical task index.",
     "条偏好": "preferences",
     "条 tip": "tips",
-    "个任务组": "task groups",
+    "条历史任务索引": "historical task index entries",
     "资产总数": "Total Assets",
     "活跃资产": "Active Assets",
     "任务复盘": "Task Reviews",
@@ -603,10 +605,13 @@ PANEL_I18N_EN = {
     "来自本地资产系统的 nightly 整理与结构化登记册。": "From the local asset system's nightly synthesis and structured registry.",
     "来自 Codex 原生 memory summary 与 MEMORY.md。": "From Codex native memory_summary and MEMORY.md.",
     "Codex 原生记忆": "Codex Native Memory",
-    "Codex 原生记忆-主题项": "Codex Native Memory - Topics",
+    "Codex 原生记忆-记忆条目": "Codex Native Memory - Memory Items",
     "Codex 原生记忆-偏好": "Codex Native Memory - Preferences",
     "Codex 原生记忆-通用 tips": "Codex Native Memory - General Tips",
-    "Codex 原生记忆-任务组": "Codex Native Memory - Task Groups",
+    "Codex 原生记忆-历史任务索引": "Codex Native Memory - Historical Task Index",
+    "Claude Code 原生记忆-记忆条目": "Claude Code Native Memory - Memory Items",
+    "Claude Code 原生记忆-偏好": "Claude Code Native Memory - Preferences",
+    "Claude Code 原生记忆-通用 tips": "Claude Code Native Memory - General Tips",
     "最近更新的资产": "Recently Updated Assets",
     "复用价值较高的资产": "High-value Reusable Assets",
     "最近复盘": "Recent Reviews",
@@ -993,8 +998,8 @@ PANEL_I18N_EN = {
     "更偏通用工作方法和排障路径，和偏好模块分开看。": (
         "Mostly general working methods and troubleshooting paths; read it separately from preferences."
     ),
-    "读取 MEMORY.md 里的 Task Group 索引，展示历史任务组和对应来源。": (
-        "Reads the Task Group index in MEMORY.md and shows historical task groups with their sources."
+    "读取 MEMORY.md 里的 Task Group 索引，展示历史任务索引和对应来源。": (
+        "Reads the Task Group index in MEMORY.md and shows a historical task index with sources."
     ),
     "它更像长期主题目录，不等同于某一天的 nightly memory。": (
         "This is closer to a long-term topic directory, not a single day's nightly memory."
@@ -1029,8 +1034,8 @@ PANEL_I18N_EN = {
     "原生记忆偏长期规则、稳定 workflow、历史 rollout 结论。": (
         "Native memory leans toward long-term rules, stable workflows, and historical rollout conclusions."
     ),
-    "用户偏好、通用 tips 和任务组已经拆到独立模块。": (
-        "User preferences, general tips, and task groups are split into separate modules."
+    "用户偏好、通用 tips 和历史任务索引已经拆到独立模块。": (
+        "User preferences, general tips, and the historical task index are split into separate modules."
     ),
     "项目 / 上下文：资产最终归到的 display_context。": (
         "Project / Context: the final display_context assigned to the asset."
@@ -2634,15 +2639,15 @@ def panel_english_text(value):
             ),
         ),
         (
-            r"直接读取 (.+) 的“What's in Memory”主题项。",
-            lambda match: "Reads topic items from the \"What's in Memory\" section of {}.".format(
+            r"直接读取 (.+) 的“What's in Memory”记忆条目(?:，.+)?。",
+            lambda match: "Reads memory items from the \"What's in Memory\" section of {}.".format(
                 match.group(1)
             ),
         ),
         (
-            r"主题项 (\d+) 条；用户偏好 (\d+) 条；通用 tips (\d+) 条。",
+            r"记忆条目 (\d+) 条；用户偏好 (\d+) 条；通用 tips (\d+) 条。",
             lambda match: "{}; {}; {}.".format(
-                plural_en(match.group(1), "topic item"),
+                plural_en(match.group(1), "memory item"),
                 plural_en(match.group(2), "user preference"),
                 plural_en(match.group(3), "general tip"),
             ),
@@ -4651,8 +4656,8 @@ CODEX_NATIVE_STRUCTURED_LINE_RE = re.compile(
     r"^\[(?P<bucket>[a-z_]+)/(?P<memory_type>[a-z_]+)/(?P<priority>[a-z_]+)\]\s+(?P<body>.+)$",
     flags=re.IGNORECASE,
 )
-CODEX_NATIVE_GENERIC_TOPIC_TITLE_ZH = "Codex 原生主题"
-CODEX_NATIVE_GENERIC_TOPIC_NOTE_ZH = "来自 Codex 原生记忆的主题条目；英文原文已折叠，可展开核对来源。"
+CODEX_NATIVE_GENERIC_TOPIC_TITLE_ZH = "Codex 原生记忆条目"
+CODEX_NATIVE_GENERIC_TOPIC_NOTE_ZH = "来自 Codex 原生记忆的记忆条目；英文原文已折叠，可展开核对来源。"
 CODEX_NATIVE_TASK_GROUP_LABEL_RULES_ZH = ()
 
 
@@ -4824,7 +4829,7 @@ def codex_native_task_group_labels_zh(title="", keywords=None):
 def generic_codex_native_task_group_title(title="", keywords=None, index=1):
     labels = codex_native_task_group_labels_zh(title, keywords)
     if labels:
-        return " / ".join(labels[:3]) + "任务组"
+        return " / ".join(labels[:3]) + "历史任务"
     source_title = compact_preview_text(normalize_brand_display_text(title), limit=72)
     if source_title:
         return source_title
@@ -4832,11 +4837,11 @@ def generic_codex_native_task_group_title(title="", keywords=None, index=1):
         source_keyword = compact_preview_text(normalize_brand_display_text(keyword), limit=72)
         if source_keyword:
             return source_keyword
-    return "历史任务组"
+    return "历史任务索引"
 
 
 def generic_codex_native_task_group_body(task_count=0, source_count=0, labels=None):
-    parts = ["来自 MEMORY.md 的历史任务组索引"]
+    parts = ["来自 MEMORY.md 的历史任务索引"]
     cleaned_labels = [
         normalize_brand_display_text(str(label or "").strip())
         for label in (labels or [])
@@ -5057,7 +5062,7 @@ def build_codex_native_display_note(
         return CODEX_NATIVE_GENERIC_TOPIC_NOTE_ZH
     if title_text and contains_cjk(title_text):
         return "主题：{}。".format(compact_preview_text(title_text, limit=140).rstrip("。"))
-    return "来自 Codex 原生记忆的主题条目。"
+    return "来自 Codex 原生记忆的记忆条目。"
 
 
 def empty_codex_native_memory_summary(source_exists=False, source_readable=False, source_error=""):
@@ -5670,8 +5675,8 @@ def load_codex_memory_index_stats(memory_index_path, language=None):
         body = normalize_brand_display_text(current_group.get("scope", "") or current_group.get("applies_to", ""))
         body_en = body
         if not body:
-            body = "MEMORY.md 中登记的历史任务组。"
-            body_en = "Historical task group registered in MEMORY.md."
+            body = "MEMORY.md 中登记的历史任务索引。"
+            body_en = "Historical task index entry registered in MEMORY.md."
         display_title = build_codex_native_display_title(
             current_group.get("title", ""),
             language=language,
@@ -5888,14 +5893,14 @@ def build_codex_native_memory_comparison(
         if index_source_error:
             index_unreadable_note = "{}（{}）".format(index_unreadable_note, index_source_error)
         index_unreadable_note = localized(
-            "{}，任务组统计暂不可用".format(index_unreadable_note),
-            "{}; task group stats are unavailable".format(index_unreadable_note),
+            "{}，历史任务索引统计暂不可用".format(index_unreadable_note),
+            "{}; historical task index stats are unavailable".format(index_unreadable_note),
             language,
         )
     elif index_missing:
         index_unreadable_note = localized(
-            "{} 未检测到，任务组统计暂不可用".format(index_path_label),
-            "{} was not found; task group stats are unavailable".format(index_path_label),
+            "{} 未检测到，历史任务索引统计暂不可用".format(index_path_label),
+            "{} was not found; historical task index stats are unavailable".format(index_path_label),
             language,
         )
     if source_error and not source_readable:
@@ -5935,7 +5940,7 @@ def build_codex_native_memory_comparison(
     elif not native_rows:
         note_parts = [
             localized("已读取 {}".format(summary_path_label), "Read {}".format(summary_path_label), language),
-            localized("暂无 What's in Memory 主题项", "No What's in Memory topic items", language),
+            localized("暂无记忆条目", "No memory items", language),
             localized(
                 "偏好 {} 条".format(native_counts.get("user_preferences", 0)),
                 "{} preferences".format(native_counts.get("user_preferences", 0)),
@@ -5961,8 +5966,8 @@ def build_codex_native_memory_comparison(
     else:
         note_parts = [
             localized(
-                "下方展示主题项 {} 条".format(len(native_rows)),
-                "Showing {} topic items below".format(len(native_rows)),
+                "下方展示记忆条目 {} 条".format(len(native_rows)),
+                "Showing {} memory items below".format(len(native_rows)),
                 language,
             ),
             localized(
@@ -5979,8 +5984,8 @@ def build_codex_native_memory_comparison(
         if index_stats.get("task_group_count"):
             note_parts.append(
                 localized(
-                    "{} 个任务组".format(index_stats["task_group_count"]),
-                    "{} task groups".format(index_stats["task_group_count"]),
+                    "历史任务索引 {} 条".format(index_stats["task_group_count"]),
+                    "{} historical task index entries".format(index_stats["task_group_count"]),
                     language,
                 )
             )
@@ -5996,8 +6001,8 @@ def build_codex_native_memory_comparison(
             )
         note_parts.append(
             localized(
-                "偏好、tips、任务组以简短列表展示",
-                "preferences, tips, and task groups are shown as compact lists",
+                "偏好、tips、历史任务索引以简短列表展示",
+                "preferences, tips, and historical task index entries are shown as compact lists",
                 language,
             )
         )
@@ -7950,6 +7955,9 @@ def build_data(assets, usage_events, reviews, language=None):
         "codex_memory_summary_path_label": codex_memory_summary_path_label,
         "codex_memory_index_path_label": codex_memory_index_path_label,
         "claude_native_memory": claude_native_memory["rows"],
+        "claude_native_topic_rows": claude_native_memory.get("topic_rows", []),
+        "claude_native_preference_rows": claude_native_memory.get("preference_rows", []),
+        "claude_native_tip_rows": claude_native_memory.get("tip_rows", []),
         "claude_native_memory_counts": claude_native_memory["counts"],
         "claude_native_memory_comparison": claude_native_memory_comparison,
         "claude_memory_path": str(claude_memory_path),
@@ -9834,11 +9842,14 @@ def make_side_nav():
         ("child", "personal-memory-session-section", "短期工作记忆", "Short-term Work Memory", "个人资产-短期工作记忆", "Personal Asset - Short-term Work Memory"),
         ("child", "personal-memory-low-priority-section", "低优先级记忆", "Low-priority Memory", "个人资产-低优先级记忆", "Personal Asset - Low-priority Memory"),
         ("link", "codex-native-section", "Codex 原生记忆", "Codex Native Memory", "Codex 原生记忆", "Codex Native Memory"),
-        ("child", "codex-native-topic-section", "主题项", "Topics", "Codex 原生记忆-主题项", "Codex Native Memory - Topics"),
+        ("child", "codex-native-topic-section", "记忆条目", "Memory Items", "Codex 原生记忆-记忆条目", "Codex Native Memory - Memory Items"),
         ("child", "codex-native-preference-section", "用户偏好", "User Preferences", "Codex 原生记忆-用户偏好", "Codex Native Memory - User Preferences"),
         ("child", "codex-native-tip-section", "通用 tips", "General Tips", "Codex 原生记忆-通用 tips", "Codex Native Memory - General Tips"),
-        ("child", "codex-native-task-group-section", "任务组", "Task Groups", "Codex 原生记忆-任务组", "Codex Native Memory - Task Groups"),
+        ("child", "codex-native-task-group-section", "历史任务索引", "Historical Task Index", "Codex 原生记忆-历史任务索引", "Codex Native Memory - Historical Task Index"),
         ("link", "claude-native-section", "Claude 原生记忆", "Claude Native Memory", "Claude Code 原生记忆", "Claude Code Native Memory"),
+        ("child", "claude-native-topic-section", "记忆条目", "Memory Items", "Claude Code 原生记忆-记忆条目", "Claude Code Native Memory - Memory Items"),
+        ("child", "claude-native-preference-section", "用户偏好", "User Preferences", "Claude Code 原生记忆-用户偏好", "Claude Code Native Memory - User Preferences"),
+        ("child", "claude-native-tip-section", "通用 tips", "General Tips", "Claude Code 原生记忆-通用 tips", "Claude Code Native Memory - General Tips"),
         ("group", "资产层", "Asset Layer"),
         ("link", "asset-overview-section", "账本概览", "Ledger Overview", "资产注册表概览", "Asset Registry Overview"),
         ("link", "assets-section", "资产明细", "Assets", "资产明细", "Assets"),
@@ -10508,7 +10519,9 @@ def native_meta_to_chinese(meta_text):
         .replace("User preferences", "用户偏好")
         .replace("User Preferences", "用户偏好")
         .replace("General Tips", "通用 tips")
-        .replace("Task Groups", "任务组")
+        .replace("Task Groups", "历史任务索引")
+        .replace("task group", "历史任务索引")
+        .replace("任务组", "历史任务索引")
     )
 
 
@@ -10529,8 +10542,10 @@ def native_meta_to_english(meta_text):
     translated = meta_text.replace("Codex 原生", "Codex Native")
     translated = translated.replace("用户偏好", "User Preferences")
     translated = translated.replace("通用 tips", "General Tips")
-    translated = translated.replace("任务组", "Task Groups")
-    translated = replace_count(r"(\d+)\s*个任务组", "task group", "task groups", translated)
+    translated = translated.replace("历史任务索引", "Historical Task Index")
+    translated = translated.replace("任务组", "Historical Task Index")
+    translated = replace_count(r"(\d+)\s*条Historical Task Index", "historical task index entry", "historical task index entries", translated)
+    translated = replace_count(r"(\d+)\s*个Historical Task Index", "historical task index entry", "historical task index entries", translated)
     translated = replace_count(r"(\d+)\s*个任务", "task", "tasks", translated)
     translated = replace_count(r"(\d+)\s*个来源", "source", "sources", translated)
     translated = translated.replace("关键词", "keywords")
@@ -10558,10 +10573,10 @@ def make_codex_native_brief_memory_items(rows, kind, language=None):
         },
         "task_group": {
             "memory_type": "task",
-            "display_memory_type": localized("任务组", "Task Group", language),
-            "default_submeta": localized("Codex 原生 · MEMORY.md 任务组", "Codex Native · MEMORY.md task group", language),
-            "title_prefix_zh": "任务组",
-            "title_prefix_en": "Task group",
+            "display_memory_type": localized("历史任务索引", "Historical Task Index", language),
+            "default_submeta": localized("Codex 原生 · MEMORY.md 历史任务索引", "Codex Native · MEMORY.md historical task index", language),
+            "title_prefix_zh": "历史任务",
+            "title_prefix_en": "Historical task",
         },
     }.get(kind, {})
 
@@ -10691,12 +10706,12 @@ def make_codex_native_brief_cards(rows, kind, language=None):
             "empty_body_en": "No general tip text.",
         },
         "task_group": {
-            "kicker_zh": "任务组",
-            "kicker_en": "Task Group",
-            "default_title_zh": "任务组",
-            "default_title_en": "Task group",
-            "empty_body_zh": "MEMORY.md 中登记的历史任务组。",
-            "empty_body_en": "Historical task group registered in MEMORY.md.",
+            "kicker_zh": "历史任务索引",
+            "kicker_en": "Historical Task Index",
+            "default_title_zh": "历史任务",
+            "default_title_en": "Historical task",
+            "empty_body_zh": "MEMORY.md 中登记的历史任务索引。",
+            "empty_body_en": "Historical task index entry registered in MEMORY.md.",
         },
     }.get(kind, {})
 
@@ -12244,8 +12259,15 @@ def build_html(data):
     codex_native_memory_counts = data.get("codex_native_memory_counts") or {}
     codex_native_memory_comparison = data.get("codex_native_memory_comparison") or {}
     claude_native_memory = data.get("claude_native_memory") or []
+    claude_native_topic_rows = data.get("claude_native_topic_rows") or []
+    claude_native_preference_rows = data.get("claude_native_preference_rows") or []
+    claude_native_tip_rows = data.get("claude_native_tip_rows") or []
     claude_native_memory_counts = data.get("claude_native_memory_counts") or {}
     claude_native_memory_comparison = data.get("claude_native_memory_comparison") or {}
+    if claude_native_memory and not any(
+        [claude_native_topic_rows, claude_native_preference_rows, claude_native_tip_rows]
+    ):
+        claude_native_topic_rows = claude_native_memory
     codex_memory_summary_label = data.get("codex_memory_summary_path_label") or render_path(
         PATHS.codex_home / "memories" / "memory_summary.md"
     )
@@ -12607,11 +12629,11 @@ def build_html(data):
         codex_native_memory_note_en,
     )
     codex_native_topic_help = make_help_popover(
-        "Codex 原生记忆-主题项",
+        "Codex 原生记忆-记忆条目",
         [
             {
                 "label": "统计什么",
-                "body": "直接读取 {} 的“What's in Memory”主题项，但跳过 OpenRelix 的 Local personal memory registry 注入段。".format(
+                "body": "直接读取 {} 的“What's in Memory”记忆条目，但跳过 OpenRelix 的 Local personal memory registry 注入段。".format(
                     codex_memory_summary_label
                 ),
             },
@@ -12624,12 +12646,12 @@ def build_html(data):
                 "body": [
                     "原生记忆偏长期规则、稳定 workflow、历史 rollout 结论。",
                     "个人资产记忆偏近期窗口整理、来源追踪、工作区定位。",
-                    "用户偏好、通用 tips 和任务组已经拆到独立模块。",
+                    "用户偏好、通用 tips 和历史任务索引已经拆到独立模块。",
                 ],
             },
             {
                 "label": "当前计数",
-                "body": "主题项 {} 条；用户偏好 {} 条；通用 tips {} 条。".format(
+                "body": "记忆条目 {} 条；用户偏好 {} 条；通用 tips {} 条。".format(
                     len(codex_native_memory),
                     codex_native_memory_counts.get("user_preferences", 0),
                     codex_native_memory_counts.get("general_tips", 0),
@@ -12664,11 +12686,11 @@ def build_html(data):
         ],
     )
     codex_native_task_group_help = make_help_popover(
-        "Codex 原生记忆-任务组",
+        "Codex 原生记忆-历史任务索引",
         [
             {
                 "label": "统计什么",
-                "body": "读取 MEMORY.md 里的 Task Group 索引，展示历史任务组和对应来源。",
+                "body": "读取 MEMORY.md 里的 Task Group 索引，展示历史任务索引和对应来源。",
             },
             {
                 "label": "怎么看",
@@ -12689,12 +12711,12 @@ def build_html(data):
         claude_native_memory_note_zh,
         claude_native_memory_note_en,
     )
-    claude_native_help = make_help_popover(
-        "Claude Code 原生记忆",
+    claude_native_topic_help = make_help_popover(
+        "Claude Code 原生记忆-记忆条目",
         [
             {
                 "label": "统计什么",
-                "body": "直接读取 {} 中用户自己写的 Claude Code 原生上下文；OpenRelix 注入块会被隐藏。".format(
+                "body": "直接读取 {} 中用户自己写的 Claude Code 原生记忆条目；OpenRelix 注入块会被隐藏。".format(
                     claude_memory_label
                 ),
             },
@@ -12704,12 +12726,37 @@ def build_html(data):
             },
             {
                 "label": "当前计数",
-                "body": "共 {} 条；主题 {} 条；偏好 {} 条；通用 tips {} 条。".format(
-                    len(claude_native_memory),
-                    claude_native_memory_counts.get("topic_items", 0),
+                "body": "记忆条目 {} 条；用户偏好 {} 条；通用 tips {} 条。".format(
+                    claude_native_memory_counts.get("topic_items", len(claude_native_topic_rows)),
                     claude_native_memory_counts.get("user_preferences", 0),
                     claude_native_memory_counts.get("general_tips", 0),
                 ),
+            },
+        ],
+    )
+    claude_native_preference_help = make_help_popover(
+        "Claude Code 原生记忆-偏好",
+        [
+            {
+                "label": "统计什么",
+                "body": "直接读取 CLAUDE.md 中用户自写的 User preferences。",
+            },
+            {
+                "label": "怎么看",
+                "body": "这类内容更像用户长期偏好；OpenRelix 注入的个人记忆不会混进来。",
+            },
+        ],
+    )
+    claude_native_tip_help = make_help_popover(
+        "Claude Code 原生记忆-通用 tips",
+        [
+            {
+                "label": "统计什么",
+                "body": "直接读取 CLAUDE.md 中用户自写的 General Tips。",
+            },
+            {
+                "label": "怎么看",
+                "body": "这类内容更像稳定的工作方法或排障路径。",
             },
         ],
     )
@@ -17232,10 +17279,24 @@ def build_html(data):
 
     <section class="memory-family" id="claude-native-section">
       {claude_native_memory_family_header}
-      <section class="panel" id="claude-native-memory-section">
-        {claude_native_memory_header}
+      <section class="panel" id="claude-native-topic-section">
+        {claude_native_topic_header}
         <div class="native-brief-grid memory-grid">
-          {claude_native_memory_cards}
+          {claude_native_topic_cards}
+        </div>
+      </section>
+
+      <section class="panel" id="claude-native-preference-section">
+        {claude_native_preference_header}
+        <div class="native-brief-grid memory-grid">
+          {claude_native_preference_cards}
+        </div>
+      </section>
+
+      <section class="panel" id="claude-native-tip-section">
+        {claude_native_tip_header}
+        <div class="native-brief-grid memory-grid">
+          {claude_native_tip_cards}
         </div>
       </section>
     </section>
@@ -17503,13 +17564,13 @@ def build_html(data):
             " · " + pluralEn(match[3], "window") +
             " · " + match[4];
         }}
-        match = text.match(/^直接读取 (.+) 的“What's in Memory”主题项。$/);
+        match = text.match(/^直接读取 (.+) 的“What's in Memory”记忆条目(?:，.+)?。$/);
         if (match) {{
-          return 'Reads topic items from the "What\\'s in Memory" section of ' + match[1] + ".";
+          return 'Reads memory items from the "What\\'s in Memory" section of ' + match[1] + ".";
         }}
-        match = text.match(/^主题项 (\\d+) 条；用户偏好 (\\d+) 条；通用 tips (\\d+) 条。$/);
+        match = text.match(/^记忆条目 (\\d+) 条；用户偏好 (\\d+) 条；通用 tips (\\d+) 条。$/);
         if (match) {{
-          return pluralEn(match[1], "topic item") + "; " +
+          return pluralEn(match[1], "memory item") + "; " +
             pluralEn(match[2], "user preference") + "; " +
             pluralEn(match[3], "general tip") + ".";
         }}
@@ -19545,7 +19606,7 @@ def build_html(data):
         ),
         memory_registry_cards=make_memory_cards(memory_registry),
         codex_native_topic_header=make_panel_header(
-            "Codex 原生记忆-主题项",
+            "Codex 原生记忆-记忆条目",
             help_html=codex_native_topic_help,
         ),
         codex_native_preference_header=make_panel_header(
@@ -19559,20 +19620,32 @@ def build_html(data):
             codex_native_tip_help,
         ),
         codex_native_task_group_header=make_panel_header(
-            "Codex 原生记忆-任务组",
-            "来自 MEMORY.md，按任务组展示",
+            "Codex 原生记忆-历史任务索引",
+            "来自 MEMORY.md，按历史任务索引展示",
             codex_native_task_group_help,
         ),
-        claude_native_memory_header=make_panel_header(
-            "Claude Code 原生记忆",
-            help_html=claude_native_help,
+        claude_native_topic_header=make_panel_header(
+            "Claude Code 原生记忆-记忆条目",
+            help_html=claude_native_topic_help,
             note_content_html=claude_native_memory_note_html,
+        ),
+        claude_native_preference_header=make_panel_header(
+            "Claude Code 原生记忆-偏好",
+            "来自 CLAUDE.md User preferences",
+            claude_native_preference_help,
+        ),
+        claude_native_tip_header=make_panel_header(
+            "Claude Code 原生记忆-通用 tips",
+            "来自 CLAUDE.md General Tips",
+            claude_native_tip_help,
         ),
         codex_native_topic_cards=make_memory_cards(codex_native_memory),
         codex_native_preference_cards=codex_native_preference_cards,
         codex_native_tip_cards=codex_native_tip_cards,
         codex_native_task_group_cards=codex_native_task_group_cards,
-        claude_native_memory_cards=make_memory_cards(claude_native_memory),
+        claude_native_topic_cards=make_memory_cards(claude_native_topic_rows),
+        claude_native_preference_cards=make_memory_cards(claude_native_preference_rows),
+        claude_native_tip_cards=make_memory_cards(claude_native_tip_rows),
         recent_asset_rows=make_asset_rows(panel_views.get("recent_assets", data["assets"]["recent"]), "recent-assets"),
         top_asset_rows=make_top_asset_rows(panel_views.get("top_assets", data["assets"]["top"]), "top-assets"),
         review_cards=make_review_cards(panel_views.get("reviews", data["reviews"])),
