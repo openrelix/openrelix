@@ -9461,11 +9461,11 @@ def make_token_filter_panel(token_usage):
             {provider_buttons}
           </div>
         </div>
-        <div class="token-filter-field token-filter-range">
+        <div class="token-filter-field token-filter-range" data-token-date-field="start">
           <label class="token-filter-label" for="token-start-date">{start_label}</label>
           <input id="token-start-date" class="token-date-input" type="date" value="">
         </div>
-        <div class="token-filter-field token-filter-range">
+        <div class="token-filter-field token-filter-range" data-token-date-field="end">
           <label class="token-filter-label" for="token-end-date">{end_label}</label>
           <input id="token-end-date" class="token-date-input" type="date" value="">
         </div>
@@ -15236,11 +15236,19 @@ def build_html(data):
       gap: 8px;
     }}
 
+    .token-filter-range {{
+      cursor: pointer;
+    }}
+
     .token-filter-label {{
       color: var(--muted);
       font-size: 11px;
       font-weight: 750;
       line-height: 1;
+    }}
+
+    .token-filter-range .token-filter-label {{
+      cursor: pointer;
     }}
 
     .token-segment-group {{
@@ -15292,6 +15300,11 @@ def build_html(data):
       font-size: 13px;
       font-weight: 650;
       color-scheme: light dark;
+      cursor: pointer;
+    }}
+
+    .token-date-input::-webkit-calendar-picker-indicator {{
+      cursor: pointer;
     }}
 
     .token-date-input:focus,
@@ -18068,6 +18081,26 @@ def build_html(data):
         livePollMs: {live_token_poll_ms},
         requestTimeoutMs: {live_token_timeout_ms},
       }};
+      function tokenDateInputValue(date) {{
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, "0");
+        const day = String(date.getDate()).padStart(2, "0");
+        return year + "-" + month + "-" + day;
+      }}
+
+      function tokenDefaultDateRange(days) {{
+        const resolvedDays = Math.max(Number(days) || 7, 1);
+        const end = new Date();
+        end.setHours(0, 0, 0, 0);
+        const start = new Date(end);
+        start.setDate(start.getDate() - resolvedDays + 1);
+        return {{
+          startDate: tokenDateInputValue(start),
+          endDate: tokenDateInputValue(end),
+        }};
+      }}
+
+      const defaultTokenDateRange = tokenDefaultDateRange(7);
       const state = {{
         tokenUsage: snapshot.token_usage || null,
         tokenRefreshedAt: (snapshot.token_usage && snapshot.token_usage.refreshed_at) || "",
@@ -18075,8 +18108,8 @@ def build_html(data):
         tokenUsageCache: {{}},
         tokenFilters: {{
           provider: (snapshot.token_usage && snapshot.token_usage.provider) || "all",
-          startDate: "",
-          endDate: "",
+          startDate: defaultTokenDateRange.startDate,
+          endDate: defaultTokenDateRange.endDate,
           groupBy: (snapshot.token_usage && snapshot.token_usage.group_by) || "day",
         }},
         defaultTokenFilters: null,
@@ -19446,14 +19479,56 @@ def build_html(data):
         return text === "month" || text === "monthly" ? "month" : "day";
       }}
 
+      function parseTokenInputDate(value) {{
+        const match = String(value || "").match(/^(\\d{{4}})-(\\d{{2}})-(\\d{{2}})$/);
+        if (!match) {{
+          return null;
+        }}
+        return new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
+      }}
+
+      function tokenDateRangeDays(filters) {{
+        const activeFilters = filters || {{}};
+        const start = parseTokenInputDate(activeFilters.startDate);
+        const end = parseTokenInputDate(activeFilters.endDate);
+        if (!start || !end || start > end) {{
+          return null;
+        }}
+        const dayMs = 24 * 60 * 60 * 1000;
+        return Math.max(Math.round((end - start) / dayMs) + 1, 1);
+      }}
+
+      function tokenEffectiveWindowDays(filters, fallbackWindowDays) {{
+        return tokenDateRangeDays(filters) || Math.max(Number(fallbackWindowDays) || {window_days}, 1);
+      }}
+
       function tokenRequestCacheKey(filters, windowDays) {{
         const activeFilters = filters || {{}};
         return [
           normalizeTokenProvider(activeFilters.provider),
           String(activeFilters.startDate || ""),
           String(activeFilters.endDate || ""),
-          String(windowDays || {window_days}),
+          String(tokenEffectiveWindowDays(activeFilters, windowDays)),
         ].join("|");
+      }}
+
+      function tokenUsageMatchesRequestFilters(tokenUsage, filters) {{
+        if (!tokenUsage) {{
+          return false;
+        }}
+        const activeFilters = filters || {{}};
+        const providerMatches =
+          normalizeTokenProvider(tokenUsage.provider) === normalizeTokenProvider(activeFilters.provider);
+        if (!providerMatches) {{
+          return false;
+        }}
+        if (activeFilters.startDate && String(tokenUsage.range_start || "") !== activeFilters.startDate) {{
+          return false;
+        }}
+        if (activeFilters.endDate && String(tokenUsage.range_end || "") !== activeFilters.endDate) {{
+          return false;
+        }}
+        return true;
       }}
 
       function getCachedTokenUsage(cacheKey) {{
@@ -19781,9 +19856,43 @@ def build_html(data):
         setTokenFilterState(Object.assign({{}}, state.defaultTokenFilters || {{
           provider: "all",
           groupBy: "day",
-          startDate: "",
-          endDate: "",
+          startDate: defaultTokenDateRange.startDate,
+          endDate: defaultTokenDateRange.endDate,
         }}), true);
+      }}
+
+      function openTokenDatePicker(input) {{
+        if (!input || input.disabled) {{
+          return;
+        }}
+        try {{
+          input.focus({{ preventScroll: true }});
+        }} catch (error) {{
+          input.focus();
+        }}
+        if (typeof input.showPicker === "function") {{
+          try {{
+            input.showPicker();
+          }} catch (error) {{}}
+        }}
+      }}
+
+      function wireTokenDateFieldClicks() {{
+        document.querySelectorAll("[data-token-date-field]").forEach(function (field) {{
+          const input = field.querySelector(".token-date-input");
+          if (!input) {{
+            return;
+          }}
+          field.addEventListener("click", function (event) {{
+            if (event.target && event.target.closest && event.target.closest(".token-date-input")) {{
+              return;
+            }}
+            openTokenDatePicker(input);
+          }});
+          input.addEventListener("click", function () {{
+            openTokenDatePicker(input);
+          }});
+        }});
       }}
 
       function wireTokenFilters() {{
@@ -19810,6 +19919,7 @@ def build_html(data):
         if (elements.tokenResetButton) {{
           elements.tokenResetButton.addEventListener("click", resetTokenFilters);
         }}
+        wireTokenDateFieldClicks();
         syncTokenFilterControls(state.tokenUsage);
       }}
 
@@ -20229,7 +20339,10 @@ def build_html(data):
 
       async function refreshTokenUsage(forceRefresh) {{
         const filters = state.tokenFilters || {{}};
-        const windowDays = (state.tokenUsage && state.tokenUsage.window_days) || {window_days};
+        const windowDays = tokenEffectiveWindowDays(
+          filters,
+          (state.tokenUsage && state.tokenUsage.window_days) || {window_days}
+        );
         const cacheKey = tokenRequestCacheKey(filters, windowDays);
         if (!forceRefresh) {{
           const cachedTokenUsage = getCachedTokenUsage(cacheKey);
@@ -20296,7 +20409,7 @@ def build_html(data):
         }}
       }}
 
-      if (state.tokenUsage) {{
+      if (state.tokenUsage && tokenUsageMatchesRequestFilters(state.tokenUsage, state.tokenFilters)) {{
         rememberTokenUsage(
           tokenRequestCacheKey(state.tokenFilters, state.tokenUsage.window_days || {window_days}),
           state.tokenUsage
