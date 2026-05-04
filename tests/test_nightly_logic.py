@@ -29,6 +29,7 @@ import nightly_consolidate  # noqa: E402
 import sync_host_memory_summary  # noqa: E402
 import token_live_server  # noqa: E402
 from openrelix_overview import contract as overview_contract  # noqa: E402
+from openrelix_overview import claude_desktop  # noqa: E402
 from openrelix_overview import token_fetcher  # noqa: E402
 
 
@@ -5091,6 +5092,114 @@ Keep my own note.
         self.assertNotIn("data-window-resume-open", html)
         self.assertNotIn("data-codex-url=", html)
 
+    def test_window_cards_show_claude_app_button_when_desktop_resume_supported(self):
+        session_id = "c5ffea1c-8cf8-4dd2-a7ac-bf11f4dfa12b"
+        with mock.patch.object(
+            build_overview.overview_claude_desktop,
+            "claude_desktop_resume_supported",
+            return_value=True,
+        ):
+            html = build_overview.make_window_summary_cards(
+                {
+                    "date": "2026-04-28",
+                    "windows": [
+                        {
+                            "ai_host": "claude",
+                            "window_id": session_id,
+                            "display_index": 1,
+                            "project_label": "OpenRelix",
+                            "resume_id": session_id,
+                            "question_count": 1,
+                            "conclusion_count": 1,
+                            "question_summary": "问题",
+                            "main_takeaway": "结论",
+                            "keywords": [],
+                            "latest_activity_display": "刚刚",
+                            "started_at_display": "刚刚",
+                            "recent_prompts": [],
+                            "recent_conclusions": [],
+                        }
+                    ],
+                }
+            )
+
+        self.assertIn("data-window-resume-copy", html)
+        self.assertIn('data-resume-command="claude --resume {}"'.format(session_id), html)
+        self.assertIn("data-window-resume-claude-desktop", html)
+        self.assertIn('data-claude-resume-id="{}"'.format(session_id), html)
+        self.assertIn("在 Claude App 打开", html)
+        self.assertNotIn("data-codex-url=", html)
+
+    def test_window_cards_hide_claude_app_button_when_desktop_resume_unavailable(self):
+        session_id = "c5ffea1c-8cf8-4dd2-a7ac-bf11f4dfa12b"
+        with mock.patch.object(
+            build_overview.overview_claude_desktop,
+            "claude_desktop_resume_supported",
+            return_value=False,
+        ):
+            html = build_overview.make_window_summary_cards(
+                {
+                    "date": "2026-04-28",
+                    "windows": [
+                        {
+                            "ai_host": "claude",
+                            "window_id": session_id,
+                            "display_index": 1,
+                            "project_label": "OpenRelix",
+                            "resume_id": session_id,
+                            "question_count": 1,
+                            "conclusion_count": 1,
+                            "question_summary": "问题",
+                            "main_takeaway": "结论",
+                            "keywords": [],
+                            "latest_activity_display": "刚刚",
+                            "started_at_display": "刚刚",
+                            "recent_prompts": [],
+                            "recent_conclusions": [],
+                        }
+                    ],
+                }
+            )
+
+        self.assertIn("data-window-resume-copy", html)
+        self.assertIn('data-resume-command="claude --resume {}"'.format(session_id), html)
+        self.assertNotIn("data-window-resume-claude-desktop", html)
+        self.assertNotIn("在 Claude App 打开", html)
+
+    def test_window_cards_hide_claude_app_button_for_non_uuid_resume_id(self):
+        with mock.patch.object(
+            build_overview.overview_claude_desktop,
+            "claude_desktop_resume_supported",
+            return_value=True,
+        ):
+            html = build_overview.make_window_summary_cards(
+                {
+                    "date": "2026-04-28",
+                    "windows": [
+                        {
+                            "ai_host": "claude",
+                            "window_id": "thread-name",
+                            "display_index": 1,
+                            "project_label": "OpenRelix",
+                            "resume_id": "thread-name",
+                            "question_count": 1,
+                            "conclusion_count": 1,
+                            "question_summary": "问题",
+                            "main_takeaway": "结论",
+                            "keywords": [],
+                            "latest_activity_display": "刚刚",
+                            "started_at_display": "刚刚",
+                            "recent_prompts": [],
+                            "recent_conclusions": [],
+                        }
+                    ],
+                }
+            )
+
+        self.assertIn("data-window-resume-copy", html)
+        self.assertNotIn("data-window-resume-claude-desktop", html)
+        self.assertNotIn("data-claude-resume-id=", html)
+
     def test_window_markdown_renderer_escapes_unsafe_html(self):
         html = build_overview.render_markdown_text(
             "**加粗** `cmd` foo_bar_baz\n\n- 第一项\n- <script>alert(1)</script>"
@@ -5528,6 +5637,80 @@ Keep my own note.
 
             render.assert_called_once_with()
             bootstrap.assert_called_once_with(plist_path)
+
+    def test_claude_desktop_resume_command_uses_settings_without_forcing_model(self):
+        session_id = "c5ffea1c-8cf8-4dd2-a7ac-bf11f4dfa12b"
+        with TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            paths = make_runtime_paths_for_test(root)
+            claude_bin = root / "bin" / "claude"
+            claude_bin.parent.mkdir(parents=True)
+            claude_bin.write_text("#!/bin/sh\n", encoding="utf-8")
+            claude_bin.chmod(0o755)
+
+            with mock.patch.object(
+                claude_desktop,
+                "get_claude_settings",
+                return_value='{"env":{"OPENRELIX_PROVIDER":"bridge"}}',
+            ):
+                command = claude_desktop.build_claude_desktop_resume_command(session_id, paths=paths)
+
+        self.assertEqual(command[:3], [str(claude_bin), "--resume", session_id])
+        self.assertIn("--settings", command)
+        self.assertIn('{"env":{"OPENRELIX_PROVIDER":"bridge"}}', command)
+        self.assertNotIn("--model", command)
+
+    def test_claude_desktop_resume_start_rejects_invalid_or_missing_requirements(self):
+        session_id = "c5ffea1c-8cf8-4dd2-a7ac-bf11f4dfa12b"
+        with TemporaryDirectory() as tmpdir:
+            paths = make_runtime_paths_for_test(Path(tmpdir))
+
+            invalid = claude_desktop.start_claude_desktop_resume("not-a-uuid", paths=paths)
+            self.assertFalse(invalid["ok"])
+            self.assertEqual(invalid["error"], "invalid_resume_id")
+
+            with mock.patch.object(
+                claude_desktop,
+                "claude_desktop_app_installed",
+                return_value=False,
+            ):
+                missing_app = claude_desktop.start_claude_desktop_resume(session_id, paths=paths)
+
+        self.assertFalse(missing_app["ok"])
+        self.assertEqual(missing_app["error"], "claude_desktop_app_not_found")
+
+    def test_claude_desktop_resume_start_launches_background_worker(self):
+        session_id = "c5ffea1c-8cf8-4dd2-a7ac-bf11f4dfa12b"
+        with TemporaryDirectory() as tmpdir:
+            paths = make_runtime_paths_for_test(Path(tmpdir))
+            with mock.patch.object(
+                claude_desktop,
+                "claude_desktop_app_installed",
+                return_value=True,
+            ), mock.patch.object(
+                claude_desktop,
+                "resolve_claude_cli_binary",
+                return_value="/opt/homebrew/bin/claude",
+            ), mock.patch.object(
+                claude_desktop,
+                "build_claude_desktop_resume_command",
+                return_value=["/opt/homebrew/bin/claude", "--resume", session_id],
+            ), mock.patch.object(
+                claude_desktop,
+                "build_claude_desktop_resume_env",
+                return_value={},
+            ), mock.patch.object(
+                claude_desktop.threading,
+                "Thread",
+            ) as thread_cls:
+                thread = mock.Mock()
+                thread_cls.return_value = thread
+                result = claude_desktop.start_claude_desktop_resume(session_id, paths=paths)
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["status"], "starting")
+        thread_cls.assert_called_once()
+        thread.start.assert_called_once()
 
     def test_panel_update_starts_detached_worker_and_persists_status(self):
         with TemporaryDirectory() as tmpdir:

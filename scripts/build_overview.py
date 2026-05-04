@@ -39,6 +39,7 @@ from build_codex_memory_summary import (
 )
 from openrelix_overview import common as overview_common
 from openrelix_overview import contract as overview_contract
+from openrelix_overview import claude_desktop as overview_claude_desktop
 from openrelix_overview import i18n as overview_i18n
 from openrelix_overview import labels as overview_labels
 from openrelix_overview import local_paths as overview_local_paths
@@ -6725,6 +6726,16 @@ def codex_resume_url(resume_id):
     return "codex://threads/{}".format(quote(resume_id, safe=""))
 
 
+def claude_desktop_resume_action(ai_host, resume_id):
+    if str(ai_host or "").strip().lower() != "claude":
+        return ""
+    if not overview_claude_desktop.is_valid_claude_session_id(resume_id):
+        return ""
+    if not overview_claude_desktop.claude_desktop_resume_supported(PATHS):
+        return ""
+    return "claude_desktop"
+
+
 def normalize_window_summary_pairs(raw_pairs):
     if not isinstance(raw_pairs, list):
         return []
@@ -6909,6 +6920,7 @@ def build_window_items_from_daily_capture(daily_capture, latest_nightly=None, la
         project_label = normalize_brand_display_text(project_label)
         activity_source = normalize_window_activity_source(raw_window, daily_capture)
         thread_source = (raw_window.get("app_server") or {}).get("thread_source", "")
+        resume_app_action = claude_desktop_resume_action(ai_host, resume_id)
         items.append(
             {
                 "date": (daily_capture or {}).get("date", ""),
@@ -6925,6 +6937,8 @@ def build_window_items_from_daily_capture(daily_capture, latest_nightly=None, la
                 "resume_id": resume_id,
                 "resume_command": window_resume_command(ai_host, resume_id),
                 "resume_url": codex_resume_url(resume_id) if ai_host == "codex" else "",
+                "resume_app_action": resume_app_action,
+                "resume_app_session_id": resume_id if resume_app_action else "",
                 "activity_source_label": window_activity_source_label(
                     activity_source,
                     language,
@@ -6993,6 +7007,7 @@ def build_window_overview(latest_nightly, language=None, target_date=""):
             if ai_host not in {"codex", "claude"}:
                 ai_host = "codex"
             resume_id = item.get("resume_id", "") or item.get("window_id", "")
+            resume_app_action = claude_desktop_resume_action(ai_host, resume_id)
             fallback_items.append(
                 {
                     "ai_host": ai_host,
@@ -7035,6 +7050,8 @@ def build_window_overview(latest_nightly, language=None, target_date=""):
                     "resume_id": resume_id,
                     "resume_command": window_resume_command(ai_host, resume_id),
                     "resume_url": codex_resume_url(resume_id) if ai_host == "codex" else "",
+                    "resume_app_action": resume_app_action,
+                    "resume_app_session_id": resume_id if resume_app_action else "",
                     "keywords": [normalize_brand_display_text(keyword) for keyword in item.get("keywords", [])],
                     "latest_activity_at": "",
                     "latest_activity_display": localized("时间未知", "Unknown time", language),
@@ -11954,7 +11971,7 @@ def make_window_summary_cards(window_overview, language=None):
             )
         return "".join(rows)
 
-    def render_resume_actions(resume_command, resume_url):
+    def render_resume_actions(resume_command, resume_url, resume_app_action="", resume_app_session_id=""):
         if not resume_command:
             return ""
         open_button = ""
@@ -11971,6 +11988,24 @@ def make_window_summary_cards(window_overview, language=None):
                 resume_url=escape(resume_url, quote=True),
                 open_label=escape(localized("在 Codex App 打开", "Open in Codex App", language), quote=True),
                 opened_label=escape(localized("正在打开", "Opening", language), quote=True),
+            )
+        elif resume_app_action == "claude_desktop" and resume_app_session_id:
+            open_button = """
+          <button
+            type="button"
+            class="window-resume-button is-secondary"
+            data-window-resume-claude-desktop
+            data-claude-resume-id="{resume_app_session_id}"
+            data-label="{open_label}"
+            data-opening-label="{opening_label}"
+            data-opened-label="{opened_label}"
+            data-error-label="{error_label}"
+          >{open_label}</button>""".format(
+                resume_app_session_id=escape(resume_app_session_id, quote=True),
+                open_label=escape(localized("在 Claude App 打开", "Open in Claude App", language), quote=True),
+                opening_label=escape(localized("正在打开", "Opening", language), quote=True),
+                opened_label=escape(localized("已发送", "Sent", language), quote=True),
+                error_label=escape(localized("打开失败", "Open failed", language), quote=True),
             )
         return """
         <div class="window-resume-actions">
@@ -12280,7 +12315,14 @@ def make_window_summary_cards(window_overview, language=None):
         resume_id = item.get("resume_id", "") or window_id
         resume_command = item.get("resume_command", "") or window_resume_command(ai_host, resume_id)
         resume_url = item.get("resume_url", "") or (codex_resume_url(resume_id) if ai_host == "codex" else "")
-        resume_actions = render_resume_actions(resume_command, resume_url)
+        resume_app_action = item.get("resume_app_action", "") or claude_desktop_resume_action(ai_host, resume_id)
+        resume_app_session_id = item.get("resume_app_session_id", "") or (resume_id if resume_app_action else "")
+        resume_actions = render_resume_actions(
+            resume_command,
+            resume_url,
+            resume_app_action=resume_app_action,
+            resume_app_session_id=resume_app_session_id,
+        )
         question_count = safe_int(item.get("question_count", len(summary_pairs)))
         if question_count <= 0:
             question_count = len([pair for pair in summary_pairs if str(pair.get("question", "") or "").strip()])
@@ -13381,7 +13423,7 @@ def build_html(data):
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="openrelix:version" content="{current_version}" data-pkg="{npm_package}" data-update-endpoint="{update_endpoint}" data-update-status-endpoint="{update_status_endpoint}" data-update-token="{update_token}">
+  <meta name="openrelix:version" content="{current_version}" data-pkg="{npm_package}" data-update-endpoint="{update_endpoint}" data-update-status-endpoint="{update_status_endpoint}" data-claude-desktop-endpoint="{claude_desktop_endpoint}" data-update-token="{update_token}">
   <title>{document_title}</title>
   <script>
     (function () {{
@@ -16709,6 +16751,12 @@ def build_html(data):
       transform: translateY(-1px);
     }}
 
+    .window-resume-button[disabled] {{
+      cursor: progress;
+      opacity: 0.72;
+      transform: none;
+    }}
+
     .window-card-action-expanded {{
       display: none;
     }}
@@ -18860,6 +18908,61 @@ def build_html(data):
         }}
       }}
 
+      function openrelixMetaAttr(name) {{
+        const meta = document.querySelector('meta[name="openrelix:version"]');
+        return meta ? (meta.getAttribute(name) || "").trim() : "";
+      }}
+
+      function resetButtonLabelLater(button, label) {{
+        window.setTimeout(function () {{
+          button.textContent = label;
+          button.disabled = false;
+        }}, 1600);
+      }}
+
+      function openClaudeDesktopResume(button) {{
+        const resumeId = (button.getAttribute("data-claude-resume-id") || "").trim();
+        const endpoint = openrelixMetaAttr("data-claude-desktop-endpoint");
+        const token = openrelixMetaAttr("data-update-token");
+        const originalLabel = button.getAttribute("data-label") || button.textContent;
+        const openingLabel = button.getAttribute("data-opening-label") || t("正在打开");
+        const openedLabel = button.getAttribute("data-opened-label") || t("已发送");
+        const errorLabel = button.getAttribute("data-error-label") || t("打开失败");
+        if (!resumeId || !endpoint || !window.fetch) {{
+          flashButtonLabel(button, errorLabel);
+          return;
+        }}
+        button.disabled = true;
+        button.textContent = openingLabel;
+        const headers = {{ "Content-Type": "application/json" }};
+        if (token) {{
+          headers["X-OpenRelix-Token"] = token;
+        }}
+        fetch(endpoint, {{
+          method: "POST",
+          headers: headers,
+          body: JSON.stringify({{ resume_id: resumeId }})
+        }})
+          .then(function (response) {{
+            return response.json().catch(function () {{
+              return null;
+            }}).then(function (payload) {{
+              if (!response.ok || !payload || payload.ok === false) {{
+                throw new Error((payload && payload.error) || ("HTTP " + response.status));
+              }}
+              return payload;
+            }});
+          }})
+          .then(function () {{
+            button.textContent = openedLabel;
+            resetButtonLabelLater(button, originalLabel);
+          }})
+          .catch(function () {{
+            button.textContent = errorLabel;
+            resetButtonLabelLater(button, originalLabel);
+          }});
+      }}
+
       function wireExternalPanelLinks() {{
         document.addEventListener("click", function (event) {{
           const target = event.target;
@@ -18913,6 +19016,13 @@ def build_html(data):
                 copyButton.getAttribute("data-error-label") || t("复制失败")
               );
             }});
+            return;
+          }}
+          const claudeDesktopButton = event.target.closest("[data-window-resume-claude-desktop]");
+          if (claudeDesktopButton) {{
+            event.preventDefault();
+            event.stopPropagation();
+            openClaudeDesktopResume(claudeDesktopButton);
             return;
           }}
           const openButton = event.target.closest("[data-window-resume-open]");
@@ -20729,6 +20839,14 @@ def build_html(data):
         npm_package=escape(PROJECT_PACKAGE_NAME, quote=True),
         update_endpoint=escape("http://{}:{}/run-update".format(LIVE_TOKEN_HOST, LIVE_TOKEN_PORT), quote=True),
         update_status_endpoint=escape("http://{}:{}/update-status".format(LIVE_TOKEN_HOST, LIVE_TOKEN_PORT), quote=True),
+        claude_desktop_endpoint=escape(
+            "http://{}:{}{}".format(
+                LIVE_TOKEN_HOST,
+                LIVE_TOKEN_PORT,
+                overview_claude_desktop.CLAUDE_DESKTOP_OPEN_PATH,
+            ),
+            quote=True,
+        ),
         update_token=escape(read_or_create_update_token(), quote=True),
         generated_at=escape(data["generated_at"]),
         hero_eyebrow=panel_language_text_html("OpenRelix"),

@@ -12,6 +12,10 @@ from urllib.parse import parse_qs, urlparse
 
 from asset_runtime import atomic_write_json, ensure_state_layout, get_runtime_language, get_runtime_paths
 from openrelix_overview.common import current_local_datetime
+from openrelix_overview.claude_desktop import (
+    CLAUDE_DESKTOP_OPEN_PATH,
+    start_claude_desktop_resume,
+)
 from openrelix_overview.config import (
     CCUSAGE_WINDOW_DAYS,
     LIVE_TOKEN_ENDPOINT,
@@ -361,7 +365,7 @@ class TokenLiveHandler(BaseHTTPRequestHandler):
 
     def do_OPTIONS(self):
         parsed = urlparse(self.path)
-        if parsed.path == "/run-update":
+        if parsed.path in {"/run-update", CLAUDE_DESKTOP_OPEN_PATH}:
             origin = self.headers.get("Origin", "").strip()
             if not is_allowed_panel_origin(origin):
                 self._send_json(403, {"ok": False, "error": "forbidden_origin"}, allow_origin=None)
@@ -415,7 +419,7 @@ class TokenLiveHandler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         parsed = urlparse(self.path)
-        if parsed.path != "/run-update":
+        if parsed.path not in {"/run-update", CLAUDE_DESKTOP_OPEN_PATH}:
             self._send_json(404, {"ok": False, "error": "not_found"}, allow_origin=None)
             return
         if not self._client_is_local():
@@ -437,11 +441,23 @@ class TokenLiveHandler(BaseHTTPRequestHandler):
             length = int(self.headers.get("Content-Length", "0") or "0")
         except ValueError:
             length = 0
+        body = b""
         if length:
             try:
-                self.rfile.read(min(length, 4096))
+                body = self.rfile.read(min(length, 8192))
             except Exception:
-                pass
+                body = b""
+        if parsed.path == CLAUDE_DESKTOP_OPEN_PATH:
+            try:
+                payload = json.loads(body.decode("utf-8")) if body else {}
+            except (UnicodeDecodeError, json.JSONDecodeError):
+                payload = {}
+            snapshot = start_claude_desktop_resume(payload.get("resume_id", ""), paths=PATHS)
+            status_code = 202 if snapshot.get("ok") else 400
+            if snapshot.get("error") in {"claude_desktop_app_not_found", "claude_cli_not_found"}:
+                status_code = 503
+            self._send_json(status_code, snapshot, allow_origin=origin or None)
+            return
         started, snapshot = start_update_async()
         snapshot["started_now"] = started
         # Echo back the trusted origin to satisfy CORS; omit ACAO entirely for
