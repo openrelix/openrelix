@@ -18714,9 +18714,9 @@ def build_html(data):
             label: function (latest) {{ return "OpenRelix " + latest; }},
             hint: "可更新 · 当前 " + current,
             update: "立即更新",
-            running: "更新中…",
-            done: "已更新 · 重新载入",
-            copy: "复制命令",
+            running: "正在安装并重启…",
+            done: "已更新 · 正在重载",
+            copy: "复制修复命令",
             copied: "已复制到剪贴板",
             close: "关闭"
           }},
@@ -18724,9 +18724,9 @@ def build_html(data):
             label: function (latest) {{ return "OpenRelix " + latest; }},
             hint: "available · on " + current,
             update: "Update now",
-            running: "Updating…",
-            done: "Updated · Reload",
-            copy: "Copy command",
+            running: "Installing and restarting…",
+            done: "Updated · Reloading",
+            copy: "Copy repair command",
             copied: "Copied",
             close: "Dismiss"
           }}
@@ -18735,7 +18735,7 @@ def build_html(data):
         function buildPill(latest) {{
           var lang = detectLanguage();
           var s = STR[lang];
-          var cmd = "npm update -g " + pkg;
+          var cmd = "openrelix update --yes --force";
           var pill = document.createElement("div");
           pill.id = "openrelix-update-pill";
           pill.className = "openrelix-update-pill";
@@ -18780,6 +18780,14 @@ def build_html(data):
             btn.disabled = !!disabled;
           }}
 
+          function scheduleReload(delayMs) {{
+            if (pill.dataset.reloadScheduled === "1") return;
+            pill.dataset.reloadScheduled = "1";
+            window.setTimeout(function () {{
+              window.location.reload();
+            }}, Math.max(Number(delayMs) || 1500, 500));
+          }}
+
           function flashCopied() {{
             var prev = btn.textContent;
             btn.textContent = s.copied;
@@ -18795,7 +18803,8 @@ def build_html(data):
                   if (!data) return;
                   if (data.status === "completed") {{
                     clearInterval(pollTimer); pollTimer = null;
-                    mode = "done"; setBtn(s.done, false);
+                    mode = "done"; setBtn(s.done, true);
+                    scheduleReload(data.reload_after_ms);
                   }} else if (data.status === "failed") {{
                     clearInterval(pollTimer); pollTimer = null;
                     mode = "copy_fallback"; setBtn(s.copy, false);
@@ -18817,7 +18826,7 @@ def build_html(data):
               .then(function (r) {{ if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); }})
               .then(function (data) {{
                 if (!data) {{ throw new Error("empty"); }}
-                if (data.status === "completed") {{ mode = "done"; setBtn(s.done, false); return; }}
+                if (data.status === "completed") {{ mode = "done"; setBtn(s.done, true); scheduleReload(data.reload_after_ms); return; }}
                 if (data.status === "failed") {{ mode = "copy_fallback"; setBtn(s.copy, false); return; }}
                 poll();
               }})
@@ -18826,7 +18835,7 @@ def build_html(data):
 
           btn.addEventListener("click", function () {{
             if (mode === "running") return;
-            if (mode === "done") {{ window.location.reload(); return; }}
+            if (mode === "done") {{ scheduleReload(0); return; }}
             if (mode === "copy_fallback") {{
               copyText(cmd);
               flashCopied();

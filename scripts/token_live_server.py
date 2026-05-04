@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import json
+import os
 import secrets
 import subprocess
 import sys
@@ -30,9 +31,11 @@ CACHE_TTL_SECONDS = 90
 FETCH_LOCK = threading.Lock()
 
 OPENRELIX_CLI = PATHS.repo_root / "scripts" / "openrelix.py"
+UPDATE_WORKER_SCRIPT = PATHS.repo_root / "scripts" / "openrelix_update_worker.py"
+UPDATE_STATUS_PATH = RUNTIME_DIR / "update-status.json"
 UPDATE_TIMEOUT_SECONDS = 600
 UPDATE_LOG_TAIL_LINES = 12
-UPDATE_LOCK = threading.Lock()
+UPDATE_LOCK = threading.RLock()
 UPDATE_STATE = {
     "status": "idle",
     "started_at": 0,
@@ -69,60 +72,123 @@ def is_allowed_panel_origin(origin):
 
 
 def update_state_snapshot():
+    persisted = read_update_status()
+    if persisted:
+        return persisted
     with UPDATE_LOCK:
         return dict(UPDATE_STATE)
 
 
-def _run_update_subprocess():
-    cmd = [sys.executable, str(OPENRELIX_CLI), "update", "--yes"]
+def process_is_alive(pid):
     try:
-        proc = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=UPDATE_TIMEOUT_SECONDS,
-            cwd=str(PATHS.repo_root),
-        )
-        output = (proc.stdout or "") + (proc.stderr or "")
-        tail = "\n".join(output.splitlines()[-UPDATE_LOG_TAIL_LINES:])
-        with UPDATE_LOCK:
-            UPDATE_STATE.update({
-                "status": "completed" if proc.returncode == 0 else "failed",
-                "exit_code": proc.returncode,
-                "ended_at": time.time(),
-                "log_tail": tail,
-                "error": "" if proc.returncode == 0 else "exit_code={}".format(proc.returncode),
-            })
-    except subprocess.TimeoutExpired:
-        with UPDATE_LOCK:
-            UPDATE_STATE.update({
+        pid_value = int(pid)
+    except (TypeError, ValueError):
+        return False
+    if pid_value <= 0:
+        return False
+    try:
+        os.kill(pid_value, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def normalize_update_state(payload):
+    if not isinstance(payload, dict):
+        return None
+    status = str(payload.get("status") or "")
+    if status == "running":
+        pid = payload.get("pid")
+        try:
+            started_at = float(payload.get("started_at") or 0)
+        except (TypeError, ValueError):
+            started_at = 0
+        # Give a just-spawned worker a small grace period before treating a
+        # missing PID as stale; this avoids a race while launchd restarts us.
+        if pid and not process_is_alive(pid) and time.time() - started_at > 5:
+            stale = dict(payload)
+            stale.update({
                 "status": "failed",
                 "ended_at": time.time(),
-                "error": "timeout",
+                "error": "update_worker_exited",
             })
-    except Exception as exc:
-        with UPDATE_LOCK:
-            UPDATE_STATE.update({
-                "status": "failed",
-                "ended_at": time.time(),
-                "error": str(exc),
-            })
+            write_update_status(stale)
+            return stale
+    return payload
+
+
+def read_update_status():
+    try:
+        payload = json.loads(UPDATE_STATUS_PATH.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    return normalize_update_state(payload)
+
+
+def write_update_status(payload):
+    state = dict(payload)
+    state["updated_at"] = time.time()
+    atomic_write_json(UPDATE_STATUS_PATH, state)
+    with UPDATE_LOCK:
+        UPDATE_STATE.update(state)
+
+
+def build_update_worker_command():
+    return [
+        sys.executable,
+        str(UPDATE_WORKER_SCRIPT),
+        "--repo-root",
+        str(PATHS.repo_root),
+        "--status-file",
+        str(UPDATE_STATUS_PATH),
+        "--state-dir",
+        str(PATHS.state_root),
+        "--codex-home",
+        str(PATHS.codex_home),
+        "--python-bin",
+        sys.executable,
+    ]
 
 
 def start_update_async():
     with UPDATE_LOCK:
-        if UPDATE_STATE["status"] == "running":
-            return False, dict(UPDATE_STATE)
-        UPDATE_STATE.update({
+        current = read_update_status()
+        if current and current.get("status") == "running":
+            return False, current
+        snapshot = {
             "status": "running",
             "started_at": time.time(),
             "ended_at": 0,
             "exit_code": None,
             "error": "",
             "log_tail": "",
+            "phase": "queued",
+        }
+        write_update_status(snapshot)
+    try:
+        proc = subprocess.Popen(
+            build_update_worker_command(),
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            close_fds=True,
+            start_new_session=True,
+        )
+    except Exception as exc:
+        failed = dict(snapshot)
+        failed.update({
+            "status": "failed",
+            "ended_at": time.time(),
+            "error": str(exc),
         })
-        snapshot = dict(UPDATE_STATE)
-    threading.Thread(target=_run_update_subprocess, daemon=True).start()
+        write_update_status(failed)
+        return False, failed
+
+    snapshot["pid"] = proc.pid
+    snapshot["phase"] = "installing"
+    write_update_status(snapshot)
     return True, snapshot
 
 

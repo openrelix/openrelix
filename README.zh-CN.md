@@ -256,7 +256,7 @@ macOS 上可以用 `openrelix app` 构建并打开一个轻量原生客户端，
 `reports/panel.html`，不引入 Electron，也不依赖托管服务。从 repo checkout 调试时，也可以运行
 `./scripts/build_macos_client.sh --open` 构建本地 `dist/OpenRelix.app`。
 
-发布更新建议拆成两步：自动化里只跑 `openrelix update --check`，真正升级时再手动跑 `openrelix update --yes`。每日校验默认放在 `09:30`，避开 `23:00` 当日预览和 `00:10` 前一日终版整理。
+发布更新建议拆成两步：自动化里只跑 `openrelix update --check`，真正升级时再手动跑 `openrelix update --yes`。如果 npm 包已经是最新，但本机 app、LaunchAgent 或已生成面板需要重新同步，运行 `openrelix update --yes --force`。面板内的更新按钮会自动走这条修复路径，并在安装器完成后重载新生成的面板。每日校验默认放在 `09:30`，避开 `23:00` 当日预览和 `00:10` 前一日终版整理。
 
 如果所选 bin 目录还不在 `PATH` 中，installer 会向当前 shell rc 文件追加一个受管理的 `PATH` block，并打印当前 shell 可直接执行的一行 `export PATH=...`。
 

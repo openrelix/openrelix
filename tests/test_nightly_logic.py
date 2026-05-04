@@ -23,8 +23,10 @@ import build_overview  # noqa: E402
 import build_codex_native_display_cache  # noqa: E402
 import check_personal_info  # noqa: E402
 import openrelix  # noqa: E402
+import openrelix_update_worker  # noqa: E402
 import asset_runtime  # noqa: E402
 import nightly_consolidate  # noqa: E402
+import token_live_server  # noqa: E402
 from openrelix_overview import contract as overview_contract  # noqa: E402
 
 
@@ -4743,6 +4745,104 @@ scope: Release checklist, package manifest, and public website validation.
 
             render.assert_called_once_with()
             bootstrap.assert_called_once_with(plist_path)
+
+    def test_panel_update_starts_detached_worker_and_persists_status(self):
+        with TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            paths = replace(
+                token_live_server.PATHS,
+                repo_root=ROOT,
+                state_root=root,
+                codex_home=root / "codex-home",
+                runtime_dir=root / "runtime",
+            )
+            status_path = root / "runtime" / "update-status.json"
+            worker_path = ROOT / "scripts" / "openrelix_update_worker.py"
+            process = mock.Mock(pid=4242)
+
+            with mock.patch.object(token_live_server, "PATHS", paths), mock.patch.object(
+                token_live_server,
+                "UPDATE_STATUS_PATH",
+                status_path,
+            ), mock.patch.object(
+                token_live_server,
+                "UPDATE_WORKER_SCRIPT",
+                worker_path,
+            ), mock.patch.object(
+                token_live_server.subprocess,
+                "Popen",
+                return_value=process,
+            ) as popen:
+                started, snapshot = token_live_server.start_update_async()
+
+            self.assertTrue(started)
+            self.assertEqual(snapshot["status"], "running")
+            self.assertEqual(snapshot["pid"], 4242)
+            payload = json.loads(status_path.read_text(encoding="utf-8"))
+            self.assertEqual(payload["status"], "running")
+            self.assertEqual(payload["phase"], "installing")
+            self.assertEqual(payload["pid"], 4242)
+
+            command = popen.call_args.args[0]
+            self.assertEqual(command[1], str(worker_path))
+            self.assertIn("--status-file", command)
+            self.assertIn(str(status_path), command)
+            self.assertIn("--state-dir", command)
+            self.assertIn(str(root), command)
+            self.assertTrue(popen.call_args.kwargs["start_new_session"])
+
+    def test_update_worker_forces_reinstall_and_writes_completed_status(self):
+        with TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            repo_root = root / "repo"
+            (repo_root / "scripts").mkdir(parents=True)
+            status_path = root / "runtime" / "update-status.json"
+            completed = subprocess.CompletedProcess(
+                args=[],
+                returncode=0,
+                stdout="installed\n",
+                stderr="",
+            )
+
+            with mock.patch.object(
+                openrelix_update_worker.subprocess,
+                "run",
+                return_value=completed,
+            ) as run:
+                exit_code = openrelix_update_worker.main(
+                    [
+                        "--repo-root",
+                        str(repo_root),
+                        "--status-file",
+                        str(status_path),
+                        "--state-dir",
+                        str(root / "state"),
+                        "--codex-home",
+                        str(root / "codex-home"),
+                        "--python-bin",
+                        "/usr/bin/python3",
+                    ]
+                )
+
+            self.assertEqual(exit_code, 0)
+            command = run.call_args.args[0]
+            self.assertEqual(
+                command,
+                [
+                    "/usr/bin/python3",
+                    str(repo_root.resolve() / "scripts" / "openrelix.py"),
+                    "update",
+                    "--yes",
+                    "--force",
+                ],
+            )
+            self.assertEqual(run.call_args.kwargs["env"]["AI_ASSET_STATE_DIR"], str(root / "state"))
+            self.assertEqual(run.call_args.kwargs["env"]["CODEX_HOME"], str(root / "codex-home"))
+            payload = json.loads(status_path.read_text(encoding="utf-8"))
+            self.assertEqual(payload["status"], "completed")
+            self.assertEqual(payload["exit_code"], 0)
+            self.assertEqual(payload["reload_after_ms"], 1500)
+            self.assertIn("installed", payload["log_tail"])
 
     def test_openrelix_models_uses_codex_debug_models_and_sanitizes_catalog(self):
         with TemporaryDirectory() as tmpdir:
