@@ -19723,7 +19723,49 @@ def build_html(data):
         return startText || endText || "";
       }}
 
-      function tokenRowMonthKey(row) {{
+      function parseTokenMonthContextDate(value) {{
+        const match = String(value || "").match(/^(\\d{{4}})-(\\d{{2}})-(\\d{{2}})$/);
+        if (!match) {{
+          return null;
+        }}
+        const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
+        return Number.isNaN(date.getTime()) ? null : date;
+      }}
+
+      function tokenShortDateMonthKey(text, context) {{
+        const match = String(text || "").trim().match(/^(\\d{{2}})-(\\d{{2}})$/);
+        if (!match) {{
+          return "";
+        }}
+        const month = Number(match[1]);
+        const day = Number(match[2]);
+        if (month < 1 || month > 12 || day < 1 || day > 31) {{
+          return "";
+        }}
+        const rangeStart = parseTokenMonthContextDate(context && context.range_start);
+        const rangeEnd = parseTokenMonthContextDate(context && context.range_end);
+        const startYear = rangeStart ? rangeStart.getUTCFullYear() : (rangeEnd ? rangeEnd.getUTCFullYear() : null);
+        const endYear = rangeEnd ? rangeEnd.getUTCFullYear() : startYear;
+        if (!startYear || !endYear) {{
+          return "";
+        }}
+        for (let year = startYear; year <= endYear; year += 1) {{
+          const candidate = new Date(Date.UTC(year, month - 1, day));
+          if (
+            candidate.getUTCFullYear() !== year ||
+            candidate.getUTCMonth() !== month - 1 ||
+            candidate.getUTCDate() !== day
+          ) {{
+            continue;
+          }}
+          if ((!rangeStart || candidate >= rangeStart) && (!rangeEnd || candidate <= rangeEnd)) {{
+            return String(year) + "-" + String(month).padStart(2, "0");
+          }}
+        }}
+        return "";
+      }}
+
+      function tokenRowMonthKey(row, context) {{
         const candidates = [
           row && row.date,
           row && row.raw_date,
@@ -19735,6 +19777,10 @@ def build_html(data):
           const match = text.match(/^(\\d{{4}})-(\\d{{2}})/);
           if (match) {{
             return match[1] + "-" + match[2];
+          }}
+          const shortMonth = tokenShortDateMonthKey(text, context);
+          if (shortMonth) {{
+            return shortMonth;
           }}
         }}
         return "";
@@ -19927,10 +19973,10 @@ def build_html(data):
         return rows;
       }}
 
-      function aggregateDailyRowsByMonth(rows) {{
+      function aggregateDailyRowsByMonth(rows, tokenUsage) {{
         const buckets = new Map();
         (Array.isArray(rows) ? rows : []).forEach(function (row) {{
-          const key = tokenRowMonthKey(row);
+          const key = tokenRowMonthKey(row, tokenUsage || {{}});
           if (!key) {{
             return;
           }}
@@ -20233,8 +20279,12 @@ def build_html(data):
         const derived = Object.assign({{}}, tokenUsage || {{}});
         const sourceRows = Array.isArray(derived.daily_rows) ? derived.daily_rows : [];
         const sourceGroup = normalizeTokenGroupBy(derived.group_by);
+        const monthContext = Object.assign({{}}, derived, {{
+          range_start: derived.range_start || (state.tokenFilters && state.tokenFilters.startDate) || "",
+          range_end: derived.range_end || (state.tokenFilters && state.tokenFilters.endDate) || "",
+        }});
         const displayRows = targetGroup === "month" && sourceGroup !== "month"
-          ? aggregateDailyRowsByMonth(sourceRows)
+          ? aggregateDailyRowsByMonth(sourceRows, monthContext)
           : sourceRows.slice();
         derived.group_by = targetGroup;
         derived.daily_rows = displayRows;
@@ -20287,7 +20337,11 @@ def build_html(data):
         }} else {{
           derived.today_total_tokens = Number(derived.today_total_tokens) || 0;
           derived.today_total_tokens_display = compactTokenValue(derived.today_total_tokens);
-          derived.today_breakdown = Array.isArray(derived.today_breakdown) ? derived.today_breakdown : [];
+          derived.current_period_label = targetGroup === "month" ? "" : (derived.current_period_label || derived.today_date_label || "");
+          derived.today_date_label = targetGroup === "month" ? "" : (derived.today_date_label || "");
+          derived.today_breakdown = targetGroup === "month"
+            ? []
+            : (Array.isArray(derived.today_breakdown) ? derived.today_breakdown : []);
         }}
         const trailing = displayRows.slice(-7);
         const trailingTotal = trailing.reduce(function (sum, row) {{
