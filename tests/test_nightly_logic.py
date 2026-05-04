@@ -25,6 +25,7 @@ import check_personal_info  # noqa: E402
 import openrelix  # noqa: E402
 import asset_runtime  # noqa: E402
 import nightly_consolidate  # noqa: E402
+from openrelix_overview import contract as overview_contract  # noqa: E402
 
 
 def make_memory(title, memory_type="semantic", priority="medium"):
@@ -161,10 +162,14 @@ class NightlyLogicTests(unittest.TestCase):
                     sys.executable,
                     "-c",
                     (
-                        "import sys; "
-                        "sys.path.insert(0, 'scripts'); "
+                        "import importlib, pkgutil, sys\n"
+                        "sys.path.insert(0, 'scripts')\n"
                         "import openrelix, build_codex_memory_summary, build_overview, "
-                        "collect_codex_activity, nightly_consolidate, token_live_server"
+                        "collect_codex_activity, nightly_consolidate, token_live_server\n"
+                        "import openrelix_overview\n"
+                        "for module in pkgutil.walk_packages(openrelix_overview.__path__, "
+                        "openrelix_overview.__name__ + '.'):\n"
+                        "    importlib.import_module(module.name)\n"
                     ),
                 ],
                 cwd=str(ROOT),
@@ -175,6 +180,80 @@ class NightlyLogicTests(unittest.TestCase):
 
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertFalse(state_dir.exists())
+
+    def test_token_live_server_does_not_import_full_overview_builder(self):
+        with TemporaryDirectory() as tmpdir:
+            env = dict(os.environ)
+            env["AI_ASSET_STATE_DIR"] = str(Path(tmpdir) / "state")
+            env["PYTHONDONTWRITEBYTECODE"] = "1"
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    "-c",
+                    (
+                        "import sys; "
+                        "sys.path.insert(0, 'scripts'); "
+                        "import token_live_server; "
+                        "print('build_overview' in sys.modules)"
+                    ),
+                ],
+                cwd=str(ROOT),
+                env=env,
+                capture_output=True,
+                text=True,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stdout.strip(), "False")
+
+    def test_overview_contract_validates_generated_report_shape(self):
+        with TemporaryDirectory() as tmpdir:
+            state_dir = Path(tmpdir) / "state"
+            reports_dir = state_dir / "reports"
+            reports_dir.mkdir(parents=True)
+            overview_data = {
+                "schema_version": overview_contract.SCHEMA_VERSION,
+                "language": "zh",
+                "generated_at": "2026-05-04 12:00:00",
+                "summary": {
+                    "total_assets": 0,
+                    "active_assets": 0,
+                    "daily_window_count": 0,
+                },
+                "metrics": [],
+                "mix": {},
+                "assets": {},
+                "reviews": [],
+                "usage_events": [],
+                "summary_terms": [],
+                "summary_term_views": [],
+                "token_usage": {
+                    "available": False,
+                    "daily_rows": [],
+                    "today_breakdown": [],
+                },
+                "window_overview": {},
+                "window_overview_views": [],
+                "memory_registry": [],
+                "nightly_memory_views": {},
+                "codex_native_memory": [],
+                "codex_native_memory_counts": {},
+            }
+            (reports_dir / "overview-data.json").write_text(
+                json.dumps(overview_data),
+                encoding="utf-8",
+            )
+            (reports_dir / "overview.md").write_text("# OpenRelix Overview\n", encoding="utf-8")
+            (reports_dir / "overview.csv").write_text("id,title,type\n", encoding="utf-8")
+            (reports_dir / "panel.html").write_text(
+                '<meta name="openrelix:version"><div class="app-shell">'
+                "token_usage memory_registry window_overview</main>",
+                encoding="utf-8",
+            )
+
+            result = overview_contract.validate_state_dir(state_dir)
+
+            self.assertTrue(result["ok"], result["errors"])
 
     def test_runtime_language_config_persists_and_normalizes(self):
         self.assertEqual(asset_runtime.normalize_language("zh-CN"), "zh")
@@ -273,6 +352,24 @@ class NightlyLogicTests(unittest.TestCase):
                     )
                 finally:
                     build_overview.personal_redaction_patterns.cache_clear()
+
+    def test_brand_display_normalization_preserves_json_value_types(self):
+        payload = {"schema_version": 1, "available": True, "items": [{"count": 2}]}
+
+        normalized = build_overview.normalize_brand_display_payload(payload)
+
+        self.assertEqual(normalized["schema_version"], 1)
+        self.assertIs(normalized["available"], True)
+        self.assertEqual(normalized["items"][0]["count"], 2)
+
+    def test_text_rendering_boundaries_accept_non_string_values(self):
+        local_link = build_overview.render_local_path_link(Path.cwd())
+        jump_link = build_overview.render_jump_link("section-a", 123)
+
+        self.assertIn("path-link", local_link)
+        self.assertIn(str(Path.cwd()), local_link)
+        self.assertIn(">123</a>", jump_link)
+        self.assertEqual(build_overview.panel_display_text(123), "123")
 
     def test_redaction_preserves_public_project_links_in_href(self):
         html = (

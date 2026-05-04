@@ -3,20 +3,15 @@
 import csv
 import hashlib
 import json
-import math
 import os
 import re
 import shlex
-import shutil
-import subprocess
-import uuid
 from collections import Counter, defaultdict
-from decimal import Decimal, ROUND_HALF_UP
 from datetime import datetime, timedelta
 from functools import lru_cache
 from html import escape
 from pathlib import Path
-from urllib.parse import quote, unquote, urlparse
+from urllib.parse import quote, urlparse
 
 from asset_runtime import (
     atomic_write_json,
@@ -27,7 +22,6 @@ from asset_runtime import (
     get_project_version,
     get_runtime_language,
     get_runtime_paths,
-    normalize_language,
     PREVIOUS_PUBLIC_APP_SLUG,
     PROJECT_PACKAGE_NAME,
     render_path,
@@ -43,6 +37,25 @@ from build_codex_memory_summary import (
     estimate_tokens as estimate_summary_tokens,
     reverse_date_sort_key as memory_summary_reverse_date_sort_key,
 )
+from openrelix_overview import common as overview_common
+from openrelix_overview import contract as overview_contract
+from openrelix_overview import i18n as overview_i18n
+from openrelix_overview import labels as overview_labels
+from openrelix_overview import local_paths as overview_local_paths
+from openrelix_overview import memory_registry as overview_memory_registry
+from openrelix_overview import redaction as overview_redaction
+from openrelix_overview import token_fetcher as overview_token_fetcher
+from openrelix_overview import token_usage as overview_token_usage
+from openrelix_overview import update_secret as overview_update_secret
+from openrelix_overview.config import (
+    CCUSAGE_TIMEZONE,
+    CCUSAGE_WINDOW_DAYS,
+    LIVE_TOKEN_ENDPOINT,
+    LIVE_TOKEN_HOST,
+    LIVE_TOKEN_POLL_SECONDS,
+    LIVE_TOKEN_PORT,
+    LIVE_TOKEN_TIMEOUT_MS,
+)
 
 PATHS = get_runtime_paths()
 LANGUAGE = get_runtime_language(PATHS)
@@ -54,21 +67,16 @@ CONSOLIDATED_DIR = PATHS.consolidated_daily_dir
 RAW_DAILY_DIR = PATHS.raw_daily_dir
 TOKEN_CACHE_PATH = REPORTS_DIR / "token-usage-cache.json"
 CODEX_NATIVE_DISPLAY_CACHE_PATH = PATHS.runtime_dir / "codex-native-display-cache.json"
-CCUSAGE_TIMEZONE = "Asia/Shanghai"
-CCUSAGE_WINDOW_DAYS = 7
 AUTO_REFRESH_SECONDS = 1800
 BACKFILL_LOOKBACK_DAYS = 14
 BACKFILL_LEARN_WINDOW_DAYS = 7
-LIVE_TOKEN_HOST = "127.0.0.1"
-LIVE_TOKEN_PORT = 8765
-LIVE_TOKEN_ENDPOINT = "http://{}:{}/token-usage".format(LIVE_TOKEN_HOST, LIVE_TOKEN_PORT)
-LIVE_TOKEN_POLL_SECONDS = 300
-LIVE_TOKEN_TIMEOUT_MS = 20000
 PROJECT_GITHUB_URL = "https://github.com/openrelix/openrelix"
 WRITE_REPO_PANEL_ENTRYPOINT_ENV = "OPENRELIX_WRITE_REPO_PANEL_ENTRYPOINT"
 BRAND_DISPLAY_REPLACEMENTS = (
     ("scripts/openrelix.py.py", "scripts/openrelix.py"),
 )
+BRAND_DISPLAY_NAME = overview_redaction.BRAND_DISPLAY_NAME
+LEGACY_BRAND_PHRASES = overview_redaction.LEGACY_BRAND_PHRASES
 PROJECT_CONTEXT_VISIBLE_COUNT = 4
 PROJECT_CONTEXT_DEFAULT_DAYS = 1
 PROJECT_CONTEXT_MAX_DAYS = 7
@@ -82,7 +90,7 @@ MEMORY_BRIEF_BODY_LIMIT = 132
 MEMORY_BRIEF_FULL_TEXT_LIMIT = 520
 PANEL_PATH_LABEL = render_path(REPORTS_DIR / "panel.html")
 OVERVIEW_JSON_PATH_LABEL = render_path(REPORTS_DIR / "overview-data.json")
-PERSONAL_REDACTION_LABEL = "Work project"
+PERSONAL_REDACTION_LABEL = overview_redaction.PERSONAL_REDACTION_LABEL
 
 
 def _load_brand_icon_data_uri():
@@ -98,112 +106,39 @@ def _load_brand_icon_data_uri():
 
 
 BRAND_ICON_DATA_URI = _load_brand_icon_data_uri()
-LOCAL_PATH_TRAILING_PUNCTUATION = ".,;!?)]}\"'"
-LOCAL_PATH_TOKEN_RE = re.compile(
-    r"(file://[^\s<>\"']+|~/[^\s<>\"']+|/[^\s<>\"']+)"
-)
+LOCAL_PATH_TRAILING_PUNCTUATION = overview_local_paths.LOCAL_PATH_TRAILING_PUNCTUATION
+LOCAL_PATH_TOKEN_RE = overview_local_paths.LOCAL_PATH_TOKEN_RE
 
 
 @lru_cache(maxsize=1)
 def personal_redaction_patterns():
-    candidates = []
-    explicit = os.environ.get("OPENRELIX_PERSONAL_DENYLIST")
-    if explicit:
-        candidates.append(Path(explicit).expanduser())
-    try:
-        candidates.append(PATHS.state_root / "personal_denylist.txt")
-    except Exception:
-        pass
-
-    compiled = []
-    seen = set()
-    for path in candidates:
-        try:
-            resolved = path.resolve()
-        except OSError:
-            continue
-        if resolved in seen or not resolved.is_file():
-            continue
-        seen.add(resolved)
-        try:
-            lines = resolved.read_text(encoding="utf-8").splitlines()
-        except OSError:
-            continue
-        for raw in lines:
-            line = raw.strip()
-            if not line or line.startswith("#"):
-                continue
-            try:
-                compiled.append(re.compile(line))
-            except re.error:
-                continue
-    return tuple(compiled)
+    return overview_redaction.load_personal_redaction_patterns(PATHS)
 
 
 def redact_personal_text(value):
-    if not isinstance(value, str):
-        return value
-    text = value
-
-    protected_file_hrefs = []
-
-    def protect_file_href(match):
-        placeholder = "\x00OPENRELIX_FILE_HREF_{}_{}\x00".format(
-            len(protected_file_hrefs),
-            uuid.uuid4().hex,
-        )
-        protected_file_hrefs.append((placeholder, match.group(0)))
-        return placeholder
-
-    # Keep local file links clickable in the generated local panel while still
-    # redacting visible text and title attributes around those links.
-    text = re.sub(r"href=([\"'])file://[^\"']+\1", protect_file_href, text)
-    text = re.sub(r"href=\\([\"'])file://[^\\]+?\\\1", protect_file_href, text)
-
-    text = re.sub(r"file:///(?:Users|home)/[^/\\\s<>\"']+", "file://~", text)
-    text = re.sub(r"(?:/Users|/home)/[^/\\\s<>\"']+", "~", text)
-
-    def redact_url(match):
-        url = match.group(0)
-        lowered = url.lower()
-        if (
-            lowered.startswith("http://127.")
-            or lowered.startswith("http://localhost")
-            or lowered.startswith("https://github.com/openrelix/")
-            or lowered.startswith("https://openrelix.org")
-            or lowered.startswith("https://www.npmjs.com/~kk_kais")
-        ):
-            return url
-        return "<link>"
-
-    text = re.sub(r"https?://[^\\\s<>\"']+", redact_url, text)
-    for pattern in personal_redaction_patterns():
-        text = pattern.sub(PERSONAL_REDACTION_LABEL, text)
-    for placeholder, original in protected_file_hrefs:
-        text = text.replace(placeholder, original)
-    return text
+    return overview_redaction.redact_personal_text(
+        value,
+        patterns=personal_redaction_patterns(),
+        redaction_label=PERSONAL_REDACTION_LABEL,
+    )
 
 
 def normalize_brand_display_text(value):
-    if not isinstance(value, str):
-        return value
-    text = value
-    for source, target in BRAND_DISPLAY_REPLACEMENTS:
-        text = text.replace(source, target)
-    return redact_personal_text(text)
+    return overview_redaction.normalize_brand_display_text(
+        value,
+        brand_replacements=BRAND_DISPLAY_REPLACEMENTS,
+        legacy_phrases=LEGACY_BRAND_PHRASES,
+        brand_display_name=BRAND_DISPLAY_NAME,
+        patterns=personal_redaction_patterns(),
+        redaction_label=PERSONAL_REDACTION_LABEL,
+    )
 
 
 def normalize_brand_display_payload(value):
-    if isinstance(value, dict):
-        return {
-            normalize_brand_display_text(key): normalize_brand_display_payload(item)
-            for key, item in value.items()
-        }
-    if isinstance(value, list):
-        return [normalize_brand_display_payload(item) for item in value]
-    if isinstance(value, tuple):
-        return tuple(normalize_brand_display_payload(item) for item in value)
-    return normalize_brand_display_text(value)
+    return overview_redaction.normalize_brand_display_payload(
+        value,
+        normalize_brand_display_text,
+    )
 
 STOPWORDS = {
     "the",
@@ -436,156 +371,21 @@ FREEFORM_PHRASE_EN = {
     "协作沟通": "collaboration",
 }
 
-DISPLAY_TYPE = {
-    "skill": "技能",
-    "automation": "自动化",
-    "playbook": "方法",
-    "template": "模板",
-    "knowledge_card": "知识卡",
-    "review": "复盘",
-}
-
-DISPLAY_DOMAIN = {
-    "general": "跨场景通用",
-    "通用": "跨场景通用",
-    "openrelix": "OpenRelix",
-    "personal-asset-automation": "个人资产自动化",
-    "open-source-branding": "开源品牌",
-    "lark": "Lark",
-    "android": "Android 开发",
-    "Android": "Android 开发",
-    "ios": "iOS 开发",
-    "web": "Web 开发",
-    "frontend": "前端开发",
-    "backend": "后端服务",
-    "design": "设计协作",
-    "research": "研究分析",
-    "infra": "基础设施",
-    "ops": "工程运维",
-    "planning": "规划设计",
-    "规划": "规划设计",
-    "collaboration": "协作沟通",
-    "协作": "协作沟通",
-}
-
-DISPLAY_SCOPE = {
-    "personal": "仅个人使用",
-    "个人": "仅个人使用",
-    "repo": "仓库场景复用",
-    "仓库": "仓库场景复用",
-    "team": "团队共享",
-    "团队": "团队共享",
-}
-
-DISPLAY_STATUS = {
-    "active": "活跃",
-    "draft": "草稿",
-    "retired": "停用",
-}
-
-DISPLAY_MEMORY_BUCKET = {
-    "durable": "个人资产-长期记忆",
-    "session": "个人资产-短期工作记忆",
-    "low_priority": "个人资产-低优先记忆",
-}
-
-DISPLAY_MEMORY_TYPE = {
-    "semantic": "语义",
-    "procedural": "流程",
-    "episodic": "事件记忆",
-    "task": "任务",
-    "mapping": "映射",
-    "preference": "偏好",
-    "rule": "规则",
-}
-
-DISPLAY_MEMORY_PRIORITY = {
-    "high": "高优先",
-    "medium": "中优先",
-    "low": "低优先",
-}
-
-DISPLAY_TYPE_EN = {
-    "skill": "Skill",
-    "automation": "Automation",
-    "playbook": "Playbook",
-    "template": "Template",
-    "knowledge_card": "Knowledge Card",
-    "review": "Review",
-}
-
-DISPLAY_DOMAIN_EN = {
-    "general": "Cross-scenario",
-    "通用": "Cross-scenario",
-    "跨场景通用": "Cross-scenario",
-    "openrelix": "OpenRelix",
-    "personal-asset-automation": "Personal asset automation",
-    "个人资产自动化": "Personal asset automation",
-    "open-source-branding": "Open-source branding",
-    "开源品牌": "Open-source branding",
-    "lark": "Lark",
-    "android": "Android",
-    "Android": "Android",
-    "ios": "iOS",
-    "web": "Web",
-    "frontend": "Frontend",
-    "backend": "Backend",
-    "design": "Design",
-    "research": "Research",
-    "infra": "Infrastructure",
-    "ops": "Operations",
-    "planning": "Planning",
-    "规划": "Planning",
-    "collaboration": "Collaboration",
-    "协作": "Collaboration",
-}
-
-DISPLAY_SCOPE_EN = {
-    "personal": "Personal",
-    "个人": "Personal",
-    "repo": "Repo-scoped",
-    "仓库": "Repo-scoped",
-    "team": "Team",
-    "团队": "Team",
-}
-
-DISPLAY_STATUS_EN = {
-    "active": "Active",
-    "draft": "Draft",
-    "retired": "Retired",
-}
-
-DISPLAY_MEMORY_BUCKET_EN = {
-    "durable": "Personal Asset - Long-term Memory",
-    "session": "Personal Asset - Short-term Work Memory",
-    "low_priority": "Personal Asset - Low-priority Memory",
-}
-
-DISPLAY_MEMORY_TYPE_EN = {
-    "semantic": "Semantic",
-    "procedural": "Procedure",
-    "episodic": "Episodic",
-    "task": "Task",
-    "mapping": "Mapping",
-    "preference": "Preference",
-    "rule": "Rule",
-}
-
-MEMORY_TYPE_GROUP_ORDER = (
-    "procedural",
-    "semantic",
-    "episodic",
-    "rule",
-    "mapping",
-    "preference",
-    "task",
-)
-
-DISPLAY_MEMORY_PRIORITY_EN = {
-    "high": "High Priority",
-    "medium": "Medium Priority",
-    "low": "Low Priority",
-}
+DISPLAY_TYPE = overview_labels.DISPLAY_TYPE
+DISPLAY_DOMAIN = overview_labels.DISPLAY_DOMAIN
+DISPLAY_SCOPE = overview_labels.DISPLAY_SCOPE
+DISPLAY_STATUS = overview_labels.DISPLAY_STATUS
+DISPLAY_MEMORY_BUCKET = overview_labels.DISPLAY_MEMORY_BUCKET
+DISPLAY_MEMORY_TYPE = overview_labels.DISPLAY_MEMORY_TYPE
+DISPLAY_MEMORY_PRIORITY = overview_labels.DISPLAY_MEMORY_PRIORITY
+DISPLAY_TYPE_EN = overview_labels.DISPLAY_TYPE_EN
+DISPLAY_DOMAIN_EN = overview_labels.DISPLAY_DOMAIN_EN
+DISPLAY_SCOPE_EN = overview_labels.DISPLAY_SCOPE_EN
+DISPLAY_STATUS_EN = overview_labels.DISPLAY_STATUS_EN
+DISPLAY_MEMORY_BUCKET_EN = overview_labels.DISPLAY_MEMORY_BUCKET_EN
+DISPLAY_MEMORY_TYPE_EN = overview_labels.DISPLAY_MEMORY_TYPE_EN
+MEMORY_TYPE_GROUP_ORDER = overview_labels.MEMORY_TYPE_GROUP_ORDER
+DISPLAY_MEMORY_PRIORITY_EN = overview_labels.DISPLAY_MEMORY_PRIORITY_EN
 
 PANEL_DEFAULT_LANGUAGE = LANGUAGE
 PANEL_I18N_EN = {
@@ -1248,23 +1048,25 @@ PANEL_I18N_EN = {
 
 
 def current_language(language=None):
-    return normalize_language(language or LANGUAGE)
+    return overview_i18n.current_language(language, default_language=LANGUAGE)
 
 
 def is_english(language=None):
-    return current_language(language) == "en"
+    return overview_i18n.is_english(language, default_language=LANGUAGE)
 
 
 def localized(zh_text, en_text="", language=None):
-    if not is_english(language):
-        return zh_text
-    return en_text or PANEL_I18N_EN.get(str(zh_text or ""), str(zh_text or ""))
+    return overview_i18n.localized(
+        zh_text,
+        en_text=en_text,
+        language=language,
+        translations=PANEL_I18N_EN,
+        default_language=LANGUAGE,
+    )
 
 
 def plural_en(count, singular, plural=None):
-    number = safe_int(count)
-    word = singular if number == 1 else (plural or "{}s".format(singular))
-    return "{} {}".format(number, word)
+    return overview_i18n.plural_en(count, singular, plural=plural)
 
 
 CONTEXT_LABEL_EN = {
@@ -1763,84 +1565,28 @@ ACRONYM_LABELS = {
     "ui": "UI",
     "ux": "UX",
 }
-BRAND_DISPLAY_NAME = "OpenRelix"
-LEGACY_BRAND_PHRASES = (
-    "AI Personal Assets System",
-    "AI personal assets system",
-    "AI-Personal-Assets",
-    "AI Personal Assets",
-    "AI personal assets",
-    "AI个人资产系统",
-    "AI个人资产",
-    "AI 个人资产系统",
-    "AI 个人资产",
-    "ai-personal-assets",
-)
-
-
-def normalize_brand_display_text(value):
-    text = str(value or "")
-    if not text:
-        return text
-    for source, target in BRAND_DISPLAY_REPLACEMENTS:
-        text = text.replace(source, target)
-    for phrase in LEGACY_BRAND_PHRASES:
-        text = text.replace(phrase, BRAND_DISPLAY_NAME)
-    text = re.sub(r"\bAPA\b", BRAND_DISPLAY_NAME, text)
-    return redact_personal_text(text)
-
-
 def current_local_datetime():
-    return datetime.now().astimezone()
+    return overview_common.current_local_datetime()
 
 
 def parse_iso_datetime(value):
-    if not value:
-        return None
-    normalized = value
-    if isinstance(normalized, str) and normalized.endswith("Z"):
-        normalized = normalized[:-1] + "+00:00"
-    try:
-        parsed = datetime.fromisoformat(normalized)
-    except ValueError:
-        return None
-    if parsed.tzinfo is None:
-        return parsed.astimezone()
-    return parsed.astimezone()
+    return overview_common.parse_iso_datetime(value)
 
 
 def display_local_datetime(value):
-    parsed = value if isinstance(value, datetime) else parse_iso_datetime(value)
-    if parsed is None:
-        return ""
-    return parsed.strftime("%Y-%m-%d %H:%M:%S")
+    return overview_common.display_local_datetime(value)
 
 
 def display_short_local_datetime(value):
-    parsed = value if isinstance(value, datetime) else parse_iso_datetime(value)
-    if parsed is None:
-        return ""
-    return parsed.strftime("%m-%d %H:%M")
+    return overview_common.display_short_local_datetime(value)
 
 
 def resolve_npx_binary():
-    candidates = [
-        shutil.which("npx"),
-        "/opt/homebrew/bin/npx",
-        "/usr/local/bin/npx",
-    ]
-    for candidate in candidates:
-        if candidate and Path(candidate).exists():
-            return candidate
-    return "npx"
+    return overview_token_fetcher.resolve_npx_binary()
 
 
 def build_subprocess_env():
-    env = os.environ.copy()
-    base_path = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
-    current_path = env.get("PATH", "")
-    env["PATH"] = "{}:{}".format(base_path, current_path) if current_path else base_path
-    return env
+    return overview_token_fetcher.build_subprocess_env()
 
 
 def load_jsonl(path: Path):
@@ -1856,66 +1602,31 @@ def load_jsonl(path: Path):
 
 
 def safe_int(value):
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return 0
+    return overview_common.safe_int(value)
 
 
 def safe_float(value):
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return 0.0
+    return overview_common.safe_float(value)
 
 
 def compact_number(value):
-    number = safe_int(value)
-    abs_number = abs(number)
-    if abs_number >= 1_000_000_000:
-        return "{:.1f}B".format(number / 1_000_000_000)
-    if abs_number >= 1_000_000:
-        return "{:.1f}M".format(number / 1_000_000)
-    if abs_number >= 1_000:
-        return "{:.1f}K".format(number / 1_000)
-    return str(number)
+    return overview_common.compact_number(value)
 
 
 def compact_token_zh(value):
-    number = safe_int(value)
-    abs_number = abs(number)
-    if abs_number >= 100_000_000:
-        return "{:.1f}亿".format(number / 100_000_000)
-    if abs_number >= 10_000:
-        return "{:.1f}万".format(number / 10_000)
-    return str(number)
+    return overview_common.compact_token_zh(value)
 
 
 def compact_token(value, language=None):
-    if is_english(language):
-        return compact_number(value)
-    return compact_token_zh(value)
+    return overview_common.compact_token(value, language=current_language(language))
 
 
 def compact_token_k(value):
-    number = safe_int(value)
-    if number == 0:
-        return "0K"
-    value_k = number / 1000
-    if number % 1000 == 0:
-        return "{}K".format(number // 1000)
-    return "{:.1f}K".format(value_k)
+    return overview_common.compact_token_k(value)
 
 
 def format_percent(value, digits=0, signed=False):
-    if value is None:
-        return "—"
-    try:
-        number = float(value)
-    except (TypeError, ValueError):
-        return "—"
-    sign = "+" if signed and number > 0 else ""
-    return "{}{:.{digits}f}%".format(sign, number, digits=digits)
+    return overview_common.format_percent(value, digits=digits, signed=signed)
 
 
 def compact_signed_token(value, language=None):
@@ -2241,10 +1952,7 @@ def build_personal_memory_token_usage(
 
 
 def percent_of(part, total):
-    total = safe_int(total)
-    if total <= 0:
-        return None
-    return (safe_int(part) / total) * 100
+    return overview_common.percent_of(part, total)
 
 
 def counter_to_rows(counter):
@@ -2596,493 +2304,96 @@ def build_backfill_view(nightly_candidates, lookback_days=BACKFILL_LOOKBACK_DAYS
 
 
 def load_token_usage_cache():
-    if not TOKEN_CACHE_PATH.exists():
-        return None
-    try:
-        return json.loads(TOKEN_CACHE_PATH.read_text(encoding="utf-8"))
-    except Exception:  # noqa: BLE001
-        return None
+    return overview_token_fetcher.load_token_usage_cache(TOKEN_CACHE_PATH)
 
 
 def write_token_usage_cache(payload):
-    atomic_write_json(TOKEN_CACHE_PATH, payload)
+    overview_token_fetcher.write_token_usage_cache(payload, TOKEN_CACHE_PATH)
 
 
 def fetch_ccusage_daily(window_days=CCUSAGE_WINDOW_DAYS):
-    end_date = current_local_datetime().date()
-    start_date = end_date - timedelta(days=window_days - 1)
-    base_cmd = [
-        resolve_npx_binary(),
-        "-y",
-        "@ccusage/codex@latest",
-        "daily",
-        "-j",
-        "--since",
-        start_date.isoformat(),
-        "--until",
-        end_date.isoformat(),
-        "--timezone",
-        CCUSAGE_TIMEZONE,
-    ]
-
-    attempts = [[], ["--offline"]]
-    last_error = None
-    for extra_args in attempts:
-        try:
-            result = subprocess.run(
-                base_cmd + extra_args,
-                capture_output=True,
-                text=True,
-                check=True,
-                env=build_subprocess_env(),
-                timeout=120,
-            )
-            payload = json.loads(result.stdout)
-            return {
-                "available": True,
-                "payload": payload,
-                "error": "",
-                "fetched_at": current_local_datetime().isoformat(),
-                "window_days": window_days,
-            }
-        except Exception as exc:  # noqa: BLE001
-            last_error = str(exc)
-
-    return {
-        "available": False,
-        "payload": {"daily": [], "totals": {}},
-        "error": last_error or "",
-        "fetched_at": current_local_datetime().isoformat(),
-        "window_days": window_days,
-    }
+    return overview_token_fetcher.fetch_ccusage_daily(
+        window_days=window_days,
+        now_func=current_local_datetime,
+        resolve_npx_binary_func=resolve_npx_binary,
+        env_func=build_subprocess_env,
+    )
 
 
 def resolve_ccusage_daily():
-    refresh_requested = os.environ.get("AI_ASSET_REFRESH_TOKEN") == "1"
-    cached = load_token_usage_cache()
-    if cached and not refresh_requested:
-        return cached
-
-    live = fetch_ccusage_daily()
-    if live.get("available"):
-        write_token_usage_cache(live)
-        return live
-
-    if cached:
-        return cached
-    return live
+    return overview_token_fetcher.resolve_ccusage_daily(
+        cache_path=TOKEN_CACHE_PATH,
+        fetch_func=fetch_ccusage_daily,
+    )
 
 
 def make_token_breakdown_detail(label, value, meta="", language=None):
-    return {
-        "label": label,
-        "value": safe_int(value),
-        "title": "{}：{}".format(label, compact_token(value, language=language)),
-        "meta": meta,
-    }
+    return overview_token_usage.make_token_breakdown_detail(
+        label,
+        value,
+        meta=meta,
+        language=current_language(language),
+    )
 
 
 def split_ccusage_input_tokens(row):
-    total_input_tokens = safe_int(row.get("inputTokens", 0))
-    cached_input_tokens = safe_int(row.get("cachedInputTokens", 0))
-    uncached_input_tokens = max(total_input_tokens - cached_input_tokens, 0)
-    return total_input_tokens, cached_input_tokens, uncached_input_tokens
+    return overview_token_usage.split_ccusage_input_tokens(row)
 
 
 def build_token_breakdown_details(row, language=None):
-    language = current_language(language)
-    total_tokens = row.get("totalTokens", 0)
-    total_input_tokens, cached_input_tokens, input_tokens = split_ccusage_input_tokens(row)
-    output_tokens = row.get("outputTokens", 0)
-    reasoning_output_tokens = row.get("reasoningOutputTokens", 0)
-    cached_share = percent_of(cached_input_tokens, total_input_tokens)
-    output_share = percent_of(output_tokens, total_tokens)
-    reasoning_share = percent_of(reasoning_output_tokens, total_tokens)
-    details = [
-        make_token_breakdown_detail(
-            localized("输入", "Input", language),
-            input_tokens,
-            localized("无缓存输入 Token", "Uncached input tokens", language),
-            language=language,
-        ),
-        make_token_breakdown_detail(
-            localized("缓存读取", "Cache Read", language),
-            cached_input_tokens,
-            localized(
-                "占总输入 {}".format(format_percent(cached_share)),
-                "{} of total input".format(format_percent(cached_share)),
-                language,
-            ),
-            language=language,
-        ),
-        make_token_breakdown_detail(
-            localized("输出", "Output", language),
-            output_tokens,
-            localized(
-                "占总量 {}".format(format_percent(output_share, digits=1)),
-                "{} of total".format(format_percent(output_share, digits=1)),
-                language,
-            ),
-            language=language,
-        ),
-        make_token_breakdown_detail(
-            localized("推理输出", "Reasoning output", language),
-            reasoning_output_tokens,
-            localized(
-                "占总量 {}".format(format_percent(reasoning_share, digits=1)),
-                "{} of total".format(format_percent(reasoning_share, digits=1)),
-                language,
-            ),
-            language=language,
-        ),
-    ]
-    cost = row.get("costUSD")
-    if isinstance(cost, (int, float)) and cost > 0:
-        details.append(
-            {
-                "title": localized("费用估算：${:.2f}".format(cost), "Estimated cost: ${:.2f}".format(cost), language),
-                "meta": localized("来自 ccusage", "From ccusage", language),
-            }
-        )
-    return details
+    return overview_token_usage.build_token_breakdown_details(
+        row,
+        language=current_language(language),
+    )
 
 
 def make_token_summary_card(label, value, caption, tone="neutral"):
-    return {
-        "label": label,
-        "value": value,
-        "caption": caption,
-        "tone": tone,
-    }
+    return overview_token_usage.make_token_summary_card(label, value, caption, tone=tone)
 
 
 def format_usd(value):
-    amount = safe_float(value)
-    if amount <= 0 or not math.isfinite(amount):
-        return "—"
-    rounded = Decimal(str(amount)).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
-    return "${:,}".format(int(rounded))
+    return overview_token_usage.format_usd(value)
 
 
 def compact_token_with_cost(token_value, cost_value, language=None):
-    token_display = compact_token(token_value, language=language)
-    cost_display = format_usd(cost_value)
-    if cost_display == "—":
-        return token_display
-    return "{} · {}".format(token_display, cost_display)
+    return overview_token_usage.compact_token_with_cost(
+        token_value,
+        cost_value,
+        language=current_language(language),
+    )
 
 
 def build_token_summary_cards(parsed_rows, trailing_rows, latest, language=None):
-    language = current_language(language)
-    if not latest:
-        return []
-
-    active_trailing_rows = [row for row in trailing_rows if row.get("totalTokens", 0) > 0]
-    summary_cards = []
-
-    if active_trailing_rows:
-        seven_day_total = sum(row["totalTokens"] for row in active_trailing_rows)
-        seven_day_cost = sum(safe_float(row.get("costUSD")) for row in active_trailing_rows)
-        seven_day_average = sum(row["totalTokens"] for row in active_trailing_rows) // len(active_trailing_rows)
-        peak_row = max(active_trailing_rows, key=lambda row: row["totalTokens"])
-        summary_cards.extend(
-            [
-                make_token_summary_card(
-                    localized("7 日账单", "7-day bill", language),
-                    format_usd(seven_day_cost),
-                    localized(
-                        "{} Token · ccusage 估算".format(compact_token(seven_day_total, language=language)),
-                        "{} Tokens · ccusage estimate".format(compact_token(seven_day_total, language=language)),
-                        language,
-                    ),
-                ),
-                make_token_summary_card(
-                    localized("7 日均值", "7-day average", language),
-                    compact_token(seven_day_average, language=language),
-                    localized(
-                        "按 {} 个有数据日".format(len(active_trailing_rows)),
-                        "Across {} days with data".format(len(active_trailing_rows)),
-                        language,
-                    ),
-                ),
-                make_token_summary_card(
-                    localized("峰值日", "Peak day", language),
-                    compact_token(peak_row["totalTokens"], language=language),
-                    localized(
-                        "{} 最高".format(peak_row["date_label"]),
-                        "Peak on {}".format(peak_row["date_label"]),
-                        language,
-                    ),
-                ),
-            ]
-        )
-    else:
-        summary_cards.append(
-            make_token_summary_card(
-                localized("7 日账单", "7-day bill", language),
-                "—",
-                localized("暂无 7 日账单数据", "No 7-day bill data yet", language),
-            )
-        )
-
-    total_input_tokens, cached_input_tokens, _ = split_ccusage_input_tokens(latest)
-    cached_share = percent_of(cached_input_tokens, total_input_tokens)
-    summary_cards.append(
-        make_token_summary_card(
-            localized("缓存读取占总输入", "Cache Read / total input", language),
-            format_percent(cached_share),
-            localized(
-                "缓存读取 {} / 总输入 {}".format(
-                    compact_token(cached_input_tokens, language=language),
-                    compact_token(total_input_tokens, language=language),
-                ),
-                "Cache Read {} / total input {}".format(
-                    compact_token(cached_input_tokens, language=language),
-                    compact_token(total_input_tokens, language=language),
-                ),
-                language,
-            ),
-            "neutral",
-        )
+    return overview_token_usage.build_token_summary_cards(
+        parsed_rows,
+        trailing_rows,
+        latest,
+        language=current_language(language),
     )
-    return summary_cards
 
 
 def token_daily_tone(value, max_value):
-    value = safe_int(value)
-    max_value = max(safe_int(max_value), 1)
-    if value <= 0:
-        return "token-daily-empty"
-
-    ratio = value / max_value
-    if ratio >= 0.85:
-        return "token-daily-high"
-    if ratio >= 0.45:
-        return "token-daily-mid"
-    return "token-daily-low"
+    return overview_token_usage.token_daily_tone(value, max_value)
 
 
 def token_breakdown_tone(kind):
-    return {
-        "input": "token-input",
-        "cached_input": "token-cache",
-        "output": "token-output",
-        "reasoning_output": "token-reasoning",
-    }.get(kind, "token-input")
+    return overview_token_usage.token_breakdown_tone(kind)
 
 
 def recent_token_daily_rows(parsed_rows, window_days=CCUSAGE_WINDOW_DAYS):
-    window_days = max(safe_int(window_days), 1)
-    if not parsed_rows:
-        return []
-    if any(row.get("parsed_date") for row in parsed_rows):
-        start_date = current_local_datetime().date() - timedelta(days=window_days - 1)
-        rows = [
-            row for row in parsed_rows
-            if not row.get("parsed_date") or row["parsed_date"].date() >= start_date
-        ]
-    else:
-        rows = list(parsed_rows)
-    return rows[-window_days:]
+    return overview_token_usage.recent_token_daily_rows(
+        parsed_rows,
+        window_days=window_days,
+        now_func=current_local_datetime,
+    )
 
 
 def build_token_usage_view(ccusage_result, language=None):
-    language = current_language(language)
-    refreshed_at = ccusage_result.get("fetched_at", "")
-    refreshed_at_display = display_local_datetime(refreshed_at)
-    if not ccusage_result["available"]:
-        return {
-            "available": False,
-            "error": ccusage_result.get("error", ""),
-            "daily_rows": [],
-            "today_breakdown": [],
-            "today_total_tokens": None,
-            "today_total_tokens_display": "—",
-            "seven_day_total_tokens": None,
-            "seven_day_total_tokens_display": "—",
-            "seven_day_cost_usd": None,
-            "seven_day_cost_display": "—",
-            "today_date_label": localized("今日", "Today", language),
-            "summary_cards": [],
-            "overview_note": localized(
-                "等待实时刷新 Token 统计",
-                "Waiting for live Token stats",
-                language,
-            ),
-            "refreshed_at": refreshed_at,
-            "refreshed_at_display": refreshed_at_display,
-            "window_days": CCUSAGE_WINDOW_DAYS,
-        }
-
-    raw_rows = ccusage_result.get("payload", {}).get("daily", [])
-    parsed_rows = []
-    for row in raw_rows:
-        raw_date = row.get("date", "")
-        try:
-            parsed_date = datetime.strptime(raw_date, "%b %d, %Y")
-            label = parsed_date.strftime("%m-%d")
-        except ValueError:
-            parsed_date = None
-            label = raw_date
-        total_input_tokens = safe_int(row.get("inputTokens", 0))
-        cached_input_tokens = safe_int(row.get("cachedInputTokens", 0))
-        uncached_input_tokens = max(total_input_tokens - cached_input_tokens, 0)
-        parsed_rows.append(
-            {
-                "raw_date": raw_date,
-                "date_label": label,
-                "sort_key": parsed_date.isoformat() if parsed_date else raw_date,
-                "parsed_date": parsed_date,
-                "inputTokens": total_input_tokens,
-                "totalInputTokens": total_input_tokens,
-                "uncachedInputTokens": uncached_input_tokens,
-                "cachedInputTokens": cached_input_tokens,
-                "outputTokens": safe_int(row.get("outputTokens", 0)),
-                "reasoningOutputTokens": safe_int(row.get("reasoningOutputTokens", 0)),
-                "totalTokens": safe_int(row.get("totalTokens", 0)),
-                "display_total_tokens": compact_token(row.get("totalTokens", 0), language=language),
-                "costUSD": safe_float(row.get("costUSD", 0)),
-            }
-        )
-
-    parsed_rows.sort(key=lambda item: item["sort_key"])
-    parsed_rows = recent_token_daily_rows(parsed_rows)
-    max_daily_tokens = max((row["totalTokens"] for row in parsed_rows), default=0)
-    latest = parsed_rows[-1] if parsed_rows else None
-    trailing = parsed_rows[-7:]
-    seven_day_total = sum(item["totalTokens"] for item in trailing)
-    seven_day_cost = sum(safe_float(item.get("costUSD")) for item in trailing)
-    active_trailing_count = sum(1 for item in trailing if item["totalTokens"] > 0)
-    overview_note = localized(
-        "近 {} 天中 {} 天有记录 · {}".format(
-            CCUSAGE_WINDOW_DAYS,
-            active_trailing_count,
-            refreshed_at_display or "等待实时刷新",
-        ),
-        "{} days with records in the last {} days · {}".format(
-            active_trailing_count,
-            CCUSAGE_WINDOW_DAYS,
-            refreshed_at_display or "waiting for live refresh",
-        ),
-        language,
+    return overview_token_usage.build_token_usage_view(
+        ccusage_result,
+        language=current_language(language),
+        now_func=current_local_datetime,
     )
-
-    today_breakdown = []
-    if latest:
-        total_input_tokens, cached_input_tokens, uncached_input_tokens = split_ccusage_input_tokens(latest)
-        cached_share = percent_of(cached_input_tokens, total_input_tokens)
-        output_share = percent_of(latest["outputTokens"], latest["totalTokens"])
-        reasoning_share = percent_of(latest["reasoningOutputTokens"], latest["totalTokens"])
-        today_breakdown = [
-            {
-                "label": localized("输入", "Input", language),
-                "value": uncached_input_tokens,
-                "display": compact_token(uncached_input_tokens, language=language),
-                "tone": token_breakdown_tone("input"),
-                "details": [
-                    {
-                        "label": localized("输入", "Input", language),
-                        "value": uncached_input_tokens,
-                        "title": localized("输入：{}".format(compact_token(uncached_input_tokens, language=language)), "Input: {}".format(compact_token(uncached_input_tokens, language=language)), language),
-                        "meta": localized("无缓存输入 Token", "Uncached input tokens", language),
-                    },
-                ],
-                "details_heading": localized("输入详情", "Input details", language),
-            },
-            {
-                "label": localized("缓存读取", "Cache Read", language),
-                "value": latest["cachedInputTokens"],
-                "display": compact_token(latest["cachedInputTokens"], language=language),
-                "tone": token_breakdown_tone("cached_input"),
-                "details": [
-                    {
-                        "label": localized("缓存读取", "Cache Read", language),
-                        "value": latest["cachedInputTokens"],
-                        "title": localized("缓存读取：{}".format(compact_token(latest["cachedInputTokens"], language=language)), "Cache Read: {}".format(compact_token(latest["cachedInputTokens"], language=language)), language),
-                        "meta": localized(
-                            "占总输入 {}".format(format_percent(cached_share)),
-                            "{} of total input".format(format_percent(cached_share)),
-                            language,
-                        ),
-                    },
-                ],
-                "details_heading": localized("缓存详情", "Cache details", language),
-            },
-            {
-                "label": localized("输出", "Output", language),
-                "value": latest["outputTokens"],
-                "display": compact_token(latest["outputTokens"], language=language),
-                "tone": token_breakdown_tone("output"),
-                "details": [
-                    {
-                        "label": localized("输出", "Output", language),
-                        "value": latest["outputTokens"],
-                        "title": localized("输出：{}".format(compact_token(latest["outputTokens"], language=language)), "Output: {}".format(compact_token(latest["outputTokens"], language=language)), language),
-                        "meta": localized(
-                            "占总量 {}".format(format_percent(output_share, digits=1)),
-                            "{} of total".format(format_percent(output_share, digits=1)),
-                            language,
-                        ),
-                    },
-                ],
-                "details_heading": localized("输出详情", "Output details", language),
-            },
-            {
-                "label": localized("推理输出", "Reasoning output", language),
-                "value": latest["reasoningOutputTokens"],
-                "display": compact_token(latest["reasoningOutputTokens"], language=language),
-                "tone": token_breakdown_tone("reasoning_output"),
-                "details": [
-                    {
-                        "label": localized("推理输出", "Reasoning output", language),
-                        "value": latest["reasoningOutputTokens"],
-                        "title": localized("推理输出：{}".format(compact_token(latest["reasoningOutputTokens"], language=language)), "Reasoning output: {}".format(compact_token(latest["reasoningOutputTokens"], language=language)), language),
-                        "meta": localized(
-                            "占总量 {}".format(format_percent(reasoning_share, digits=1)),
-                            "{} of total".format(format_percent(reasoning_share, digits=1)),
-                            language,
-                        ),
-                    },
-                ],
-                "details_heading": localized("推理详情", "Reasoning details", language),
-            },
-        ]
-
-    return {
-        "available": True,
-        "error": "",
-        "daily_rows": [
-            {
-                "label": row["date_label"],
-                "value": row["totalTokens"],
-                "display": compact_token_with_cost(row["totalTokens"], row.get("costUSD"), language=language),
-                "token_display": row["display_total_tokens"],
-                "costUSD": row.get("costUSD", 0),
-                "cost_display": format_usd(row.get("costUSD")),
-                "tone": token_daily_tone(row["totalTokens"], max_daily_tokens),
-                "details": build_token_breakdown_details(row, language=language),
-                "details_heading": localized(
-                    "{} Token 构成".format(row["date_label"]),
-                    "Token breakdown for {}".format(row["date_label"]),
-                    language,
-                ),
-            }
-            for row in parsed_rows
-        ],
-        "today_breakdown": today_breakdown,
-        "today_total_tokens": latest["totalTokens"] if latest else 0,
-        "today_total_tokens_display": compact_token(latest["totalTokens"], language=language) if latest else "0",
-        "seven_day_total_tokens": seven_day_total,
-        "seven_day_total_tokens_display": compact_token(seven_day_total, language=language),
-        "seven_day_cost_usd": seven_day_cost,
-        "seven_day_cost_display": format_usd(seven_day_cost),
-        "today_date_label": latest["date_label"] if latest else localized("今日", "Today", language),
-        "summary_cards": build_token_summary_cards(parsed_rows, trailing, latest, language=language),
-        "overview_note": overview_note,
-        "refreshed_at": refreshed_at,
-        "refreshed_at_display": refreshed_at_display,
-        "window_days": CCUSAGE_WINDOW_DAYS,
-    }
 
 
 def normalize_term(raw):
@@ -3100,58 +2411,40 @@ def normalize_term(raw):
 
 
 def display_label(kind, value, language=None):
-    if is_english(language):
-        mapping = {
-            "type": DISPLAY_TYPE_EN,
-            "domain": DISPLAY_DOMAIN_EN,
-            "scope": DISPLAY_SCOPE_EN,
-            "status": DISPLAY_STATUS_EN,
-        }.get(kind, {})
-        if value in mapping:
-            return mapping[value]
-        return humanize_identifier(value)
-
-    mapping = {
-        "type": DISPLAY_TYPE,
-        "domain": DISPLAY_DOMAIN,
-        "scope": DISPLAY_SCOPE,
-        "status": DISPLAY_STATUS,
-    }.get(kind, {})
-    if value in mapping:
-        return mapping[value]
-    if kind in {"domain", "scope", "status"}:
-        return humanize_identifier(value)
-    return value
+    return overview_labels.display_label(
+        kind,
+        value,
+        language=language,
+        is_english_func=is_english,
+        humanize_func=humanize_identifier,
+    )
 
 
 def display_memory_bucket(value, language=None):
-    if is_english(language):
-        if value in DISPLAY_MEMORY_BUCKET_EN:
-            return DISPLAY_MEMORY_BUCKET_EN[value]
-        return humanize_identifier(value) or "Uncategorized memory"
-    if value in DISPLAY_MEMORY_BUCKET:
-        return DISPLAY_MEMORY_BUCKET[value]
-    return humanize_identifier(value) or "未分类记忆"
+    return overview_labels.display_memory_bucket(
+        value,
+        language=language,
+        is_english_func=is_english,
+        humanize_func=humanize_identifier,
+    )
 
 
 def display_memory_type(value, language=None):
-    if is_english(language):
-        if value in DISPLAY_MEMORY_TYPE_EN:
-            return DISPLAY_MEMORY_TYPE_EN[value]
-        return humanize_identifier(value) or "Uncategorized"
-    if value in DISPLAY_MEMORY_TYPE:
-        return DISPLAY_MEMORY_TYPE[value]
-    return humanize_identifier(value) or "未分类"
+    return overview_labels.display_memory_type(
+        value,
+        language=language,
+        is_english_func=is_english,
+        humanize_func=humanize_identifier,
+    )
 
 
 def display_memory_priority(value, language=None):
-    if is_english(language):
-        if value in DISPLAY_MEMORY_PRIORITY_EN:
-            return DISPLAY_MEMORY_PRIORITY_EN[value]
-        return humanize_identifier(value) or "Unlabeled"
-    if value in DISPLAY_MEMORY_PRIORITY:
-        return DISPLAY_MEMORY_PRIORITY[value]
-    return humanize_identifier(value) or "未标注"
+    return overview_labels.display_memory_priority(
+        value,
+        language=language,
+        is_english_func=is_english,
+        humanize_func=humanize_identifier,
+    )
 
 
 def panel_english_text(value):
@@ -3373,7 +2666,9 @@ def english_summary_term_label(value):
 
 def panel_display_text(value, language=None, en_text=""):
     text = normalize_brand_display_text(value)
+    text = "" if text is None else str(text)
     english_text = normalize_brand_display_text(en_text or panel_english_text(text) or text)
+    english_text = "" if english_text is None else str(english_text)
     return localized(text, english_text, language)
 
 
@@ -3403,7 +2698,9 @@ def panel_language_block_html(zh_html, en_html):
 
 def panel_language_text_html(zh_text, en_text=""):
     zh_text = normalize_brand_display_text(zh_text)
+    zh_text = "" if zh_text is None else str(zh_text)
     en_text = normalize_brand_display_text(en_text or panel_english_text(zh_text) or "")
+    en_text = "" if en_text is None else str(en_text)
     return panel_language_variant_html(escape(zh_text), escape(en_text))
 
 
@@ -3479,23 +2776,15 @@ def english_record_text(item, field, fallback_label=""):
 
 
 def panel_i18n_json():
-    return json.dumps(PANEL_I18N_EN, ensure_ascii=False).replace("</", "<\\/")
+    return overview_i18n.panel_i18n_json(PANEL_I18N_EN)
 
 
 def normalize_memory_signature_text(text):
-    compact = " ".join(str(text or "").split()).strip().lower()
-    if not compact:
-        return ""
-    compact = re.sub(r"[`\"'“”‘’]+", "", compact)
-    return compact
+    return overview_memory_registry.normalize_memory_signature_text(text)
 
 
 def build_memory_group_key(item, bucket=""):
-    bucket_value = bucket or item.get("bucket", "") or "unknown"
-    memory_type = item.get("memory_type", "") or "semantic"
-    primary_text = item.get("title", "") or item.get("value_note", "")
-    normalized = normalize_memory_signature_text(primary_text) or "untitled"
-    return "{}::{}::{}".format(bucket_value, memory_type, normalized)
+    return overview_memory_registry.build_memory_group_key(item, bucket=bucket)
 
 
 MEMORY_USAGE_STOP_TERMS = ASSET_VALUE_STOP_TERMS | {
@@ -3740,18 +3029,11 @@ def sort_memory_rows_by_usage(rows):
 
 
 def memory_sort_key(value):
-    parsed = parse_iso_datetime(value)
-    if parsed is not None:
-        return parsed.isoformat()
-    return str(value or "")
+    return overview_memory_registry.memory_sort_key(value)
 
 
 def display_memory_date(value):
-    parsed = parse_iso_datetime(value)
-    if parsed is not None:
-        return parsed.strftime("%Y-%m-%d")
-    text = str(value or "").strip()
-    return text[:10] if len(text) >= 10 else (text or "时间未知")
+    return overview_memory_registry.display_memory_date(value)
 
 
 def extract_terms_from_text(text):
@@ -4282,65 +3564,23 @@ def render_markdown_text(text):
 
 
 def split_path_trailing_punctuation(token):
-    core = str(token or "")
-    suffix = ""
-    while core and core[-1] in LOCAL_PATH_TRAILING_PUNCTUATION:
-        suffix = core[-1] + suffix
-        core = core[:-1]
-    return core, suffix
+    return overview_local_paths.split_path_trailing_punctuation(token)
 
 
 def strip_line_column_suffix(path_text):
-    candidate = str(path_text or "")
-    while True:
-        stripped = re.sub(r":\d+$", "", candidate)
-        if stripped == candidate:
-            return candidate
-        candidate = stripped
+    return overview_local_paths.strip_line_column_suffix(path_text)
 
 
 def resolve_local_link_path(raw_path):
-    candidate = str(raw_path or "").strip()
-    if not candidate:
-        return None
-
-    if candidate.startswith("file://"):
-        parsed = urlparse(candidate)
-        if parsed.scheme != "file":
-            return None
-        candidate = unquote(parsed.path or "")
-        if parsed.netloc and parsed.netloc not in {"", "localhost"}:
-            candidate = "//{}{}".format(parsed.netloc, candidate)
-
-    candidate = strip_line_column_suffix(candidate)
-    if candidate.startswith("~/"):
-        path = Path(candidate).expanduser()
-    else:
-        path = Path(candidate)
-
-    if not path.is_absolute():
-        return None
-
-    try:
-        if not path.exists():
-            return None
-        return path.resolve()
-    except OSError:
-        return None
+    return overview_local_paths.resolve_local_link_path(raw_path)
 
 
 def build_local_path_anchor(path, label, class_name="path-link"):
-    resolved = resolve_local_link_path(path) if not isinstance(path, Path) else path.resolve()
-    safe_label = escape(normalize_brand_display_text(label))
-    if not resolved:
-        return safe_label
-    return (
-        '<a class="{class_name}" href="{href}" target="_blank" rel="noopener noreferrer" title="{title}">{label}</a>'
-    ).format(
-        class_name=escape(class_name, quote=True),
-        href=escape(resolved.as_uri(), quote=True),
-        title=escape(str(resolved), quote=True),
-        label=safe_label,
+    return overview_local_paths.build_local_path_anchor(
+        path,
+        label,
+        class_name=class_name,
+        normalize_text_func=normalize_brand_display_text,
     )
 
 
@@ -4387,7 +3627,8 @@ def render_asset_title_link(asset):
 
 
 def render_jump_link(target_id, label, class_name="path-link"):
-    safe_label = escape(normalize_brand_display_text(label))
+    normalized_label = normalize_brand_display_text(label)
+    safe_label = escape("" if normalized_label is None else str(normalized_label))
     if not target_id:
         return safe_label
     return '<a class="{class_name}" href="#{target_id}">{label}</a>'.format(
@@ -4398,38 +3639,19 @@ def render_jump_link(target_id, label, class_name="path-link"):
 
 
 def render_detected_local_path_token(token, class_name="path-link"):
-    core, suffix = split_path_trailing_punctuation(token)
-    resolved = resolve_local_link_path(core)
-    if not resolved:
-        return None
-    return "{}{}".format(
-        build_local_path_anchor(resolved, core, class_name=class_name),
-        escape(suffix),
+    return overview_local_paths.render_detected_local_path_token(
+        token,
+        class_name=class_name,
+        normalize_text_func=normalize_brand_display_text,
     )
 
 
 def linkify_local_paths_html(text, class_name="path-link"):
-    raw = str(text or "")
-    if not raw:
-        return ""
-
-    pieces = []
-    cursor = 0
-    matched = False
-    for match in LOCAL_PATH_TOKEN_RE.finditer(raw):
-        rendered = render_detected_local_path_token(match.group(0), class_name=class_name)
-        if rendered is None:
-            continue
-        matched = True
-        pieces.append(escape(raw[cursor:match.start()]))
-        pieces.append(rendered)
-        cursor = match.end()
-
-    if not matched:
-        return escape(raw)
-
-    pieces.append(escape(raw[cursor:]))
-    return "".join(pieces)
+    return overview_local_paths.linkify_local_paths_html(
+        text,
+        class_name=class_name,
+        normalize_text_func=normalize_brand_display_text,
+    )
 
 
 def latest_window_activity(window):
@@ -5319,25 +4541,10 @@ def build_memory_registry(memory_items, window_overview, usage_window_overview=N
 
 
 def extract_resolved_local_paths(text, prefer_parent=False):
-    paths = []
-    seen = set()
-    for match in LOCAL_PATH_TOKEN_RE.finditer(str(text or "")):
-        resolved = resolve_local_link_path(match.group(0))
-        if not resolved:
-            continue
-        is_file = False
-        if prefer_parent:
-            try:
-                is_file = resolved.is_file()
-            except OSError:
-                is_file = False
-        target = resolved.parent if prefer_parent and is_file else resolved
-        key = str(target)
-        if key in seen:
-            continue
-        seen.add(key)
-        paths.append(key)
-    return paths
+    return overview_local_paths.extract_resolved_local_paths(
+        text,
+        prefer_parent=prefer_parent,
+    )
 
 
 def normalize_context_match_text(text):
@@ -8332,6 +7539,7 @@ def build_data(assets, usage_events, reviews, language=None):
     }
 
     return {
+        "schema_version": overview_contract.SCHEMA_VERSION,
         "language": language,
         "generated_at": generated_at,
         "generated_at_iso": generated_at_iso,
@@ -12589,7 +11797,7 @@ def make_project_version_badge():
 
 
 def update_token_path():
-    return PATHS.runtime_dir / "update-token.txt"
+    return overview_update_secret.update_token_path(PATHS)
 
 
 def read_or_create_update_token():
@@ -12598,28 +11806,7 @@ def read_or_create_update_token():
     Stored under runtime_dir with 0600 perms; both the panel template and
     token_live_server read it. Generated on first call.
     """
-    import secrets
-
-    path = update_token_path()
-    try:
-        text = path.read_text(encoding="utf-8").strip()
-        if text:
-            return text
-    except (OSError, UnicodeDecodeError):
-        pass
-    token = secrets.token_urlsafe(32)
-    try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = path.with_suffix(".tmp")
-        tmp.write_text(token, encoding="utf-8")
-        try:
-            os.chmod(tmp, 0o600)
-        except OSError:
-            pass
-        os.replace(str(tmp), str(path))
-    except OSError:
-        pass
-    return token
+    return overview_update_secret.read_or_create_update_token(path=update_token_path())
 
 
 def build_html(data):

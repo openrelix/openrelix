@@ -9,11 +9,21 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
-import build_overview
-from asset_runtime import atomic_write_json, ensure_state_layout, get_runtime_paths
+from asset_runtime import atomic_write_json, ensure_state_layout, get_runtime_language, get_runtime_paths
+from openrelix_overview.common import current_local_datetime
+from openrelix_overview.config import (
+    CCUSAGE_WINDOW_DAYS,
+    LIVE_TOKEN_ENDPOINT,
+    LIVE_TOKEN_HOST,
+    LIVE_TOKEN_PORT,
+)
+from openrelix_overview.token_fetcher import fetch_ccusage_daily
+from openrelix_overview.token_usage import build_token_usage_view
+from openrelix_overview.update_secret import read_or_create_update_token
 
 
 PATHS = get_runtime_paths()
+LANGUAGE = get_runtime_language(PATHS)
 RUNTIME_DIR = PATHS.runtime_dir
 CACHE_PATH = RUNTIME_DIR / "token-live-cache.json"
 CACHE_TTL_SECONDS = 90
@@ -32,7 +42,7 @@ UPDATE_STATE = {
     "log_tail": "",
 }
 
-# Shared persistent secret with the panel template (build_overview.read_or_create_update_token).
+# Shared persistent secret with the panel template.
 # Loaded lazily so plain imports don't touch the filesystem.
 _UPDATE_TOKEN_CACHE = None
 _UPDATE_TOKEN_LOCK = threading.Lock()
@@ -46,7 +56,7 @@ def get_update_token():
         return _UPDATE_TOKEN_CACHE
     with _UPDATE_TOKEN_LOCK:
         if _UPDATE_TOKEN_CACHE is None:
-            _UPDATE_TOKEN_CACHE = build_overview.read_or_create_update_token()
+            _UPDATE_TOKEN_CACHE = read_or_create_update_token(paths=PATHS)
     return _UPDATE_TOKEN_CACHE
 
 
@@ -152,8 +162,8 @@ def fetch_token_payload(window_days, force_refresh=False):
             cached_result["stale"] = False
             return cached_result
 
-        ccusage_result = build_overview.fetch_ccusage_daily(window_days=window_days)
-        token_usage = build_overview.build_token_usage_view(ccusage_result)
+        ccusage_result = fetch_ccusage_daily(window_days=window_days)
+        token_usage = build_token_usage_view(ccusage_result, language=LANGUAGE)
         payload = {
             "ok": bool(token_usage.get("available")),
             "stale": False,
@@ -221,7 +231,7 @@ class TokenLiveHandler(BaseHTTPRequestHandler):
                 {
                     "ok": True,
                     "service": "token-live",
-                    "endpoint": build_overview.LIVE_TOKEN_ENDPOINT,
+                    "endpoint": LIVE_TOKEN_ENDPOINT,
                 },
             )
             return
@@ -237,9 +247,9 @@ class TokenLiveHandler(BaseHTTPRequestHandler):
         query = parse_qs(parsed.query)
         force_refresh = query.get("force", ["0"])[0] == "1"
         try:
-            window_days = int(query.get("window_days", [str(build_overview.CCUSAGE_WINDOW_DAYS)])[0])
+            window_days = int(query.get("window_days", [str(CCUSAGE_WINDOW_DAYS)])[0])
         except ValueError:
-            window_days = build_overview.CCUSAGE_WINDOW_DAYS
+            window_days = CCUSAGE_WINDOW_DAYS
 
         payload = fetch_token_payload(window_days=window_days, force_refresh=force_refresh)
         status_code = 200 if payload.get("ok") or payload.get("stale") else 503
@@ -281,7 +291,7 @@ class TokenLiveHandler(BaseHTTPRequestHandler):
         self._send_json(202 if started else 200, snapshot, allow_origin=origin or None)
 
     def log_message(self, format_str, *args):
-        timestamp = build_overview.current_local_datetime().strftime("%Y-%m-%d %H:%M:%S")
+        timestamp = current_local_datetime().strftime("%Y-%m-%d %H:%M:%S")
         print("[{}] {}".format(timestamp, format_str % args), flush=True)
 
 
@@ -289,11 +299,11 @@ def main():
     ensure_state_layout(PATHS)
     RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
     server = ThreadingHTTPServer(
-        (build_overview.LIVE_TOKEN_HOST, build_overview.LIVE_TOKEN_PORT),
+        (LIVE_TOKEN_HOST, LIVE_TOKEN_PORT),
         TokenLiveHandler,
     )
     print(
-        "Token live server listening at {}".format(build_overview.LIVE_TOKEN_ENDPOINT),
+        "Token live server listening at {}".format(LIVE_TOKEN_ENDPOINT),
         flush=True,
     )
     server.serve_forever()

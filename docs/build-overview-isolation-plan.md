@@ -1,6 +1,6 @@
 # build_overview 隔离重构方案
 
-状态：设计方案，尚未实施。
+状态：渐进实施中。Phase 1 已先落地 token/live-update 相关的最小有效隔离；其余阶段仍按本文计划推进。
 
 本方案针对 `scripts/build_overview.py` 的职责膨胀问题，目标是在不破坏现有命令、测试和生成结果的前提下，把 overview 构建器逐步拆成清晰的内部模块。方案已经过独立 Codex subreview 审阅，最终结果为 10/10 PASS，Must Fix 和 Should Fix 均已清空。
 
@@ -20,7 +20,7 @@
 - Markdown、CSV、HTML、CSS、JS 输出
 - 最终 `reports/*` 写入
 
-最大热点是 `build_html()`、`build_data()`、`build_markdown()`、Codex native memory parser、memory registry builder 和多组 panel renderer。另一个关键问题是 `scripts/token_live_server.py` 直接 import 整个 `build_overview`，只是为了复用 token 和 update-token helper，导致 overview 生成器变成隐藏服务依赖。
+最大热点是 `build_html()`、`build_data()`、`build_markdown()`、Codex native memory parser、memory registry builder 和多组 panel renderer。另一个关键问题曾是 `scripts/token_live_server.py` 直接 import 整个 `build_overview`，只是为了复用 token 和 update-token helper，导致 overview 生成器变成隐藏服务依赖。当前 Phase 1 已解除这条依赖，token live server 改为直接依赖 `scripts/openrelix_overview/` 中的 focused modules。
 
 ## 目标
 
@@ -67,6 +67,22 @@ scripts/openrelix_overview/
     panel.py
     panel_templates.py
 ```
+
+当前已落地模块：
+
+- `config.py`
+- `contract.py`
+- `common.py`
+- `i18n.py`
+- `labels.py`
+- `local_paths.py`
+- `memory_registry.py` 中的纯 helper
+- `token_usage.py`
+- `token_fetcher.py`
+- `update_secret.py`
+- `redaction.py`
+
+目录结构暂不做更大迁移。`scripts/build_overview.py` 继续作为 CLI 兼容入口；`scripts/openrelix_overview/` 作为 overview builder 的内部实现包。等 `builders.py`、`io.py` 和 renderers 拆出后，再评估是否需要把更多 shared Python 代码提升到独立顶层 package。
 
 ## 兼容入口策略
 
@@ -163,13 +179,13 @@ python3 -m json.tool "$STATE_DIR/reports/overview-data.json" >/dev/null
 PYTHONPATH=scripts python3 -m openrelix_overview.contract --state-dir "$STATE_DIR"
 ```
 
-`openrelix_overview.contract` 是 Phase 0 必交付：
+`openrelix_overview.contract` 是 Phase 0 校验入口，当前已先提供轻量版本：
 
 - 校验 `overview-data.json` 的 `schema_version`
-- 校验 JSON Schema
-- 对 normalized `overview-data.json` 做 golden diff
-- 对 `overview.md`、`overview.csv`、`panel.html` 做代表性 marker/golden 检查
-- 覆盖 panel 关键 anchors、memory sections、token live scripts、window overview controls
+- 校验核心 section 的顶层类型和必要字段
+- 对 `overview.md`、`overview.csv`、`panel.html` 做代表性 marker 检查
+
+后续在 Phase 2-3 稳定 section contract 后，再补 JSON Schema 文件、normalized golden diff，以及更细的 panel anchors、memory sections、token live scripts、window overview controls 检查。
 
 增加 import side-effect gate：
 
@@ -226,16 +242,20 @@ PY
 
 优先解除 `token_live_server.py -> build_overview` 的耦合。
 
-先抽取：
+当前已抽取：
 
 - `config.py`
+- `common.py`
+- `labels.py`
+- `local_paths.py`
 - `token_usage.py`
 - `token_fetcher.py`
 - `update_secret.py`
 - `redaction.py`
-- `i18n.py`
 
-`scripts/token_live_server.py` 后续应改为：
+`i18n.py` 已先抽出语言判断、翻译查找、英文复数和 panel i18n JSON 序列化。大字典 `PANEL_I18N_EN` 暂时留在 `build_overview.py`，避免这批 diff 变成大规模文案搬迁。
+
+`scripts/token_live_server.py` 已改为：
 
 - 从 `token_usage.py` import `build_token_usage_view()`
 - 从 `token_fetcher.py` import `fetch_ccusage_daily()`
@@ -249,7 +269,7 @@ PY
 抽取：
 
 - `codex_native.py`
-- `memory_registry.py`
+- `memory_registry.py`（纯 helper 已先抽出，registry grouping 和 usage matching 后续 move-only 迁移）
 - `windows.py`
 
 这些区域已有较多测试覆盖，适合做 move-only 迁移。原则是先不改行为，只改变模块位置和依赖注入方式。
@@ -351,4 +371,3 @@ def build_overview_data(inputs, context):
 - Phase 0-5
 
 预计 6-9 天。
-

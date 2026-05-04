@@ -82,6 +82,9 @@ build_overview.py
   -> reports/overview.md
   -> reports/overview.csv
   -> reports/panel.html
+
+openrelix_overview/
+  -> focused overview internals such as token usage, token fetch, display labels, redaction, local path links, update secret, and shared helpers
 ```
 
 ## 分层说明
@@ -252,7 +255,9 @@ state root 的主要目录：
 
 它会聚合资产数量、复用事件、估算节省、项目上下文、nightly memory、Codex native memory 对照和 token 使用趋势。
 
-`scripts/build_overview.py` 当前仍是兼容入口；后续隔离重构按 [build_overview 隔离重构方案](build-overview-isolation-plan.md) 执行。该方案要求先补契约和 import 副作用验证，再逐步拆分 token/update secret、memory、window、asset 和 renderer 模块。
+`scripts/build_overview.py` 当前仍是兼容入口；内部实现开始迁入 `scripts/openrelix_overview/`。当前已拆出 token/update secret、redaction、local path、display label、i18n、contract 和 memory registry 纯 helper，并解除 `token_live_server.py` 对整个 `build_overview.py` 的 import 依赖。后续隔离重构按 [build_overview 隔离重构方案](build-overview-isolation-plan.md) 继续执行，重点是逐步拆分 memory grouping、window、asset 和 renderer 模块。
+
+目录结构暂不做更大迁移：现阶段只新增 overview builder 内部包，保留所有公开命令和安装路径不变。
 
 ### `scripts/openrelix.py`
 
