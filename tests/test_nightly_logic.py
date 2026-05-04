@@ -4388,10 +4388,12 @@ Keep my own note.
             }
         )
 
-        self.assertIn('const periodTokenValue = tokenTotalDisplay(tokenUsage, "period_total_tokens", "period_total_tokens_display");', html)
-        self.assertIn("const periodCostValue = tokenUsage.period_cost_display || formatUsdValue(tokenUsage.period_cost_usd);", html)
+        self.assertIn('const periodTokenValue = tokenTotalDisplay(preparedTokenUsage, "period_total_tokens", "period_total_tokens_display");', html)
+        self.assertIn("const periodCostValue = preparedTokenUsage.period_cost_display || formatUsdValue(preparedTokenUsage.period_cost_usd);", html)
+        self.assertIn("function tokenRequestCacheKey(filters, windowDays)", html)
+        self.assertIn("function aggregateDailyRowsByMonth(rows)", html)
         self.assertIn('requestUrl.searchParams.set("provider", normalizeTokenProvider(filters.provider));', html)
-        self.assertIn('requestUrl.searchParams.set("group_by", normalizeTokenGroupBy(filters.groupBy));', html)
+        self.assertIn('requestUrl.searchParams.set("group_by", "day");', html)
         self.assertIn("function tokenFilterRangeLabel(filters, tokenUsage)", html)
         self.assertIn('id="token-start-date"', html)
         self.assertIn('<input id="token-start-date" class="token-date-input" type="date" value="">', html)
@@ -4399,6 +4401,7 @@ Keep my own note.
         self.assertIn("function extractTokenRowCost(row)", html)
         self.assertIn("display: compactTokenWithCostValue(row.value, rowCost)", html)
         self.assertIn("prepared.summary_cards = deriveTokenSummaryCards(prepared);", html)
+        self.assertIn('updateTokenVisuals(state.tokenUsage, state.tokenSourceKind);', html)
         self.assertNotIn('updateMetricCard(\n          "today_token",\n          tokenUsage.today_total_tokens_display', html)
 
     def test_product_showcase_chinese_default_has_localized_visible_labels(self):

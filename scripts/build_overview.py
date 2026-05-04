@@ -18072,6 +18072,7 @@ def build_html(data):
         tokenUsage: snapshot.token_usage || null,
         tokenRefreshedAt: (snapshot.token_usage && snapshot.token_usage.refreshed_at) || "",
         tokenSourceKind: "snapshot",
+        tokenUsageCache: {{}},
         tokenFilters: {{
           provider: (snapshot.token_usage && snapshot.token_usage.provider) || "all",
           startDate: "",
@@ -19445,6 +19446,38 @@ def build_html(data):
         return text === "month" || text === "monthly" ? "month" : "day";
       }}
 
+      function tokenRequestCacheKey(filters, windowDays) {{
+        const activeFilters = filters || {{}};
+        return [
+          normalizeTokenProvider(activeFilters.provider),
+          String(activeFilters.startDate || ""),
+          String(activeFilters.endDate || ""),
+          String(windowDays || {window_days}),
+        ].join("|");
+      }}
+
+      function getCachedTokenUsage(cacheKey) {{
+        const entry = state.tokenUsageCache ? state.tokenUsageCache[cacheKey] : null;
+        if (!entry || !entry.tokenUsage) {{
+          return null;
+        }}
+        if (Date.now() - (Number(entry.cachedAt) || 0) > 90 * 1000) {{
+          delete state.tokenUsageCache[cacheKey];
+          return null;
+        }}
+        return entry.tokenUsage;
+      }}
+
+      function rememberTokenUsage(cacheKey, tokenUsage) {{
+        if (!cacheKey || !tokenUsage || !tokenUsage.available) {{
+          return;
+        }}
+        state.tokenUsageCache[cacheKey] = {{
+          cachedAt: Date.now(),
+          tokenUsage: tokenUsage,
+        }};
+      }}
+
       function tokenProviderLabel(provider) {{
         const normalized = normalizeTokenProvider(provider);
         if (normalized === "codex") {{
@@ -19487,6 +19520,194 @@ def build_html(data):
         return startText || endText || "";
       }}
 
+      function tokenRowMonthKey(row) {{
+        const candidates = [
+          row && row.date,
+          row && row.raw_date,
+          row && row.sort_key,
+          row && row.label,
+        ];
+        for (const candidate of candidates) {{
+          const text = String(candidate || "").trim();
+          const match = text.match(/^(\\d{{4}})-(\\d{{2}})/);
+          if (match) {{
+            return match[1] + "-" + match[2];
+          }}
+        }}
+        return "";
+      }}
+
+      function tokenRowMetricValue(row, needles) {{
+        const details = Array.isArray(row && row.details) ? row.details : [];
+        const normalizedNeedles = needles.map(function (needle) {{
+          return String(needle || "").toLowerCase();
+        }});
+        const match = details.find(function (detail) {{
+          const haystack = [
+            detail && detail.label,
+            detail && detail.title,
+            detail && detail.meta,
+          ].filter(Boolean).join(" ").toLowerCase();
+          return normalizedNeedles.some(function (needle) {{
+            return haystack.includes(needle);
+          }});
+        }});
+        return match ? Number(match.value) || 0 : 0;
+      }}
+
+      function buildTokenDetail(label, value, meta) {{
+        const sep = currentLanguage === "en" ? ": " : "：";
+        return {{
+          label: label,
+          value: value,
+          title: label + sep + compactTokenValue(value),
+          meta: meta,
+        }};
+      }}
+
+      function tokenBreakdownDetailsFromValues(values, heading) {{
+        const totalInput = (Number(values.input) || 0) + (Number(values.cached) || 0);
+        const total = Number(values.total) || 0;
+        const cacheShare = totalInput > 0 ? (Number(values.cached) || 0) / totalInput * 100 : null;
+        const outputShare = total > 0 ? (Number(values.output) || 0) / total * 100 : null;
+        const reasoningShare = total > 0 ? (Number(values.reasoning) || 0) / total * 100 : null;
+        const inputLabel = currentLanguage === "en" ? "Input" : "输入";
+        const cacheLabel = currentLanguage === "en" ? "Cache Read" : "缓存读取";
+        const outputLabel = currentLanguage === "en" ? "Output" : "输出";
+        const reasoningLabel = currentLanguage === "en" ? "Reasoning output" : "推理输出";
+        return [
+          buildTokenDetail(
+            inputLabel,
+            Number(values.input) || 0,
+            currentLanguage === "en" ? "Uncached input tokens" : "无缓存输入 Token"
+          ),
+          buildTokenDetail(
+            cacheLabel,
+            Number(values.cached) || 0,
+            currentLanguage === "en"
+              ? formatPercentValue(cacheShare, 0, false) + " of total input"
+              : "占总输入 " + formatPercentValue(cacheShare, 0, false)
+          ),
+          buildTokenDetail(
+            outputLabel,
+            Number(values.output) || 0,
+            currentLanguage === "en"
+              ? formatPercentValue(outputShare, 1, false) + " of total"
+              : "占总量 " + formatPercentValue(outputShare, 1, false)
+          ),
+          buildTokenDetail(
+            reasoningLabel,
+            Number(values.reasoning) || 0,
+            currentLanguage === "en"
+              ? formatPercentValue(reasoningShare, 1, false) + " of total"
+              : "占总量 " + formatPercentValue(reasoningShare, 1, false)
+          ),
+        ];
+      }}
+
+      function buildTokenBreakdownRows(values) {{
+        const totalInput = (Number(values.input) || 0) + (Number(values.cached) || 0);
+        const total = Number(values.total) || 0;
+        const cacheShare = totalInput > 0 ? (Number(values.cached) || 0) / totalInput * 100 : null;
+        const outputShare = total > 0 ? (Number(values.output) || 0) / total * 100 : null;
+        const reasoningShare = total > 0 ? (Number(values.reasoning) || 0) / total * 100 : null;
+        const inputLabel = currentLanguage === "en" ? "Input" : "输入";
+        const cacheLabel = currentLanguage === "en" ? "Cache Read" : "缓存读取";
+        const outputLabel = currentLanguage === "en" ? "Output" : "输出";
+        const reasoningLabel = currentLanguage === "en" ? "Reasoning output" : "推理输出";
+        return [
+          {{
+            label: inputLabel,
+            value: Number(values.input) || 0,
+            display: compactTokenValue(values.input),
+            tone: "token-input",
+            details: [buildTokenDetail(inputLabel, Number(values.input) || 0, currentLanguage === "en" ? "Uncached input tokens" : "无缓存输入 Token")],
+            details_heading: currentLanguage === "en" ? "Input details" : "输入详情",
+          }},
+          {{
+            label: cacheLabel,
+            value: Number(values.cached) || 0,
+            display: compactTokenValue(values.cached),
+            tone: "token-cache",
+            details: [buildTokenDetail(cacheLabel, Number(values.cached) || 0, currentLanguage === "en" ? formatPercentValue(cacheShare, 0, false) + " of total input" : "占总输入 " + formatPercentValue(cacheShare, 0, false))],
+            details_heading: currentLanguage === "en" ? "Cache details" : "缓存详情",
+          }},
+          {{
+            label: outputLabel,
+            value: Number(values.output) || 0,
+            display: compactTokenValue(values.output),
+            tone: "token-output",
+            details: [buildTokenDetail(outputLabel, Number(values.output) || 0, currentLanguage === "en" ? formatPercentValue(outputShare, 1, false) + " of total" : "占总量 " + formatPercentValue(outputShare, 1, false))],
+            details_heading: currentLanguage === "en" ? "Output details" : "输出详情",
+          }},
+          {{
+            label: reasoningLabel,
+            value: Number(values.reasoning) || 0,
+            display: compactTokenValue(values.reasoning),
+            tone: "token-reasoning",
+            details: [buildTokenDetail(reasoningLabel, Number(values.reasoning) || 0, currentLanguage === "en" ? formatPercentValue(reasoningShare, 1, false) + " of total" : "占总量 " + formatPercentValue(reasoningShare, 1, false))],
+            details_heading: currentLanguage === "en" ? "Reasoning details" : "推理详情",
+          }},
+        ];
+      }}
+
+      function aggregateDailyRowsByMonth(rows) {{
+        const buckets = new Map();
+        (Array.isArray(rows) ? rows : []).forEach(function (row) {{
+          const key = tokenRowMonthKey(row);
+          if (!key) {{
+            return;
+          }}
+          if (!buckets.has(key)) {{
+            buckets.set(key, {{
+              label: key,
+              date: key + "-01",
+              raw_date: key,
+              sort_key: key,
+              group_by: "month",
+              day_count: 0,
+              active_day_count: 0,
+              value: 0,
+              costUSD: 0,
+              input: 0,
+              cached: 0,
+              output: 0,
+              reasoning: 0,
+            }});
+          }}
+          const bucket = buckets.get(key);
+          const rowValue = Number(row.value) || 0;
+          bucket.day_count += Number(row.day_count) || 1;
+          bucket.active_day_count += Number(row.active_day_count) || (rowValue > 0 ? 1 : 0);
+          bucket.value += rowValue;
+          bucket.costUSD += extractTokenRowCost(row);
+          bucket.input += tokenRowMetricValue(row, ["输入", "input"]);
+          bucket.cached += tokenRowMetricValue(row, ["缓存", "cache"]);
+          bucket.output += tokenRowMetricValue(row, ["输出", "output"]);
+          bucket.reasoning += tokenRowMetricValue(row, ["推理", "reasoning"]);
+        }});
+        return Array.from(buckets.values()).sort(function (left, right) {{
+          return String(left.sort_key).localeCompare(String(right.sort_key));
+        }}).map(function (bucket) {{
+          const values = {{
+            total: bucket.value,
+            input: bucket.input,
+            cached: bucket.cached,
+            output: bucket.output,
+            reasoning: bucket.reasoning,
+          }};
+          return Object.assign({{}}, bucket, {{
+            display: compactTokenWithCostValue(bucket.value, bucket.costUSD),
+            token_display: compactTokenValue(bucket.value),
+            cost_display: formatUsdValue(bucket.costUSD),
+            details: tokenBreakdownDetailsFromValues(values),
+            details_heading: currentLanguage === "en"
+              ? "Token breakdown for " + bucket.label
+              : bucket.label + " Token 构成",
+          }});
+        }});
+      }}
+
       function syncTokenFilterControls(tokenUsage) {{
         const filters = state.tokenFilters || {{}};
         const provider = normalizeTokenProvider(filters.provider);
@@ -19526,6 +19747,11 @@ def build_html(data):
       }}
 
       function setTokenFilterState(nextFilters, shouldRefresh) {{
+        const previousFilters = Object.assign({{}}, state.tokenFilters || {{}});
+        const previousKey = tokenRequestCacheKey(
+          previousFilters,
+          (state.tokenUsage && state.tokenUsage.window_days) || {window_days}
+        );
         const merged = Object.assign({{}}, state.tokenFilters || {{}}, nextFilters || {{}});
         merged.provider = normalizeTokenProvider(merged.provider);
         merged.groupBy = normalizeTokenGroupBy(merged.groupBy);
@@ -19539,7 +19765,15 @@ def build_html(data):
         state.tokenFilters = merged;
         syncTokenFilterControls(state.tokenUsage);
         if (shouldRefresh) {{
-          refreshTokenUsage(true);
+          const nextKey = tokenRequestCacheKey(
+            merged,
+            (state.tokenUsage && state.tokenUsage.window_days) || {window_days}
+          );
+          if (previousKey === nextKey && state.tokenUsage) {{
+            updateTokenVisuals(state.tokenUsage, state.tokenSourceKind);
+          }} else {{
+            refreshTokenUsage(false);
+          }}
         }}
       }}
 
@@ -19666,8 +19900,93 @@ def build_html(data):
         return cards;
       }}
 
-      function prepareTokenUsageForPanel(tokenUsage, relativeUpdate) {{
-        const prepared = Object.assign({{}}, tokenUsage || {{}});
+      function deriveTokenUsageForGroup(tokenUsage, groupBy, relativeUpdate) {{
+        const targetGroup = normalizeTokenGroupBy(groupBy);
+        const derived = Object.assign({{}}, tokenUsage || {{}});
+        const sourceRows = Array.isArray(derived.daily_rows) ? derived.daily_rows : [];
+        const sourceGroup = normalizeTokenGroupBy(derived.group_by);
+        const displayRows = targetGroup === "month" && sourceGroup !== "month"
+          ? aggregateDailyRowsByMonth(sourceRows)
+          : sourceRows.slice();
+        derived.group_by = targetGroup;
+        derived.daily_rows = displayRows;
+        const activeRows = displayRows.filter(function (row) {{
+          return (Number(row.value) || 0) > 0;
+        }});
+        const latest = displayRows.length ? displayRows[displayRows.length - 1] : null;
+        const total = displayRows.reduce(function (sum, row) {{
+          return sum + (Number(row.value) || 0);
+        }}, 0);
+        const totalCost = displayRows.reduce(function (sum, row) {{
+          return sum + extractTokenRowCost(row);
+        }}, 0);
+        const activeCount = activeRows.length;
+        const periodUnit = targetGroup === "month"
+          ? (currentLanguage === "en" ? "months" : "月")
+          : (currentLanguage === "en" ? "days" : "日");
+        const rangeLabel = displayRows.length
+          ? (displayRows[0].label === displayRows[displayRows.length - 1].label
+            ? displayRows[0].label
+            : (currentLanguage === "en"
+              ? displayRows[0].label + " to " + displayRows[displayRows.length - 1].label
+              : displayRows[0].label + " 至 " + displayRows[displayRows.length - 1].label))
+          : (derived.range_label || "");
+        derived.period_total_tokens = Number.isFinite(Number(derived.period_total_tokens)) && targetGroup === sourceGroup
+          ? Number(derived.period_total_tokens)
+          : total;
+        derived.period_total_tokens_display = compactTokenValue(derived.period_total_tokens);
+        derived.period_cost_usd = Number.isFinite(Number(derived.period_cost_usd)) && targetGroup === sourceGroup
+          ? Number(derived.period_cost_usd)
+          : totalCost;
+        derived.period_cost_display = formatUsdValue(derived.period_cost_usd);
+        derived.period_average_tokens = activeCount ? Math.floor(derived.period_total_tokens / activeCount) : 0;
+        derived.period_average_tokens_display = compactTokenValue(derived.period_average_tokens);
+        derived.period_count = displayRows.length;
+        derived.active_period_count = activeCount;
+        derived.period_unit = periodUnit;
+        derived.range_label = rangeLabel || derived.range_label || "";
+        if (latest) {{
+          const latestValues = {{
+            total: Number(latest.value) || 0,
+            input: tokenRowMetricValue(latest, ["输入", "input"]),
+            cached: tokenRowMetricValue(latest, ["缓存", "cache"]),
+            output: tokenRowMetricValue(latest, ["输出", "output"]),
+            reasoning: tokenRowMetricValue(latest, ["推理", "reasoning"]),
+          }};
+          derived.today_total_tokens = latestValues.total;
+          derived.today_total_tokens_display = compactTokenValue(latestValues.total);
+          derived.today_date_label = latest.label || derived.today_date_label || "";
+          derived.current_period_label = latest.label || derived.current_period_label || "";
+          derived.today_breakdown = targetGroup === "month"
+            ? buildTokenBreakdownRows(latestValues)
+            : (Array.isArray(derived.today_breakdown) && derived.today_breakdown.length
+              ? derived.today_breakdown
+              : buildTokenBreakdownRows(latestValues));
+        }} else {{
+          derived.today_total_tokens = Number(derived.today_total_tokens) || 0;
+          derived.today_total_tokens_display = compactTokenValue(derived.today_total_tokens);
+          derived.today_breakdown = Array.isArray(derived.today_breakdown) ? derived.today_breakdown : [];
+        }}
+        const trailing = displayRows.slice(-7);
+        const trailingTotal = trailing.reduce(function (sum, row) {{
+          return sum + (Number(row.value) || 0);
+        }}, 0);
+        const trailingCost = trailing.reduce(function (sum, row) {{
+          return sum + extractTokenRowCost(row);
+        }}, 0);
+        derived.seven_day_total_tokens = trailingTotal;
+        derived.seven_day_total_tokens_display = compactTokenValue(trailingTotal);
+        derived.seven_day_cost_usd = trailingCost;
+        derived.seven_day_cost_display = formatUsdValue(trailingCost);
+        const providerLabel = derived.provider_label || tokenProviderLabel(derived.provider);
+        derived.overview_note = currentLanguage === "en"
+          ? (derived.range_label || "") + " · " + activeCount + " " + periodUnit + " with records · " + providerLabel + " · " + relativeUpdate
+          : (derived.range_label || "") + " · " + activeCount + " 个有数据" + periodUnit + " · " + providerLabel + " · " + relativeUpdate;
+        return derived;
+      }}
+
+      function prepareTokenUsageForPanel(tokenUsage, relativeUpdate, groupBy) {{
+        const prepared = deriveTokenUsageForGroup(tokenUsage, groupBy, relativeUpdate);
         const allDailyRows = Array.isArray(prepared.daily_rows) ? prepared.daily_rows : [];
         const displayLimit = normalizeTokenGroupBy(prepared.group_by) === "month"
           ? Math.min(Math.max(allDailyRows.length, 1), 12)
@@ -19831,21 +20150,22 @@ def build_html(data):
         state.tokenUsage = tokenUsage;
         state.tokenRefreshedAt = tokenUsage.refreshed_at || state.tokenRefreshedAt;
         state.tokenSourceKind = sourceKind || state.tokenSourceKind;
+        const currentFilters = state.tokenFilters || {{}};
         state.tokenFilters = {{
-          provider: normalizeTokenProvider(tokenUsage.provider || (state.tokenFilters && state.tokenFilters.provider)),
-          startDate: (state.tokenFilters && state.tokenFilters.startDate) || "",
-          endDate: (state.tokenFilters && state.tokenFilters.endDate) || "",
-          groupBy: normalizeTokenGroupBy(tokenUsage.group_by || (state.tokenFilters && state.tokenFilters.groupBy)),
+          provider: normalizeTokenProvider(currentFilters.provider || tokenUsage.provider),
+          startDate: currentFilters.startDate || "",
+          endDate: currentFilters.endDate || "",
+          groupBy: normalizeTokenGroupBy(currentFilters.groupBy || tokenUsage.group_by),
         }};
         const relativeUpdate = describeRelativeTime(state.tokenRefreshedAt, "更新");
-        const preparedTokenUsage = prepareTokenUsageForPanel(tokenUsage, relativeUpdate);
-        const periodLabel = tokenUsage.range_label || t("筛选区间");
-        const providerLabel = tokenProviderLabel(tokenUsage.provider);
-        const periodTokenValue = tokenTotalDisplay(tokenUsage, "period_total_tokens", "period_total_tokens_display");
-        const periodCostValue = tokenUsage.period_cost_display || formatUsdValue(tokenUsage.period_cost_usd);
+        const preparedTokenUsage = prepareTokenUsageForPanel(tokenUsage, relativeUpdate, state.tokenFilters.groupBy);
+        const periodLabel = preparedTokenUsage.range_label || t("筛选区间");
+        const providerLabel = tokenProviderLabel(preparedTokenUsage.provider || state.tokenFilters.provider);
+        const periodTokenValue = tokenTotalDisplay(preparedTokenUsage, "period_total_tokens", "period_total_tokens_display");
+        const periodCostValue = preparedTokenUsage.period_cost_display || formatUsdValue(preparedTokenUsage.period_cost_usd);
         const averageCaption = currentLanguage === "en"
-          ? "Average " + (tokenUsage.period_average_tokens_display || "—") + " / " + (tokenUsage.active_period_count || 0) + " active " + (tokenUsage.period_unit || "days")
-          : "均值 " + (tokenUsage.period_average_tokens_display || "—") + " / " + (tokenUsage.active_period_count || 0) + " 个有数据" + (tokenUsage.period_unit || "日");
+          ? "Average " + (preparedTokenUsage.period_average_tokens_display || "—") + " / " + (preparedTokenUsage.active_period_count || 0) + " active " + (preparedTokenUsage.period_unit || "days")
+          : "均值 " + (preparedTokenUsage.period_average_tokens_display || "—") + " / " + (preparedTokenUsage.active_period_count || 0) + " 个有数据" + (preparedTokenUsage.period_unit || "日");
         updateMetricCard(
           "today_token",
           periodTokenValue,
@@ -19861,19 +20181,22 @@ def build_html(data):
           t("周期成本")
         );
         if (elements.dailyTokenNote) {{
-          elements.dailyTokenNote.textContent = tokenUsage.available
-            ? t("数据来源：ccusage 日维度统计") + " · " + relativeUpdate
+          const trendSourceText = normalizeTokenGroupBy(preparedTokenUsage.group_by) === "month"
+            ? (currentLanguage === "en" ? "Data source: ccusage monthly aggregate" : "数据来源：ccusage 月维度聚合")
+            : t("数据来源：ccusage 日维度统计");
+          elements.dailyTokenNote.textContent = preparedTokenUsage.available
+            ? trendSourceText + " · " + relativeUpdate
             : t("暂未获取到 ccusage 的日维度统计");
         }}
         if (elements.todayTokenNote) {{
-          elements.todayTokenNote.textContent = t(tokenUsage.current_period_label || tokenUsage.today_date_label || "今日") + " · " + relativeUpdate;
+          elements.todayTokenNote.textContent = t(preparedTokenUsage.current_period_label || preparedTokenUsage.today_date_label || "今日") + " · " + relativeUpdate;
         }}
         if (elements.tokenOverviewNote) {{
           elements.tokenOverviewNote.textContent = preparedTokenUsage.available
             ? (preparedTokenUsage.overview_note || relativeUpdate)
             : t("暂未获取到 ccusage 的日维度统计");
         }}
-        syncTokenFilterControls(tokenUsage);
+        syncTokenFilterControls(preparedTokenUsage);
         renderTokenSummaryCards(preparedTokenUsage.summary_cards || []);
         renderBarRows(elements.dailyTokenRows, (preparedTokenUsage.daily_rows || []).slice().reverse(), "token-daily-mid");
         renderBarRows(elements.todayTokenRows, preparedTokenUsage.today_breakdown || [], "token-input");
@@ -19905,6 +20228,17 @@ def build_html(data):
       }}
 
       async function refreshTokenUsage(forceRefresh) {{
+        const filters = state.tokenFilters || {{}};
+        const windowDays = (state.tokenUsage && state.tokenUsage.window_days) || {window_days};
+        const cacheKey = tokenRequestCacheKey(filters, windowDays);
+        if (!forceRefresh) {{
+          const cachedTokenUsage = getCachedTokenUsage(cacheKey);
+          if (cachedTokenUsage) {{
+            updateTokenVisuals(cachedTokenUsage, "cache");
+            setStatus("live", "", "live_refreshed");
+            return;
+          }}
+        }}
         setLoading(true);
         setStatus(
           "loading",
@@ -19913,13 +20247,12 @@ def build_html(data):
         );
         try {{
           const requestUrl = new URL(config.liveEndpoint);
-          const filters = state.tokenFilters || {{}};
           requestUrl.searchParams.set(
             "window_days",
-            String((state.tokenUsage && state.tokenUsage.window_days) || {window_days})
+            String(windowDays)
           );
           requestUrl.searchParams.set("provider", normalizeTokenProvider(filters.provider));
-          requestUrl.searchParams.set("group_by", normalizeTokenGroupBy(filters.groupBy));
+          requestUrl.searchParams.set("group_by", "day");
           if (filters.startDate) {{
             requestUrl.searchParams.set("start_date", filters.startDate);
           }}
@@ -19940,6 +20273,7 @@ def build_html(data):
           if (!payload.token_usage.available && !payload.stale) {{
             throw new Error(payload.error || "ccusage 当前不可用");
           }}
+          rememberTokenUsage(cacheKey, payload.token_usage);
           updateTokenVisuals(payload.token_usage, payload.stale ? "stale" : "live");
           if (payload.stale) {{
             setStatus("warn", "", "warn_stale");
@@ -19962,6 +20296,12 @@ def build_html(data):
         }}
       }}
 
+      if (state.tokenUsage) {{
+        rememberTokenUsage(
+          tokenRequestCacheKey(state.tokenFilters, state.tokenUsage.window_days || {window_days}),
+          state.tokenUsage
+        );
+      }}
       wireContentMoreButtons();
       wireProjectContextRangeButtons();
       wireThemeButtons();
