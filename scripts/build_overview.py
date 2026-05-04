@@ -475,10 +475,31 @@ PANEL_I18N_EN = {
     "今日 Token": "Today Token",
     "今日": "Today",
     "近 7 日 Token": "7-day Token",
+    "筛选 Token": "Filtered Token",
+    "周期成本": "Period Cost",
+    "Token 筛选": "Token Filters",
+    "来源": "Source",
+    "全部": "All",
+    "全部来源": "All Sources",
+    "粒度": "Granularity",
+    "按日": "Daily",
+    "按月": "Monthly",
+    "起始日期": "Start Date",
+    "结束日期": "End Date",
+    "重置": "Reset",
+    "Token 构成": "Token Breakdown",
+    "Token 消耗趋势": "Token Usage Trend",
+    "每月 Token 消耗": "Monthly Token Usage",
+    "筛选区间": "Selected Range",
     "Token 速览": "Token Overview",
     "7 日账单": "7-day Bill",
     "7 日均值": "7-day Average",
+    "周期账单": "Period Bill",
+    "周期日均": "Daily Average",
+    "月均值": "Monthly Average",
     "峰值日": "Peak Day",
+    "峰值月": "Peak Month",
+    "暂无账单数据": "No bill data yet",
     "缓存占输入": "Cache Read / Input",
     "缓存占总输入": "Cache Read / Total Input",
     "缓存读取占总输入": "Cache Read / Total Input",
@@ -757,6 +778,18 @@ PANEL_I18N_EN = {
     "这类资产通常绑定某个仓库、模块或固定工作场景。": (
         "These assets are usually tied to a repo, module, or fixed work scenario."
     ),
+    "当前 Token 筛选条件下的总 Token 消耗。": (
+        "Total Token usage under the current Token filters."
+    ),
+    "总量按筛选后的 Codex / Claude Code 来源、起止日期和展示粒度重新汇总。": (
+        "Totals are recomputed from the selected Codex / Claude Code source, date range, and granularity."
+    ),
+    "当前 Token 筛选区间的 ccusage 费用估算。": (
+        "ccusage cost estimate for the current Token filter range."
+    ),
+    "配合左侧总量卡片看周期成本；按月展示时均值会按有数据月份计算。": (
+        "Read this with the total card; in monthly mode, averages are calculated across months with data."
+    ),
     "ccusage 最新一天的总 Token 消耗。": "Total Token usage on the latest ccusage day.",
     "总量按总输入和输出计算；缓存读取是总输入里命中缓存的部分，推理输出是输出子集。": (
         "Totals are calculated from total input and output; Cache Read is the cached portion of total input, and reasoning output is a subset of output."
@@ -770,8 +803,14 @@ PANEL_I18N_EN = {
     "把 ccusage 的日维度数据再加工成 7 日账单、7 日均值、峰值日和缓存读取占总输入等快速判断信号。": (
         "Turns ccusage daily data into quick signals like 7-day estimated bill, 7-day average, peak day, and Cache Read / total-input ratio."
     ),
+    "把 ccusage 数据按当前来源、日期范围和展示粒度加工成账单、均值、峰值和缓存读取占比。": (
+        "Turns ccusage data into bill, average, peak, and Cache Read ratio signals for the current source, date range, and granularity."
+    ),
     "上方两张大卡看总量，速览区看变化和结构，下面的每日 / 今日柱条可以 hover 到具体构成。": (
         "Use the two large cards for totals, the overview for change and structure, and hover the daily/today bars for breakdowns."
+    ),
+    "上方两张大卡看筛选总量和成本，速览区看周期结构，下面的趋势 / 构成柱条可以 hover 到具体构成。": (
+        "Use the two large cards for filtered total and cost, the overview for period structure, and hover the trend / breakdown bars for details."
     ),
     "今日输入柱条对齐 ccusage 表格里的无缓存 Input；缓存读取单独展示为总输入的缓存命中部分。": (
         "The Today input bar matches the uncached Input column in ccusage; Cache Read is shown separately as the cache-hit portion of total input."
@@ -887,9 +926,18 @@ PANEL_I18N_EN = {
     "按日期展示最近几天的 Token 消耗趋势；页面打开后会先显示快照，再尝试刷新实时值。": (
         "Shows recent Token usage by date; the page shows a snapshot first, then tries to refresh live values."
     ),
+    "按当前筛选条件展示日维度或月维度 Token 消耗趋势；页面打开后会先显示快照，再尝试刷新实时值。": (
+        "Shows daily or monthly Token trends for the current filters; the page shows a snapshot first, then refreshes live values."
+    ),
     "ccusage 最新一天的 breakdown。": "The latest daily breakdown from ccusage.",
+    "ccusage 当前筛选末端日期或月份的 breakdown。": (
+        "The ccusage breakdown for the last date or month in the current filters."
+    ),
     "把最新一天的 Token 指标拆成无缓存输入、缓存读取、输出和推理输出。": (
         "Breaks the latest day's Token metrics into uncached input, Cache Read, output, and reasoning output."
+    ),
+    "把当前筛选末端日期或月份的 Token 指标拆成无缓存输入、缓存读取、输出和推理输出。": (
+        "Breaks the last filtered date or month into uncached input, Cache Read, output, and reasoning output."
     ),
     "最近捕获到的窗口，会先按项目 / 上下文聚合，再展示每组的窗口数、问题数和结论数。": (
         "Recent captured windows are grouped by project/context, then shown with window, question, and conclusion counts."
@@ -2316,21 +2364,26 @@ def write_token_usage_cache(payload):
     overview_token_fetcher.write_token_usage_cache(payload, TOKEN_CACHE_PATH)
 
 
-def fetch_ccusage_daily(window_days=CCUSAGE_WINDOW_DAYS, provider="all"):
+def fetch_ccusage_daily(window_days=CCUSAGE_WINDOW_DAYS, provider="all", start_date=None, end_date=None):
     return overview_token_fetcher.fetch_ccusage_daily(
         window_days=window_days,
         now_func=current_local_datetime,
         resolve_npx_binary_func=resolve_npx_binary,
         env_func=build_subprocess_env,
         provider=provider,
+        start_date=start_date,
+        end_date=end_date,
     )
 
 
-def resolve_ccusage_daily(provider="all"):
+def resolve_ccusage_daily(provider="all", window_days=CCUSAGE_WINDOW_DAYS, start_date=None, end_date=None):
     return overview_token_fetcher.resolve_ccusage_daily(
         cache_path=TOKEN_CACHE_PATH,
         fetch_func=fetch_ccusage_daily,
         provider=provider,
+        window_days=window_days,
+        start_date=start_date,
+        end_date=end_date,
     )
 
 
@@ -2395,11 +2448,14 @@ def recent_token_daily_rows(parsed_rows, window_days=CCUSAGE_WINDOW_DAYS):
     )
 
 
-def build_token_usage_view(ccusage_result, language=None):
+def build_token_usage_view(ccusage_result, language=None, group_by=None, start_date=None, end_date=None):
     return overview_token_usage.build_token_usage_view(
         ccusage_result,
         language=current_language(language),
         now_func=current_local_datetime,
+        group_by=group_by,
+        start_date=start_date,
+        end_date=end_date,
     )
 
 
@@ -7716,21 +7772,29 @@ def build_data(assets, usage_events, reviews, language=None):
         },
         {
             "key": "today_token",
-            "label": localized("今日 Token", "Today Token", language),
-            "value": token_usage["today_total_tokens_display"],
-            "caption": localized(
-                "{} 的总消耗".format(token_usage["today_date_label"]),
-                "Total for {}".format(token_usage["today_date_label"]),
-                language,
-            ),
+            "label": localized("筛选 Token", "Filtered Token", language),
+            "value": token_usage.get("period_total_tokens_display", token_usage["today_total_tokens_display"]),
+            "caption": token_usage.get("range_label") or localized("筛选区间", "Selected Range", language),
             "meta": token_snapshot_note,
             "live": True,
         },
         {
             "key": "seven_day_token",
-            "label": localized("近 7 日 Token", "7-day Token", language),
-            "value": token_usage["seven_day_total_tokens_display"],
-            "caption": localized("最近 7 天累计消耗", "Total usage in the last 7 days", language),
+            "label": localized("周期成本", "Period Cost", language),
+            "value": token_usage.get("period_cost_display", token_usage["seven_day_cost_display"]),
+            "caption": localized(
+                "均值 {} / {} 个有数据{}".format(
+                    token_usage.get("period_average_tokens_display", "—"),
+                    token_usage.get("active_period_count", 0),
+                    token_usage.get("period_unit", "日"),
+                ),
+                "Average {} / {} active {}".format(
+                    token_usage.get("period_average_tokens_display", "—"),
+                    token_usage.get("active_period_count", 0),
+                    token_usage.get("period_unit", "days"),
+                ),
+                language,
+            ),
             "meta": token_snapshot_note,
             "live": True,
         },
@@ -9023,6 +9087,86 @@ def make_token_overview_panel(token_usage, help_html=""):
             note_id="token-overview-note",
         ),
         summary_cards=make_token_summary_cards_html(token_usage.get("summary_cards", [])),
+    )
+
+
+def make_token_filter_panel(token_usage):
+    provider = overview_token_fetcher.normalize_token_provider(token_usage.get("provider", "all"))
+    group_by = overview_token_usage.normalize_token_group_by(token_usage.get("group_by", "day"))
+    range_label = escape(str(token_usage.get("range_label", "")))
+    provider_options = [
+        ("all", "全部", "All"),
+        ("codex", "Codex", "Codex"),
+        ("claude", "Claude", "Claude"),
+    ]
+    group_options = [
+        ("day", "按日", "Daily"),
+        ("month", "按月", "Monthly"),
+    ]
+
+    def make_segment_button(value, label_zh, label_en, active_value, name):
+        pressed = str(value == active_value).lower()
+        active_attr = ' data-active="true"' if value == active_value else ""
+        return """
+          <button class="token-segment-button" type="button" data-token-{name}="{value}" aria-pressed="{pressed}"{active_attr}>
+            {label}
+          </button>
+        """.format(
+            name=escape(name),
+            value=escape(value, quote=True),
+            pressed=pressed,
+            active_attr=active_attr,
+            label=panel_language_text_html(label_zh, label_en),
+        )
+
+    return """
+    <section class="token-filter-panel" id="token-filter-panel">
+      <div class="token-filter-head">
+        <h2>{title}</h2>
+        <span class="token-filter-summary" id="token-filter-summary">{range_label}</span>
+      </div>
+      <div class="token-filter-grid">
+        <div class="token-filter-field token-filter-source">
+          <span class="token-filter-label">{source_label}</span>
+          <div class="token-segment-group" role="group" aria-label="{source_aria}">
+            {provider_buttons}
+          </div>
+        </div>
+        <div class="token-filter-field token-filter-range">
+          <label class="token-filter-label" for="token-start-date">{start_label}</label>
+          <input id="token-start-date" class="token-date-input" type="date" value="">
+        </div>
+        <div class="token-filter-field token-filter-range">
+          <label class="token-filter-label" for="token-end-date">{end_label}</label>
+          <input id="token-end-date" class="token-date-input" type="date" value="">
+        </div>
+        <div class="token-filter-field token-filter-grain">
+          <span class="token-filter-label">{grain_label}</span>
+          <div class="token-segment-group" role="group" aria-label="{grain_aria}">
+            {group_buttons}
+          </div>
+        </div>
+        <button class="token-reset-button" type="button" id="token-reset-button">{reset_label}</button>
+      </div>
+    </section>
+    """.format(
+        title=panel_language_text_html("Token 筛选", "Token Filters"),
+        range_label=range_label,
+        source_label=panel_language_text_html("来源", "Source"),
+        source_aria=escape("Token 来源", quote=True),
+        provider_buttons="".join(
+            make_segment_button(value, label_zh, label_en, provider, "provider")
+            for value, label_zh, label_en in provider_options
+        ),
+        start_label=panel_language_text_html("起始日期", "Start Date"),
+        end_label=panel_language_text_html("结束日期", "End Date"),
+        grain_label=panel_language_text_html("粒度", "Granularity"),
+        grain_aria=escape("Token 粒度", quote=True),
+        group_buttons="".join(
+            make_segment_button(value, label_zh, label_en, group_by, "group")
+            for value, label_zh, label_en in group_options
+        ),
+        reset_label=panel_language_text_html("重置", "Reset"),
     )
 
 
@@ -12099,21 +12243,21 @@ def build_metric_help_sections(metric):
         "today_token": [
             {
                 "label": "统计什么",
-                "body": "ccusage 最新一天的总 Token 消耗。",
+                "body": "当前 Token 筛选条件下的总 Token 消耗。",
             },
             {
                 "label": "怎么算",
-                "body": "总量按总输入和输出计算；缓存读取是总输入里命中缓存的部分，推理输出是输出子集。",
+                "body": "总量按筛选后的 Codex / Claude Code 来源、起止日期和展示粒度重新汇总。",
             },
         ],
         "seven_day_token": [
             {
                 "label": "统计什么",
-                "body": "ccusage 最近 7 天每日总 Token 的累计值。",
+                "body": "当前 Token 筛选区间的 ccusage 费用估算。",
             },
             {
                 "label": "怎么看",
-                "body": "这是滚动 7 日窗口，不是自然周。",
+                "body": "配合左侧总量卡片看周期成本；按月展示时均值会按有数据月份计算。",
             },
         ],
         "durable_memories": [
@@ -12355,7 +12499,7 @@ def build_html(data):
         card_html = """
             <article class="{card_classes}"{card_attrs}>
               <div class="metric-head">
-                <div class="metric-label">{label}</div>
+                <div class="metric-label" data-role="label">{label}</div>
                 {metric_help}
               </div>
               <div class="metric-value" data-role="value">{value}</div>
@@ -12477,11 +12621,11 @@ def build_html(data):
         [
             {
                 "label": "统计什么",
-                "body": "把 ccusage 的日维度数据再加工成 7 日账单、7 日均值、峰值日和缓存读取占总输入等快速判断信号。",
+                "body": "把 ccusage 数据按当前来源、日期范围和展示粒度加工成账单、均值、峰值和缓存读取占比。",
             },
             {
                 "label": "怎么看",
-                "body": "上方两张大卡看总量，速览区看变化和结构，下面的每日 / 今日柱条可以 hover 到具体构成。",
+                "body": "上方两张大卡看筛选总量和成本，速览区看周期结构，下面的趋势 / 构成柱条可以 hover 到具体构成。",
             },
             {
                 "label": "注意",
@@ -12490,7 +12634,7 @@ def build_html(data):
         ],
     )
     daily_token_help = make_help_popover(
-        "每日 Token 消耗",
+        "Token 消耗趋势",
         [
             {
                 "label": "数据来源",
@@ -12498,20 +12642,20 @@ def build_html(data):
             },
             {
                 "label": "统计什么",
-                "body": "按日期展示最近几天的 Token 消耗趋势；页面打开后会先显示快照，再尝试刷新实时值。",
+                "body": "按当前筛选条件展示日维度或月维度 Token 消耗趋势；页面打开后会先显示快照，再尝试刷新实时值。",
             },
         ],
     )
     today_token_help = make_help_popover(
-        "今日 Token 构成",
+        "Token 构成",
         [
             {
                 "label": "数据来源",
-                "body": "ccusage 最新一天的 breakdown。",
+                "body": "ccusage 当前筛选末端日期或月份的 breakdown。",
             },
             {
                 "label": "统计什么",
-                "body": "把最新一天的 Token 指标拆成无缓存输入、缓存读取、输出和推理输出。",
+                "body": "把当前筛选末端日期或月份的 Token 指标拆成无缓存输入、缓存读取、输出和推理输出。",
             },
         ],
     )
@@ -14717,6 +14861,138 @@ def build_html(data):
       transition: width 180ms ease, background 180ms ease;
     }}
 
+    .token-filter-panel {{
+      margin: 0 0 18px;
+      padding: 18px;
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      background: var(--panel);
+      box-shadow: var(--shadow);
+    }}
+
+    .token-filter-head {{
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 14px;
+    }}
+
+    .token-filter-head h2 {{
+      margin: 0;
+      color: var(--ink);
+      font-size: 18px;
+      font-weight: 760;
+      letter-spacing: 0;
+    }}
+
+    .token-filter-summary {{
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 650;
+      line-height: 1.35;
+      text-align: right;
+    }}
+
+    .token-filter-grid {{
+      display: grid;
+      grid-template-columns: minmax(260px, 1.25fr) repeat(2, minmax(150px, 0.72fr)) minmax(210px, 0.95fr) auto;
+      gap: 12px;
+      align-items: end;
+    }}
+
+    .token-filter-field {{
+      min-width: 0;
+      display: grid;
+      gap: 8px;
+    }}
+
+    .token-filter-label {{
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 750;
+      line-height: 1;
+    }}
+
+    .token-segment-group {{
+      display: grid;
+      grid-auto-flow: column;
+      grid-auto-columns: 1fr;
+      min-height: 40px;
+      padding: 3px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--soft);
+    }}
+
+    .token-segment-button,
+    .token-reset-button {{
+      min-height: 34px;
+      border: 0;
+      border-radius: 9px;
+      font: inherit;
+      font-size: 12px;
+      font-weight: 750;
+      line-height: 1;
+      cursor: pointer;
+      transition: background 160ms ease, color 160ms ease, border-color 160ms ease, transform 160ms ease;
+    }}
+
+    .token-segment-button {{
+      color: var(--muted);
+      background: transparent;
+      white-space: nowrap;
+    }}
+
+    .token-segment-button[aria-pressed="true"] {{
+      color: #fff;
+      background: linear-gradient(135deg, #0071e3, #4da2ff);
+      box-shadow: 0 8px 20px rgba(0, 113, 227, 0.18);
+    }}
+
+    .token-date-input {{
+      width: 100%;
+      min-width: 0;
+      height: 40px;
+      padding: 0 11px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--soft);
+      color: var(--ink);
+      font: inherit;
+      font-size: 13px;
+      font-weight: 650;
+      color-scheme: light dark;
+    }}
+
+    .token-date-input:focus,
+    .token-segment-button:focus-visible,
+    .token-reset-button:focus-visible {{
+      outline: 2px solid rgba(0, 113, 227, 0.38);
+      outline-offset: 2px;
+    }}
+
+    .token-reset-button {{
+      height: 40px;
+      padding: 0 16px;
+      border: 1px solid var(--line);
+      background: var(--soft);
+      color: var(--ink);
+      white-space: nowrap;
+    }}
+
+    .token-reset-button:hover,
+    .token-segment-button:hover {{
+      transform: translateY(-1px);
+    }}
+
+    .token-filter-panel.is-loading .token-date-input,
+    .token-filter-panel.is-loading .token-segment-button,
+    .token-filter-panel.is-loading .token-reset-button {{
+      opacity: 0.62;
+      pointer-events: none;
+    }}
+
     .token-panel {{
       transition: border-color 180ms ease, transform 180ms ease;
     }}
@@ -16791,6 +17067,19 @@ def build_html(data):
     }}
 
     @media (max-width: 1040px) {{
+      .token-filter-grid {{
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }}
+
+      .token-filter-source,
+      .token-filter-grain {{
+        grid-column: span 2;
+      }}
+
+      .token-reset-button {{
+        width: 100%;
+      }}
+
       .token-summary-row {{
         grid-template-columns: repeat(2, minmax(0, 1fr));
       }}
@@ -16910,6 +17199,33 @@ def build_html(data):
       .nightly-panel {{
         padding: 18px;
         border-radius: 20px;
+      }}
+
+      .token-filter-head {{
+        display: grid;
+        gap: 6px;
+      }}
+
+      .token-filter-summary {{
+        text-align: left;
+      }}
+
+      .token-filter-grid {{
+        grid-template-columns: 1fr;
+      }}
+
+      .token-filter-source,
+      .token-filter-grain {{
+        grid-column: auto;
+      }}
+
+      .token-segment-group {{
+        grid-auto-flow: row;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }}
+
+      .token-filter-grain .token-segment-group {{
+        grid-template-columns: repeat(2, minmax(0, 1fr));
       }}
 
       .token-summary-row {{
@@ -17195,6 +17511,8 @@ def build_html(data):
 
     {nightly_summary_panel}
 
+    {token_filter_panel}
+
     <section class="grid token-summary-row" id="token-section">
       {token_metric_cards}
       {token_overview_panel}
@@ -17425,11 +17743,19 @@ def build_html(data):
         tokenUsage: snapshot.token_usage || null,
         tokenRefreshedAt: (snapshot.token_usage && snapshot.token_usage.refreshed_at) || "",
         tokenSourceKind: "snapshot",
+        tokenFilters: {{
+          provider: (snapshot.token_usage && snapshot.token_usage.provider) || "all",
+          startDate: "",
+          endDate: "",
+          groupBy: (snapshot.token_usage && snapshot.token_usage.group_by) || "day",
+        }},
+        defaultTokenFilters: null,
         selectedNightlyDate: snapshot.daily_summary_default_date || "",
         selectedWindowOverviewDate: snapshot.window_overview_default_date || "",
         refreshStatusKind: "",
         refreshStatusMessageKey: "",
       }};
+      state.defaultTokenFilters = Object.assign({{}}, state.tokenFilters);
       const elements = {{
         snapshotAge: document.getElementById("snapshot-generated-age"),
         nightlyDateInput: document.getElementById("nightly-date-input"),
@@ -17456,6 +17782,13 @@ def build_html(data):
         refreshButton: document.getElementById("token-refresh-button"),
         refreshLabel: document.getElementById("token-refresh-label"),
         refreshStatusText: document.getElementById("token-refresh-status-text"),
+        tokenFilterPanel: document.getElementById("token-filter-panel"),
+        tokenFilterSummary: document.getElementById("token-filter-summary"),
+        tokenProviderButtons: Array.from(document.querySelectorAll("[data-token-provider]")),
+        tokenGroupButtons: Array.from(document.querySelectorAll("[data-token-group]")),
+        tokenStartDateInput: document.getElementById("token-start-date"),
+        tokenEndDateInput: document.getElementById("token-end-date"),
+        tokenResetButton: document.getElementById("token-reset-button"),
         tokenOverviewPanel: document.getElementById("token-overview-panel"),
         tokenOverviewNote: document.getElementById("token-overview-note"),
         tokenSummaryCards: document.getElementById("token-summary-cards"),
@@ -18472,6 +18805,21 @@ def build_html(data):
             panel.classList.toggle("is-loading", isLoading);
           }}
         }});
+        if (elements.tokenFilterPanel) {{
+          elements.tokenFilterPanel.classList.toggle("is-loading", isLoading);
+        }}
+        [
+          elements.tokenStartDateInput,
+          elements.tokenEndDateInput,
+          elements.tokenResetButton,
+        ].forEach(function (control) {{
+          if (control) {{
+            control.disabled = isLoading;
+          }}
+        }});
+        elements.tokenProviderButtons.concat(elements.tokenGroupButtons).forEach(function (button) {{
+          button.disabled = isLoading;
+        }});
         liveCards.forEach(function (card) {{
           card.classList.toggle("is-loading", isLoading);
         }});
@@ -18752,9 +19100,159 @@ def build_html(data):
         return normalized;
       }}
 
+      function normalizeTokenProvider(value) {{
+        const text = String(value || "all").toLowerCase().replace(/_/g, "-");
+        if (["codex", "claude"].includes(text)) {{
+          return text;
+        }}
+        if (text === "cc" || text === "claude-code") {{
+          return "claude";
+        }}
+        return "all";
+      }}
+
+      function normalizeTokenGroupBy(value) {{
+        const text = String(value || "day").toLowerCase().replace(/_/g, "-");
+        return text === "month" || text === "monthly" ? "month" : "day";
+      }}
+
+      function tokenProviderLabel(provider) {{
+        const normalized = normalizeTokenProvider(provider);
+        if (normalized === "codex") {{
+          return "Codex";
+        }}
+        if (normalized === "claude") {{
+          return "Claude";
+        }}
+        return currentLanguage === "en" ? "All Sources" : "全部来源";
+      }}
+
+      function tokenGroupLabel(groupBy) {{
+        return normalizeTokenGroupBy(groupBy) === "month"
+          ? (currentLanguage === "en" ? "Monthly" : "按月")
+          : (currentLanguage === "en" ? "Daily" : "按日");
+      }}
+
+      function tokenFilterRangeLabel(filters, tokenUsage) {{
+        const provider = normalizeTokenProvider(filters.provider);
+        const groupBy = normalizeTokenGroupBy(filters.groupBy);
+        const startDate = String(filters.startDate || "");
+        const endDate = String(filters.endDate || "");
+        const usageMatchesFilter = tokenUsage &&
+          normalizeTokenProvider(tokenUsage.provider) === provider &&
+          normalizeTokenGroupBy(tokenUsage.group_by) === groupBy &&
+          (!startDate || String(tokenUsage.range_start || "") === startDate) &&
+          (!endDate || String(tokenUsage.range_end || "") === endDate);
+        if (usageMatchesFilter && tokenUsage.range_label) {{
+          return tokenUsage.range_label;
+        }}
+        let startText = startDate;
+        let endText = endDate;
+        if (groupBy === "month") {{
+          startText = startText ? startText.slice(0, 7) : "";
+          endText = endText ? endText.slice(0, 7) : "";
+        }}
+        if (startText && endText && startText !== endText) {{
+          return currentLanguage === "en" ? startText + " to " + endText : startText + " 至 " + endText;
+        }}
+        return startText || endText || "";
+      }}
+
+      function syncTokenFilterControls(tokenUsage) {{
+        const filters = state.tokenFilters || {{}};
+        const provider = normalizeTokenProvider(filters.provider);
+        const groupBy = normalizeTokenGroupBy(filters.groupBy);
+        elements.tokenProviderButtons.forEach(function (button) {{
+          const active = normalizeTokenProvider(button.getAttribute("data-token-provider")) === provider;
+          button.setAttribute("aria-pressed", active ? "true" : "false");
+          if (active) {{
+            button.setAttribute("data-active", "true");
+          }} else {{
+            button.removeAttribute("data-active");
+          }}
+        }});
+        elements.tokenGroupButtons.forEach(function (button) {{
+          const active = normalizeTokenGroupBy(button.getAttribute("data-token-group")) === groupBy;
+          button.setAttribute("aria-pressed", active ? "true" : "false");
+          if (active) {{
+            button.setAttribute("data-active", "true");
+          }} else {{
+            button.removeAttribute("data-active");
+          }}
+        }});
+        if (elements.tokenStartDateInput && elements.tokenStartDateInput.value !== (filters.startDate || "")) {{
+          elements.tokenStartDateInput.value = filters.startDate || "";
+        }}
+        if (elements.tokenEndDateInput && elements.tokenEndDateInput.value !== (filters.endDate || "")) {{
+          elements.tokenEndDateInput.value = filters.endDate || "";
+        }}
+        if (elements.tokenFilterSummary) {{
+          const rangeLabel = tokenFilterRangeLabel(filters, tokenUsage);
+          elements.tokenFilterSummary.textContent = [
+            tokenProviderLabel(provider),
+            rangeLabel,
+            tokenGroupLabel(groupBy),
+          ].filter(Boolean).join(" · ");
+        }}
+      }}
+
+      function setTokenFilterState(nextFilters, shouldRefresh) {{
+        const merged = Object.assign({{}}, state.tokenFilters || {{}}, nextFilters || {{}});
+        merged.provider = normalizeTokenProvider(merged.provider);
+        merged.groupBy = normalizeTokenGroupBy(merged.groupBy);
+        merged.startDate = String(merged.startDate || "").trim();
+        merged.endDate = String(merged.endDate || "").trim();
+        if (merged.startDate && merged.endDate && merged.startDate > merged.endDate) {{
+          const previousStart = merged.startDate;
+          merged.startDate = merged.endDate;
+          merged.endDate = previousStart;
+        }}
+        state.tokenFilters = merged;
+        syncTokenFilterControls(state.tokenUsage);
+        if (shouldRefresh) {{
+          refreshTokenUsage(true);
+        }}
+      }}
+
+      function resetTokenFilters() {{
+        setTokenFilterState(Object.assign({{}}, state.defaultTokenFilters || {{
+          provider: "all",
+          groupBy: "day",
+          startDate: "",
+          endDate: "",
+        }}), true);
+      }}
+
+      function wireTokenFilters() {{
+        elements.tokenProviderButtons.forEach(function (button) {{
+          button.addEventListener("click", function () {{
+            setTokenFilterState({{ provider: button.getAttribute("data-token-provider") || "all" }}, true);
+          }});
+        }});
+        elements.tokenGroupButtons.forEach(function (button) {{
+          button.addEventListener("click", function () {{
+            setTokenFilterState({{ groupBy: button.getAttribute("data-token-group") || "day" }}, true);
+          }});
+        }});
+        if (elements.tokenStartDateInput) {{
+          elements.tokenStartDateInput.addEventListener("change", function () {{
+            setTokenFilterState({{ startDate: elements.tokenStartDateInput.value || "" }}, true);
+          }});
+        }}
+        if (elements.tokenEndDateInput) {{
+          elements.tokenEndDateInput.addEventListener("change", function () {{
+            setTokenFilterState({{ endDate: elements.tokenEndDateInput.value || "" }}, true);
+          }});
+        }}
+        if (elements.tokenResetButton) {{
+          elements.tokenResetButton.addEventListener("click", resetTokenFilters);
+        }}
+        syncTokenFilterControls(state.tokenUsage);
+      }}
+
       function deriveTokenSummaryCards(tokenUsage) {{
         const dailyRows = Array.isArray(tokenUsage.daily_rows) ? tokenUsage.daily_rows : [];
-        const trailingRows = dailyRows.slice(-7).filter(function (row) {{
+        const activeRows = dailyRows.filter(function (row) {{
           return (Number(row.value) || 0) > 0;
         }});
         const latest = dailyRows.length ? dailyRows[dailyRows.length - 1] : null;
@@ -18763,45 +19261,59 @@ def build_html(data):
         }}
 
         const cards = [];
-        const total = trailingRows.reduce(function (sum, row) {{
+        const groupBy = normalizeTokenGroupBy(tokenUsage.group_by);
+        const periodUnit = tokenUsage.period_unit || (groupBy === "month"
+          ? (currentLanguage === "en" ? "months" : "月")
+          : (currentLanguage === "en" ? "days" : "日"));
+        const total = dailyRows.reduce(function (sum, row) {{
           return sum + (Number(row.value) || 0);
         }}, 0);
-        const totalCost = trailingRows.reduce(function (sum, row) {{
+        const totalCost = dailyRows.reduce(function (sum, row) {{
           return sum + extractTokenRowCost(row);
         }}, 0);
-        if (trailingRows.length) {{
+        const periodTotal = Number(tokenUsage.period_total_tokens);
+        const periodCost = Number(tokenUsage.period_cost_usd);
+        const activeCount = Number(tokenUsage.active_period_count) || activeRows.length;
+        if (activeRows.length) {{
           cards.push({{
-            label: currentLanguage === "en" ? "7-day Bill" : "7 日账单",
-            value: formatUsdValue(tokenUsage.seven_day_cost_usd || totalCost),
+            label: currentLanguage === "en" ? "Period Bill" : "周期账单",
+            value: formatUsdValue(Number.isFinite(periodCost) && periodCost > 0 ? periodCost : totalCost),
             caption: currentLanguage === "en"
-              ? compactTokenValue(tokenUsage.seven_day_total_tokens || total) + " Tokens · ccusage estimate"
-              : compactTokenValue(tokenUsage.seven_day_total_tokens || total) + " Token · ccusage 估算",
+              ? compactTokenValue(Number.isFinite(periodTotal) && periodTotal > 0 ? periodTotal : total) + " Tokens · ccusage estimate"
+              : compactTokenValue(Number.isFinite(periodTotal) && periodTotal > 0 ? periodTotal : total) + " Token · ccusage 估算",
             tone: "neutral",
           }});
         }} else {{
           cards.push({{
-            label: currentLanguage === "en" ? "7-day Bill" : "7 日账单",
+            label: currentLanguage === "en" ? "Period Bill" : "周期账单",
             value: "—",
-            caption: currentLanguage === "en" ? "No 7-day bill data yet" : "暂无 7 日账单数据",
+            caption: currentLanguage === "en" ? "No bill data yet" : "暂无账单数据",
             tone: "neutral",
           }});
         }}
 
-        if (trailingRows.length) {{
-          const average = Math.floor(total / trailingRows.length);
-          const peak = trailingRows.reduce(function (currentPeak, row) {{
+        if (activeRows.length) {{
+          const periodAverage = Number(tokenUsage.period_average_tokens);
+          const average = Number.isFinite(periodAverage) && periodAverage > 0
+            ? Math.floor(periodAverage)
+            : Math.floor(total / activeRows.length);
+          const peak = activeRows.reduce(function (currentPeak, row) {{
             return (Number(row.value) || 0) > (Number(currentPeak.value) || 0) ? row : currentPeak;
-          }}, trailingRows[0]);
+          }}, activeRows[0]);
           cards.push({{
-            label: currentLanguage === "en" ? "7-day Average" : "7 日均值",
+            label: groupBy === "month"
+              ? (currentLanguage === "en" ? "Monthly Average" : "月均值")
+              : (currentLanguage === "en" ? "Daily Average" : "周期日均"),
             value: compactTokenValue(average),
             caption: currentLanguage === "en"
-              ? "Across " + trailingRows.length + " days with data"
-              : "按 " + trailingRows.length + " 个有数据日",
+              ? "Across " + activeCount + " " + periodUnit + " with data"
+              : "按 " + activeCount + " 个有数据" + periodUnit,
             tone: "neutral",
           }});
           cards.push({{
-            label: currentLanguage === "en" ? "Peak Day" : "峰值日",
+            label: groupBy === "month"
+              ? (currentLanguage === "en" ? "Peak Month" : "峰值月")
+              : (currentLanguage === "en" ? "Peak Day" : "峰值日"),
             value: compactTokenValue(Number(peak.value) || 0),
             caption: currentLanguage === "en"
               ? "Peak on " + (peak.label || "")
@@ -18827,9 +19339,11 @@ def build_html(data):
 
       function prepareTokenUsageForPanel(tokenUsage, relativeUpdate) {{
         const prepared = Object.assign({{}}, tokenUsage || {{}});
-        const dailyRows = Array.isArray(prepared.daily_rows)
-          ? prepared.daily_rows.slice(-{token_daily_display_days})
-          : [];
+        const allDailyRows = Array.isArray(prepared.daily_rows) ? prepared.daily_rows : [];
+        const displayLimit = normalizeTokenGroupBy(prepared.group_by) === "month"
+          ? Math.min(Math.max(allDailyRows.length, 1), 12)
+          : Math.min(Math.max(allDailyRows.length, {token_daily_display_days}), 31);
+        const dailyRows = allDailyRows.slice(-displayLimit);
         const dailyMax = dailyRows.reduce(function (currentMax, row) {{
           return Math.max(currentMax, Number(row.value) || 0);
         }}, 0);
@@ -18854,12 +19368,15 @@ def build_html(data):
         }});
         prepared.summary_cards = deriveTokenSummaryCards(prepared);
         if (!prepared.overview_note || currentLanguage === "en") {{
-          const activeDays = (prepared.daily_rows || []).slice(-7).filter(function (row) {{
+          const activeDays = (prepared.daily_rows || []).filter(function (row) {{
             return (Number(row.value) || 0) > 0;
           }}).length;
+          const unit = prepared.period_unit || (normalizeTokenGroupBy(prepared.group_by) === "month"
+            ? (currentLanguage === "en" ? "months" : "月")
+            : (currentLanguage === "en" ? "days" : "日"));
           prepared.overview_note = currentLanguage === "en"
-            ? activeDays + " days with records in the last 7 days · " + relativeUpdate
-            : "近 7 天中 " + activeDays + " 天有记录 · " + relativeUpdate;
+            ? (prepared.range_label || "") + " · " + activeDays + " " + unit + " with records · " + relativeUpdate
+            : (prepared.range_label || "") + " · " + activeDays + " 个有数据" + unit + " · " + relativeUpdate;
         }}
         return prepared;
       }}
@@ -18955,14 +19472,18 @@ def build_html(data):
         }}).join("");
       }}
 
-      function updateMetricCard(metricKey, value, caption, meta) {{
+      function updateMetricCard(metricKey, value, caption, meta, label) {{
         const card = document.querySelector('[data-metric-key="' + metricKey + '"]');
         if (!card) {{
           return;
         }}
+        const labelNode = card.querySelector('[data-role="label"]');
         const valueNode = card.querySelector('[data-role="value"]');
         const captionNode = card.querySelector('[data-role="caption"]');
         const metaNode = card.querySelector('[data-role="meta"]');
+        if (labelNode && label) {{
+          labelNode.textContent = label;
+        }}
         if (valueNode) {{
           valueNode.textContent = value;
         }}
@@ -18981,22 +19502,34 @@ def build_html(data):
         state.tokenUsage = tokenUsage;
         state.tokenRefreshedAt = tokenUsage.refreshed_at || state.tokenRefreshedAt;
         state.tokenSourceKind = sourceKind || state.tokenSourceKind;
+        state.tokenFilters = {{
+          provider: normalizeTokenProvider(tokenUsage.provider || (state.tokenFilters && state.tokenFilters.provider)),
+          startDate: (state.tokenFilters && state.tokenFilters.startDate) || "",
+          endDate: (state.tokenFilters && state.tokenFilters.endDate) || "",
+          groupBy: normalizeTokenGroupBy(tokenUsage.group_by || (state.tokenFilters && state.tokenFilters.groupBy)),
+        }};
         const relativeUpdate = describeRelativeTime(state.tokenRefreshedAt, "更新");
         const preparedTokenUsage = prepareTokenUsageForPanel(tokenUsage, relativeUpdate);
-        const todayLabel = t(tokenUsage.today_date_label || "今日");
-        const todayTokenValue = tokenTotalDisplay(tokenUsage, "today_total_tokens", "today_total_tokens_display");
-        const sevenDayTokenValue = tokenTotalDisplay(tokenUsage, "seven_day_total_tokens", "seven_day_total_tokens_display");
+        const periodLabel = tokenUsage.range_label || t("筛选区间");
+        const providerLabel = tokenProviderLabel(tokenUsage.provider);
+        const periodTokenValue = tokenTotalDisplay(tokenUsage, "period_total_tokens", "period_total_tokens_display");
+        const periodCostValue = tokenUsage.period_cost_display || formatUsdValue(tokenUsage.period_cost_usd);
+        const averageCaption = currentLanguage === "en"
+          ? "Average " + (tokenUsage.period_average_tokens_display || "—") + " / " + (tokenUsage.active_period_count || 0) + " active " + (tokenUsage.period_unit || "days")
+          : "均值 " + (tokenUsage.period_average_tokens_display || "—") + " / " + (tokenUsage.active_period_count || 0) + " 个有数据" + (tokenUsage.period_unit || "日");
         updateMetricCard(
           "today_token",
-          todayTokenValue,
-          currentLanguage === "en" ? "Total for " + todayLabel : todayLabel + " 的总消耗",
-          relativeUpdate
+          periodTokenValue,
+          periodLabel + " · " + providerLabel,
+          relativeUpdate,
+          t("筛选 Token")
         );
         updateMetricCard(
           "seven_day_token",
-          sevenDayTokenValue,
-          t("最近 7 天累计消耗"),
-          relativeUpdate
+          periodCostValue,
+          averageCaption,
+          relativeUpdate,
+          t("周期成本")
         );
         if (elements.dailyTokenNote) {{
           elements.dailyTokenNote.textContent = tokenUsage.available
@@ -19004,15 +19537,16 @@ def build_html(data):
             : t("暂未获取到 ccusage 的日维度统计");
         }}
         if (elements.todayTokenNote) {{
-          elements.todayTokenNote.textContent = todayLabel + " · " + relativeUpdate;
+          elements.todayTokenNote.textContent = t(tokenUsage.current_period_label || tokenUsage.today_date_label || "今日") + " · " + relativeUpdate;
         }}
         if (elements.tokenOverviewNote) {{
           elements.tokenOverviewNote.textContent = preparedTokenUsage.available
             ? (preparedTokenUsage.overview_note || relativeUpdate)
             : t("暂未获取到 ccusage 的日维度统计");
         }}
+        syncTokenFilterControls(tokenUsage);
         renderTokenSummaryCards(preparedTokenUsage.summary_cards || []);
-        renderBarRows(elements.dailyTokenRows, (preparedTokenUsage.daily_rows || []).slice(-{token_daily_display_days}).reverse(), "token-daily-mid");
+        renderBarRows(elements.dailyTokenRows, (preparedTokenUsage.daily_rows || []).slice().reverse(), "token-daily-mid");
         renderBarRows(elements.todayTokenRows, preparedTokenUsage.today_breakdown || [], "token-input");
         translateStaticText();
       }}
@@ -19050,10 +19584,19 @@ def build_html(data):
         );
         try {{
           const requestUrl = new URL(config.liveEndpoint);
+          const filters = state.tokenFilters || {{}};
           requestUrl.searchParams.set(
             "window_days",
             String((state.tokenUsage && state.tokenUsage.window_days) || {window_days})
           );
+          requestUrl.searchParams.set("provider", normalizeTokenProvider(filters.provider));
+          requestUrl.searchParams.set("group_by", normalizeTokenGroupBy(filters.groupBy));
+          if (filters.startDate) {{
+            requestUrl.searchParams.set("start_date", filters.startDate);
+          }}
+          if (filters.endDate) {{
+            requestUrl.searchParams.set("end_date", filters.endDate);
+          }}
           if (forceRefresh) {{
             requestUrl.searchParams.set("force", "1");
           }}
@@ -19075,7 +19618,11 @@ def build_html(data):
             setStatus("live", "", "live_refreshed");
           }}
         }} catch (error) {{
-          updateTokenVisuals(snapshot.token_usage, "snapshot");
+          if (!state.tokenUsage && snapshot.token_usage) {{
+            updateTokenVisuals(snapshot.token_usage, "snapshot");
+          }} else {{
+            syncTokenFilterControls(state.tokenUsage);
+          }}
           setStatus(
             "offline",
             "",
@@ -19097,6 +19644,7 @@ def build_html(data):
       wireWindowResumeActions();
       wireSideNav();
       wireHorizontalScrollLock();
+      wireTokenFilters();
       applyTheme(readStoredTheme(), false);
       applyLanguage(defaultLanguage);
       if (elements.refreshButton) {{
@@ -19442,6 +19990,7 @@ def build_html(data):
             "这里看的是已经登记到本地账本里的资产、复盘和复用记录，不是注入 host context 的记忆摘要。",
             "This shows assets, reviews, and reuse records registered in the local ledger, not the memory summary injected into host context.",
         ),
+        token_filter_panel=make_token_filter_panel(token_usage),
         token_overview_panel=make_token_overview_panel(token_usage, token_overview_help),
         type_panel=make_bar_group(
             "资产类型分布",
@@ -19472,7 +20021,7 @@ def build_html(data):
         ),
         insight_section_html=insight_section_html,
         daily_token_panel=make_bar_group(
-            "每日 Token 消耗",
+            "Token 消耗趋势",
             list(reversed(token_usage["daily_rows"])),
             "slate",
             token_note,
@@ -19483,7 +20032,7 @@ def build_html(data):
             help_html=daily_token_help,
         ),
         today_token_panel=make_bar_group(
-            "今日 Token 构成",
+            "Token 构成",
             token_usage["today_breakdown"],
             "rose",
             token_usage["today_date_label"],

@@ -18,8 +18,13 @@ from openrelix_overview.config import (
     LIVE_TOKEN_HOST,
     LIVE_TOKEN_PORT,
 )
-from openrelix_overview.token_fetcher import fetch_ccusage_daily, normalize_token_provider
-from openrelix_overview.token_usage import build_token_usage_view
+from openrelix_overview.token_fetcher import (
+    fetch_ccusage_daily,
+    normalize_token_provider,
+    parse_token_date,
+    resolve_token_date_range,
+)
+from openrelix_overview.token_usage import build_token_usage_view, normalize_token_group_by
 from openrelix_overview.update_secret import read_or_create_update_token
 
 
@@ -205,21 +210,63 @@ def write_cache(payload):
     atomic_write_json(CACHE_PATH, payload)
 
 
-def cache_is_fresh(payload, window_days, provider):
+def cache_matches_request(
+    payload,
+    window_days,
+    provider,
+    start_date=None,
+    end_date=None,
+    group_by="day",
+    now_func=current_local_datetime,
+):
     if (
         not payload
-        or payload.get("window_days") != window_days
         or normalize_token_provider(payload.get("provider")) != normalize_token_provider(provider)
+        or normalize_token_group_by(payload.get("group_by")) != normalize_token_group_by(group_by)
+    ):
+        return False
+    if start_date or end_date:
+        requested_start, requested_end, _ = resolve_token_date_range(
+            window_days=window_days,
+            now_func=now_func,
+            start_date=start_date,
+            end_date=end_date,
+        )
+        return (
+            parse_token_date(payload.get("range_start")) == requested_start
+            and parse_token_date(payload.get("range_end")) == requested_end
+        )
+    return payload.get("window_days") == window_days
+
+
+def cache_is_fresh(payload, window_days, provider, start_date=None, end_date=None, group_by="day"):
+    if not cache_matches_request(
+        payload,
+        window_days,
+        provider,
+        start_date=start_date,
+        end_date=end_date,
+        group_by=group_by,
     ):
         return False
     cached_at_epoch = payload.get("_cached_at_epoch", 0)
     return (time.time() - cached_at_epoch) < CACHE_TTL_SECONDS
 
 
-def fetch_token_payload(window_days, force_refresh=False, provider="all"):
+def fetch_token_payload(window_days, force_refresh=False, provider="all", start_date=None, end_date=None, group_by="day"):
     provider = normalize_token_provider(provider)
+    group_by = normalize_token_group_by(group_by)
+    start_date = str(start_date or "").strip()
+    end_date = str(end_date or "").strip()
     cached_payload = load_cache()
-    if not force_refresh and cache_is_fresh(cached_payload, window_days, provider):
+    if not force_refresh and cache_is_fresh(
+        cached_payload,
+        window_days,
+        provider,
+        start_date=start_date,
+        end_date=end_date,
+        group_by=group_by,
+    ):
         cached_result = dict(cached_payload)
         cached_result["served_from_cache"] = True
         cached_result["stale"] = False
@@ -227,20 +274,41 @@ def fetch_token_payload(window_days, force_refresh=False, provider="all"):
 
     with FETCH_LOCK:
         cached_payload = load_cache()
-        if not force_refresh and cache_is_fresh(cached_payload, window_days, provider):
+        if not force_refresh and cache_is_fresh(
+            cached_payload,
+            window_days,
+            provider,
+            start_date=start_date,
+            end_date=end_date,
+            group_by=group_by,
+        ):
             cached_result = dict(cached_payload)
             cached_result["served_from_cache"] = True
             cached_result["stale"] = False
             return cached_result
 
-        ccusage_result = fetch_ccusage_daily(window_days=window_days, provider=provider)
-        token_usage = build_token_usage_view(ccusage_result, language=LANGUAGE)
+        ccusage_result = fetch_ccusage_daily(
+            window_days=window_days,
+            provider=provider,
+            start_date=start_date or None,
+            end_date=end_date or None,
+        )
+        token_usage = build_token_usage_view(
+            ccusage_result,
+            language=LANGUAGE,
+            group_by=group_by,
+            start_date=start_date or None,
+            end_date=end_date or None,
+        )
         payload = {
             "ok": bool(token_usage.get("available")),
             "stale": False,
             "error": token_usage.get("error", ""),
             "window_days": window_days,
             "provider": provider,
+            "group_by": group_by,
+            "range_start": token_usage.get("range_start", start_date),
+            "range_end": token_usage.get("range_end", end_date),
             "served_from_cache": False,
             "token_usage": token_usage,
             "_cached_at_epoch": time.time(),
@@ -249,9 +317,14 @@ def fetch_token_payload(window_days, force_refresh=False, provider="all"):
             write_cache(payload)
             return payload
 
-        if cached_payload and cached_payload.get("window_days") == window_days and normalize_token_provider(
-            cached_payload.get("provider")
-        ) == provider:
+        if cache_matches_request(
+            cached_payload,
+            window_days,
+            provider,
+            start_date=start_date,
+            end_date=end_date,
+            group_by=group_by,
+        ):
             stale_payload = dict(cached_payload)
             stale_payload["ok"] = True
             stale_payload["stale"] = True
@@ -321,12 +394,22 @@ class TokenLiveHandler(BaseHTTPRequestHandler):
         query = parse_qs(parsed.query)
         force_refresh = query.get("force", ["0"])[0] == "1"
         provider = normalize_token_provider(query.get("provider", ["all"])[0])
+        group_by = normalize_token_group_by(query.get("group_by", ["day"])[0])
+        start_date = query.get("start_date", [""])[0].strip()
+        end_date = query.get("end_date", [""])[0].strip()
         try:
             window_days = int(query.get("window_days", [str(CCUSAGE_WINDOW_DAYS)])[0])
         except ValueError:
             window_days = CCUSAGE_WINDOW_DAYS
 
-        payload = fetch_token_payload(window_days=window_days, force_refresh=force_refresh, provider=provider)
+        payload = fetch_token_payload(
+            window_days=window_days,
+            force_refresh=force_refresh,
+            provider=provider,
+            start_date=start_date,
+            end_date=end_date,
+            group_by=group_by,
+        )
         status_code = 200 if payload.get("ok") or payload.get("stale") else 503
         self._send_json(status_code, payload)
 

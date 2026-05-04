@@ -597,6 +597,114 @@ class NightlyLogicTests(unittest.TestCase):
         self.assertAlmostEqual(merged_row["costUSD"], 1.75)
         self.assertEqual(merged_row["providers"]["claude"]["provider"], "claude")
 
+    def test_token_fetcher_accepts_explicit_date_range(self):
+        commands = []
+
+        def fake_now():
+            return datetime.fromisoformat("2026-05-04T10:00:00+08:00")
+
+        def fake_runner(cmd, **kwargs):
+            commands.append(cmd)
+            return subprocess.CompletedProcess(
+                cmd,
+                0,
+                stdout=json.dumps({"daily": []}),
+                stderr="",
+            )
+
+        result = token_fetcher.fetch_ccusage_daily(
+            window_days=7,
+            now_func=fake_now,
+            resolve_npx_binary_func=lambda: "npx",
+            env_func=lambda: {},
+            runner=fake_runner,
+            provider="claude",
+            start_date="2026-04-01",
+            end_date="2026-04-30",
+        )
+
+        self.assertTrue(result["available"])
+        self.assertEqual(result["range_start"], "2026-04-01")
+        self.assertEqual(result["range_end"], "2026-04-30")
+        self.assertEqual(result["window_days"], 30)
+        self.assertIn("--since", commands[0])
+        self.assertEqual(commands[0][commands[0].index("--since") + 1], "20260401")
+        self.assertEqual(commands[0][commands[0].index("--until") + 1], "20260430")
+
+    def test_token_cache_matches_open_ended_date_range(self):
+        def fake_now():
+            return datetime.fromisoformat("2026-05-04T10:00:00+08:00")
+
+        payload = {
+            "provider": "codex",
+            "window_days": 34,
+            "range_start": "2026-04-01",
+            "range_end": "2026-05-04",
+        }
+
+        self.assertTrue(
+            token_fetcher.token_cache_matches_request(
+                payload,
+                "codex",
+                7,
+                start_date="2026-04-01",
+                now_func=fake_now,
+            )
+        )
+        self.assertTrue(
+            token_live_server.cache_matches_request(
+                dict(payload, group_by="month"),
+                7,
+                "codex",
+                start_date="2026-04-01",
+                group_by="month",
+                now_func=fake_now,
+            )
+        )
+        self.assertFalse(
+            token_fetcher.token_cache_matches_request(
+                payload,
+                "codex",
+                7,
+                end_date="2026-05-03",
+                now_func=fake_now,
+            )
+        )
+
+    def test_token_resolver_does_not_fall_back_to_mismatched_cache(self):
+        cached = {
+            "available": True,
+            "provider": "all",
+            "window_days": 7,
+            "payload": {"daily": []},
+        }
+
+        def fake_fetch(**kwargs):
+            return {
+                "available": False,
+                "provider": kwargs.get("provider", "codex"),
+                "provider_label": kwargs.get("provider", "codex"),
+                "payload": {"daily": []},
+                "error": "ccusage failed",
+                "window_days": kwargs.get("window_days", 7),
+            }
+
+        with TemporaryDirectory() as tmpdir:
+            cache_path = Path(tmpdir) / "token-cache.json"
+            cache_path.write_text(json.dumps(cached), encoding="utf-8")
+
+            result = token_fetcher.resolve_ccusage_daily(
+                cache_path=cache_path,
+                refresh_requested=False,
+                fetch_func=fake_fetch,
+                provider="codex",
+                window_days=7,
+            )
+
+        self.assertFalse(result["available"])
+        self.assertEqual(result["provider"], "codex")
+        self.assertEqual(result["error"], "ccusage failed")
+
     def test_run_codex_consolidation_recreates_broken_auth_symlink(self):
         old_main_codex_home = nightly_consolidate.MAIN_CODEX_HOME
         old_nightly_codex_home = nightly_consolidate.NIGHTLY_CODEX_HOME
@@ -4143,8 +4251,14 @@ Keep my own note.
             }
         )
 
-        self.assertIn('const todayTokenValue = tokenTotalDisplay(tokenUsage, "today_total_tokens", "today_total_tokens_display");', html)
-        self.assertIn('const sevenDayTokenValue = tokenTotalDisplay(tokenUsage, "seven_day_total_tokens", "seven_day_total_tokens_display");', html)
+        self.assertIn('const periodTokenValue = tokenTotalDisplay(tokenUsage, "period_total_tokens", "period_total_tokens_display");', html)
+        self.assertIn("const periodCostValue = tokenUsage.period_cost_display || formatUsdValue(tokenUsage.period_cost_usd);", html)
+        self.assertIn('requestUrl.searchParams.set("provider", normalizeTokenProvider(filters.provider));', html)
+        self.assertIn('requestUrl.searchParams.set("group_by", normalizeTokenGroupBy(filters.groupBy));', html)
+        self.assertIn("function tokenFilterRangeLabel(filters, tokenUsage)", html)
+        self.assertIn('id="token-start-date"', html)
+        self.assertIn('<input id="token-start-date" class="token-date-input" type="date" value="">', html)
+        self.assertIn('startDate: "",', html)
         self.assertIn("function extractTokenRowCost(row)", html)
         self.assertIn("display: compactTokenWithCostValue(row.value, rowCost)", html)
         self.assertIn("prepared.summary_cards = deriveTokenSummaryCards(prepared);", html)
@@ -8086,7 +8200,8 @@ Keep my own note.
             )
 
         self.assertEqual(view["today_total_tokens"], 2300)
-        self.assertIn("近 14 天中 2 天有记录", view["overview_note"])
+        self.assertIn("2026-04-26 至 2026-04-27", view["overview_note"])
+        self.assertIn("2 个有数据日", view["overview_note"])
         self.assertIn("7 日账单", [card["label"] for card in view["summary_cards"]])
         self.assertEqual(view["summary_cards"][0]["value"], "$7")
         self.assertIn("3400 Token", view["summary_cards"][0]["caption"])
@@ -8152,7 +8267,78 @@ Keep my own note.
             ["04-21", "04-24", "04-26", "04-27", "04-28", "04-30", "05-03"],
         )
         self.assertEqual(view["window_days"], 14)
-        self.assertIn("近 14 天中 7 天有记录", view["overview_note"])
+        self.assertIn("2026-04-21 至 2026-05-03", view["overview_note"])
+        self.assertIn("7 个有数据日", view["overview_note"])
+
+    def test_token_usage_view_filters_range_and_groups_by_month(self):
+        with mock.patch.object(
+            build_overview,
+            "current_local_datetime",
+            return_value=datetime.fromisoformat("2026-05-31T12:00:00+08:00"),
+        ):
+            view = build_overview.build_token_usage_view(
+                {
+                    "available": True,
+                    "payload": {
+                        "daily": [
+                            {
+                                "date": "2026-03-31",
+                                "inputTokens": 100,
+                                "cachedInputTokens": 0,
+                                "outputTokens": 10,
+                                "reasoningOutputTokens": 0,
+                                "totalTokens": 110,
+                                "costUSD": 1.0,
+                            },
+                            {
+                                "date": "2026-04-01",
+                                "inputTokens": 200,
+                                "cachedInputTokens": 50,
+                                "outputTokens": 40,
+                                "reasoningOutputTokens": 5,
+                                "totalTokens": 240,
+                                "costUSD": 2.0,
+                            },
+                            {
+                                "date": "2026-04-20",
+                                "inputTokens": 300,
+                                "cachedInputTokens": 100,
+                                "outputTokens": 60,
+                                "reasoningOutputTokens": 10,
+                                "totalTokens": 360,
+                                "costUSD": 3.0,
+                            },
+                            {
+                                "date": "2026-05-02",
+                                "inputTokens": 500,
+                                "cachedInputTokens": 125,
+                                "outputTokens": 100,
+                                "reasoningOutputTokens": 20,
+                                "totalTokens": 600,
+                                "costUSD": 5.0,
+                            },
+                        ]
+                    },
+                    "error": "",
+                    "fetched_at": "2026-05-31T12:00:00+08:00",
+                    "window_days": 61,
+                },
+                language="zh",
+                group_by="month",
+                start_date="2026-04-01",
+                end_date="2026-05-31",
+            )
+
+        self.assertEqual(view["group_by"], "month")
+        self.assertEqual(view["range_start"], "2026-04-01")
+        self.assertEqual(view["range_end"], "2026-05-31")
+        self.assertEqual([row["label"] for row in view["daily_rows"]], ["2026-04", "2026-05"])
+        self.assertEqual([row["value"] for row in view["daily_rows"]], [600, 600])
+        self.assertEqual(view["period_total_tokens"], 1200)
+        self.assertEqual(view["active_period_count"], 2)
+        self.assertEqual(view["today_date_label"], "2026-05")
+        self.assertEqual(view["today_breakdown"][0]["value"], 375)
+        self.assertIn("峰值月", [card["label"] for card in view["summary_cards"]])
 
     def test_bar_rows_render_hover_details_when_available(self):
         html = build_overview.make_bar_group(
@@ -8465,7 +8651,7 @@ Keep my own note.
         source = (ROOT / "scripts" / "build_overview.py").read_text(encoding="utf-8")
 
         self.assertIn(
-            'renderBarRows(elements.dailyTokenRows, (preparedTokenUsage.daily_rows || []).slice(-{token_daily_display_days}).reverse(), "token-daily-mid");',
+            'renderBarRows(elements.dailyTokenRows, (preparedTokenUsage.daily_rows || []).slice().reverse(), "token-daily-mid");',
             source,
         )
         self.assertIn("sanitizeCssClass(row.tone || accentClass, accentClass)", source)

@@ -4,7 +4,7 @@ import json
 import os
 import shutil
 import subprocess
-from datetime import timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 from asset_runtime import atomic_write_json, get_runtime_paths
@@ -74,6 +74,34 @@ def normalize_token_provider(provider=None):
 
 def empty_payload():
     return {"daily": [], "totals": {}}
+
+
+def parse_token_date(value):
+    text = str(value or "").strip()
+    if not text:
+        return None
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    for fmt in ("%Y-%m-%d", "%Y%m%d", "%b %d, %Y", "%B %d, %Y"):
+        try:
+            return datetime.strptime(text, fmt).date()
+        except ValueError:
+            continue
+    return None
+
+
+def resolve_token_date_range(window_days=CCUSAGE_WINDOW_DAYS, now_func=current_local_datetime, start_date=None, end_date=None):
+    resolved_end = parse_token_date(end_date) or now_func().date()
+    resolved_start = parse_token_date(start_date)
+    if not resolved_start:
+        resolved_window_days = max(int(window_days or CCUSAGE_WINDOW_DAYS), 1)
+        resolved_start = resolved_end - timedelta(days=resolved_window_days - 1)
+    if resolved_start > resolved_end:
+        resolved_start, resolved_end = resolved_end, resolved_start
+    resolved_window_days = max((resolved_end - resolved_start).days + 1, 1)
+    return resolved_start, resolved_end, resolved_window_days
 
 
 def provider_package(provider):
@@ -242,12 +270,18 @@ def fetch_provider_ccusage_daily(
     resolve_npx_binary_func=resolve_npx_binary,
     env_func=build_subprocess_env,
     runner=subprocess.run,
+    start_date=None,
+    end_date=None,
 ):
     provider = normalize_token_provider(provider)
     if provider not in {"codex", "claude"}:
         raise ValueError("Unsupported token provider: {}".format(provider))
-    end_date = now_func().date()
-    start_date = end_date - timedelta(days=window_days - 1)
+    start_date, end_date, resolved_window_days = resolve_token_date_range(
+        window_days=window_days,
+        now_func=now_func,
+        start_date=start_date,
+        end_date=end_date,
+    )
     base_cmd = [
         resolve_npx_binary_func(),
         "-y",
@@ -282,7 +316,9 @@ def fetch_provider_ccusage_daily(
                 "payload": normalize_provider_payload(payload, provider),
                 "error": "",
                 "fetched_at": now_func().isoformat(),
-                "window_days": window_days,
+                "window_days": resolved_window_days,
+                "range_start": start_date.isoformat(),
+                "range_end": end_date.isoformat(),
             }
         except Exception as exc:  # noqa: BLE001
             last_error = str(exc)
@@ -294,7 +330,9 @@ def fetch_provider_ccusage_daily(
         "payload": empty_payload(),
         "error": last_error or "",
         "fetched_at": now_func().isoformat(),
-        "window_days": window_days,
+        "window_days": resolved_window_days,
+        "range_start": start_date.isoformat(),
+        "range_end": end_date.isoformat(),
     }
 
 
@@ -305,16 +343,26 @@ def fetch_ccusage_daily(
     env_func=build_subprocess_env,
     runner=subprocess.run,
     provider="all",
+    start_date=None,
+    end_date=None,
 ):
     provider = normalize_token_provider(provider)
+    resolved_start, resolved_end, resolved_window_days = resolve_token_date_range(
+        window_days=window_days,
+        now_func=now_func,
+        start_date=start_date,
+        end_date=end_date,
+    )
     if provider in {"codex", "claude"}:
         return fetch_provider_ccusage_daily(
             provider,
-            window_days=window_days,
+            window_days=resolved_window_days,
             now_func=now_func,
             resolve_npx_binary_func=resolve_npx_binary_func,
             env_func=env_func,
             runner=runner,
+            start_date=resolved_start,
+            end_date=resolved_end,
         )
     if provider != "all":
         return {
@@ -324,17 +372,21 @@ def fetch_ccusage_daily(
             "payload": empty_payload(),
             "error": "Unsupported token provider: {}".format(provider),
             "fetched_at": now_func().isoformat(),
-            "window_days": window_days,
+            "window_days": resolved_window_days,
+            "range_start": resolved_start.isoformat(),
+            "range_end": resolved_end.isoformat(),
         }
 
     provider_results = {
         name: fetch_provider_ccusage_daily(
             name,
-            window_days=window_days,
+            window_days=resolved_window_days,
             now_func=now_func,
             resolve_npx_binary_func=resolve_npx_binary_func,
             env_func=env_func,
             runner=runner,
+            start_date=resolved_start,
+            end_date=resolved_end,
         )
         for name in ("codex", "claude")
     }
@@ -352,9 +404,36 @@ def fetch_ccusage_daily(
         "payload": merge_provider_payloads(provider_results) if available_results else empty_payload(),
         "error": "; ".join(errors),
         "fetched_at": now_func().isoformat(),
-        "window_days": window_days,
+        "window_days": resolved_window_days,
+        "range_start": resolved_start.isoformat(),
+        "range_end": resolved_end.isoformat(),
         "partial": bool(available_results and errors),
     }
+
+
+def token_cache_matches_request(
+    cached,
+    provider,
+    window_days,
+    start_date=None,
+    end_date=None,
+    now_func=current_local_datetime,
+):
+    if not cached or normalize_token_provider(cached.get("provider")) != normalize_token_provider(provider):
+        return False
+    requested_start = parse_token_date(start_date)
+    requested_end = parse_token_date(end_date)
+    if requested_start or requested_end:
+        requested_start, requested_end, _ = resolve_token_date_range(
+            window_days=window_days,
+            now_func=now_func,
+            start_date=start_date,
+            end_date=end_date,
+        )
+        cached_start = parse_token_date(cached.get("range_start"))
+        cached_end = parse_token_date(cached.get("range_end"))
+        return cached_start == requested_start and cached_end == requested_end
+    return int(cached.get("window_days") or 0) == max(int(window_days or CCUSAGE_WINDOW_DAYS), 1)
 
 
 def resolve_ccusage_daily(
@@ -362,19 +441,34 @@ def resolve_ccusage_daily(
     refresh_requested=None,
     fetch_func=fetch_ccusage_daily,
     provider="all",
+    window_days=CCUSAGE_WINDOW_DAYS,
+    start_date=None,
+    end_date=None,
 ):
     if refresh_requested is None:
         refresh_requested = os.environ.get("AI_ASSET_REFRESH_TOKEN") == "1"
     cached = load_token_usage_cache(cache_path)
     provider = normalize_token_provider(provider)
-    if cached and not refresh_requested and normalize_token_provider(cached.get("provider")) == provider:
+    if cached and not refresh_requested and token_cache_matches_request(
+        cached,
+        provider,
+        window_days,
+        start_date=start_date,
+        end_date=end_date,
+    ):
         return cached
 
-    live = fetch_func(provider=provider)
+    live = fetch_func(provider=provider, window_days=window_days, start_date=start_date, end_date=end_date)
     if live.get("available"):
         write_token_usage_cache(live, cache_path)
         return live
 
-    if cached:
+    if cached and token_cache_matches_request(
+        cached,
+        provider,
+        window_days,
+        start_date=start_date,
+        end_date=end_date,
+    ):
         return cached
     return live

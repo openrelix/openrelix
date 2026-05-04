@@ -56,7 +56,7 @@ from asset_runtime import (
     write_runtime_config,
 )
 from openrelix_overview.token_fetcher import fetch_ccusage_daily, normalize_token_provider
-from openrelix_overview.token_usage import build_token_usage_view
+from openrelix_overview.token_usage import build_token_usage_view, normalize_token_group_by
 
 
 PATHS = get_runtime_paths()
@@ -653,6 +653,22 @@ def build_parser():
         type=int,
         default=7,
         help=localized("查询最近 N 天，默认 7。", "Query the last N days. Default: 7."),
+    )
+    tokens.add_argument(
+        "--start-date",
+        default="",
+        help=localized("起始日期，格式 YYYY-MM-DD。", "Start date, in YYYY-MM-DD format."),
+    )
+    tokens.add_argument(
+        "--end-date",
+        default="",
+        help=localized("结束日期，格式 YYYY-MM-DD。", "End date, in YYYY-MM-DD format."),
+    )
+    tokens.add_argument(
+        "--group-by",
+        choices=["day", "month"],
+        default="day",
+        help=localized("展示粒度：day 或 month。", "Display granularity: day or month."),
     )
     tokens.add_argument(
         "--json",
@@ -3525,13 +3541,30 @@ def command_tokens(args):
     if provider not in {"all", "codex", "claude"}:
         raise SystemExit("Unsupported token provider: {}".format(getattr(args, "provider", "")))
     window_days = max(int(getattr(args, "window_days", 7) or 7), 1)
-    result = fetch_ccusage_daily(window_days=window_days, provider=provider)
-    view = build_token_usage_view(result, language=LANGUAGE)
+    start_date = str(getattr(args, "start_date", "") or "").strip()
+    end_date = str(getattr(args, "end_date", "") or "").strip()
+    group_by = normalize_token_group_by(getattr(args, "group_by", "day"))
+    result = fetch_ccusage_daily(
+        window_days=window_days,
+        provider=provider,
+        start_date=start_date or None,
+        end_date=end_date or None,
+    )
+    view = build_token_usage_view(
+        result,
+        language=LANGUAGE,
+        group_by=group_by,
+        start_date=start_date or None,
+        end_date=end_date or None,
+    )
     payload = {
         "ok": bool(view.get("available")),
         "provider": provider,
         "provider_label": view.get("provider_label", result.get("provider_label", "")),
         "window_days": window_days,
+        "start_date": start_date,
+        "end_date": end_date,
+        "group_by": group_by,
         "token_usage": view,
         "error": view.get("error", ""),
     }
@@ -3541,7 +3574,8 @@ def command_tokens(args):
 
     print(localized("OpenRelix Token 用量", "OpenRelix token usage"))
     print("- provider: {} ({})".format(provider, payload["provider_label"]))
-    print("- window_days: {}".format(window_days))
+    print("- range: {}".format(view.get("range_label") or window_days))
+    print("- group_by: {}".format(group_by))
     if not view.get("available"):
         print("- status: unavailable")
         if view.get("error"):
@@ -3551,8 +3585,8 @@ def command_tokens(args):
         print("- status: partial ({})".format(view.get("error")))
     else:
         print("- status: ok")
-    print("- today: {} ({})".format(view.get("today_total_tokens_display"), view.get("today_date_label")))
-    print("- 7_day: {} · {}".format(view.get("seven_day_total_tokens_display"), view.get("seven_day_cost_display")))
+    print("- total: {} · {}".format(view.get("period_total_tokens_display"), view.get("period_cost_display")))
+    print("- latest: {} ({})".format(view.get("today_total_tokens_display"), view.get("today_date_label")))
     for row in view.get("daily_rows", []):
         print("- {}: {}".format(row.get("label"), row.get("display")))
         provider_label = row.get("provider_label", "")

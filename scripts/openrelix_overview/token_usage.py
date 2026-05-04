@@ -121,12 +121,179 @@ def compact_token_with_cost(token_value, cost_value, language=None):
     return "{} · {}".format(token_display, cost_display)
 
 
-def build_token_summary_cards(parsed_rows, trailing_rows, latest, language=None):
+def normalize_token_group_by(group_by=None):
+    text = str(group_by or "day").strip().lower().replace("_", "-")
+    if text in {"month", "monthly", "months"}:
+        return "month"
+    return "day"
+
+
+def parse_token_usage_date(raw_date):
+    for fmt in ("%b %d, %Y", "%B %d, %Y", "%Y-%m-%d", "%Y%m%d"):
+        try:
+            return datetime.strptime(str(raw_date or ""), fmt)
+        except ValueError:
+            continue
+    return None
+
+
+def format_iso_date(value):
+    parsed_date = parse_token_usage_date(value)
+    return parsed_date.date().isoformat() if parsed_date else str(value or "")
+
+
+def format_token_range_label(start_date, end_date, group_by="day", language=None):
+    language = current_language(language)
+    start_text = start_date.date().isoformat() if isinstance(start_date, datetime) else str(start_date or "")
+    end_text = end_date.date().isoformat() if isinstance(end_date, datetime) else str(end_date or "")
+    if group_by == "month":
+        start_text = start_text[:7] if start_text else ""
+        end_text = end_text[:7] if end_text else ""
+    if start_text and end_text and start_text != end_text:
+        return localized("{} 至 {}".format(start_text, end_text), "{} to {}".format(start_text, end_text), language)
+    if start_text or end_text:
+        return start_text or end_text
+    return localized("当前区间", "Current range", language)
+
+
+def token_period_unit(group_by="day", language=None):
+    language = current_language(language)
+    return localized("月", "months", language) if group_by == "month" else localized("日", "days", language)
+
+
+def aggregate_token_rows(rows, label, sort_key, parsed_date, raw_date, group_by, language=None):
+    rows = list(rows)
+    provider_labels = {
+        str(row.get("providerLabel") or row.get("provider_label") or "")
+        for row in rows
+        if row.get("providerLabel") or row.get("provider_label")
+    }
+    provider_label = " + ".join(sorted(provider_labels)) if provider_labels else ""
+    providers = {}
+    for row in rows:
+        provider = row.get("provider")
+        if provider and provider != "all":
+            target = providers.setdefault(
+                provider,
+                {
+                    "provider": provider,
+                    "providerLabel": row.get("providerLabel", ""),
+                    "inputTokens": 0,
+                    "cachedInputTokens": 0,
+                    "cacheCreationTokens": 0,
+                    "outputTokens": 0,
+                    "reasoningOutputTokens": 0,
+                    "totalTokens": 0,
+                    "costUSD": 0.0,
+                },
+            )
+            for field in (
+                "inputTokens",
+                "cachedInputTokens",
+                "cacheCreationTokens",
+                "outputTokens",
+                "reasoningOutputTokens",
+                "totalTokens",
+            ):
+                target[field] += safe_int(row.get(field, 0))
+            target["costUSD"] += safe_float(row.get("costUSD", 0))
+        for provider, provider_row in (row.get("providers") or {}).items():
+            target = providers.setdefault(
+                provider,
+                {
+                    "provider": provider,
+                    "providerLabel": provider_row.get("providerLabel", ""),
+                    "inputTokens": 0,
+                    "cachedInputTokens": 0,
+                    "cacheCreationTokens": 0,
+                    "outputTokens": 0,
+                    "reasoningOutputTokens": 0,
+                    "totalTokens": 0,
+                    "costUSD": 0.0,
+                },
+            )
+            for field in (
+                "inputTokens",
+                "cachedInputTokens",
+                "cacheCreationTokens",
+                "outputTokens",
+                "reasoningOutputTokens",
+                "totalTokens",
+            ):
+                target[field] += safe_int(provider_row.get(field, 0))
+            target["costUSD"] += safe_float(provider_row.get("costUSD", 0))
+
+    total_input_tokens = sum(safe_int(row.get("inputTokens", 0)) for row in rows)
+    cached_input_tokens = sum(safe_int(row.get("cachedInputTokens", 0)) for row in rows)
+    return {
+        "raw_date": raw_date,
+        "date_label": label,
+        "sort_key": sort_key,
+        "parsed_date": parsed_date,
+        "inputTokens": total_input_tokens,
+        "totalInputTokens": total_input_tokens,
+        "uncachedInputTokens": max(total_input_tokens - cached_input_tokens, 0),
+        "cachedInputTokens": cached_input_tokens,
+        "cacheCreationTokens": sum(safe_int(row.get("cacheCreationTokens", 0)) for row in rows),
+        "outputTokens": sum(safe_int(row.get("outputTokens", 0)) for row in rows),
+        "reasoningOutputTokens": sum(safe_int(row.get("reasoningOutputTokens", 0)) for row in rows),
+        "totalTokens": sum(safe_int(row.get("totalTokens", 0)) for row in rows),
+        "display_total_tokens": compact_token(sum(safe_int(row.get("totalTokens", 0)) for row in rows), language=language),
+        "costUSD": sum(safe_float(row.get("costUSD", 0)) for row in rows),
+        "provider": "all" if len(provider_labels) > 1 else (rows[0].get("provider", "") if rows else ""),
+        "providerLabel": provider_label or (rows[0].get("providerLabel", "") if rows else ""),
+        "providers": providers,
+        "group_by": group_by,
+        "day_count": len(rows),
+        "active_day_count": sum(1 for row in rows if safe_int(row.get("totalTokens", 0)) > 0),
+    }
+
+
+def aggregate_monthly_token_rows(parsed_rows, language=None):
+    monthly = {}
+    for row in parsed_rows:
+        parsed_date = row.get("parsed_date")
+        if not parsed_date:
+            continue
+        key = parsed_date.strftime("%Y-%m")
+        monthly.setdefault(key, []).append(row)
+    result = []
+    for key in sorted(monthly):
+        parsed_date = datetime.strptime(key + "-01", "%Y-%m-%d")
+        result.append(
+            aggregate_token_rows(
+                monthly[key],
+                key,
+                key,
+                parsed_date,
+                key,
+                "month",
+                language=language,
+            )
+        )
+    return result
+
+
+def build_token_summary_cards(
+    parsed_rows,
+    trailing_rows,
+    latest,
+    language=None,
+    group_by="day",
+    custom_period=False,
+):
     language = current_language(language)
     if not latest:
         return []
 
-    active_trailing_rows = [row for row in trailing_rows if row.get("totalTokens", 0) > 0]
+    group_by = normalize_token_group_by(group_by)
+    summary_rows = parsed_rows if custom_period else trailing_rows
+    active_trailing_rows = [row for row in summary_rows if row.get("totalTokens", 0) > 0]
+    bill_label = localized("周期账单", "Period bill", language) if custom_period else localized("7 日账单", "7-day bill", language)
+    average_label = localized("月均值", "Monthly average", language) if group_by == "month" else (
+        localized("周期日均", "Daily average", language) if custom_period else localized("7 日均值", "7-day average", language)
+    )
+    peak_label = localized("峰值月", "Peak month", language) if group_by == "month" else localized("峰值日", "Peak day", language)
     summary_cards = []
 
     if active_trailing_rows:
@@ -137,7 +304,7 @@ def build_token_summary_cards(parsed_rows, trailing_rows, latest, language=None)
         summary_cards.extend(
             [
                 make_token_summary_card(
-                    localized("7 日账单", "7-day bill", language),
+                    bill_label,
                     format_usd(seven_day_cost),
                     localized(
                         "{} Token · ccusage 估算".format(compact_token(seven_day_total, language=language)),
@@ -146,16 +313,16 @@ def build_token_summary_cards(parsed_rows, trailing_rows, latest, language=None)
                     ),
                 ),
                 make_token_summary_card(
-                    localized("7 日均值", "7-day average", language),
+                    average_label,
                     compact_token(seven_day_average, language=language),
                     localized(
-                        "按 {} 个有数据日".format(len(active_trailing_rows)),
-                        "Across {} days with data".format(len(active_trailing_rows)),
+                        "按 {} 个有数据{}".format(len(active_trailing_rows), token_period_unit(group_by, language=language)),
+                        "Across {} {} with data".format(len(active_trailing_rows), token_period_unit(group_by, language=language)),
                         language,
                     ),
                 ),
                 make_token_summary_card(
-                    localized("峰值日", "Peak day", language),
+                    peak_label,
                     compact_token(peak_row["totalTokens"], language=language),
                     localized(
                         "{} 最高".format(peak_row["date_label"]),
@@ -168,9 +335,9 @@ def build_token_summary_cards(parsed_rows, trailing_rows, latest, language=None)
     else:
         summary_cards.append(
             make_token_summary_card(
-                localized("7 日账单", "7-day bill", language),
+                bill_label,
                 "—",
-                localized("暂无 7 日账单数据", "No 7-day bill data yet", language),
+                localized("暂无账单数据", "No bill data yet", language),
             )
         )
 
@@ -243,12 +410,21 @@ def build_token_usage_view(
     ccusage_result,
     language=None,
     now_func=current_local_datetime,
+    group_by=None,
+    start_date=None,
+    end_date=None,
 ):
     language = current_language(language)
+    group_by = normalize_token_group_by(group_by or ccusage_result.get("group_by"))
     window_days = max(safe_int(ccusage_result.get("window_days", CCUSAGE_WINDOW_DAYS)), 1)
     refreshed_at = ccusage_result.get("fetched_at", "")
     refreshed_at_display = display_local_datetime(refreshed_at)
+    requested_start = parse_token_usage_date(start_date or ccusage_result.get("range_start"))
+    requested_end = parse_token_usage_date(end_date or ccusage_result.get("range_end"))
+    if requested_start and requested_end and requested_start > requested_end:
+        requested_start, requested_end = requested_end, requested_start
     if not ccusage_result["available"]:
+        range_label = format_token_range_label(requested_start, requested_end, group_by, language=language)
         return {
             "available": False,
             "error": ccusage_result.get("error", ""),
@@ -267,6 +443,19 @@ def build_token_usage_view(
                 "Waiting for live Token stats",
                 language,
             ),
+            "range_label": range_label,
+            "range_start": requested_start.date().isoformat() if requested_start else "",
+            "range_end": requested_end.date().isoformat() if requested_end else "",
+            "group_by": group_by,
+            "period_total_tokens": None,
+            "period_total_tokens_display": "—",
+            "period_cost_usd": None,
+            "period_cost_display": "—",
+            "period_average_tokens": None,
+            "period_average_tokens_display": "—",
+            "period_count": 0,
+            "active_period_count": 0,
+            "period_unit": token_period_unit(group_by, language=language),
             "refreshed_at": refreshed_at,
             "refreshed_at_display": refreshed_at_display,
             "window_days": window_days,
@@ -280,13 +469,7 @@ def build_token_usage_view(
     parsed_rows = []
     for row in raw_rows:
         raw_date = row.get("date", "")
-        parsed_date = None
-        for fmt in ("%b %d, %Y", "%B %d, %Y", "%Y-%m-%d", "%Y%m%d"):
-            try:
-                parsed_date = datetime.strptime(raw_date, fmt)
-                break
-            except ValueError:
-                continue
+        parsed_date = parse_token_usage_date(raw_date)
         label = parsed_date.strftime("%m-%d") if parsed_date else raw_date
         total_input_tokens = safe_int(row.get("inputTokens", 0))
         cached_input_tokens = safe_int(row.get("cachedInputTokens", 0))
@@ -297,10 +480,12 @@ def build_token_usage_view(
                 "date_label": label,
                 "sort_key": parsed_date.isoformat() if parsed_date else raw_date,
                 "parsed_date": parsed_date,
+                "date": parsed_date.date().isoformat() if parsed_date else format_iso_date(raw_date),
                 "inputTokens": total_input_tokens,
                 "totalInputTokens": total_input_tokens,
                 "uncachedInputTokens": uncached_input_tokens,
                 "cachedInputTokens": cached_input_tokens,
+                "cacheCreationTokens": safe_int(row.get("cacheCreationTokens", 0)),
                 "outputTokens": safe_int(row.get("outputTokens", 0)),
                 "reasoningOutputTokens": safe_int(row.get("reasoningOutputTokens", 0)),
                 "totalTokens": safe_int(row.get("totalTokens", 0)),
@@ -313,23 +498,56 @@ def build_token_usage_view(
         )
 
     parsed_rows.sort(key=lambda item: item["sort_key"])
-    parsed_rows = recent_token_daily_rows(parsed_rows, window_days=window_days, now_func=now_func)
-    max_daily_tokens = max((row["totalTokens"] for row in parsed_rows), default=0)
-    latest = parsed_rows[-1] if parsed_rows else None
-    trailing = parsed_rows[-7:]
+    if requested_start or requested_end:
+        parsed_rows = [
+            row for row in parsed_rows
+            if not row.get("parsed_date")
+            or (
+                (not requested_start or row["parsed_date"].date() >= requested_start.date())
+                and (not requested_end or row["parsed_date"].date() <= requested_end.date())
+            )
+        ]
+    else:
+        parsed_rows = recent_token_daily_rows(parsed_rows, window_days=window_days, now_func=now_func)
+
+    if requested_start:
+        effective_start = requested_start
+    elif parsed_rows and parsed_rows[0].get("parsed_date"):
+        effective_start = parsed_rows[0]["parsed_date"]
+    else:
+        effective_start = datetime.combine(now_func().date() - timedelta(days=window_days - 1), datetime.min.time())
+
+    if requested_end:
+        effective_end = requested_end
+    elif parsed_rows and parsed_rows[-1].get("parsed_date"):
+        effective_end = parsed_rows[-1]["parsed_date"]
+    else:
+        effective_end = datetime.combine(now_func().date(), datetime.min.time())
+
+    display_rows = aggregate_monthly_token_rows(parsed_rows, language=language) if group_by == "month" else parsed_rows
+    max_daily_tokens = max((row["totalTokens"] for row in display_rows), default=0)
+    latest = display_rows[-1] if display_rows else None
+    trailing = display_rows[-7:]
     seven_day_total = sum(item["totalTokens"] for item in trailing)
     seven_day_cost = sum(safe_float(item.get("costUSD")) for item in trailing)
-    active_trailing_count = sum(1 for item in trailing if item["totalTokens"] > 0)
+    active_period_count = sum(1 for item in display_rows if item["totalTokens"] > 0)
+    period_count = len(display_rows)
+    period_total_tokens = sum(item["totalTokens"] for item in display_rows)
+    period_cost = sum(safe_float(item.get("costUSD")) for item in display_rows)
+    period_average_tokens = period_total_tokens // active_period_count if active_period_count else 0
+    range_label = format_token_range_label(effective_start, effective_end, group_by, language=language)
     overview_note = localized(
-        "近 {} 天中 {} 天有记录 · {} · {}".format(
-            window_days,
-            active_trailing_count,
+        "{} · {} 个有数据{} · {} · {}".format(
+            range_label,
+            active_period_count,
+            token_period_unit(group_by, language=language),
             ccusage_result.get("provider_label", "ccusage"),
             refreshed_at_display or "等待实时刷新",
         ),
-        "{} days with records in the last {} days · {} · {}".format(
-            active_trailing_count,
-            window_days,
+        "{} · {} {} with records · {} · {}".format(
+            range_label,
+            active_period_count,
+            token_period_unit(group_by, language=language),
             ccusage_result.get("provider_label", "ccusage"),
             refreshed_at_display or "waiting for live refresh",
         ),
@@ -439,6 +657,12 @@ def build_token_usage_view(
         "daily_rows": [
             {
                 "label": row["date_label"],
+                "date": row.get("date") or row["raw_date"],
+                "raw_date": row["raw_date"],
+                "sort_key": row["sort_key"],
+                "group_by": group_by,
+                "day_count": row.get("day_count", 1),
+                "active_day_count": row.get("active_day_count", 1 if row["totalTokens"] > 0 else 0),
                 "value": row["totalTokens"],
                 "display": compact_token_with_cost(row["totalTokens"], row.get("costUSD"), language=language),
                 "token_display": row["display_total_tokens"],
@@ -455,7 +679,7 @@ def build_token_usage_view(
                     language,
                 ),
             }
-            for row in parsed_rows
+            for row in display_rows
         ],
         "today_breakdown": today_breakdown,
         "today_total_tokens": latest["totalTokens"] if latest else 0,
@@ -465,7 +689,28 @@ def build_token_usage_view(
         "seven_day_cost_usd": seven_day_cost,
         "seven_day_cost_display": format_usd(seven_day_cost),
         "today_date_label": latest["date_label"] if latest else localized("今日", "Today", language),
-        "summary_cards": build_token_summary_cards(parsed_rows, trailing, latest, language=language),
+        "current_period_label": latest["date_label"] if latest else range_label,
+        "range_label": range_label,
+        "range_start": effective_start.date().isoformat() if isinstance(effective_start, datetime) else str(effective_start or ""),
+        "range_end": effective_end.date().isoformat() if isinstance(effective_end, datetime) else str(effective_end or ""),
+        "group_by": group_by,
+        "period_total_tokens": period_total_tokens,
+        "period_total_tokens_display": compact_token(period_total_tokens, language=language),
+        "period_cost_usd": period_cost,
+        "period_cost_display": format_usd(period_cost),
+        "period_average_tokens": period_average_tokens,
+        "period_average_tokens_display": compact_token(period_average_tokens, language=language),
+        "period_count": period_count,
+        "active_period_count": active_period_count,
+        "period_unit": token_period_unit(group_by, language=language),
+        "summary_cards": build_token_summary_cards(
+            display_rows,
+            trailing,
+            latest,
+            language=language,
+            group_by=group_by,
+            custom_period=bool(start_date or end_date or group_by == "month"),
+        ),
         "overview_note": overview_note,
         "refreshed_at": refreshed_at,
         "refreshed_at_display": refreshed_at_display,
