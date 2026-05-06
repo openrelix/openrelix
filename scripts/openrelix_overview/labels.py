@@ -1,7 +1,7 @@
 """Display-label mappings for overview asset and memory records."""
 
 DISPLAY_TYPE = {
-    "skill": "技能",
+    "skill": "skills",
     "automation": "自动化",
     "playbook": "方法",
     "template": "模板",
@@ -152,16 +152,16 @@ DISPLAY_MEMORY_PRIORITY_EN = {
 }
 
 DISPLAY_DISCOVERED_ASSET_KIND = {
-    "skill": "技能",
+    "skill": "skills",
     "prompt": "提示词",
     "rule": "Codex 规则",
     "plugin": "插件",
     "automation": "启动项",
-    "codex_skill": "Codex 技能",
-    "claude_skill": "Claude 技能",
-    "repo_skill": "仓库技能",
-    "external_repo_skill": "跨仓库技能",
-    "project_skill": "项目本地技能",
+    "codex_skill": "Codex skills",
+    "claude_skill": "Claude skills",
+    "repo_skill": "仓库 skills",
+    "external_repo_skill": "跨仓库 skills",
+    "project_skill": "项目本地 skills",
     "codex_prompt": "自定义提示词",
     "codex_rule": "Codex 规则",
     "claude_plugin": "插件",

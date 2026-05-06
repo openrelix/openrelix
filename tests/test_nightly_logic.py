@@ -3345,7 +3345,7 @@ Keep my own note.
 
         self.assertIn("| 暂无 | 0 |", markdown)
         self.assertIn("## 月度活动", markdown)
-        self.assertIn("## 近 30 天高频技能 Top 10", markdown)
+        self.assertIn("## 近 30 天高频 skills Top 10", markdown)
         self.assertIn("| 暂无 | 暂无 | 0 | 0 |", markdown)
         self.assertNotIn("## 最近更新的资产", markdown)
         self.assertNotIn("| none | 0 |", markdown)
@@ -4318,6 +4318,13 @@ Keep my own note.
         self.assertIn("进入 host context 的记忆", html)
         self.assertIn("personal-memory-durable-section", html)
         self.assertIn("codex-native-topic-section", html)
+        self.assertNotIn('data-nav-target="codex-native-topic-section"', html)
+        self.assertNotIn('data-nav-target="codex-native-preference-section"', html)
+        self.assertNotIn('data-nav-target="claude-native-tip-section"', html)
+        self.assertIn('data-nav-target="asset-overview-section"', html)
+        self.assertIn('data-nav-target="top-assets-section"', html)
+        self.assertNotIn('data-nav-target="asset-stats-snapshot-section"', html)
+        self.assertIn("skills 热度", html)
         self.assertNotIn("本期小结", html)
         self.assertNotIn("highlight-list", html)
 
@@ -9157,7 +9164,7 @@ Keep my own note.
                 "type": "skill",
                 "scope": "personal",
                 "domain": "general",
-                "display_type": "技能",
+                "display_type": "skills",
                 "display_scope": "仅个人使用",
                 "display_context": "OpenRelix",
             },
@@ -9167,7 +9174,7 @@ Keep my own note.
                 "type": "skill",
                 "scope": "repo",
                 "domain": "android",
-                "display_type": "技能",
+                "display_type": "skills",
                 "display_scope": "仓库场景复用",
                 "display_context": "Android App",
             },
@@ -9179,7 +9186,7 @@ Keep my own note.
             lambda value: build_overview.display_label("type", value),
         )
 
-        self.assertEqual(rows[0]["label"], "技能")
+        self.assertEqual(rows[0]["label"], "skills")
         self.assertEqual(rows[0]["value"], 2)
         self.assertEqual([item["title"] for item in rows[0]["details"]], ["A Skill", "B Skill"])
         self.assertIn("OpenRelix", rows[0]["details"][0]["meta"])
@@ -9210,7 +9217,7 @@ Keep my own note.
             "task_zh": "飞书画板 CLI 能力检查",
             "minutes_saved": 10,
             "note": "Existing skill provided the workflow.",
-            "note_zh": "已有技能提供了验证流程。",
+            "note_zh": "已有 skills 提供了验证流程。",
         }
 
         enriched = build_overview.enrich_assets(

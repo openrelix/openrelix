@@ -708,7 +708,7 @@ def build_parser():
         type=int,
         default=10,
         help=localized(
-            "高频技能列表最多保留条数，默认 10。",
+            "高频 skills 列表最多保留条数，默认 10。",
             "Maximum top-skill rows to keep, default 10.",
         ),
     )

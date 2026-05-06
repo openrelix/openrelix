@@ -724,11 +724,11 @@ class AssetDiscoveryTests(unittest.TestCase):
 
         html = build_overview.make_top_skill_rows(asset_discovery.top_skill_rows(rows, limit=None))
 
-        self.assertIn("查看更多 2 个技能热度", html)
+        self.assertIn("查看更多 2 个 skills 热度", html)
         self.assertIn('class="content-more-extra-row"', html)
         self.assertIn('data-asset-identifier="skill-02"', html)
         self.assertIn('data-asset-identifier="skill-01"', html)
-        self.assertLess(html.index('data-asset-identifier="skill-01"'), html.index("查看更多 2 个技能热度"))
+        self.assertLess(html.index('data-asset-identifier="skill-01"'), html.index("查看更多 2 个 skills 热度"))
 
     def test_top_skill_rows_exclude_manual_and_zero_activity_rows(self):
         rows = [
@@ -896,9 +896,9 @@ class AssetDiscoveryTests(unittest.TestCase):
         html = build_overview.make_asset_stats_snapshot_panel(snapshot, "2026-05-05")
 
         self.assertIn('id="asset-stats-snapshot-section"', html)
-        self.assertIn("30 天技能读取", html)
+        self.assertIn("30 天 skills 读取", html)
         self.assertIn("11", html)
-        self.assertNotIn("30 天技能会话", html)
+        self.assertNotIn("30 天 skills 会话", html)
         self.assertNotIn("锚点 2026-05-05", html)
         self.assertNotIn("openrelix asset-stats --date 2026-05-05", html)
         self.assertNotIn("快照文件", html)
@@ -950,9 +950,9 @@ class AssetDiscoveryTests(unittest.TestCase):
 
         html = build_overview.make_asset_stats_snapshot_panel(snapshot, "2026-05-05")
 
-        self.assertIn("30 天技能会话", html)
+        self.assertIn("30 天 skills 会话", html)
         self.assertIn("按会话去重", html)
-        self.assertNotIn("30 天技能读取", html)
+        self.assertNotIn("30 天 skills 读取", html)
 
     def test_path_classifier_follows_canonical_roots(self):
         codex_manifest = self.paths.codex_home / "skills" / "foo" / "SKILL.md"

@@ -207,8 +207,8 @@ TERM_ALIASES = {
     "global": "全局",
     "librarian": "整理",
     "layer": "分层",
-    "skill": "技能",
-    "skills": "技能",
+    "skill": "skills",
+    "skills": "skills",
     "playbook": "方法",
     "automation": "自动化",
     "template": "模板",
@@ -247,7 +247,8 @@ SUMMARY_TERM_LABEL_EN = {
     "全局": "Global",
     "分层": "Layering",
     "整理": "Librarian",
-    "技能": "Skill",
+    "技能": "Skills",
+    "skills": "Skills",
     "方法": "Playbook",
     "自动化": "Automation",
     "模板": "Template",
@@ -682,6 +683,8 @@ PANEL_I18N_EN = {
     ),
     "近 30 天高频技能 Top 10": "Top 10 Skills (last 30 days)",
     "近 30 天高频技能热度": "Skill Hotness (last 30 days)",
+    "近 30 天高频 skills Top 10": "Top 10 Skills (last 30 days)",
+    "近 30 天高频 skills 热度": "Skill Hotness (last 30 days)",
     "最近复盘": "Recent Reviews",
     "最近复用记录": "Recent Usage Events",
     "最近形成的脱敏任务复盘": "Recent sanitized task reviews",
@@ -743,7 +746,8 @@ PANEL_I18N_EN = {
     "映射": "Mapping",
     "未分类": "Uncategorized",
     "未标注": "Unlabeled",
-    "技能": "Skill",
+    "技能": "Skills",
+    "skills": "Skills",
     "自动化": "Automation",
     "方法": "Playbook",
     "模板": "Template",
@@ -1000,7 +1004,7 @@ PANEL_I18N_EN = {
     "同名项目会合并，按最近活动时间排序。": (
         "Projects with the same name are merged and sorted by latest activity."
     ),
-    "这里数的是窗口上下文；资产层的类型与活动面板数的是资产和技能读取。": (
+    "这里数的是窗口上下文；资产层的类型与活动面板数的是资产和 skills 读取。": (
         "This counts window context; the Asset Layer type and activity panels count assets and skill reads."
     ),
     "这是按日期切换的每日整理摘要卡，默认展示今天。": (
@@ -1263,7 +1267,7 @@ def localized_record_field(item, field, language=None, default=""):
 
 
 ASSET_TYPE_DESCRIPTIONS = {
-    "skill": "供 Codex 在特定场景下调用的技能包，通常对应一个可发现的 SKILL。",
+    "skill": "供 Codex 在特定场景下调用的 skills，通常对应一个可发现的 SKILL。",
     "automation": "脚本、命令、后台任务或流水线，能替你自动完成一段固定工作。",
     "playbook": "工作手册、规则、检查清单、排障路径等可复用的方法论。",
     "template": "可直接复用的结构化模板，例如文档模板、提示词模板或条目录入模板。",
@@ -8238,7 +8242,7 @@ def build_data(assets, usage_events, reviews, language=None):
             "label": localized("登记册资产", "Registry Assets", language),
             "value": len(assets),
             "caption": localized(
-                "registry/assets.jsonl 条目；新增技能只算已发现资产",
+                "registry/assets.jsonl 条目；新增 skills 只算已发现资产",
                 "registry/assets.jsonl rows; new skills count as discovered only",
                 language,
             ),
@@ -8557,7 +8561,7 @@ def build_data(assets, usage_events, reviews, language=None):
                 language,
             ),
             localized(
-                "先看「已发现资产」和「高频技能热度」：前者说明本机可用资产面，后者说明模型最近真实读了哪些技能。",
+                "先看「已发现资产」和「高频 skills 热度」：前者说明本机可用资产面，后者说明模型最近真实读了哪些 skills。",
                 "Start with Discovered Assets and Skill Hotness: one shows available local assets, the other shows which skills the model actually read recently.",
                 language,
             ),
@@ -8859,7 +8863,7 @@ def build_markdown(data):
             "",
             make_table(
                 Counter({row["label"]: row["value"] for row in asset_panels["monthly_activity"]}),
-                ["月份", "活跃技能数"],
+                ["月份", "活跃 skills 数"],
                 empty_label="暂无",
             ),
             "",
@@ -8960,7 +8964,7 @@ def build_markdown(data):
     lines.extend(
         [
             "",
-            "## 近 30 天高频技能 Top 10",
+            "## 近 30 天高频 skills Top 10",
             "",
             "| 名称 | 描述 | 30 天读取 | 30 天会话 |",
             "| --- | --- | --- | --- |",
@@ -9782,7 +9786,7 @@ def make_discovered_assets_section(render_rows):
 
     last_activity_title = escape(
         "{} / {}".format(
-            "模型最近一次读取此技能 SKILL.md 的本地日期；与技能的添加或修改时间无关。",
+            "模型最近一次读取此 skills SKILL.md 的本地日期；与 skills 的添加或修改时间无关。",
             "Local date when the model most recently read this skill's SKILL.md. Not the skill's added or modified date.",
         ),
         quote=True,
@@ -9816,7 +9820,7 @@ def make_discovered_assets_section(render_rows):
             description_header=panel_language_text_html("描述", "Description"),
             count_7d_title=escape(
                 "{} / {}".format(
-                    "近 7 天，模型实际读取过该技能 SKILL.md 的会话数",
+                    "近 7 天，模型实际读取过该 skills 的 SKILL.md 的会话数",
                     "Sessions in the last 7 days where the model read this skill's SKILL.md",
                 ),
                 quote=True,
@@ -9824,7 +9828,7 @@ def make_discovered_assets_section(render_rows):
             count_7d_header=panel_language_text_html("7 天", "7d"),
             count_30d_title=escape(
                 "{} / {}".format(
-                    "近 30 天，模型实际读取过该技能 SKILL.md 的会话数",
+                    "近 30 天，模型实际读取过该 skills 的 SKILL.md 的会话数",
                     "Sessions in the last 30 days where the model read this skill's SKILL.md",
                 ),
                 quote=True,
@@ -9864,7 +9868,7 @@ def make_discovered_assets_section(render_rows):
     header = make_panel_header(
         "已发现的 Codex / Claude 资产",
         note_content_html=panel_language_text_html(
-            '从本机扫描到的可用资产，以及过去 30 天里被模型真实读取过的项目内 / 跨仓库技能。技能按名称聚合，频率统计基于模型读取 SKILL.md 的会话数；非技能类显示 "—"。',
+            '从本机扫描到的可用资产，以及过去 30 天里被模型真实读取过的项目内 / 跨仓库 skills。skills 按名称聚合，频率统计基于模型读取 SKILL.md 的会话数；非 skills 类显示 "—"。',
             'Assets scanned from this machine, plus project-local and external-repo skills the model actually read in the past 30 days. Skills aggregate by name, frequency counts sessions where the model read SKILL.md; non-skill types render "—".',
         ),
     )
@@ -9891,7 +9895,7 @@ def make_asset_stats_snapshot_panel(snapshot, default_date):
     skill_reads = summary.get("skill_reads_30d") if has_snapshot else None
     if skill_reads is None:
         skill_activity_stat = (
-            "30 天技能会话",
+            "30 天 skills 会话",
             "30d Skill Sessions",
             summary.get("skill_sessions_30d", "—") if has_snapshot else "—",
             "按会话去重",
@@ -9899,7 +9903,7 @@ def make_asset_stats_snapshot_panel(snapshot, default_date):
         )
     else:
         skill_activity_stat = (
-            "30 天技能读取",
+            "30 天 skills 读取",
             "30d Skill Reads",
             skill_reads,
             "模型读取 SKILL.md",
@@ -9915,10 +9919,10 @@ def make_asset_stats_snapshot_panel(snapshot, default_date):
             "Displayable after grouping by name",
         ),
         (
-            "30 天活跃技能",
+            "30 天活跃 skills",
             "30d Active Skills",
             summary.get("active_skills_30d", "—") if has_snapshot else "—",
-            "按技能名去重",
+            "按 skills 名去重",
             "Deduped by skill name",
         ),
         skill_activity_stat,
@@ -10132,7 +10136,7 @@ def make_top_asset_rows(rows, group_id="top-asset-rows"):
 def make_top_skill_rows(rows, group_id="top-skill-rows"):
     rows = list(rows or [])
     if not rows:
-        return '<tr><td colspan="4" class="empty-cell">暂无高频技能。</td></tr>'
+        return '<tr><td colspan="4" class="empty-cell">暂无高频 skills。</td></tr>'
 
     def render_row(row, row_class="", group_id="", hidden_attr=""):
         attrs = [
@@ -10169,8 +10173,8 @@ def make_top_skill_rows(rows, group_id="top-skill-rows"):
         render_row,
         10,
         4,
-        "个技能热度",
-        "收起技能热度",
+        "个 skills 热度",
+        "收起 skills 热度",
         group_id,
     )
 
@@ -10872,17 +10876,10 @@ def make_side_nav():
         ("child", "personal-memory-session-section", "短期工作记忆", "Short-term Work Memory", "个人资产-短期工作记忆", "Personal Asset - Short-term Work Memory"),
         ("child", "personal-memory-low-priority-section", "低优先级记忆", "Low-priority Memory", "个人资产-低优先级记忆", "Personal Asset - Low-priority Memory"),
         ("link", "codex-native-section", "Codex 原生记忆", "Codex Native Memory", "Codex 原生记忆", "Codex Native Memory"),
-        ("child", "codex-native-topic-section", "记忆条目", "Memory Items", "Codex 原生记忆-记忆条目", "Codex Native Memory - Memory Items"),
-        ("child", "codex-native-preference-section", "用户偏好", "User Preferences", "Codex 原生记忆-用户偏好", "Codex Native Memory - User Preferences"),
-        ("child", "codex-native-tip-section", "通用 tips", "General Tips", "Codex 原生记忆-通用 tips", "Codex Native Memory - General Tips"),
-        ("child", "codex-native-task-group-section", "历史任务索引", "Historical Task Index", "Codex 原生记忆-历史任务索引", "Codex Native Memory - Historical Task Index"),
         ("link", "claude-native-section", "Claude 原生记忆", "Claude Native Memory", "Claude Code 原生记忆", "Claude Code Native Memory"),
-        ("child", "claude-native-topic-section", "记忆条目", "Memory Items", "Claude Code 原生记忆-记忆条目", "Claude Code Native Memory - Memory Items"),
-        ("child", "claude-native-preference-section", "用户偏好", "User Preferences", "Claude Code 原生记忆-用户偏好", "Claude Code Native Memory - User Preferences"),
-        ("child", "claude-native-tip-section", "通用 tips", "General Tips", "Claude Code 原生记忆-通用 tips", "Claude Code Native Memory - General Tips"),
         ("group", "资产层", "Asset Layer"),
-        ("link", "asset-overview-section", "资产层", "Asset Layer", "资产层", "Asset Layer"),
-        ("child", "asset-stats-snapshot-section", "单次统计", "Single Stats", "单次资产统计", "Single Asset Stats"),
+        ("link", "asset-overview-section", "总览", "Overview", "资产层总览", "Asset Layer Overview"),
+        ("link", "top-assets-section", "skills 热度", "Skill Hotness", "近 30 天高频 skills 热度", "Skill Hotness"),
         ("link", "reviews-section", "复盘记录", "Reviews", "复盘记录", "Reviews"),
         ("link", "window-overview-section", "窗口明细", "Windows", "窗口明细", "Windows"),
     ]
@@ -13129,7 +13126,7 @@ def build_metric_help_sections(metric):
             {
                 "label": "不包含",
                 "body": {
-                    "zh": "新增的技能、raw 对话、日志、报表，以及还没写入登记册的临时内容。",
+                    "zh": "新增的 skills、raw 对话、日志、报表，以及还没写入登记册的临时内容。",
                     "en": "Newly added skills, raw conversations, logs, reports, and temporary content that has not been written to the registry.",
                 },
             },
@@ -13138,14 +13135,14 @@ def build_metric_help_sections(metric):
             {
                 "label": "统计什么",
                 "body": {
-                    "zh": "从本机扫描到的 Codex / Claude 技能、提示词、规则、插件、启动项，以及近 30 天里真实读取过的项目内 / 跨仓库技能。",
+                    "zh": "从本机扫描到的 Codex / Claude skills、提示词、规则、插件、启动项，以及近 30 天里真实读取过的项目内 / 跨仓库 skills。",
                     "en": "Codex / Claude skills, prompts, rules, plugins, launch agents scanned from this machine, plus project-local and external-repo skills actually read in the last 30 days.",
                 },
             },
             {
                 "label": "怎么算",
                 "body": {
-                    "zh": "项目本地技能和跨仓库技能仅在 30 天内至少 2 个会话读取过 SKILL.md 时显示。",
+                    "zh": "项目本地 skills 和跨仓库 skills 仅在 30 天内至少 2 个会话读取过 SKILL.md 时显示。",
                     "en": "Project-local and external-repo skills are shown only when at least 2 sessions read their SKILL.md in the last 30 days.",
                 },
             },
@@ -13161,7 +13158,7 @@ def build_metric_help_sections(metric):
             {
                 "label": "和已发现资产的关系",
                 "body": {
-                    "zh": "它是 registry/assets.jsonl 的子集；自动扫描发现的技能不会自动进入这里。",
+                    "zh": "它是 registry/assets.jsonl 的子集；自动扫描发现的 skills 不会自动进入这里。",
                     "en": "It is a subset of registry/assets.jsonl; automatically discovered skills do not enter this count by themselves.",
                 },
             },
@@ -13187,7 +13184,7 @@ def build_metric_help_sections(metric):
             {
                 "label": "和已发现资产的关系",
                 "body": {
-                    "zh": "它是 registry/assets.jsonl 的子集；本机发现到的仓库技能不会自动算作登记册仓库资产。",
+                    "zh": "它是 registry/assets.jsonl 的子集；本机发现到的仓库 skills 不会自动算作登记册仓库资产。",
                     "en": "It is a subset of registry/assets.jsonl; repo skills discovered on this machine are not counted as repo-scoped registry assets by themselves.",
                 },
             },
@@ -13482,7 +13479,7 @@ def build_html(data):
             {
                 "label": "统计什么",
                 "body": {
-                    "zh": "按五类高阶资产类型汇总：技能、提示词、Codex 规则、插件、启动项。",
+                    "zh": "按五类高阶资产类型汇总：skills、提示词、Codex 规则、插件、启动项。",
                     "en": "Groups assets into five high-level types: skills, prompts, Codex rules, plugins, and automations.",
                 },
             },
@@ -13502,14 +13499,14 @@ def build_html(data):
             {
                 "label": "统计什么",
                 "body": {
-                    "zh": "近 6 个月每月被模型实际读取过 SKILL.md 的不同技能数，同名技能跨来源只算一个；最新月份排在最上方。",
+                    "zh": "近 6 个月每月被模型实际读取过 SKILL.md 的不同 skills 数，同名 skills 跨来源只算一个；最新月份排在最上方。",
                     "en": "Distinct skills whose SKILL.md files were actually read by the model each month in the last 6 months; same-name skills across sources count once, newest month first.",
                 },
             },
             {
                 "label": "数据来源",
                 "body": {
-                    "zh": "来自本机 Codex 会话与 Claude 项目 session 中的技能读取事件；登记册资产会并入资产集合，但没有读取事件时不计入月度活动。",
+                    "zh": "来自本机 Codex 会话与 Claude 项目 session 中的 skills 读取事件；登记册资产会并入资产集合，但没有读取事件时不计入月度活动。",
                     "en": "Comes from skill-read events in local Codex sessions and Claude project sessions; registry assets are merged into the asset set, but they do not count as monthly activity without read events.",
                 },
             },
@@ -13642,7 +13639,7 @@ def build_html(data):
             },
             {
                 "label": "和上面的区别",
-                "body": "这里数的是窗口上下文；资产层的类型与活动面板数的是资产和技能读取。",
+                "body": "这里数的是窗口上下文；资产层的类型与活动面板数的是资产和 skills 读取。",
             },
         ],
     )
@@ -13909,19 +13906,19 @@ def build_html(data):
         language=language,
     )
     top_assets_help = make_help_popover(
-        "近 30 天高频技能热度",
+        "近 30 天高频 skills 热度",
         [
             {
                 "label": "排序方式",
-                "body": "按近 30 天模型读取 SKILL.md 的工具调用次数倒序；默认展示 Top 10，可点击查看更多技能热度。",
+                "body": "按近 30 天模型读取 SKILL.md 的工具调用次数倒序；默认展示 Top 10，可点击查看更多 skills 热度。",
             },
             {
                 "label": "数据来源",
-                "body": "技能来源来自本机扫描和近 30 天项目内 / 跨仓库读取记录；同名技能跨来源会合并计数。",
+                "body": "skills 来源来自本机扫描和近 30 天项目内 / 跨仓库读取记录；同名 skills 跨来源会合并计数。",
             },
             {
                 "label": "点击名称",
-                "body": "可点击的技能名会打开该行优先来源的 SKILL.md。",
+                "body": "可点击的 skills 名会打开该行优先来源的 SKILL.md。",
             },
         ],
     )
@@ -22079,7 +22076,7 @@ def build_html(data):
             "月度活动",
             asset_panels["monthly_activity"],
             "slate",
-            "近 6 个月，按模型实际读取 SKILL.md 的活跃技能去重",
+            "近 6 个月，按模型实际读取 SKILL.md 的活跃 skills 去重",
             help_html=month_panel_help,
         ),
         mcp_usage_panel=make_mcp_usage_panel(
@@ -22177,7 +22174,7 @@ def build_html(data):
             low_priority_memory_help,
         ),
         top_assets_header=make_panel_header(
-            "近 30 天高频技能热度",
+            "近 30 天高频 skills 热度",
             help_html=top_assets_help,
             note_content_html=panel_language_text_html(
                 "按模型读取 SKILL.md 的次数排序；默认展示 Top 10",
