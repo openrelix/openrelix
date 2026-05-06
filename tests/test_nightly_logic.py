@@ -7589,7 +7589,7 @@ Keep my own note.
         self.assertIn("npx openrelix@latest install --enable-learning-refresh", showcase)
         self.assertNotIn("npx openrelix install --profile integrated --enable-learning-refresh", showcase)
         self.assertNotIn("npx openrelix install --profile integrated --enable-learning-refresh --read-codex-app", showcase)
-        self.assertIn("openrelix backfill --days 7 --stage final --learn-window-days 7", showcase)
+        self.assertIn("openrelix backfill --days 7 --stage final --learn-window-days 7 --force", showcase)
         self.assertNotIn(
             '<code class="command-code">openrelix refresh --learn-memory --learn-window-days 7</code>',
             showcase,
@@ -7598,7 +7598,7 @@ Keep my own note.
         self.assertIn("--enable-learning-refresh", installer)
         self.assertIn("backfill --days %s --stage preliminary --learn-window-days 0 --jobs %s", installer)
         self.assertIn('INSTALL_DEEP_LEARN_JOBS=1', installer)
-        self.assertIn('backfill --days "$LEARNING_REFRESH_WINDOW_DAYS" --stage final --learn-window-days "$LEARNING_REFRESH_WINDOW_DAYS" --jobs "$INSTALL_DEEP_LEARN_JOBS"', installer)
+        self.assertIn('backfill --days "$LEARNING_REFRESH_WINDOW_DAYS" --stage final --learn-window-days "$LEARNING_REFRESH_WINDOW_DAYS" --jobs "$INSTALL_DEEP_LEARN_JOBS" --force', installer)
         self.assertIn("开始串行深度回溯最近 ${LEARNING_REFRESH_WINDOW_DAYS} 天，进度会继续显示在当前终端。", installer)
         self.assertIn("backfills the last ${LEARNING_REFRESH_WINDOW_DAYS} days deeply in this terminal", installer)
         self.assertIn("请手动刷新当前页面或 app", installer)
