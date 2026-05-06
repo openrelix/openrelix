@@ -25,6 +25,7 @@ function printHelp() {
   npx openrelix app [--build | --no-open]
   npx openrelix models [--json | --bundled | --all]
   npx openrelix memory-migration status|ensure|run|complete
+  npx openrelix context sync [--cwd <project>]
   npx openrelix index status|rebuild|search-memory|search-window
   openrelix install [install-options]
   openrelix uninstall [--delete-local-memory | --keep-local-memory]
@@ -48,6 +49,7 @@ Examples:
   npx openrelix app
   npx openrelix models
   npx openrelix memory-migration status
+  npx openrelix context sync --cwd "$PWD"
   npx openrelix index status
   npx openrelix index search-memory sqlite
   npx openrelix install --nightly-organize-time 22:30 --nightly-finalize-time 01:00
@@ -256,6 +258,11 @@ function main() {
 
   if (command === "memory-migration") {
     runPythonCli(["memory-migration", ...args.slice(1)]);
+    return;
+  }
+
+  if (command === "context") {
+    runPythonCli(["context", ...args.slice(1)]);
     return;
   }
 

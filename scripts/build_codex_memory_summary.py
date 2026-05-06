@@ -18,6 +18,7 @@ from asset_runtime import (
 )
 from openrelix_overview.memory_context import (
     INJECTION_GLOBAL_CONTEXT,
+    INJECTION_PROJECT_CONTEXT,
     MEMORY_SCOPE_GLOBAL,
     first_record_value,
     host_context_injection_policy_from_record,
@@ -139,6 +140,14 @@ class SummaryBudget:
 
 
 @dataclass(frozen=True)
+class ProjectContextFilter:
+    cwd: str = ""
+    key: str = ""
+    label: str = ""
+    tokens: frozenset[str] = frozenset()
+
+
+@dataclass(frozen=True)
 class BuildResult:
     text: str
     estimated_tokens: int
@@ -168,6 +177,21 @@ def parse_args():
         help="OpenRelix Memory System v2 canonical registry. Used before the legacy registry when present.",
     )
     parser.add_argument("--personal-memory-registry", default=str(DEFAULT_PERSONAL_MEMORY_REGISTRY))
+    parser.add_argument(
+        "--project-cwd",
+        default="",
+        help="Build an active host-context summary for this project cwd, including global memory plus matching project memory.",
+    )
+    parser.add_argument(
+        "--project-key",
+        default="",
+        help="Optional explicit project key used for project-memory matching.",
+    )
+    parser.add_argument(
+        "--project-label",
+        default="",
+        help="Optional display label used for project-memory matching.",
+    )
     parser.add_argument("--target-tokens", type=int)
     parser.add_argument("--warn-tokens", type=int)
     parser.add_argument("--max-tokens", type=int)
@@ -224,6 +248,224 @@ def normalize_summary_key(text):
     compact = re.sub(r"`+", "", compact)
     compact = re.sub(r"[^a-z0-9\u4e00-\u9fff]+", " ", compact)
     return compact.strip()
+
+
+def normalize_project_token(text):
+    compact = collapse_whitespace(str(text or ""))
+    if not compact:
+        return ""
+    compact = compact.strip("`'\"")
+    compact = re.sub(r"^(?:cwd|repo|repository|project|workspace|path)\s*=\s*", "", compact, flags=re.IGNORECASE)
+    compact = compact.replace("\\", "/").lower()
+    compact = re.sub(r"[^a-z0-9\u4e00-\u9fff/._~-]+", "-", compact)
+    compact = re.sub(r"-+", "-", compact)
+    return compact.strip("-")
+
+
+def project_token_candidates(value):
+    text = collapse_whitespace(value)
+    if not text:
+        return set()
+    tokens = {normalize_project_token(text)}
+    stripped = text.strip("`'\"")
+    if stripped.startswith("cwd="):
+        stripped = stripped.partition("=")[2].strip()
+        tokens.add(normalize_project_token(stripped))
+    if stripped.startswith("~/") or stripped.startswith("/"):
+        try:
+            path = Path(stripped).expanduser().resolve()
+        except OSError:
+            path = Path(stripped).expanduser()
+        tokens.add(normalize_project_token(str(path)))
+        if path.name:
+            tokens.add(normalize_project_token(path.name))
+    return {token for token in tokens if token}
+
+
+def git_marker_identity_tokens(project_root):
+    tokens = set()
+    git_marker = project_root / ".git"
+    if git_marker.is_dir():
+        tokens.add(normalize_project_token(project_root.name))
+        return tokens
+    if not git_marker.is_file():
+        return tokens
+    try:
+        text = git_marker.read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        return tokens
+    match = re.search(r"gitdir:\s*(.+)", text)
+    if not match:
+        return tokens
+    gitdir = Path(match.group(1).strip()).expanduser()
+    if not gitdir.is_absolute():
+        gitdir = (project_root / gitdir).resolve()
+    parts = list(gitdir.parts)
+    for index, part in enumerate(parts):
+        if part == ".git" and index > 0:
+            tokens.add(normalize_project_token(parts[index - 1]))
+            break
+    if "worktrees" in parts and parts[-1:]:
+        tokens.add(normalize_project_token(parts[-1]))
+    return tokens
+
+
+def git_marker_project_label(project_root):
+    git_marker = project_root / ".git"
+    if git_marker.is_dir():
+        return project_root.name
+    if not git_marker.is_file():
+        return ""
+    try:
+        text = git_marker.read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        return ""
+    match = re.search(r"gitdir:\s*(.+)", text)
+    if not match:
+        return ""
+    gitdir = Path(match.group(1).strip()).expanduser()
+    if not gitdir.is_absolute():
+        gitdir = (project_root / gitdir).resolve()
+    parts = list(gitdir.parts)
+    for index, part in enumerate(parts):
+        if part == ".git" and index > 0:
+            return parts[index - 1]
+    return ""
+
+
+def find_git_project_root(path):
+    try:
+        candidate = Path(path).expanduser().resolve()
+    except OSError:
+        candidate = Path(path).expanduser()
+    if not candidate.is_dir():
+        candidate = candidate.parent
+    for parent in (candidate, *candidate.parents):
+        if (parent / ".git").exists():
+            return parent
+    return candidate
+
+
+def build_project_context_filter(project_cwd="", project_key="", project_label=""):
+    if not any(collapse_whitespace(value) for value in (project_cwd, project_key, project_label)):
+        return ProjectContextFilter()
+
+    tokens = set()
+    resolved_cwd = ""
+    detected_label = ""
+    if project_cwd:
+        try:
+            cwd_path = Path(project_cwd).expanduser().resolve()
+        except OSError:
+            cwd_path = Path(project_cwd).expanduser()
+        resolved_cwd = str(cwd_path)
+        tokens.update(project_token_candidates(resolved_cwd))
+        if cwd_path.name:
+            detected_label = cwd_path.name
+            tokens.add(normalize_project_token(cwd_path.name))
+        project_root = find_git_project_root(cwd_path)
+        if project_root:
+            detected_label = git_marker_project_label(project_root) or project_root.name or detected_label
+            tokens.update(project_token_candidates(str(project_root)))
+            tokens.add(normalize_project_token(project_root.name))
+            tokens.update(git_marker_identity_tokens(project_root))
+
+    label = collapse_whitespace(project_label) or detected_label
+    key = collapse_whitespace(project_key) or normalize_project_token(label)
+    tokens.update(project_token_candidates(project_key))
+    tokens.update(project_token_candidates(project_label))
+    tokens.update(project_token_candidates(label))
+    tokens.add(normalize_project_token(key))
+
+    tokens = {token for token in tokens if token and token not in {"project", "workspace", "repo", "repository"}}
+    return ProjectContextFilter(
+        cwd=resolved_cwd or collapse_whitespace(project_cwd),
+        key=key,
+        label=label,
+        tokens=frozenset(tokens),
+    )
+
+
+def project_filter_is_active(project_filter):
+    return bool(project_filter and project_filter.tokens)
+
+
+def project_text_matches_filter(value, project_filter):
+    if not project_filter_is_active(project_filter):
+        return True
+    value_tokens = project_token_candidates(value)
+    if value_tokens & set(project_filter.tokens):
+        return True
+    normalized = normalize_project_token(value)
+    if not normalized:
+        return False
+    for token in project_filter.tokens:
+        if len(token) >= 4 and (token in normalized or normalized in token):
+            return True
+    return False
+
+
+def record_project_candidate_texts(item):
+    candidates = []
+    for key in (
+        "project_key",
+        "project_label",
+        "repo",
+        "repository",
+        "cwd",
+        "cwd_display",
+        "workspace",
+        "workspace_label",
+        "applies_to",
+    ):
+        value = item.get(key)
+        if collapse_whitespace(value):
+            candidates.append(str(value))
+    for window in item.get("source_windows") or []:
+        if not isinstance(window, dict):
+            continue
+        for key in ("project_key", "project_label", "cwd", "cwd_display", "repo", "repository"):
+            value = window.get(key)
+            if collapse_whitespace(value):
+                candidates.append(str(value))
+    return candidates
+
+
+def memory_record_applies_to_project(item, scope, injection_policy, project_filter):
+    if not project_filter_is_active(project_filter):
+        return True
+    if scope == MEMORY_SCOPE_GLOBAL or injection_policy == INJECTION_GLOBAL_CONTEXT:
+        return True
+    if injection_policy != INJECTION_PROJECT_CONTEXT:
+        return False
+    candidates = record_project_candidate_texts(item)
+    if not candidates:
+        return False
+    return any(project_text_matches_filter(candidate, project_filter) for candidate in candidates)
+
+
+PROJECT_SCOPED_GROUP_HINT_RE = re.compile(
+    r"(?:\bcwd\s*=|~/|/[^\s]*|openrelix|douyin|android|gradle|kotlin|java|repo|repository|project|workspace|worktree)",
+    re.IGNORECASE,
+)
+
+
+def task_group_applies_to_project(group, project_filter):
+    if not project_filter_is_active(project_filter):
+        return True
+    texts = [group.title, group.scope, group.applies_to]
+    if any(project_text_matches_filter(text, project_filter) for text in texts):
+        return True
+    combined = collapse_whitespace(" ".join(texts))
+    if not PROJECT_SCOPED_GROUP_HINT_RE.search(combined):
+        return True
+    return False
+
+
+def filter_task_groups_for_project(groups, project_filter):
+    if not project_filter_is_active(project_filter):
+        return groups
+    return [group for group in groups if task_group_applies_to_project(group, project_filter)]
 
 
 def summary_match_tokens(text):
@@ -555,7 +797,7 @@ def personal_memory_group_key(item, bucket, title, scope, injection_policy):
     )
 
 
-def parse_personal_memory_registry(text, language=None, host_context_only=True):
+def parse_personal_memory_registry(text, language=None, host_context_only=True, project_filter=None):
     language = current_language(language)
     grouped = {}
     for raw_line in text.splitlines():
@@ -580,6 +822,8 @@ def parse_personal_memory_registry(text, language=None, host_context_only=True):
         scope = memory_scope_from_record(item)
         injection_policy = host_context_injection_policy_from_record(item)
         if host_context_only and not memory_record_is_host_context_candidate(item):
+            continue
+        if not memory_record_applies_to_project(item, scope, injection_policy, project_filter):
             continue
 
         value_note = localized_record_value(item, "value_note", language=language)
@@ -1156,8 +1400,8 @@ def tighten_budget(budget):
     )
 
 
-def build_memory_summary(memory_index_text, existing_summary_text, budget, personal_memory_items=None):
-    groups = parse_memory_index(memory_index_text)
+def build_memory_summary(memory_index_text, existing_summary_text, budget, personal_memory_items=None, project_filter=None):
+    groups = filter_task_groups_for_project(parse_memory_index(memory_index_text), project_filter)
     existing_sections = parse_markdown_sections(existing_summary_text)
     personal_memory_items = personal_memory_items or []
     summary_text = render_with_budgets(groups, existing_sections, personal_memory_items, budget)
@@ -1237,6 +1481,11 @@ def main():
     memory_summary_path = Path(args.memory_summary).expanduser()
     canonical_memory_registry_path = Path(args.canonical_memory_registry).expanduser()
     personal_memory_registry_path = Path(args.personal_memory_registry).expanduser()
+    project_filter = build_project_context_filter(
+        project_cwd=args.project_cwd,
+        project_key=args.project_key,
+        project_label=args.project_label,
+    )
 
     memory_index_text = load_text_if_exists(memory_index_path)
     existing_summary_text = load_text_if_exists(memory_summary_path)
@@ -1245,7 +1494,11 @@ def main():
         if args.no_personal_memory
         else load_memory_registry_text(canonical_memory_registry_path, personal_memory_registry_path)
     )
-    personal_memory_items = parse_personal_memory_registry(personal_memory_text, language=LANGUAGE)
+    personal_memory_items = parse_personal_memory_registry(
+        personal_memory_text,
+        language=LANGUAGE,
+        project_filter=project_filter,
+    )
     if not memory_index_text and not existing_summary_text and not personal_memory_items:
         print(
             localized(
@@ -1261,6 +1514,7 @@ def main():
         existing_summary_text,
         budget,
         personal_memory_items=personal_memory_items,
+        project_filter=project_filter,
     )
     if result.status == "over_budget":
         raise SystemExit(

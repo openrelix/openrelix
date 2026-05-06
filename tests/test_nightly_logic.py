@@ -7795,6 +7795,11 @@ Keep my own note.
         self.assertIn('command === "memory-migration"', npm_bin)
         self.assertIn('runPythonCli(["memory-migration", ...args.slice(1)])', npm_bin)
         self.assertIn("npx openrelix memory-migration status", npm_bin)
+        self.assertIn('"context"', openrelix_cli)
+        self.assertIn("command_context(args)", openrelix_cli)
+        self.assertIn('command === "context"', npm_bin)
+        self.assertIn('runPythonCli(["context", ...args.slice(1)])', npm_bin)
+        self.assertIn("npx openrelix context sync", npm_bin)
         self.assertIn("scripts/openrelix_memory_migration.py", package_json["files"])
 
     def test_sqlite_index_rebuild_is_warning_only_in_refresh_scripts(self):

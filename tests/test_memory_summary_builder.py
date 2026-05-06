@@ -235,6 +235,80 @@ class MemorySummaryBuilderTests(unittest.TestCase):
         self.assertEqual(policies["Domain-only bridge diagnosis"], "on_demand")
         self.assertEqual(policies["Local follow-up"], "local_only")
 
+    def test_project_filter_keeps_global_and_matching_project_context(self):
+        registry = (
+            SCOPED_PERSONAL_MEMORY_REGISTRY
+            + '\n{"date":"2026-05-06","source":"canonical","bucket":"durable",'
+            '"title":"OpenRelix worktree delivery","memory_type":"procedural","priority":"high",'
+            '"scope":"project","injection_policy":"project_context","project_label":"OpenRelix",'
+            '"project_key":"openrelix","value_note":"Use an isolated worktree for OpenRelix changes.",'
+            '"keywords":["openrelix","worktree"]}\n'
+        )
+        project_filter = build_codex_memory_summary.build_project_context_filter(
+            project_cwd="/tmp/OpenRelix"
+        )
+
+        active_items = build_codex_memory_summary.parse_personal_memory_registry(
+            registry,
+            project_filter=project_filter,
+        )
+
+        self.assertEqual(
+            [item.title for item in active_items],
+            ["Global patch preference", "OpenRelix worktree delivery"],
+        )
+
+    def test_project_summary_filters_other_project_routes_and_memories(self):
+        project_filter = build_codex_memory_summary.build_project_context_filter(
+            project_cwd="/tmp/OpenRelix"
+        )
+        personal_items = build_codex_memory_summary.parse_personal_memory_registry(
+            (
+                '{"date":"2026-05-06","source":"canonical","bucket":"durable",'
+                '"title":"Global patch preference","memory_type":"procedural","priority":"high",'
+                '"scope":"global","injection_policy":"global_context",'
+                '"value_note":"Use apply_patch first for file edits.","keywords":["patch"]}\n'
+                '{"date":"2026-05-06","source":"canonical","bucket":"durable",'
+                '"title":"OpenRelix worktree delivery","memory_type":"procedural","priority":"high",'
+                '"scope":"project","injection_policy":"project_context","project_label":"OpenRelix",'
+                '"value_note":"Use an isolated worktree for OpenRelix changes.","keywords":["openrelix"]}\n'
+                '{"date":"2026-05-06","source":"canonical","bucket":"durable",'
+                '"title":"Douyin search workflow","memory_type":"procedural","priority":"high",'
+                '"scope":"project","injection_policy":"project_context","project_label":"Douyin",'
+                '"value_note":"Use Douyin search workflow for Android search tasks.","keywords":["douyin"]}\n'
+            ),
+            project_filter=project_filter,
+        )
+        budget = build_codex_memory_summary.SummaryBudget(
+            target_tokens=900,
+            warn_tokens=1000,
+            max_tokens=1100,
+            profile_tokens=90,
+            preferences_tokens=100,
+            tips_tokens=100,
+            routes_tokens=240,
+            personal_memory_tokens=360,
+            max_preferences=2,
+            max_tips=2,
+            max_route_items=4,
+            max_route_keywords=2,
+            max_personal_memory_items=0,
+        )
+
+        result = build_codex_memory_summary.build_memory_summary(
+            SAMPLE_MEMORY_INDEX,
+            SAMPLE_EXISTING_SUMMARY,
+            budget,
+            personal_memory_items=personal_items,
+            project_filter=project_filter,
+        )
+
+        self.assertIn("Global patch preference", result.text)
+        self.assertIn("OpenRelix worktree delivery", result.text)
+        self.assertIn("Local Codex personal asset system", result.text)
+        self.assertNotIn("Douyin search workflow", result.text)
+        self.assertNotIn("Android scan QR-only cleanup", result.text)
+
     def test_legacy_source_window_memory_stays_out_of_global_host_context(self):
         legacy_registry = """
 {"date":"2026-05-06","source":"legacy","bucket":"durable","title":"Project-only legacy item","memory_type":"procedural","priority":"high","value_note":"Has only old source_window_ids metadata.","source_window_ids":["w-project"]}

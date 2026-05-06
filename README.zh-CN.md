@@ -384,6 +384,12 @@ openrelix config --memory-summary-max-tokens 8000
 
 `openrelix models` 会通过 `codex debug models` 读取当前本机 Codex CLI 的模型 catalog，并只打印脱敏后的可选模型 ID。`openrelix tokens` 默认 `--provider all`，会合并 Codex 的 `@ccusage/codex` 和 Claude Code 的 `ccusage`；需要单独看某个 host 时传 `--provider codex` 或 `--provider cc`。`codex_model` 默认 `gpt-5.4-mini`，`claude_model` 默认 `sonnet`，`model_cli` 决定 OpenRelix 内部记忆回溯用哪个 CLI。`memory_summary_max_tokens` 默认 8000，支持 2000 到 20000。target 和 warning budgets 会自动从 max 派生。更新后默认刷新 summary、overview 和 panel；只想持久化配置时加 `--no-refresh`。
 
+启动项目工作前可以同步项目感知 host context。它会保留全局记忆，并只加入 `project_key`、`project_label` 或 cwd 元数据命中当前项目的项目记忆，再写到启用的 Codex / Claude Code host 目标。编译后的项目摘要保存在 OpenRelix state root 的 `runtime/host-context/projects/`，默认不会把个人记忆写进项目仓库。
+
+```bash
+openrelix context sync --cwd "$PWD"
+```
+
 OpenRelix 现在会维护一个本地 SQLite sidecar 索引，用于后续 memory 和窗口检索。权威数据仍然是 state root 下的 `raw/`、`registry/` 和 `consolidated/` 文件；`runtime/openrelix-index.sqlite3` 只是可重建索引，可以删除后重新生成。日常 `refresh` 和 nightly 任务会以 warning-only 方式重建索引，索引失败不会阻断 raw 采集或 JSONL memory 写入。
 
 ```bash

@@ -5,6 +5,7 @@ import json
 import re
 import subprocess
 import sys
+from pathlib import Path
 
 from asset_runtime import (
     atomic_write_text,
@@ -13,6 +14,7 @@ from asset_runtime import (
     get_memory_mode,
     get_runtime_paths,
 )
+from build_codex_memory_summary import build_project_context_filter
 
 
 PATHS = get_runtime_paths()
@@ -25,20 +27,84 @@ def parse_args():
     parser = argparse.ArgumentParser(
         description="Sync one bounded OpenRelix personal memory summary into enabled AI host contexts."
     )
+    parser.add_argument(
+        "--project-cwd",
+        default="",
+        help="Compile host context for this project cwd: global memory plus matching project memory.",
+    )
+    parser.add_argument("--project-key", default="", help="Optional explicit project key for active project matching.")
+    parser.add_argument("--project-label", default="", help="Optional active project label for display and matching.")
     parser.add_argument("--print-json", action="store_true")
     return parser.parse_args()
 
 
-def build_shared_summary():
-    output_path = PATHS.runtime_dir / "shared-personal-memory-summary.md"
+def safe_project_slug(value):
+    text = str(value or "").strip()
+    if not text:
+        return "project"
+    text = text.replace("\\", "/").rstrip("/")
+    if "/" in text:
+        text = Path(text).name or text
+    slug = re.sub(r"[^A-Za-z0-9._-]+", "-", text).strip("-._")
+    return (slug or "project")[:80]
+
+
+def active_project_payload(project_cwd="", project_key="", project_label=""):
+    if not any(str(value or "").strip() for value in (project_cwd, project_key, project_label)):
+        return {}
+    project_filter = build_project_context_filter(
+        project_cwd=project_cwd,
+        project_key=project_key,
+        project_label=project_label,
+    )
+    cwd = project_filter.cwd
+    label = str(project_label or "").strip() or project_filter.label or (Path(cwd).name if cwd else "")
+    key = str(project_key or "").strip() or project_filter.key or safe_project_slug(label or cwd).lower()
+    return {
+        "cwd": cwd,
+        "project_key": key,
+        "project_label": label,
+        "slug": safe_project_slug(key or label or cwd),
+    }
+
+
+def run_summary_builder(cmd):
+    result = subprocess.run(
+        cmd,
+        check=False,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    if result.returncode == 0:
+        return
+    if result.stdout.strip():
+        print(result.stdout.strip(), file=sys.stderr)
+    if result.stderr.strip():
+        print(result.stderr.strip(), file=sys.stderr)
+    raise subprocess.CalledProcessError(result.returncode, cmd, output=result.stdout, stderr=result.stderr)
+
+
+def build_shared_summary(project_cwd="", project_key="", project_label=""):
+    active_project = active_project_payload(project_cwd, project_key, project_label)
+    if active_project:
+        output_path = PATHS.runtime_dir / "host-context" / "projects" / active_project["slug"] / "memory_summary.md"
+    else:
+        output_path = PATHS.runtime_dir / "host-context" / "shared-personal-memory-summary.md"
     cmd = [
         sys.executable,
         str(BUILD_CODEX_MEMORY_SUMMARY),
         "--memory-summary",
         str(output_path),
     ]
-    subprocess.run(cmd, check=True)
-    return output_path, output_path.read_text(encoding="utf-8")
+    if project_cwd:
+        cmd.extend(["--project-cwd", str(project_cwd)])
+    if project_key:
+        cmd.extend(["--project-key", str(project_key)])
+    if project_label:
+        cmd.extend(["--project-label", str(project_label)])
+    run_summary_builder(cmd)
+    return output_path, output_path.read_text(encoding="utf-8"), active_project
 
 
 def codex_memories_feature_state(paths=None):
@@ -179,8 +245,13 @@ def main():
 
     summary_path = None
     summary_text = ""
+    active_project = active_project_payload(args.project_cwd, args.project_key, args.project_label)
     if targets:
-        summary_path, summary_text = build_shared_summary()
+        summary_path, summary_text, active_project = build_shared_summary(
+            project_cwd=args.project_cwd,
+            project_key=args.project_key,
+            project_label=args.project_label,
+        )
 
     if "codex" in targets:
         codex_result = sync_codex_summary(summary_text)
@@ -200,6 +271,7 @@ def main():
         "ok": True,
         "memory_mode": memory_mode,
         "summary_path": str(summary_path) if summary_path else "",
+        "active_project": active_project,
         "targets": targets,
         "synced": synced,
         "skipped": skipped,
