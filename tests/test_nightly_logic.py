@@ -3613,7 +3613,7 @@ Keep my own note.
         self.assertEqual(durable_rows[0]["usage_frequency_score_kind"], "traceable_evidence")
         self.assertEqual(durable_rows[0]["usage_frequency_window_days"], 7)
 
-    def test_memory_registry_infers_project_scope_for_legacy_source_windows(self):
+    def test_memory_registry_infers_project_scope_for_quality_gated_source_windows(self):
         window_overview = {
             "date": "2026-04-28",
             "windows": [
@@ -3640,6 +3640,8 @@ Keep my own note.
                     "priority": "high",
                     "value_note": "旧格式只有 source_window_ids。",
                     "source_window_ids": ["w-runtime"],
+                    "storage_quality_score": 6,
+                    "storage_quality_reason": "type,priority,strong_signal",
                 }
             ],
             window_overview,
@@ -3651,6 +3653,7 @@ Keep my own note.
         self.assertEqual(row["injection_policy"], "project_context")
         self.assertEqual(row["project_label"], "OpenRelix")
         self.assertFalse(build_overview.overview_memory_context.memory_record_is_global_context(row))
+        self.assertTrue(build_overview.overview_memory_context.memory_record_is_host_context_candidate(row))
 
     def test_memory_usage_frequency_ignores_occurrences_outside_7_day_window(self):
         usage_window_overview = {"date": "2026-04-28", "days": 7, "windows": []}
@@ -4145,11 +4148,11 @@ Keep my own note.
                 memory_summary_path=summary_path,
                 memory_summary_budget=test_summary_budget,
             )
-        self.assertEqual(stale_actual_usage["context_candidate_count"], 0)
-        self.assertEqual(stale_actual_usage["estimated_context_item_count"], 0)
-        self.assertEqual(stale_actual_usage["estimated_tokens"], 0)
-        self.assertEqual(stale_actual_usage["estimated_personal_memory_tokens"], 0)
-        self.assertIn("1 条留本地，约 0 条进摘要（当前无全局候选）", stale_actual_usage["mode_note_zh"])
+        self.assertEqual(stale_actual_usage["context_candidate_count"], 1)
+        self.assertEqual(stale_actual_usage["estimated_context_item_count"], 1)
+        self.assertGreater(stale_actual_usage["estimated_tokens"], 0)
+        self.assertGreater(stale_actual_usage["estimated_personal_memory_tokens"], 0)
+        self.assertIn("1 条留本地，约 1 条进摘要", stale_actual_usage["mode_note_zh"])
 
         disabled = build_overview.build_personal_memory_token_usage([], "off")
         self.assertFalse(disabled["enabled"])
@@ -4384,13 +4387,13 @@ Keep my own note.
             item_count=1,
         )
 
-        self.assertEqual([row["display_title"] for row in preview], ["长期高优记忆"])
+        self.assertEqual([row["display_title"] for row in preview], ["项目专属记忆"])
         usage = build_overview.build_personal_memory_token_usage(
             rows,
             "integrated",
             memory_summary_budget=budget,
         )
-        self.assertEqual(usage["context_candidate_count"], 2)
+        self.assertEqual(usage["context_candidate_count"], 3)
         self.assertEqual(
             build_overview.build_personal_memory_context_preview(
                 rows,

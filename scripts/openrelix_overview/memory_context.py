@@ -256,6 +256,12 @@ def memory_record_has_global_context_approval(item):
         return False
     if record_truthy(item, GLOBAL_CONTEXT_APPROVAL_KEYS):
         return True
+    try:
+        quality_score = int(item.get("storage_quality_score") or 0)
+    except (TypeError, ValueError):
+        quality_score = 0
+    if quality_score >= 4 and collapse_whitespace(item.get("storage_quality_reason", "")):
+        return True
     for key in GLOBAL_CONTEXT_CONFIDENCE_KEYS:
         value = str(item.get(key, "")).strip().lower().replace("-", "_")
         if value in APPROVED_CONFIDENCE_VALUES:
@@ -391,6 +397,12 @@ def memory_storage_quality(item, bucket=""):
 def effective_host_context_policy(item, policy):
     if policy != INJECTION_NEVER and memory_record_is_low_priority(item):
         return INJECTION_LOCAL_ONLY
+    if (
+        policy == INJECTION_PROJECT_CONTEXT
+        and memory_record_needs_global_context_approval(item)
+        and not memory_record_has_global_context_approval(item)
+    ):
+        return INJECTION_ON_DEMAND
     if policy != INJECTION_GLOBAL_CONTEXT:
         return policy
     if memory_record_needs_global_context_approval(item) and not memory_record_has_global_context_approval(item):
@@ -467,6 +479,17 @@ def memory_record_is_global_context(item):
     return host_context_injection_policy_from_record(item) == INJECTION_GLOBAL_CONTEXT
 
 
+def memory_record_is_host_context_candidate(item):
+    if not isinstance(item, dict):
+        return False
+    if str(item.get("bucket") or "").strip() not in {"durable", "session"}:
+        return False
+    return host_context_injection_policy_from_record(item) in {
+        INJECTION_GLOBAL_CONTEXT,
+        INJECTION_PROJECT_CONTEXT,
+    }
+
+
 def policy_label(policy, language="zh"):
     label = POLICY_LABELS.get(policy, (policy or "", policy or ""))
     return label[1] if language == "en" else label[0]
@@ -520,30 +543,39 @@ def build_memory_policy_views(memory_rows, selected_global_rows=None, token_usag
         bucket_counts[row.get("bucket") or "unknown"] += 1
 
     global_candidate_rows = [row for row in rows if memory_record_is_global_context(row)]
+    host_candidate_rows = [row for row in rows if memory_record_is_host_context_candidate(row)]
     if selected_global_rows is None:
-        global_rows = list(global_candidate_rows)
+        host_rows = list(host_candidate_rows)
     else:
-        global_rows = [
+        host_rows = [
             normalized
             for normalized in (normalize_memory_context_row(row) for row in selected_global_rows)
             if normalized is not None
+            and memory_record_is_host_context_candidate(normalized)
         ]
 
     policy_counts = Counter(row.get("injection_policy") or INJECTION_LOCAL_ONLY for row in rows)
     local_rows = policy_rows[INJECTION_LOCAL_ONLY] + policy_rows[INJECTION_NEVER]
     token_usage = token_usage or {}
-    selected_global_count = len(global_rows)
+    selected_host_count = len(host_rows)
     if "estimated_context_item_count" in token_usage:
-        selected_global_count = _safe_int(
+        selected_host_count = _safe_int(
             token_usage.get("estimated_context_item_count"),
-            selected_global_count,
+            selected_host_count,
         )
-    selected_global_count = min(selected_global_count, len(global_candidate_rows))
+    selected_host_count = min(selected_host_count, len(host_candidate_rows))
+    selected_global_count = min(
+        len([row for row in host_rows if memory_record_is_global_context(row)]),
+        len(global_candidate_rows),
+    )
     compiler = {
         "total_count": len(rows),
         "global_candidate_count": len(global_candidate_rows),
         "selected_global_count": selected_global_count,
-        "preview_global_count": len(global_rows),
+        "preview_global_count": selected_global_count,
+        "host_context_candidate_count": len(host_candidate_rows),
+        "selected_host_context_count": selected_host_count,
+        "preview_host_context_count": len(host_rows),
         "project_context_count": policy_counts.get(INJECTION_PROJECT_CONTEXT, 0),
         "on_demand_count": policy_counts.get(INJECTION_ON_DEMAND, 0),
         "local_count": _policy_count(policy_counts, INJECTION_LOCAL_ONLY, INJECTION_NEVER),
@@ -566,10 +598,20 @@ def build_memory_policy_views(memory_rows, selected_global_rows=None, token_usag
     return {
         "compiler": compiler,
         "global_context": {
-            "rows": global_rows,
+            "rows": [
+                row
+                for row in host_rows
+                if memory_record_is_global_context(row)
+            ],
             "candidate_rows": global_candidate_rows,
-            "count": len(global_rows),
+            "count": selected_global_count,
             "candidate_count": len(global_candidate_rows),
+        },
+        "host_context": {
+            "rows": host_rows,
+            "candidate_rows": host_candidate_rows,
+            "count": len(host_rows),
+            "candidate_count": len(host_candidate_rows),
         },
         "project_context": {
             "rows": policy_rows[INJECTION_PROJECT_CONTEXT],

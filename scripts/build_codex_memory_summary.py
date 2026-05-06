@@ -21,7 +21,7 @@ from openrelix_overview.memory_context import (
     MEMORY_SCOPE_GLOBAL,
     first_record_value,
     host_context_injection_policy_from_record,
-    memory_record_is_global_context,
+    memory_record_is_host_context_candidate,
     memory_scope_from_record,
 )
 
@@ -579,7 +579,7 @@ def parse_personal_memory_registry(text, language=None, host_context_only=True):
 
         scope = memory_scope_from_record(item)
         injection_policy = host_context_injection_policy_from_record(item)
-        if host_context_only and injection_policy != INJECTION_GLOBAL_CONTEXT:
+        if host_context_only and not memory_record_is_host_context_candidate(item):
             continue
 
         value_note = localized_record_value(item, "value_note", language=language)
@@ -946,11 +946,17 @@ def build_personal_memory_lines(
 
         title = clip_text(item.title, PERSONAL_MEMORY_TITLE_LIMIT)
         note = clip_text(item.value_note, PERSONAL_MEMORY_NOTE_LIMIT)
-        compact_meta = "{}/{}/{}".format(
+        compact_meta_parts = [
             item.bucket or "unknown",
             item.memory_type or "semantic",
             item.priority or "medium",
+        ]
+        context_label = item.project_label or item.project_key or (
+            item.scope if item.scope and item.scope != MEMORY_SCOPE_GLOBAL else ""
         )
+        if context_label:
+            compact_meta_parts.append(clip_text(context_label, 28))
+        compact_meta = "/".join(compact_meta_parts)
         repeat_suffix = " (seen {}x)".format(item.occurrence_count) if item.occurrence_count > 1 else ""
 
         candidate_variants = []

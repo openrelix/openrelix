@@ -25,20 +25,41 @@ class MemoryContextPolicyTests(unittest.TestCase):
             "project_context",
         )
         self.assertFalse(memory_context.memory_record_is_global_context(row))
+        self.assertTrue(memory_context.memory_record_is_host_context_candidate(row))
 
-    def test_legacy_source_window_rows_default_to_project_context(self):
+    def test_legacy_source_window_rows_stay_on_demand_without_approval(self):
         row = {
             "bucket": "session",
             "priority": "medium",
+            "source": "legacy",
             "source_window_ids": ["w-project"],
         }
 
         self.assertEqual(memory_context.memory_scope_from_record(row), "project")
         self.assertEqual(
             memory_context.host_context_injection_policy_from_record(row),
-            "project_context",
+            "on_demand",
         )
         self.assertFalse(memory_context.memory_record_is_global_context(row))
+        self.assertFalse(memory_context.memory_record_is_host_context_candidate(row))
+
+    def test_quality_gated_nightly_project_rows_can_enter_host_context(self):
+        row = {
+            "bucket": "session",
+            "priority": "high",
+            "source": "nightly_codex",
+            "scope": "project",
+            "injection_policy": "project_context",
+            "storage_quality_score": 6,
+            "storage_quality_reason": "type,priority,strong_signal",
+            "source_window_ids": ["w-project"],
+        }
+
+        self.assertEqual(
+            memory_context.host_context_injection_policy_from_record(row),
+            "project_context",
+        )
+        self.assertTrue(memory_context.memory_record_is_host_context_candidate(row))
 
     def test_low_priority_legacy_rows_stay_local(self):
         row = {
@@ -67,6 +88,7 @@ class MemoryContextPolicyTests(unittest.TestCase):
             "local_only",
         )
         self.assertFalse(memory_context.memory_record_is_global_context(row))
+        self.assertFalse(memory_context.memory_record_is_host_context_candidate(row))
 
     def test_policy_views_split_global_project_on_demand_and_local(self):
         rows = [
@@ -79,17 +101,25 @@ class MemoryContextPolicyTests(unittest.TestCase):
 
         views = memory_context.build_memory_policy_views(
             rows,
-            selected_global_rows=[rows[0]],
-            token_usage={"enabled": True, "estimated_tokens": 42, "meter_percent": 3},
+            selected_global_rows=[rows[0], rows[1]],
+            token_usage={
+                "enabled": True,
+                "estimated_tokens": 42,
+                "estimated_context_item_count": 2,
+                "meter_percent": 3,
+            },
         )
 
         self.assertEqual(views["compiler"]["total_count"], 5)
         self.assertEqual(views["compiler"]["global_candidate_count"], 1)
+        self.assertEqual(views["compiler"]["host_context_candidate_count"], 2)
         self.assertEqual(views["compiler"]["selected_global_count"], 1)
+        self.assertEqual(views["compiler"]["selected_host_context_count"], 2)
         self.assertEqual(views["compiler"]["project_context_count"], 1)
         self.assertEqual(views["compiler"]["on_demand_count"], 1)
         self.assertEqual(views["compiler"]["local_count"], 2)
         self.assertEqual([row["title"] for row in views["global_context"]["rows"]], ["Global"])
+        self.assertEqual([row["title"] for row in views["host_context"]["rows"]], ["Global", "Project"])
         self.assertEqual([row["title"] for row in views["project_context"]["rows"]], ["Project"])
         self.assertEqual([row["title"] for row in views["on_demand"]["rows"]], ["Domain"])
         self.assertEqual([row["title"] for row in views["local_only"]["rows"]], ["Local", "Never"])
@@ -109,6 +139,7 @@ class MemoryContextPolicyTests(unittest.TestCase):
             "on_demand",
         )
         self.assertFalse(memory_context.memory_record_is_global_context(row))
+        self.assertFalse(memory_context.memory_record_is_host_context_candidate(row))
 
     def test_approved_canonical_global_rows_can_enter_host_context(self):
         row = {
@@ -125,6 +156,7 @@ class MemoryContextPolicyTests(unittest.TestCase):
             "global_context",
         )
         self.assertTrue(memory_context.memory_record_is_global_context(row))
+        self.assertTrue(memory_context.memory_record_is_host_context_candidate(row))
 
     def test_memory_storage_quality_drops_obvious_noise(self):
         quality = memory_context.memory_storage_quality(
@@ -181,7 +213,9 @@ class MemoryContextPolicyTests(unittest.TestCase):
         )
 
         self.assertEqual(views["compiler"]["global_candidate_count"], 0)
+        self.assertEqual(views["compiler"]["host_context_candidate_count"], 1)
         self.assertEqual(views["compiler"]["selected_global_count"], 0)
+        self.assertEqual(views["compiler"]["selected_host_context_count"], 1)
 
 
 if __name__ == "__main__":

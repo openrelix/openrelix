@@ -1888,7 +1888,11 @@ def build_personal_memory_context_preview(
     summary_budget = memory_summary_budget or get_memory_summary_budget(PATHS)
     personal_memory_budget_tokens = summary_budget["personal_memory_tokens"]
     rows = memory_registry or []
-    context_rows = [row for row in rows if overview_memory_context.memory_record_is_global_context(row)]
+    context_rows = [
+        row
+        for row in rows
+        if overview_memory_context.memory_record_is_host_context_candidate(row)
+    ]
     has_candidate_cap = MEMORY_SUMMARY_MAX_PERSONAL_MEMORY_ITEMS > 0
     context_item_limit = (
         min(len(context_rows), MEMORY_SUMMARY_MAX_PERSONAL_MEMORY_ITEMS)
@@ -1943,7 +1947,11 @@ def build_personal_memory_token_usage(
     rows = memory_registry or []
     row_count = len(rows)
     context_rows = sort_memory_summary_context_rows(
-        [row for row in rows if overview_memory_context.memory_record_is_global_context(row)]
+        [
+            row
+            for row in rows
+            if overview_memory_context.memory_record_is_host_context_candidate(row)
+        ]
     )
     has_candidate_cap = MEMORY_SUMMARY_MAX_PERSONAL_MEMORY_ITEMS > 0
     context_item_limit = (
@@ -1969,8 +1977,8 @@ def build_personal_memory_token_usage(
         mode_label_zh = "Integrated"
         mode_label_en = "Integrated"
         if not context_rows:
-            candidate_policy_zh = "当前无全局候选"
-            candidate_policy_en = "no global candidates"
+            candidate_policy_zh = "当前无可注入候选"
+            candidate_policy_en = "no injectable candidates"
         elif has_candidate_cap:
             candidate_policy_zh = "候选上限 {} 条".format(context_item_limit)
             candidate_policy_en = "candidate cap {}".format(context_item_limit)
@@ -11023,19 +11031,23 @@ def make_personal_memory_count_widget(memory_registry):
 def make_memory_policy_count_widget(policy_views):
     compiler = (policy_views or {}).get("compiler", {})
     total_memories = safe_int(compiler.get("total_count", 0))
-    selected_global = safe_int(compiler.get("selected_global_count", 0))
-    global_candidates = safe_int(compiler.get("global_candidate_count", 0))
-    global_value = (
-        "{}/{}".format(selected_global, global_candidates)
-        if global_candidates and selected_global != global_candidates
-        else str(selected_global)
+    selected_host = safe_int(
+        compiler.get("selected_host_context_count", compiler.get("selected_global_count", 0))
+    )
+    host_candidates = safe_int(
+        compiler.get("host_context_candidate_count", compiler.get("global_candidate_count", 0))
+    )
+    host_value = (
+        "{}/{}".format(selected_host, host_candidates)
+        if host_candidates and selected_host != host_candidates
+        else str(selected_host)
     )
     total_html = panel_language_variant_html(
         "共 {} 条".format(escape(str(total_memories))),
         "{} total".format(escape(str(total_memories))),
     )
     items = [
-        ("全局", "Global", global_value),
+        ("注入", "Injected", host_value),
         ("项目", "Project", safe_int(compiler.get("project_context_count", 0))),
         ("按需", "On-demand", safe_int(compiler.get("on_demand_count", 0))),
         ("本地", "Local", safe_int(compiler.get("local_count", 0))),
@@ -11075,8 +11087,12 @@ def make_memory_policy_count_widget(policy_views):
 def make_memory_context_compiler_body(policy_views):
     compiler = (policy_views or {}).get("compiler", {})
     total_count = safe_int(compiler.get("total_count", 0))
-    global_candidate_count = safe_int(compiler.get("global_candidate_count", 0))
-    selected_global_count = safe_int(compiler.get("selected_global_count", 0))
+    host_candidate_count = safe_int(
+        compiler.get("host_context_candidate_count", compiler.get("global_candidate_count", 0))
+    )
+    selected_host_count = safe_int(
+        compiler.get("selected_host_context_count", compiler.get("selected_global_count", 0))
+    )
     project_count = safe_int(compiler.get("project_context_count", 0))
     on_demand_count = safe_int(compiler.get("on_demand_count", 0))
     local_count = safe_int(compiler.get("local_count", 0))
@@ -11117,25 +11133,25 @@ def make_memory_context_compiler_body(policy_views):
                 "Canonical entries stored by OpenRelix",
             ),
             stat_card(
-                "可进全局",
-                "Global Eligible",
-                global_candidate_count,
-                "仅通用、非低优先的 durable/session",
-                "Only global durable/session rows",
+                "可注入",
+                "Injectable",
+                host_candidate_count,
+                "全局和项目 durable/session 候选",
+                "Global and project durable/session candidates",
             ),
             stat_card(
                 "本次注入",
                 "Injected Now",
-                selected_global_count,
+                selected_host_count,
                 "受预算和去重后的 host context 预览",
                 "Host-context preview after budget and de-duplication",
             ),
             stat_card(
                 "隔离保留",
                 "Kept Out",
-                project_count + on_demand_count + local_count,
-                "项目、按需和本地条目不进全局上下文",
-                "Project, on-demand, and local rows stay out of global context",
+                on_demand_count + local_count,
+                "按需和本地条目不进 host context",
+                "On-demand and local rows stay out of host context",
             ),
         ]
     )
@@ -14072,11 +14088,11 @@ def build_html(data):
         [
             {
                 "label": "统计什么",
-                "body": "绑定项目、仓库或工作区的个人资产记忆；保存在 OpenRelix 登记册，但不会注入全局 host context。",
+                "body": "绑定项目、仓库或工作区的个人资产记忆；保存在 OpenRelix 登记册，并作为带项目边界的候选进入 bounded host context。",
             },
             {
                 "label": "含义",
-                "body": "这类条目适合在识别到同一项目时召回，避免污染其他项目的模型上下文。",
+                "body": "这类条目注入时会保留项目标签，帮助模型识别适用边界，避免把项目规则误当成通用规则。",
             },
         ],
     )
@@ -23204,8 +23220,8 @@ def build_html(data):
         personal_asset_memory_family_header=make_memory_family_header(
             "个人资产记忆",
             "Personal Asset Memory",
-            "OpenRelix 独立存储，按策略编译给 Codex / Claude Code；项目记忆不会进入全局上下文。",
-            "Stored by OpenRelix and compiled into Codex / Claude Code by policy; project memories stay out of global context.",
+            "OpenRelix 独立存储，按策略编译给 Codex / Claude Code；高价值全局和项目记忆会进入 bounded host context。",
+            "Stored by OpenRelix and compiled into Codex / Claude Code by policy; high-value global and project memories enter bounded host context.",
         ),
         codex_native_memory_family_header=make_memory_family_header(
             "Codex 原生记忆",
@@ -23227,12 +23243,12 @@ def build_html(data):
         memory_compiler_body=make_memory_context_compiler_body(memory_policy_views),
         global_memory_header=make_panel_header(
             "全局上下文",
-            "会进入通用 host context 的个人资产记忆",
+            "会进入 host context 的通用个人资产记忆",
             global_memory_help,
         ),
         project_memory_header=make_panel_header(
             "项目上下文",
-            "按项目、仓库或工作区隔离的记忆",
+            "按项目、仓库或工作区隔离，也会参与 bounded host context 注入",
             project_memory_help,
         ),
         on_demand_memory_header=make_panel_header(

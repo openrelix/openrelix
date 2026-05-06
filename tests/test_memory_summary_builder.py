@@ -216,7 +216,7 @@ class MemorySummaryBuilderTests(unittest.TestCase):
         self.assertEqual(chinese_items[0].title, "默认中文标题")
         self.assertEqual(chinese_items[0].value_note, "默认中文说明")
 
-    def test_personal_memory_registry_only_injects_global_context_by_default(self):
+    def test_personal_memory_registry_injects_global_and_project_context_by_default(self):
         host_context_items = build_codex_memory_summary.parse_personal_memory_registry(
             SCOPED_PERSONAL_MEMORY_REGISTRY
         )
@@ -225,7 +225,10 @@ class MemorySummaryBuilderTests(unittest.TestCase):
             host_context_only=False,
         )
 
-        self.assertEqual([item.title for item in host_context_items], ["Global patch preference"])
+        self.assertEqual(
+            [item.title for item in host_context_items],
+            ["Global patch preference", "Project-only Gradle cleanup"],
+        )
         self.assertEqual(len(all_items), 4)
         policies = {item.title: item.injection_policy for item in all_items}
         self.assertEqual(policies["Project-only Gradle cleanup"], "project_context")
@@ -248,7 +251,7 @@ class MemorySummaryBuilderTests(unittest.TestCase):
 
         self.assertEqual([item.title for item in host_context_items], [])
         policies = {item.title: item.injection_policy for item in all_items}
-        self.assertEqual(policies["Project-only legacy item"], "project_context")
+        self.assertEqual(policies["Project-only legacy item"], "on_demand")
         self.assertEqual(policies["Global legacy item"], "on_demand")
 
     def test_memory_summary_prefers_cli_native_memory_over_similar_openrelix_memory(self):
@@ -313,8 +316,9 @@ class MemorySummaryBuilderTests(unittest.TestCase):
             personal_memory_items=personal_items,
         )
 
-        self.assertNotIn("### Local personal memory registry", result.text)
-        self.assertNotIn("Project-only Gradle cleanup", result.text)
+        self.assertIn("### Local personal memory registry", result.text)
+        self.assertIn("Project-only Gradle cleanup", result.text)
+        self.assertIn("[durable/procedural/high/Android App]", result.text)
 
     def test_personal_memory_context_lines_stay_compact_and_keep_metadata(self):
         item = build_codex_memory_summary.PersonalMemoryItem(
