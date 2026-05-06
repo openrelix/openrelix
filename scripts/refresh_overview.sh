@@ -156,6 +156,21 @@ write_asset_stats_snapshot_if_available() {
   fi
 }
 
+run_pending_memory_migration_if_needed() {
+  local disabled="${OPENRELIX_DISABLE_MEMORY_MIGRATION:-0}"
+  case "${disabled:l}" in
+    1|true|yes|on)
+      return 0
+      ;;
+  esac
+  if [[ ! -f "$REPO_ROOT/scripts/openrelix.py" ]]; then
+    return 0
+  fi
+  if ! "$PYTHON_BIN" "$REPO_ROOT/scripts/openrelix.py" memory-migration run --if-pending --quiet; then
+    echo "refresh_overview: personal memory migration failed; it remains pending for manual retry." >&2
+  fi
+}
+
 case "${asset_layer_only:l}" in
   1|true|yes|on)
     write_asset_stats_snapshot_if_available
@@ -163,6 +178,8 @@ case "${asset_layer_only:l}" in
     exit 0
     ;;
 esac
+
+run_pending_memory_migration_if_needed
 
 case "${learn_memory:l}" in
   1|true|yes|on)

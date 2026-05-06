@@ -1564,6 +1564,42 @@ web_panel_command() {
   fi
 }
 
+ensure_memory_migration_marker() {
+  AI_ASSET_STATE_DIR="$STATE_DIR" \
+    CODEX_HOME="$CODEX_HOME" \
+    CLAUDE_HOME="$CLAUDE_HOME" \
+    CLAUDE_CONFIG_DIR="$CLAUDE_HOME" \
+    CLAUDE_BIN="$CLAUDE_BIN" \
+    AI_ASSET_LANGUAGE="$LANGUAGE" \
+    AI_ASSET_MEMORY_MODE="$MEMORY_MODE" \
+    OPENRELIX_ACTIVITY_SOURCE="$ACTIVITY_SOURCE" \
+    OPENRELIX_ACTIVITY_HOST="$ACTIVITY_HOST" \
+    OPENRELIX_MODEL_CLI="$MODEL_CLI" \
+    OPENRELIX_CLAUDE_MODEL="$CLAUDE_MODEL" \
+    OPENRELIX_CLAUDE_SETTINGS="$CLAUDE_SETTINGS" \
+    OPENRELIX_CLAUDE_ENV_FILE="$CLAUDE_ENV_FILE" \
+    "$PYTHON_BIN" "$REPO_ROOT/scripts/openrelix.py" memory-migration ensure --quiet || \
+    echo "$(localized_text "个人记忆迁移标记写入失败；后续可运行 openrelix memory-migration ensure。" "Personal memory migration marker failed; run openrelix memory-migration ensure later.")" >&2
+}
+
+mark_memory_migration_completed_after_learning() {
+  AI_ASSET_STATE_DIR="$STATE_DIR" \
+    CODEX_HOME="$CODEX_HOME" \
+    CLAUDE_HOME="$CLAUDE_HOME" \
+    CLAUDE_CONFIG_DIR="$CLAUDE_HOME" \
+    CLAUDE_BIN="$CLAUDE_BIN" \
+    AI_ASSET_LANGUAGE="$LANGUAGE" \
+    AI_ASSET_MEMORY_MODE="$MEMORY_MODE" \
+    OPENRELIX_ACTIVITY_SOURCE="$ACTIVITY_SOURCE" \
+    OPENRELIX_ACTIVITY_HOST="$ACTIVITY_HOST" \
+    OPENRELIX_MODEL_CLI="$MODEL_CLI" \
+    OPENRELIX_CLAUDE_MODEL="$CLAUDE_MODEL" \
+    OPENRELIX_CLAUDE_SETTINGS="$CLAUDE_SETTINGS" \
+    OPENRELIX_CLAUDE_ENV_FILE="$CLAUDE_ENV_FILE" \
+    "$PYTHON_BIN" "$REPO_ROOT/scripts/openrelix.py" memory-migration complete --window-days "$LEARNING_REFRESH_WINDOW_DAYS" --quiet || \
+    echo "$(localized_text "个人记忆迁移完成标记写入失败；后续可运行 openrelix memory-migration complete。" "Personal memory migration completion marker failed; run openrelix memory-migration complete later.")" >&2
+}
+
 is_ci_environment() {
   [[ -n "${CI:-}" && "${CI:-}" != "0" && "${CI:-}" != "false" ]] || \
     [[ -n "${OPENRELIX_NO_LAUNCH:-}" && "${OPENRELIX_NO_LAUNCH:-}" != "0" && "${OPENRELIX_NO_LAUNCH:-}" != "false" ]]
@@ -1593,6 +1629,8 @@ else
   REVIEW_CONTEXT_NOTE_ZH="浅度回溯会读取并轻量整理最近 ${LEARNING_REFRESH_WINDOW_DAYS} 天窗口，写入可复用压缩层；随后 final 深度学习会复用这层结果。当前 $MEMORY_MODE 不会向 host context 同步摘要。"
   REVIEW_CONTEXT_NOTE_EN="The shallow backfill reads and lightly organizes the last ${LEARNING_REFRESH_WINDOW_DAYS} days of windows, then stores a reusable compact layer for later final consolidation. The current $MEMORY_MODE mode does not sync a summary into host context."
 fi
+
+ensure_memory_migration_marker
 
 if [[ "$LANGUAGE" == "zh" ]]; then
   cat <<EOF
@@ -1957,8 +1995,9 @@ run_post_install_deep_learning() {
     OPENRELIX_CLAUDE_MODEL="$CLAUDE_MODEL" \
     OPENRELIX_CLAUDE_SETTINGS="$CLAUDE_SETTINGS" \
     OPENRELIX_CLAUDE_ENV_FILE="$CLAUDE_ENV_FILE" \
-    run_interruptible_child "$PYTHON_BIN" "$REPO_ROOT/scripts/openrelix.py" \
+  run_interruptible_child "$PYTHON_BIN" "$REPO_ROOT/scripts/openrelix.py" \
     backfill --days "$LEARNING_REFRESH_WINDOW_DAYS" --stage final --learn-window-days "$LEARNING_REFRESH_WINDOW_DAYS" --jobs "$INSTALL_DEEP_LEARN_JOBS"
+  mark_memory_migration_completed_after_learning
   if [[ "$LANGUAGE" == "en" ]]; then
     print -r -- ""
     print -r -- "Deep learning backfill is complete. If the browser panel or OpenRelix app is already open, refresh it manually to see the final memories and summaries."

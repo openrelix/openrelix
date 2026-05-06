@@ -333,6 +333,15 @@ openrelix open panel
 
 推荐安装时加 `--enable-learning-refresh`，让 30 分钟 overview-refresh 自动调用当前 Codex 适配器，用今日窗口和最近 7 天上下文生成本地记忆与 overview；默认后台 `overview-refresh` 不会从最近窗口学习，中文运行语言下只会按需维护 Codex 原生记忆展示缓存。`openrelix refresh --learn-memory --learn-window-days 7` 仍可用于手动立即跑一次。如果需要完整补齐缺失或非 final 的日报，再使用 `openrelix review --date "$(date +%F)" --learn-window-days 7`。
 
+个人记忆算法重写后，先确认迁移状态：
+
+```bash
+openrelix memory-migration status
+openrelix memory-migration run --if-pending
+```
+
+增量安装会自动写入 pending marker；普通 `openrelix refresh` 会在非 asset-layer-only 路径下尝试执行一次最近 7 天的 final 迁移，并强制绕过 unchanged fingerprint。若只是验证面板资产刷新，`--asset-layer-only` 不会触发模型迁移。
+
 多日回溯检查：
 
 ```bash

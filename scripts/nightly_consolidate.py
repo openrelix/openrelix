@@ -30,6 +30,7 @@ from asset_runtime import (
     personal_memory_enabled,
     sync_codex_exec_home,
 )
+from openrelix_memory_migration import PERSONAL_MEMORY_ALGORITHM_VERSION
 from openrelix_overview import memory_context as overview_memory_context
 
 PATHS = get_runtime_paths()
@@ -917,6 +918,7 @@ def recent_window_learning_fingerprint(date_str, lookback_days, language=None):
 
     payload = {
         "version": RECENT_WINDOW_LEARNING_CACHE_VERSION,
+        "personal_memory_algorithm_version": PERSONAL_MEMORY_ALGORITHM_VERSION,
         "date": date_str,
         "lookback_days": lookback_days,
         "language": current_language(language),
@@ -1612,6 +1614,7 @@ def build_learning_input_fingerprint(
     fingerprint_learning_context["same_date_reference"] = None
     payload = {
         "version": 1,
+        "personal_memory_algorithm_version": PERSONAL_MEMORY_ALGORITHM_VERSION,
         "language": current_language(language),
         "memory_mode": MEMORY_MODE,
         "personal_memory_enabled": PERSONAL_MEMORY_ENABLED,
@@ -3289,6 +3292,7 @@ def main():
         candidate_summary["codex_model"] = CODEX_MODEL
         candidate_summary["claude_model"] = CLAUDE_MODEL
         candidate_summary["generated_at"] = datetime.now().astimezone().isoformat()
+        candidate_summary["personal_memory_algorithm_version"] = PERSONAL_MEMORY_ALGORITHM_VERSION
         candidate_summary["compact_payload_source"] = compact_payload_source
         candidate_summary = apply_memory_mode(candidate_summary)
         candidate_summary["learning_input_fingerprint"] = lightweight_fingerprint
@@ -3310,6 +3314,7 @@ def main():
             selected_summary = dict(candidate_summary)
 
         selected_summary["language"] = language
+        selected_summary["personal_memory_algorithm_version"] = PERSONAL_MEMORY_ALGORITHM_VERSION
         selected_summary["model_cli"] = selected_summary.get("model_cli", candidate_summary.get("model_cli", MODEL_CLI))
         selected_summary["codex_model"] = selected_summary.get("codex_model", CODEX_MODEL)
         selected_summary["claude_model"] = selected_summary.get("claude_model", CLAUDE_MODEL)
@@ -3321,6 +3326,7 @@ def main():
             "compared_at": datetime.now().astimezone().isoformat(),
             "candidate_run_json_path": candidate_run["json_path"],
             "learn_window_days": 0,
+            "personal_memory_algorithm_version": PERSONAL_MEMORY_ALGORITHM_VERSION,
             "candidate_model_status": candidate_summary.get("model_status", "skipped_lightweight"),
             "model_cli": candidate_summary.get("model_cli", MODEL_CLI),
             "codex_model": candidate_summary.get("codex_model", CODEX_MODEL),
@@ -3345,6 +3351,7 @@ def main():
                 "codex_model": selected_summary.get("codex_model", CODEX_MODEL),
                 "claude_model": selected_summary.get("claude_model", CLAUDE_MODEL),
                 "learn_window_days": 0,
+                "personal_memory_algorithm_version": PERSONAL_MEMORY_ALGORITHM_VERSION,
                 "candidate_run_json_path": candidate_run["json_path"],
                 "selected_summary_path": str(output_json_path),
                 "compact_payload_source": compact_payload_source,
@@ -3397,6 +3404,7 @@ def main():
             "keywords": [],
             "next_actions": [],
             "generated_at": datetime.now().astimezone().isoformat(),
+            "personal_memory_algorithm_version": PERSONAL_MEMORY_ALGORITHM_VERSION,
         }
         empty_summary = apply_memory_mode(empty_summary)
         empty_summary["learning_input_fingerprint"] = learning_input_fingerprint
@@ -3409,6 +3417,7 @@ def main():
             "decision": "accept_candidate",
             "reason": "empty_raw_payload",
             "learn_window_days": learn_window_days,
+            "personal_memory_algorithm_version": PERSONAL_MEMORY_ALGORITHM_VERSION,
         }
         persist_summary_run(summary_dir, empty_summary, stage, "candidate", language=language)
         write_json(output_json_path, empty_summary)
@@ -3427,6 +3436,7 @@ def main():
                 "codex_model": CODEX_MODEL,
                 "claude_model": CLAUDE_MODEL,
                 "learn_window_days": learn_window_days,
+                "personal_memory_algorithm_version": PERSONAL_MEMORY_ALGORITHM_VERSION,
             }
         )
         return
@@ -3480,6 +3490,7 @@ def main():
     candidate_summary["codex_model"] = CODEX_MODEL
     candidate_summary["claude_model"] = CLAUDE_MODEL
     candidate_summary["generated_at"] = datetime.now().astimezone().isoformat()
+    candidate_summary["personal_memory_algorithm_version"] = PERSONAL_MEMORY_ALGORITHM_VERSION
     candidate_summary["compact_payload_source"] = compact_payload_source
     candidate_summary = apply_memory_mode(candidate_summary)
     candidate_summary["learning_input_fingerprint"] = learning_input_fingerprint
@@ -3501,6 +3512,7 @@ def main():
         selected_summary = dict(candidate_summary)
 
     selected_summary["language"] = language
+    selected_summary["personal_memory_algorithm_version"] = PERSONAL_MEMORY_ALGORITHM_VERSION
     selected_summary["model_cli"] = selected_summary.get("model_cli", candidate_summary.get("model_cli", MODEL_CLI))
     selected_summary["codex_model"] = selected_summary.get("codex_model", CODEX_MODEL)
     selected_summary["claude_model"] = selected_summary.get("claude_model", CLAUDE_MODEL)
@@ -3512,6 +3524,7 @@ def main():
         "compared_at": datetime.now().astimezone().isoformat(),
         "candidate_run_json_path": candidate_run["json_path"],
         "learn_window_days": learn_window_days,
+        "personal_memory_algorithm_version": PERSONAL_MEMORY_ALGORITHM_VERSION,
         "candidate_model_status": candidate_summary.get("model_status", "completed"),
         "model_cli": candidate_summary.get("model_cli", MODEL_CLI),
         "codex_model": candidate_summary.get("codex_model", CODEX_MODEL),
@@ -3544,6 +3557,7 @@ def main():
             "codex_model": selected_summary.get("codex_model", CODEX_MODEL),
             "claude_model": selected_summary.get("claude_model", CLAUDE_MODEL),
             "learn_window_days": learn_window_days,
+            "personal_memory_algorithm_version": PERSONAL_MEMORY_ALGORITHM_VERSION,
             "candidate_run_json_path": candidate_run["json_path"],
             "selected_summary_path": str(output_json_path),
             "compact_payload_source": compact_payload_source,

@@ -237,6 +237,8 @@ state root 的主要目录：
 
 当模型整理失败时，会生成 fallback summary；当新结果质量不如已有结果时，会保留已有 summary，并记录 selection decision。
 
+个人记忆生成、筛选、去重或注入策略发生不兼容变化时，需要提升 `PERSONAL_MEMORY_ALGORITHM_VERSION`。该版本会进入 `learning_input_fingerprint`，避免增量用户因为 raw 输入未变而被 `--skip-if-unchanged` 挡住。安装器会写入 `runtime/memory-migration.json`，已有本地记忆且算法版本落后时标记为 pending；下一次普通 `refresh_overview` 会执行一次有界迁移：最近 7 天、`final`、`--learn-window-days 7`、强制关闭 unchanged skip。迁移完成后，`runtime/config.json` 记录 `personal_memory_algorithm_version`。
+
 ### `scripts/build_overview.py`
 
 本地可视化生成器。
@@ -278,6 +280,8 @@ openrelix backfill --dates 2026-04-21,2026-04-23,2026-04-24 --learn-window-days 
 openrelix core
 openrelix refresh
 openrelix refresh --learn-memory --learn-window-days 7
+openrelix memory-migration status
+openrelix memory-migration run --if-pending
 ./install/install.sh --profile integrated --enable-learning-refresh
 openrelix mode
 openrelix mode local-only

@@ -23,6 +23,7 @@ import build_overview  # noqa: E402
 import build_codex_native_display_cache  # noqa: E402
 import check_personal_info  # noqa: E402
 import openrelix  # noqa: E402
+import openrelix_memory_migration  # noqa: E402
 import openrelix_update_worker  # noqa: E402
 import asset_runtime  # noqa: E402
 import nightly_consolidate  # noqa: E402
@@ -5705,6 +5706,93 @@ Keep my own note.
             self.assertTrue(payload["codex_config_updated"])
             self.assertFalse(payload["refreshed"])
 
+    def test_memory_migration_ensure_marks_existing_state_pending(self):
+        with TemporaryDirectory() as tmpdir:
+            paths = make_runtime_paths_for_test(Path(tmpdir) / "state")
+            asset_runtime.write_runtime_config(memory_mode="integrated", paths=paths)
+            paths.registry_dir.mkdir(parents=True)
+            (paths.registry_dir / "memory_items.jsonl").write_text(
+                '{"title":"old memory"}\n',
+                encoding="utf-8",
+            )
+
+            with mock.patch.dict(os.environ, {"AI_ASSET_MEMORY_MODE": ""}, clear=False):
+                state = openrelix_memory_migration.ensure_memory_migration_state(paths)
+
+            self.assertEqual(state["status"], "pending")
+            self.assertEqual(state["reason"], "algorithm_version_changed")
+            self.assertEqual(state["previous_algorithm_version"], 0)
+            config = asset_runtime.load_runtime_config(paths)
+            self.assertEqual(int(config.get("personal_memory_algorithm_version") or 0), 0)
+
+    def test_memory_migration_ensure_marks_fresh_state_current(self):
+        with TemporaryDirectory() as tmpdir:
+            paths = make_runtime_paths_for_test(Path(tmpdir) / "state")
+            asset_runtime.write_runtime_config(memory_mode="integrated", paths=paths)
+
+            with mock.patch.dict(os.environ, {"AI_ASSET_MEMORY_MODE": ""}, clear=False):
+                state = openrelix_memory_migration.ensure_memory_migration_state(paths)
+
+            self.assertEqual(state["status"], "skipped")
+            self.assertEqual(state["reason"], "no_existing_personal_memory_state")
+            config = asset_runtime.load_runtime_config(paths)
+            self.assertEqual(
+                config["personal_memory_algorithm_version"],
+                openrelix_memory_migration.PERSONAL_MEMORY_ALGORITHM_VERSION,
+            )
+
+    def test_memory_migration_run_forces_recent_backfill_and_marks_complete(self):
+        with TemporaryDirectory() as tmpdir:
+            paths = make_runtime_paths_for_test(Path(tmpdir) / "state")
+            asset_runtime.write_runtime_config(memory_mode="integrated", paths=paths)
+            paths.registry_dir.mkdir(parents=True)
+            (paths.registry_dir / "memory_items.jsonl").write_text(
+                '{"title":"old memory"}\n',
+                encoding="utf-8",
+            )
+            args = argparse.Namespace(
+                action="run",
+                window_days=3,
+                force=False,
+                if_pending=False,
+                quiet=True,
+                json=False,
+            )
+
+            with mock.patch.dict(os.environ, {"AI_ASSET_MEMORY_MODE": ""}, clear=False), mock.patch.object(
+                openrelix,
+                "PATHS",
+                paths,
+            ), mock.patch.object(
+                openrelix,
+                "run_backfill_dates",
+                return_value=[
+                    {
+                        "date": "2026-05-04",
+                        "status": "completed",
+                        "requested_stage": "final",
+                    }
+                ],
+            ) as run_backfill, mock.patch.object(openrelix, "sync_review_outputs") as sync_outputs:
+                openrelix.command_memory_migration(args)
+
+            run_backfill.assert_called_once()
+            self.assertEqual(run_backfill.call_args.args[1], "final")
+            self.assertEqual(run_backfill.call_args.kwargs["learn_window_days"], 3)
+            self.assertTrue(run_backfill.call_args.kwargs["force"])
+            sync_outputs.assert_called_once_with(
+                include_index=True,
+                include_native_display=True,
+                verbose=False,
+            )
+            state = openrelix_memory_migration.load_memory_migration_state(paths)
+            self.assertEqual(state["status"], "completed")
+            config = asset_runtime.load_runtime_config(paths)
+            self.assertEqual(
+                config["personal_memory_algorithm_version"],
+                openrelix_memory_migration.PERSONAL_MEMORY_ALGORITHM_VERSION,
+            )
+
     def test_openrelix_config_updates_memory_summary_max_tokens(self):
         with TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -6877,6 +6965,11 @@ Keep my own note.
             lines = order_log.read_text(encoding="utf-8").splitlines()
 
         self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("openrelix memory-migration run --if-pending --quiet", lines)
+        self.assertLess(
+            lines.index("openrelix memory-migration run --if-pending --quiet"),
+            lines.index("collect --date 2026-05-06 --stage manual"),
+        )
         self.assertIn("openrelix asset-stats --date 2026-05-06 --no-refresh", lines)
         self.assertLess(
             lines.index("openrelix asset-stats --date 2026-05-06 --no-refresh"),
@@ -7598,6 +7691,10 @@ Keep my own note.
         self.assertIn('command === "models"', npm_bin)
         self.assertIn('runPythonCli(["models", ...args.slice(1)])', npm_bin)
         self.assertIn("npx openrelix models", npm_bin)
+        self.assertIn('command === "memory-migration"', npm_bin)
+        self.assertIn('runPythonCli(["memory-migration", ...args.slice(1)])', npm_bin)
+        self.assertIn("npx openrelix memory-migration status", npm_bin)
+        self.assertIn("scripts/openrelix_memory_migration.py", package_json["files"])
 
     def test_sqlite_index_rebuild_is_warning_only_in_refresh_scripts(self):
         nightly = (ROOT / "scripts" / "nightly_pipeline.sh").read_text(encoding="utf-8")
@@ -10901,6 +10998,38 @@ Keep my own note.
         self.assertEqual(disk_result["batch_summaries"][0]["top_keywords"], ["live"])
         self.assertEqual(memory_result["batch_summaries"][0]["top_keywords"], ["live"])
         self.assertNotIn("stale-fingerprint", nightly_consolidate._RECENT_WINDOW_LEARNING_CACHE)
+
+    def test_learning_input_fingerprint_includes_personal_memory_algorithm_version(self):
+        raw_payload = {
+            "date": "2026-05-06",
+            "window_count": 0,
+            "prompt_count": 0,
+            "conclusion_count": 0,
+            "windows": [],
+        }
+        compact_payload = {"window_count": 0, "windows": []}
+        baseline = nightly_consolidate.build_learning_input_fingerprint(
+            raw_payload,
+            {},
+            7,
+            language="zh",
+            compact_payload=compact_payload,
+        )
+
+        with mock.patch.object(
+            nightly_consolidate,
+            "PERSONAL_MEMORY_ALGORITHM_VERSION",
+            nightly_consolidate.PERSONAL_MEMORY_ALGORITHM_VERSION + 1,
+        ):
+            changed = nightly_consolidate.build_learning_input_fingerprint(
+                raw_payload,
+                {},
+                7,
+                language="zh",
+                compact_payload=compact_payload,
+            )
+
+        self.assertNotEqual(baseline, changed)
 
     def test_nightly_consolidate_skip_if_unchanged_avoids_model_call(self):
         old_raw_dir = nightly_consolidate.RAW_DIR

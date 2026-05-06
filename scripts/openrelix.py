@@ -59,6 +59,16 @@ from asset_runtime import (
 from openrelix_overview import asset_discovery as overview_asset_discovery
 from openrelix_overview.token_fetcher import fetch_ccusage_daily, normalize_token_provider
 from openrelix_overview.token_usage import build_token_usage_view, normalize_token_group_by
+from openrelix_memory_migration import (
+    PERSONAL_MEMORY_ALGORITHM_VERSION,
+    PERSONAL_MEMORY_MIGRATION_STAGE,
+    PERSONAL_MEMORY_MIGRATION_WINDOW_DAYS,
+    ensure_memory_migration_state,
+    load_memory_migration_state,
+    mark_memory_migration_completed,
+    mark_memory_migration_failed,
+    mark_memory_migration_running,
+)
 
 
 PATHS = get_runtime_paths()
@@ -435,6 +445,65 @@ def build_parser():
         help=localized(
             "以 JSON 打印更新检查结果。",
             "Print update check results as JSON.",
+        ),
+    )
+
+    memory_migration = subparsers.add_parser(
+        "memory-migration",
+        help=localized(
+            "检查或执行个人记忆算法迁移。",
+            "Check or run the personal memory algorithm migration.",
+        ),
+    )
+    memory_migration.add_argument(
+        "action",
+        nargs="?",
+        default="status",
+        choices=["status", "ensure", "run", "complete"],
+        help=localized(
+            "status 查看状态；ensure 只写 pending marker；run 执行有界迁移；complete 标记当前算法已迁移。",
+            "status prints state; ensure writes a pending marker; run executes bounded migration; complete marks the current algorithm migrated.",
+        ),
+    )
+    memory_migration.add_argument(
+        "--window-days",
+        type=int,
+        default=PERSONAL_MEMORY_MIGRATION_WINDOW_DAYS,
+        help=localized(
+            "迁移重跑最近 N 天。默认 7。",
+            "Re-run the last N days during migration. Default: 7.",
+        ),
+    )
+    memory_migration.add_argument(
+        "--force",
+        action="store_true",
+        help=localized(
+            "即使当前算法版本已标记完成，也重新安排或执行迁移。",
+            "Schedule or run migration even when the current algorithm version is already marked complete.",
+        ),
+    )
+    memory_migration.add_argument(
+        "--if-pending",
+        action="store_true",
+        help=localized(
+            "仅当存在 pending migration 时执行；否则安静退出。",
+            "Run only when a pending migration exists; otherwise exit quietly.",
+        ),
+    )
+    memory_migration.add_argument(
+        "--quiet",
+        action="store_true",
+        help=localized(
+            "减少迁移过程输出。",
+            "Reduce migration output.",
+        ),
+    )
+    memory_migration.add_argument(
+        "--json",
+        action="store_true",
+        help=localized(
+            "以 JSON 打印迁移状态。",
+            "Print migration state as JSON.",
         ),
     )
 
@@ -3258,6 +3327,109 @@ def command_update(args):
     subprocess.run(command, cwd=str(REPO_ROOT), check=True)
 
 
+def resolve_memory_migration_dates(window_days, end_date=None):
+    days = max(int(window_days or 0), 1)
+    end = parse_date_arg(end_date or current_date_str(), "--to")
+    start = end - timedelta(days=days - 1)
+    return [(start + timedelta(days=offset)).isoformat() for offset in range(days)]
+
+
+def print_memory_migration_state(state):
+    print(localized("个人记忆迁移状态", "Personal memory migration status"))
+    print("- status: {}".format(state.get("status") or "unknown"))
+    print("- algorithm_version: {}".format(state.get("algorithm_version") or PERSONAL_MEMORY_ALGORITHM_VERSION))
+    print("- window_days: {}".format(state.get("window_days") or PERSONAL_MEMORY_MIGRATION_WINDOW_DAYS))
+    if state.get("reason"):
+        print("- reason: {}".format(state.get("reason")))
+    if state.get("previous_algorithm_version") is not None:
+        print("- previous_algorithm_version: {}".format(state.get("previous_algorithm_version")))
+    if state.get("dates"):
+        print("- dates: {}".format(", ".join(state.get("dates") or [])))
+    print("- state_file: {}".format(PATHS.runtime_dir / "memory-migration.json"))
+
+
+def command_memory_migration(args):
+    window_days = max(int(args.window_days or PERSONAL_MEMORY_MIGRATION_WINDOW_DAYS), 1)
+
+    if args.action == "status":
+        state = load_memory_migration_state(PATHS)
+        if not state:
+            state = ensure_memory_migration_state(PATHS, window_days=window_days, force=False)
+        if args.json:
+            print_json(state)
+        else:
+            print_memory_migration_state(state)
+        return
+
+    if args.action == "ensure":
+        state = ensure_memory_migration_state(PATHS, window_days=window_days, force=args.force)
+        if args.json:
+            print_json(state)
+        elif not args.quiet:
+            print_memory_migration_state(state)
+        return
+
+    if args.action == "complete":
+        dates = resolve_memory_migration_dates(window_days)
+        state = mark_memory_migration_completed(PATHS, dates, window_days=window_days)
+        if args.json:
+            print_json(state)
+        elif not args.quiet:
+            print_memory_migration_state(state)
+        return
+
+    state = ensure_memory_migration_state(PATHS, window_days=window_days, force=args.force)
+    if args.if_pending and state.get("status") != "pending":
+        if args.json:
+            print_json(state)
+        elif not args.quiet:
+            print_memory_migration_state(state)
+        return
+    if state.get("status") != "pending" and not args.force:
+        if args.json:
+            print_json(state)
+        elif not args.quiet:
+            print_memory_migration_state(state)
+        return
+
+    dates = resolve_memory_migration_dates(window_days)
+    mark_memory_migration_running(PATHS, dates, window_days=window_days)
+    if not args.quiet:
+        print(localized("个人记忆迁移开始", "Personal memory migration started"))
+        print("- algorithm_version: {}".format(PERSONAL_MEMORY_ALGORITHM_VERSION))
+        print("- stage: {}".format(PERSONAL_MEMORY_MIGRATION_STAGE))
+        print("- dates: {}".format(", ".join(dates)))
+        print("- skip_if_unchanged: false")
+    try:
+        results = run_backfill_dates(
+            dates,
+            PERSONAL_MEMORY_MIGRATION_STAGE,
+            learn_window_days=window_days,
+            force=True,
+            ensure_learning_final=True,
+            defer_global_refresh=True,
+            verbose=not args.quiet and not args.json,
+            jobs=1,
+        )
+        failed_results = [item for item in results if item.get("status") == "failed"]
+        if failed_results:
+            raise subprocess.CalledProcessError(failed_result_exit_code(failed_results), "memory-migration")
+        sync_review_outputs(include_index=True, include_native_display=True, verbose=not args.quiet and not args.json)
+    except Exception as exc:
+        failed_state = mark_memory_migration_failed(PATHS, dates, exc, window_days=window_days)
+        if args.json:
+            print_json(failed_state)
+        elif not args.quiet:
+            print_memory_migration_state(failed_state)
+        raise SystemExit(getattr(exc, "returncode", 1) or 1) from exc
+
+    completed_state = mark_memory_migration_completed(PATHS, dates, window_days=window_days)
+    if args.json:
+        print_json(completed_state)
+    elif not args.quiet:
+        print_memory_migration_state(completed_state)
+
+
 def memory_mode_label(memory_mode):
     labels = {
         "integrated": localized(
@@ -4425,6 +4597,9 @@ def main():
         return
     if args.command == "update":
         command_update(args)
+        return
+    if args.command == "memory-migration":
+        command_memory_migration(args)
         return
     if args.command == "uninstall":
         command_uninstall(args)
