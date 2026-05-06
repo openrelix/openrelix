@@ -56,7 +56,7 @@
     "plugins/openrelix/",
     "scripts/openrelix.py",
     "scripts/asset_runtime.py",
-    "scripts/openrelix_overview/",
+    "scripts/openrelix_overview/*.py",
     "scripts/build_macos_client.sh",
     "scripts/build_codex_memory_summary.py",
     "scripts/build_codex_native_display_cache.py",
