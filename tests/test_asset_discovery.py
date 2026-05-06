@@ -943,18 +943,40 @@ class AssetDiscoveryTests(unittest.TestCase):
         self.assertIn("按名称聚合后展示", html)
         self.assertNotIn(">12</strong>", html)
 
-    def test_asset_refresh_meta_renders_snapshot_anchor_above_button_copy(self):
+    def test_asset_refresh_meta_renders_relative_update_above_button_copy(self):
         snapshot = {
             "date": "2026-05-05",
             "generated_at": "2026-05-05T12:00:00+08:00",
             "summary": {"display_assets": 9},
         }
 
-        html = build_overview.make_asset_refresh_meta_html(snapshot, "2026-05-06")
+        html = build_overview.make_asset_refresh_meta_html(
+            snapshot,
+            "2026-05-06",
+            now=datetime.fromisoformat("2026-05-05T12:01:30+08:00"),
+        )
 
         self.assertIn('class="asset-refresh-meta"', html)
-        self.assertIn("锚点 2026-05-05 · 生成 05-05 12:00", html)
-        self.assertIn("Anchor 2026-05-05 · generated 05-05 12:00", html)
+        self.assertIn("1 分钟前更新", html)
+        self.assertIn("Updated 1 minute ago", html)
+        self.assertNotIn("锚点", html)
+        self.assertNotIn("Anchor", html)
+
+    def test_relative_update_note_formats_minute_hour_and_day(self):
+        now = datetime.fromisoformat("2026-05-05T12:01:30+08:00")
+
+        self.assertEqual(
+            build_overview.relative_update_note("2026-05-05T12:01:05+08:00", now=now),
+            ("刚刚更新", "Updated just now"),
+        )
+        self.assertEqual(
+            build_overview.relative_update_note("2026-05-05T10:59:00+08:00", now=now),
+            ("1 小时前更新", "Updated 1 hour ago"),
+        )
+        self.assertEqual(
+            build_overview.relative_update_note("2026-05-03T12:01:30+08:00", now=now),
+            ("2 天前更新", "Updated 2 days ago"),
+        )
 
     def test_asset_stats_snapshot_panel_uses_session_label_for_legacy_snapshot(self):
         snapshot = {

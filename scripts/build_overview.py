@@ -7833,22 +7833,51 @@ def build_discovered_type_mix_rows(render_rows):
     return rows
 
 
-def asset_stats_snapshot_note(snapshot, default_date):
+def relative_update_note(value, now=None):
+    try:
+        updated_at = value if isinstance(value, datetime) else parse_iso_datetime(value)
+    except (TypeError, ValueError):
+        updated_at = None
+    if updated_at is None:
+        return ("更新时间未知", "Updated time unknown")
+    if updated_at.tzinfo is None:
+        updated_at = updated_at.astimezone()
+    current_time = now or current_local_datetime()
+    if current_time.tzinfo is None:
+        current_time = current_time.astimezone()
+    seconds = max(0, int((current_time - updated_at).total_seconds()))
+    if seconds < 60:
+        return ("刚刚更新", "Updated just now")
+    minutes = seconds // 60
+    if minutes < 60:
+        return (
+            "{} 分钟前更新".format(minutes),
+            "Updated {} minute{} ago".format(minutes, "" if minutes == 1 else "s"),
+        )
+    hours = minutes // 60
+    if hours < 24:
+        return (
+            "{} 小时前更新".format(hours),
+            "Updated {} hour{} ago".format(hours, "" if hours == 1 else "s"),
+        )
+    days = hours // 24
+    return (
+        "{} 天前更新".format(days),
+        "Updated {} day{} ago".format(days, "" if days == 1 else "s"),
+    )
+
+
+def asset_stats_snapshot_note(snapshot, default_date, now=None):
     snapshot = snapshot if isinstance(snapshot, dict) else {}
     summary = snapshot.get("summary") if isinstance(snapshot.get("summary"), dict) else {}
     has_snapshot = bool(summary)
-    date_text = str(snapshot.get("date") or default_date or "").strip()
-    generated_text = display_short_local_datetime(snapshot.get("generated_at", "")) if has_snapshot else ""
     if has_snapshot:
-        return (
-            "锚点 {} · 生成 {}".format(date_text, generated_text),
-            "Anchor {} · generated {}".format(date_text, generated_text),
-        )
-    return ("等待首次单次统计快照", "Waiting for the first single stats snapshot")
+        return relative_update_note(snapshot.get("generated_at", ""), now=now)
+    return ("等待首次资产刷新", "Waiting for the first asset refresh")
 
 
-def make_asset_refresh_meta_html(snapshot, default_date):
-    note_zh, note_en = asset_stats_snapshot_note(snapshot, default_date)
+def make_asset_refresh_meta_html(snapshot, default_date, now=None):
+    note_zh, note_en = asset_stats_snapshot_note(snapshot, default_date, now=now)
     return '<span class="asset-refresh-meta">{}</span>'.format(
         panel_language_text_html(note_zh, note_en)
     )
@@ -14696,7 +14725,7 @@ def build_html(data):
     .asset-refresh-meta {{
       display: block;
       max-width: 300px;
-      color: var(--muted);
+      color: var(--teal);
       font-size: 12px;
       font-weight: 700;
       line-height: 1.4;
