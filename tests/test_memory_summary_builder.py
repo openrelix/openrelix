@@ -231,6 +231,25 @@ class MemorySummaryBuilderTests(unittest.TestCase):
         self.assertEqual(policies["Domain-only bridge diagnosis"], "on_demand")
         self.assertEqual(policies["Local follow-up"], "local_only")
 
+    def test_legacy_source_window_memory_stays_out_of_global_host_context(self):
+        legacy_registry = """
+{"date":"2026-05-06","source":"legacy","bucket":"durable","title":"Project-only legacy item","memory_type":"procedural","priority":"high","value_note":"Has only old source_window_ids metadata.","source_window_ids":["w-project"]}
+{"date":"2026-05-06","source":"legacy","bucket":"durable","title":"Global legacy item","memory_type":"procedural","priority":"high","value_note":"No project source."}
+"""
+
+        host_context_items = build_codex_memory_summary.parse_personal_memory_registry(
+            legacy_registry
+        )
+        all_items = build_codex_memory_summary.parse_personal_memory_registry(
+            legacy_registry,
+            host_context_only=False,
+        )
+
+        self.assertEqual([item.title for item in host_context_items], ["Global legacy item"])
+        policies = {item.title: item.injection_policy for item in all_items}
+        self.assertEqual(policies["Project-only legacy item"], "project_context")
+        self.assertEqual(policies["Global legacy item"], "global_context")
+
     def test_memory_summary_dedupes_personal_memory_already_in_host_summary(self):
         budget = build_codex_memory_summary.SummaryBudget(
             target_tokens=620,

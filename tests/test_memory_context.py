@@ -26,6 +26,33 @@ class MemoryContextPolicyTests(unittest.TestCase):
         )
         self.assertFalse(memory_context.memory_record_is_global_context(row))
 
+    def test_legacy_source_window_rows_default_to_project_context(self):
+        row = {
+            "bucket": "session",
+            "priority": "medium",
+            "source_window_ids": ["w-project"],
+        }
+
+        self.assertEqual(memory_context.memory_scope_from_record(row), "project")
+        self.assertEqual(
+            memory_context.host_context_injection_policy_from_record(row),
+            "project_context",
+        )
+        self.assertFalse(memory_context.memory_record_is_global_context(row))
+
+    def test_low_priority_legacy_rows_stay_local(self):
+        row = {
+            "bucket": "low_priority",
+            "priority": "low",
+            "source_window_ids": ["w-project"],
+        }
+
+        self.assertEqual(memory_context.memory_scope_from_record(row), "local")
+        self.assertEqual(
+            memory_context.host_context_injection_policy_from_record(row),
+            "local_only",
+        )
+
     def test_policy_views_split_global_project_on_demand_and_local(self):
         rows = [
             {"bucket": "durable", "title": "Global", "scope": "global"},

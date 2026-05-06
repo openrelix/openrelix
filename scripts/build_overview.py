@@ -4644,6 +4644,18 @@ def build_memory_registry(memory_items, window_overview, usage_window_overview=N
                 if row.get("cwd_display", "")
             ][:2]
         ) or display_context
+        row_scope = group.get("scope", "")
+        row_injection_policy = group.get("injection_policy", "")
+        row_project_label = group.get("project_label", "")
+        if row_scope in {"project", "repo"} and not row_project_label:
+            row_project_label = display_context if display_context != "未分类上下文" else ""
+        row_project_key = group.get("project_key", "")
+        if row_project_label and not row_project_key:
+            row_project_key = re.sub(
+                r"[^a-z0-9\u4e00-\u9fff]+",
+                "-",
+                str(row_project_label).lower(),
+            ).strip("-")
 
         row = {
             "memory_key": group["memory_key"],
@@ -4653,10 +4665,10 @@ def build_memory_registry(memory_items, window_overview, usage_window_overview=N
             "display_memory_type": display_memory_type(group["memory_type"], language=language),
             "priority": group["priority"],
             "display_priority": display_memory_priority(group["priority"], language=language),
-            "scope": group.get("scope", ""),
-            "injection_policy": group.get("injection_policy", ""),
-            "project_key": group.get("project_key", ""),
-            "project_label": group.get("project_label", ""),
+            "scope": row_scope,
+            "injection_policy": row_injection_policy,
+            "project_key": row_project_key,
+            "project_label": row_project_label,
             "title": group["title"],
             "display_title": localized_record_field(group, "title", language=language, default=group["title"]),
             "display_title_en": localized_record_field(group, "title", language="en", default=group["title"]),
@@ -22536,14 +22548,6 @@ def build_html(data):
             "Personal Asset Memory",
             "OpenRelix 独立存储，按策略编译给 Codex / Claude Code；项目记忆不会进入全局上下文。",
             "Stored by OpenRelix and compiled into Codex / Claude Code by policy; project memories stay out of global context.",
-            extra_html=(
-                make_memory_policy_count_widget(
-                    memory_policy_views,
-                )
-                + make_personal_memory_token_widget(
-                    data.get("personal_memory_token_usage", {})
-                )
-            ),
         ),
         codex_native_memory_family_header=make_memory_family_header(
             "Codex 原生记忆",

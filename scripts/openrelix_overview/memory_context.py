@@ -92,6 +92,20 @@ SCOPE_LABELS = {
     MEMORY_SCOPE_LOCAL: ("本地", "Local"),
 }
 
+MEMORY_SCOPE_KEYS = (
+    "scope",
+    "memory_scope",
+    "context_scope",
+    "applicability_scope",
+)
+
+INJECTION_POLICY_KEYS = (
+    "injection_policy",
+    "context_policy",
+    "host_context_policy",
+    "injection_scope",
+)
+
 
 def collapse_whitespace(text):
     return " ".join(str(text or "").split()).strip()
@@ -107,6 +121,23 @@ def first_record_value(item, keys):
     return ""
 
 
+def has_explicit_memory_scope(item):
+    return bool(first_record_value(item, MEMORY_SCOPE_KEYS))
+
+
+def has_explicit_injection_policy(item):
+    return bool(first_record_value(item, INJECTION_POLICY_KEYS))
+
+
+def has_source_window_refs(item):
+    if not isinstance(item, dict):
+        return False
+    value = item.get("source_window_ids")
+    if isinstance(value, (list, tuple)):
+        return any(collapse_whitespace(part) for part in value)
+    return bool(collapse_whitespace(value))
+
+
 def normalize_memory_scope(value):
     text = str(value or "").strip().lower().replace("_", "-")
     if not text:
@@ -115,20 +146,19 @@ def normalize_memory_scope(value):
 
 
 def memory_scope_from_record(item):
-    explicit_scope = first_record_value(
-        item,
-        (
-            "scope",
-            "memory_scope",
-            "context_scope",
-            "applicability_scope",
-        ),
-    )
+    explicit_scope = first_record_value(item, MEMORY_SCOPE_KEYS)
     scope = normalize_memory_scope(explicit_scope)
     if scope:
         return scope
 
+    if str(item.get("bucket") or "").strip() == "low_priority" or str(
+        item.get("priority") or ""
+    ).strip().lower() == "low":
+        return MEMORY_SCOPE_LOCAL
+
     if any(collapse_whitespace(item.get(key, "")) for key in ("project_key", "project_label", "repo", "cwd")):
+        return MEMORY_SCOPE_PROJECT
+    if has_source_window_refs(item):
         return MEMORY_SCOPE_PROJECT
     return MEMORY_SCOPE_GLOBAL
 
@@ -155,15 +185,7 @@ def default_injection_policy_for_scope(scope, bucket="", priority=""):
 
 
 def host_context_injection_policy_from_record(item):
-    explicit_policy = first_record_value(
-        item,
-        (
-            "injection_policy",
-            "context_policy",
-            "host_context_policy",
-            "injection_scope",
-        ),
-    )
+    explicit_policy = first_record_value(item, INJECTION_POLICY_KEYS)
     policy = normalize_injection_policy(explicit_policy)
     if policy:
         return policy

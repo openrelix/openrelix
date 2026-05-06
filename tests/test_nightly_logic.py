@@ -3610,6 +3610,45 @@ Keep my own note.
         self.assertGreaterEqual(durable_rows[0]["usage_frequency_estimated_window_count"], 1)
         self.assertEqual(durable_rows[0]["usage_frequency_window_days"], 7)
 
+    def test_memory_registry_infers_project_scope_for_legacy_source_windows(self):
+        window_overview = {
+            "date": "2026-04-28",
+            "windows": [
+                {
+                    "date": "2026-04-28",
+                    "window_id": "w-runtime",
+                    "project_label": "OpenRelix",
+                    "cwd_display": "OpenRelix",
+                    "cwd": str(ROOT),
+                    "question_summary": "memory UI refactor",
+                    "main_takeaway": "project memories stay scoped",
+                    "keywords": ["memory"],
+                }
+            ],
+        }
+        registry = build_overview.build_memory_registry(
+            [
+                {
+                    "date": "2026-04-28",
+                    "source": "nightly_codex",
+                    "bucket": "durable",
+                    "title": "旧格式项目记忆",
+                    "memory_type": "procedural",
+                    "priority": "high",
+                    "value_note": "旧格式只有 source_window_ids。",
+                    "source_window_ids": ["w-runtime"],
+                }
+            ],
+            window_overview,
+            usage_window_overview=window_overview,
+        )
+
+        row = registry["rows"][0]
+        self.assertEqual(row["scope"], "project")
+        self.assertEqual(row["injection_policy"], "project_context")
+        self.assertEqual(row["project_label"], "OpenRelix")
+        self.assertFalse(build_overview.overview_memory_context.memory_record_is_global_context(row))
+
     def test_memory_usage_frequency_ignores_occurrences_outside_7_day_window(self):
         usage_window_overview = {"date": "2026-04-28", "days": 7, "windows": []}
 
