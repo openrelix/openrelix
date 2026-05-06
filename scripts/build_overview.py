@@ -45,6 +45,7 @@ from openrelix_overview import finder as overview_finder
 from openrelix_overview import i18n as overview_i18n
 from openrelix_overview import labels as overview_labels
 from openrelix_overview import local_paths as overview_local_paths
+from openrelix_overview import mcp_usage as overview_mcp_usage
 from openrelix_overview import memory_registry as overview_memory_registry
 from openrelix_overview import redaction as overview_redaction
 from openrelix_overview import token_fetcher as overview_token_fetcher
@@ -633,6 +634,7 @@ PANEL_I18N_EN = {
     "热词时间范围": "Hot terms date range",
     "资产类型分布": "Asset Type Distribution",
     "月度活动": "Monthly Activity",
+    "MCP 使用热度": "MCP Tool Usage",
     "运行视图": "Runtime View",
     "记忆层": "Memory Layer",
     "资产层": "Asset Layer",
@@ -655,6 +657,7 @@ PANEL_I18N_EN = {
     "Claude Code 原生记忆-偏好": "Claude Code Native Memory - Preferences",
     "Claude Code 原生记忆-通用 tips": "Claude Code Native Memory - General Tips",
     "近 30 天高频技能 Top 10": "Top 10 Skills (last 30 days)",
+    "近 30 天高频技能热度": "Skill Hotness (last 30 days)",
     "最近复盘": "Recent Reviews",
     "最近复用记录": "Recent Usage Events",
     "最近形成的脱敏任务复盘": "Recent sanitized task reviews",
@@ -7825,7 +7828,7 @@ def normalized_asset_panels(data):
     if "monthly_activity" not in panels:
         panels["monthly_activity"] = list(mix.get("month", []))
     if "top_skills" not in panels:
-        panels["top_skills"] = overview_asset_discovery.top_skill_rows(render_rows, limit=10) if render_rows else []
+        panels["top_skills"] = overview_asset_discovery.top_skill_rows(render_rows, limit=None) if render_rows else []
     return panels
 
 
@@ -8079,7 +8082,13 @@ def build_data(assets, usage_events, reviews, language=None):
         enriched_assets,
     )
     discovered_type_mix_rows = build_discovered_type_mix_rows(asset_panel_rows)
-    discovered_top_skill_rows = overview_asset_discovery.top_skill_rows(asset_panel_rows, limit=10)
+    discovered_top_skill_rows = overview_asset_discovery.top_skill_rows(asset_panel_rows, limit=None)
+    mcp_usage_view = overview_mcp_usage.build_mcp_usage_view(
+        PATHS,
+        today,
+        lookback_days=30,
+        limit=10,
+    )
     localized_usage_events = enrich_usage_events(recent_usage_events, language=language)
     minutes_saved_total = sum(
         safe_int(asset.get("estimated_minutes_saved", 0)) for asset in enriched_assets
@@ -8450,6 +8459,7 @@ def build_data(assets, usage_events, reviews, language=None):
             "monthly_activity": discovered_monthly_activity,
             "top_skills": discovered_top_skill_rows,
         },
+        "mcp_usage": mcp_usage_view,
         "reviews": reviews[:8],
         "usage_events": localized_usage_events[:10],
         "panel_views": {
@@ -8728,7 +8738,7 @@ def build_markdown(data):
             ]
         )
         if asset_panels["top_skills"]:
-            for asset in asset_panels["top_skills"]:
+            for asset in asset_panels["top_skills"][:10]:
                 lines.append(
                     "| {} | {} | {} | {} |".format(
                         markdown_table_cell(asset.get("name") or asset.get("identifier", ""), limit=80),
@@ -8936,7 +8946,7 @@ def build_markdown(data):
     )
 
     if asset_panels["top_skills"]:
-        for asset in asset_panels["top_skills"]:
+        for asset in asset_panels["top_skills"][:10]:
             lines.append(
                 "| {} | {} | {} | {} |".format(
                     markdown_table_cell(asset.get("name") or asset.get("identifier", ""), limit=80),
@@ -9642,7 +9652,7 @@ def wrap_expandable_block(
 
 def make_discovered_asset_name_html(row):
     name = str(row.get("name") or row.get("identifier") or "").strip()
-    if row.get("type") == "skill" and row.get("click_target"):
+    if row.get("click_target"):
         return '<button type="button" class="discovered-skill-name" data-open-finder-path="{path}" data-label="{label}" title="{title}">{name}</button>'.format(
             path=escape(str(row.get("click_target") or ""), quote=True),
             label=escape(name, quote=True),
@@ -10145,16 +10155,25 @@ def make_top_asset_rows(rows, group_id="top-asset-rows"):
     )
 
 
-def make_top_skill_rows(rows):
-    rows = list(rows or [])[:10]
+def make_top_skill_rows(rows, group_id="top-skill-rows"):
+    rows = list(rows or [])
     if not rows:
         return '<tr><td colspan="4" class="empty-cell">暂无高频技能。</td></tr>'
 
-    rendered = []
-    for row in rows:
-        rendered.append(
+    def render_row(row, row_class="", group_id="", hidden_attr=""):
+        attrs = [
+            'data-asset-identifier="{}"'.format(escape(str(row.get("identifier") or ""), quote=True)),
+            'data-asset-type="skill"',
+        ]
+        if row_class:
+            attrs.append('class="{}"'.format(escape(row_class, quote=True)))
+        if group_id:
+            attrs.append('data-expand-group="{}"'.format(escape(group_id, quote=True)))
+        if hidden_attr:
+            attrs.append("hidden")
+        return (
             """
-            <tr data-asset-identifier="{identifier}" data-asset-type="skill">
+            <tr {row_attrs}>
               <td>
                 <div class="asset-discovery-name">{name}</div>
               </td>
@@ -10163,14 +10182,75 @@ def make_top_skill_rows(rows):
               <td>{sessions_30d}</td>
             </tr>
             """.format(
-                identifier=escape(str(row.get("identifier") or ""), quote=True),
+                row_attrs=" ".join(attrs),
                 name=make_discovered_asset_name_html(row),
                 description=make_discovered_description_html(row),
                 reads_30d=escape(str(safe_int(row.get("read_events_30d", row.get("windows_30d", 0))))),
                 sessions_30d=escape(str(safe_int(row.get("windows_30d", 0)))),
             )
         )
-    return "".join(rendered)
+
+    return make_table_expand_rows(
+        rows,
+        render_row,
+        10,
+        4,
+        "个技能热度",
+        "收起技能热度",
+        group_id,
+    )
+
+
+def make_mcp_usage_panel(mcp_usage, help_html=""):
+    mcp_usage = mcp_usage or {}
+    tools = list(mcp_usage.get("tools") or [])
+    lookback_days = safe_int(mcp_usage.get("lookback_days", 30))
+    total_calls = safe_int(mcp_usage.get("total_calls", 0))
+    active_tools = safe_int(mcp_usage.get("active_tools", 0))
+    note_html = panel_language_text_html(
+        "近 {} 天，共 {} 次 MCP 调用，{} 个工具有活动".format(lookback_days, total_calls, active_tools),
+        "Last {} days, {} MCP calls across {} active tools".format(lookback_days, total_calls, active_tools),
+    )
+
+    rows = []
+    for tool in tools:
+        calls = safe_int(tool.get("calls", 0))
+        sessions = safe_int(tool.get("sessions", 0))
+        last_seen = tool.get("last_seen") or "—"
+        rows.append(
+            {
+                "label": tool.get("label") or tool.get("name") or "",
+                "label_en": tool.get("label") or tool.get("name") or "",
+                "value": calls,
+                "display": str(calls),
+                "details": [
+                    {
+                        "title": tool.get("tool") or tool.get("name") or "",
+                        "title_en": tool.get("tool") or tool.get("name") or "",
+                        "meta": "{} 会话 · 最近 {}".format(sessions, last_seen),
+                        "meta_en": "{} sessions · latest {}".format(sessions, last_seen),
+                    }
+                ],
+                "details_heading": "调用细节",
+                "details_heading_en": "Call details",
+            }
+        )
+
+    return """
+    <section class="panel" id="mcp-usage-section">
+      {header_html}
+      <div class="bar-group">
+        {items}
+      </div>
+    </section>
+    """.format(
+        header_html=make_panel_header(
+            "MCP 使用热度",
+            help_html=help_html,
+            note_content_html=note_html,
+        ),
+        items=make_bar_rows(rows, "teal") if rows else '<p class="empty">暂无 MCP 调用。</p>',
+    )
 
 
 def make_review_cards(reviews):
@@ -13385,8 +13465,8 @@ def build_html(data):
             {
                 "label": "统计什么",
                 "body": {
-                    "zh": "按五类高阶资产类型汇总：技能、提示词、Rules、插件、启动项。",
-                    "en": "Groups assets into five high-level types: skills, prompts, rules, plugins, and automations.",
+                    "zh": "按五类高阶资产类型汇总：技能、提示词、Codex 规则、插件、启动项。",
+                    "en": "Groups assets into five high-level types: skills, prompts, Codex rules, plugins, and automations.",
                 },
             },
             {
@@ -13404,11 +13484,24 @@ def build_html(data):
         [
             {
                 "label": "统计什么",
-                "body": "近 6 个月每月被模型实际读取过 SKILL.md 的不同技能数，同名技能跨来源只算一个。",
+                "body": "近 6 个月每月被模型实际读取过 SKILL.md 的不同技能数，同名技能跨来源只算一个；最新月份排在最上方。",
             },
             {
                 "label": "数据来源",
                 "body": "来自本机 Codex 会话与 Claude 项目 session 中的技能读取事件；手动登记资产会并入资产集合，但没有读取事件时不计入月度活动。",
+            },
+        ],
+    )
+    mcp_usage_help = make_help_popover(
+        "MCP 使用热度",
+        [
+            {
+                "label": "统计什么",
+                "body": "近 30 天 Codex 会话中真实 function_call 名称为 mcp__server__tool 的 MCP 调用次数。",
+            },
+            {
+                "label": "隐私边界",
+                "body": "这里只保留 server/tool 名称、调用次数、命中会话数和最近日期，不展示工具参数或返回内容。",
             },
         ],
     )
@@ -13750,11 +13843,11 @@ def build_html(data):
         language=language,
     )
     top_assets_help = make_help_popover(
-        "近 30 天高频技能 Top 10",
+        "近 30 天高频技能热度",
         [
             {
                 "label": "排序方式",
-                "body": "按近 30 天模型读取 SKILL.md 的工具调用次数倒序；会话数作为去重活跃度辅助展示。",
+                "body": "按近 30 天模型读取 SKILL.md 的工具调用次数倒序；默认展示 Top 10，可点击查看更多技能热度。",
             },
             {
                 "label": "数据来源",
@@ -18659,6 +18752,7 @@ def build_html(data):
       <section class="grid two-up">
         {type_panel}
         {month_panel}
+        {mcp_usage_panel}
       </section>
       <section class="panel" id="top-assets-section">
         {top_assets_header}
@@ -21765,6 +21859,10 @@ def build_html(data):
             "近 6 个月，按模型实际读取 SKILL.md 的活跃技能去重",
             help_html=month_panel_help,
         ),
+        mcp_usage_panel=make_mcp_usage_panel(
+            data.get("mcp_usage", {}),
+            help_html=mcp_usage_help,
+        ),
         insight_section_html=insight_section_html,
         daily_token_panel=make_bar_group(
             "Token 消耗趋势",
@@ -21856,9 +21954,12 @@ def build_html(data):
             low_priority_memory_help,
         ),
         top_assets_header=make_panel_header(
-            "近 30 天高频技能 Top 10",
-            "按模型读取 SKILL.md 的次数排序",
-            top_assets_help,
+            "近 30 天高频技能热度",
+            help_html=top_assets_help,
+            note_content_html=panel_language_text_html(
+                "按模型读取 SKILL.md 的次数排序；默认展示 Top 10",
+                "Sorted by SKILL.md reads; Top 10 shown by default",
+            ),
         ),
         reviews_header=make_panel_header(
             "最近复盘",

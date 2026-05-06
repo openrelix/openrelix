@@ -923,7 +923,7 @@ def _recent_month_labels(anchor, months):
     month_count = max(int(months or 0), 0)
     if month_count <= 0:
         return []
-    return [_month_start(anchor, offset).strftime("%Y-%m") for offset in reversed(range(month_count))]
+    return [_month_start(anchor, offset).strftime("%Y-%m") for offset in range(month_count)]
 
 
 def _record_monthly_activity(date_value, hits, monthly_activity):
@@ -1130,13 +1130,18 @@ def aggregate_renderable_assets(assets, frequency_by_key):
                 "kind": asset.get("kind", ""),
                 "identifier": asset.get("identifier", ""),
                 "name": asset.get("name") or asset.get("identifier", ""),
-                "description": asset.get("description", ""),
+                "description": asset.get("description", "")
+                or (
+                    "Codex rule file: {}".format(asset.get("manifest_path", ""))
+                    if asset.get("kind") == "codex_rule" and asset.get("manifest_path")
+                    else asset.get("manifest_path", "")
+                ),
                 "windows_7d": stats["windows_7d"],
                 "windows_30d": stats["windows_30d"],
                 "read_events_7d": stats["read_events_7d"],
                 "read_events_30d": stats["read_events_30d"],
                 "last_seen": stats["last_seen"],
-                "click_target": "",
+                "click_target": asset.get("manifest_abspath", ""),
                 "sources": [],
                 "source_labels": [],
                 "is_manual": False,
@@ -1238,14 +1243,17 @@ def top_skill_rows(render_rows, limit=10):
         for row in render_rows or []
         if _high_level_type(row.get("type", "")) == "skill"
     ]
-    return sorted(
+    sorted_rows = sorted(
         rows,
         key=lambda row: (
             -int(row.get("read_events_30d") or row.get("windows_30d") or 0),
             -int(row.get("windows_30d") or 0),
             str(row.get("identifier") or row.get("name") or "").lower(),
         ),
-    )[:limit]
+    )
+    if limit is None:
+        return sorted_rows
+    return sorted_rows[: max(int(limit or 0), 0)]
 
 
 def build_asset_stats_snapshot(paths, target_date, generated_at=None, monthly_months=6, top_limit=10):

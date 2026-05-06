@@ -154,7 +154,7 @@ DISPLAY_MEMORY_PRIORITY_EN = {
 DISPLAY_DISCOVERED_ASSET_KIND = {
     "skill": "技能",
     "prompt": "提示词",
-    "rule": "Rules",
+    "rule": "Codex 规则",
     "plugin": "插件",
     "automation": "启动项",
     "codex_skill": "Codex 技能",
@@ -163,7 +163,7 @@ DISPLAY_DISCOVERED_ASSET_KIND = {
     "external_repo_skill": "跨仓库技能",
     "project_skill": "项目本地技能",
     "codex_prompt": "自定义提示词",
-    "codex_rule": "Rules",
+    "codex_rule": "Codex 规则",
     "claude_plugin": "插件",
     "launch_agent": "启动项",
 }
@@ -171,7 +171,7 @@ DISPLAY_DISCOVERED_ASSET_KIND = {
 DISPLAY_DISCOVERED_ASSET_KIND_EN = {
     "skill": "Skills",
     "prompt": "Prompts",
-    "rule": "Rules",
+    "rule": "Codex Rules",
     "plugin": "Plugins",
     "automation": "Automations",
     "codex_skill": "Codex Skills",
@@ -180,7 +180,7 @@ DISPLAY_DISCOVERED_ASSET_KIND_EN = {
     "external_repo_skill": "External Repo Skills",
     "project_skill": "Project-Local Skills",
     "codex_prompt": "Codex Prompts",
-    "codex_rule": "Rules",
+    "codex_rule": "Codex Rules",
     "claude_plugin": "Claude Plugins",
     "launch_agent": "Launch Agents",
 }

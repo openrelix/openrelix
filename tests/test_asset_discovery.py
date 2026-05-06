@@ -18,6 +18,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import asset_runtime  # noqa: E402
 import build_overview  # noqa: E402
 from openrelix_overview import asset_discovery  # noqa: E402
+from openrelix_overview import mcp_usage  # noqa: E402
 
 
 def runtime_paths_for_fixture(root, home):
@@ -189,6 +190,20 @@ class AssetDiscoveryTests(unittest.TestCase):
         assets = self.assets_by_key(asset_discovery.discover_installed_assets(self.paths))
 
         self.assertIn("codex_rule:repo", assets)
+
+    def test_codex_rule_render_row_explains_source_and_can_open_file(self):
+        rule_root = self.paths.codex_home / "rules"
+        rule_root.mkdir(parents=True)
+        rule_path = rule_root / "default.rules"
+        rule_path.write_text("rule\n", encoding="utf-8")
+
+        installed = asset_discovery.discover_installed_assets(self.paths)
+        rows = asset_discovery.aggregate_renderable_assets(installed, {})
+        rule_row = next(row for row in rows if row["type"] == "rule")
+
+        self.assertEqual(rule_row["name"], "default")
+        self.assertIn("Codex rule file", rule_row["description"])
+        self.assertEqual(rule_row["click_target"], str(rule_path.resolve()))
 
     def test_discovers_claude_plugin_from_manifest(self):
         plugin_root = self.home / ".claude" / "plugins"
@@ -666,6 +681,77 @@ class AssetDiscoveryTests(unittest.TestCase):
         self.assertEqual(first_identifier, "beta")
         self.assertIn("<td>9</td>", html)
 
+    def test_top_skill_rows_expand_beyond_default_top_ten(self):
+        rows = [
+            {
+                "type": "skill",
+                "identifier": "skill-{:02d}".format(index),
+                "name": "skill-{:02d}".format(index),
+                "description": "",
+                "windows_30d": index,
+                "read_events_30d": index,
+            }
+            for index in range(12, 0, -1)
+        ]
+
+        html = build_overview.make_top_skill_rows(asset_discovery.top_skill_rows(rows, limit=None))
+
+        self.assertIn("查看更多 2 个技能热度", html)
+        self.assertIn('class="content-more-extra-row"', html)
+        self.assertIn('data-asset-identifier="skill-02"', html)
+        self.assertIn('data-asset-identifier="skill-01"', html)
+
+    def test_mcp_usage_counts_real_function_call_names(self):
+        session_root = self.paths.codex_home / "sessions" / "2026" / "05" / "05"
+        session_root.mkdir(parents=True, exist_ok=True)
+        (session_root / "rollout-mcp.jsonl").write_text(
+            "\n".join(
+                json.dumps(row)
+                for row in [
+                    {
+                        "type": "response_item",
+                        "payload": {
+                            "type": "function_call",
+                            "name": "mcp__playwright__browser_navigate",
+                            "arguments": "{}",
+                        },
+                    },
+                    {
+                        "type": "response_item",
+                        "payload": {
+                            "type": "function_call",
+                            "name": "multi_tool_use.parallel",
+                            "arguments": json.dumps(
+                                {
+                                    "tool_uses": [
+                                        {"recipient_name": "functions.mcp__figma__get_design_context"},
+                                        {"recipient_name": "functions.exec_command"},
+                                    ]
+                                }
+                            ),
+                        },
+                    },
+                    {
+                        "type": "response_item",
+                        "payload": {
+                            "type": "message",
+                            "content": [{"type": "input_text", "text": "mcp__fake__mentioned"}],
+                        },
+                    },
+                ]
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        view = mcp_usage.build_mcp_usage_view(self.paths, self.today, lookback_days=1, limit=None)
+
+        self.assertEqual(view["total_calls"], 2)
+        self.assertEqual(view["active_tools"], 2)
+        self.assertEqual(view["active_servers"], 2)
+        self.assertEqual(view["tools"][0]["label"], "figma/get_design_context")
+        self.assertEqual(view["tools"][0]["sessions"], 1)
+
     def test_single_asset_stats_snapshot_anchors_frequency_to_requested_date(self):
         manifest = self.write_skill(self.paths.codex_home / "skills", "foo", name="Foo")
         self.write_codex_rollout(self.today, "today", ["cat {}".format(manifest)])
@@ -693,6 +779,10 @@ class AssetDiscoveryTests(unittest.TestCase):
         self.assertEqual(
             {row["label"]: row["value"] for row in snapshot["monthly_activity"]},
             {"2026-04": 1, "2026-05": 1},
+        )
+        self.assertEqual(
+            [row["label"] for row in snapshot["monthly_activity"]],
+            ["2026-05", "2026-04"],
         )
 
     def test_single_asset_stats_monthly_one_still_scans_full_30d_frequency(self):
