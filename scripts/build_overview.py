@@ -1031,8 +1031,8 @@ PANEL_I18N_EN = {
     "这些数字来自当前整理结果，用来快速判断今天沉淀了多少内容。": (
         "These numbers come from the selected synthesis and help estimate how much was captured that day."
     ),
-    "当前登记册中 bucket = durable 的长期记忆，按近 7 日估算使用频率排序。": (
-        "Long-term memories where bucket = durable in the current registry, sorted by estimated 7-day usage frequency."
+    "当前登记册中 bucket = durable 的长期记忆，按近 7 日可追溯使用证据排序。": (
+        "Long-term memories where bucket = durable in the current registry, sorted by traceable 7-day usage evidence."
     ),
     "state root 下的 registry/memory_items.jsonl；同一条记忆跨天重复出现时会合并计算。": (
         "registry/memory_items.jsonl under the state root; repeated memories across days are merged."
@@ -1040,11 +1040,11 @@ PANEL_I18N_EN = {
     "这里展示的是当前主视图对应的整理结果；顶部指标卡统计的是 registry/memory_items.jsonl 的当前数量。": (
         "This shows the synthesis behind the current main view; top metric cards count the current registry/memory_items.jsonl state."
     ),
-    "频率来自近 7 日窗口匹配：来源窗口直接命中权重最高，标题、关键词、说明与历史窗口摘要匹配会按相关度加权，项目上下文只做小幅加分。": (
-        "Frequency comes from matching the last 7 days of windows: direct source windows carry the highest weight; title, keywords, and notes are weighted by relevance to historical summaries; project context adds only a small boost."
+    "7 日证据只来自可追溯信号：近 7 日直接来源窗口和同一记忆的近期整理日期；不会再用标题、关键词或说明去模糊匹配历史窗口。": (
+        "7-day evidence only uses traceable signals: direct source windows in the last 7 days and recent synthesis dates for the same memory. Titles, keywords, and notes no longer fuzzy-match historical windows."
     ),
-    "当前登记册中 bucket = session 的短期工作记忆，按近 7 日估算使用频率排序。": (
-        "Short-term work memories where bucket = session in the current registry, sorted by estimated 7-day usage frequency."
+    "当前登记册中 bucket = session 的短期工作记忆，按近 7 日可追溯使用证据排序。": (
+        "Short-term work memories where bucket = session in the current registry, sorted by traceable 7-day usage evidence."
     ),
     "更偏当前需求推进，未必适合长期沉淀。": (
         "More relevant to the current task and not always worth long-term capture."
@@ -1061,8 +1061,8 @@ PANEL_I18N_EN = {
     "保留但优先级较低，通常不作为主路径提示。": (
         "Retained with lower priority and usually not the primary path."
     ),
-    "按近 7 日估算使用频率排序；同一条记忆跨天重复出现时，会归并展示首次添加和最近更新。": (
-        "Sorted by estimated 7-day usage frequency. Repeated memories across days are merged with first-added and latest-updated dates."
+    "按近 7 日可追溯使用证据排序；同一条记忆跨天重复出现时，会归并展示首次添加和最近更新。": (
+        "Sorted by traceable 7-day usage evidence. Repeated memories across days are merged with first-added and latest-updated dates."
     ),
     "基于 registry/memory_items.jsonl 的整理日志，按记忆签名归并出的当前记忆视图。": (
         "Current memory view grouped by memory signature from registry/memory_items.jsonl synthesis logs."
@@ -1091,8 +1091,8 @@ PANEL_I18N_EN = {
     "最近更新：最近一次被 nightly 整理再次命中的日期。": (
         "Recently updated: the latest date this memory was hit again by nightly synthesis."
     ),
-    "7日频率：近 7 日窗口中直接来源、文本相关和上下文相关的加权结果。": (
-        "7-day frequency: a weighted result from direct sources, text relevance, and context relevance in the last 7 days of windows."
+    "7日证据：只统计近 7 日直接来源窗口和近期整理日期；不使用文本相似度估算。": (
+        "7-day evidence: only counts recent direct source windows and synthesis dates; text similarity is not used."
     ),
     "如果当前页还能定位到来源窗口，会提供页内跳转；否则回退到原始窗口 JSON 或本地工作区链接。": (
         "If the source window can be located on this page, an in-page jump is shown; otherwise it falls back to the raw window JSON or local workspace link."
@@ -2938,119 +2938,42 @@ def build_memory_group_key(item, bucket=""):
     return overview_memory_registry.build_memory_group_key(item, bucket=bucket)
 
 
-MEMORY_USAGE_STOP_TERMS = ASSET_VALUE_STOP_TERMS | {
-    "current",
-    "dashboard",
-    "default",
-    "openrelix",
-    "overview",
-    "panel",
-    "project",
-    "today",
-    "tomorrow",
-    "window",
-    "windows",
-    "工作台",
-    "当天",
-    "当前",
-    "默认",
-    "今天",
-    "品牌",
-    "展示页",
-    "工作",
-    "项目",
-    "面板",
-    "用户",
-    "需要",
-    "可以",
-    "已经",
-    "应该",
-    "一次",
-}
+def memory_usage_direct_window_ids(memory_item):
+    window_ids = set()
+    for ref in memory_item.get("source_windows", []) or []:
+        if isinstance(ref, dict):
+            window_id = str(ref.get("window_id") or "").strip()
+        else:
+            window_id = str(ref or "").strip()
+        if window_id:
+            window_ids.add(window_id)
+    raw_source_window_ids = memory_item.get("source_window_ids", []) or []
+    if isinstance(raw_source_window_ids, str):
+        raw_source_window_ids = [raw_source_window_ids]
+    for ref in raw_source_window_ids:
+        window_id = str(ref or "").strip()
+        if window_id:
+            window_ids.add(window_id)
+    return window_ids
 
 
-def cjk_usage_ngrams(text, min_size=3, max_size=4, limit=18):
-    terms = []
-    for run in re.findall(r"[\u4e00-\u9fff]{%d,}" % min_size, str(text or "")):
-        max_n = min(max_size, len(run))
-        for size in range(max_n, min_size - 1, -1):
-            for index in range(0, len(run) - size + 1):
-                term = run[index : index + size]
-                if term not in MEMORY_USAGE_STOP_TERMS and term not in terms:
-                    terms.append(term)
-                    if len(terms) >= limit:
-                        return terms
-    return terms
-
-
-def memory_usage_search_terms(item):
-    raw_terms = [
-        item.get("display_title", ""),
-        item.get("title", ""),
-        item.get("title_zh", ""),
-        item.get("title_en", ""),
-        item.get("display_value_note", ""),
-        item.get("value_note", ""),
-        item.get("value_note_zh", ""),
-        item.get("value_note_en", ""),
-    ]
-    raw_terms.extend(item.get("keywords", []) or [])
-
-    terms = []
-    for raw_term in raw_terms:
-        raw_text = str(raw_term or "")
-        for term in cjk_usage_ngrams(raw_text):
-            if term not in terms:
-                terms.append(term)
-        normalized = normalize_value_match_text(raw_text)
-        compact = normalized.replace(" ", "")
-        if 6 <= len(compact) <= 48 and compact not in MEMORY_USAGE_STOP_TERMS:
-            terms.append(compact)
-        for part in normalized.split():
-            if part in MEMORY_USAGE_STOP_TERMS:
-                continue
-            has_cjk = bool(re.search(r"[\u4e00-\u9fff]", part))
-            min_length = 2 if has_cjk else 4
-            if len(part) >= min_length and len(part) <= 48:
-                terms.append(part)
-
-    deduped = []
-    for term in terms:
-        if term and term not in deduped:
-            deduped.append(term)
-    return deduped[:32]
-
-
-def memory_usage_window_text(window):
-    parts = [
-        window.get("project_label", ""),
-        window.get("cwd_display", ""),
-        window.get("cwd", ""),
-        context_window_text(window),
-    ]
-    return " ".join(part for part in parts if part)
-
-
-def memory_context_matches_window(memory_item, window):
-    labels = list(memory_item.get("context_labels", []) or [])
-    if memory_item.get("display_context"):
-        labels.append(memory_item.get("display_context", ""))
-    project_label = normalize_value_match_text(window.get("project_label", ""))
-    cwd_text = normalize_value_match_text(window.get("cwd_display", "") or window.get("cwd", ""))
-    for label in labels:
-        normalized = normalize_value_match_text(label)
-        if normalized and (normalized in project_label or normalized in cwd_text):
-            return True
-    return False
-
-
-def memory_usage_recency_weight(anchor_date, window_date):
+def memory_usage_recent_windows(anchor_date, windows):
     anchor = parse_nightly_summary_date({"date": anchor_date})
-    current = parse_nightly_summary_date({"date": window_date})
-    if anchor is None or current is None:
-        return 1.0
-    age_days = max((anchor - current).days, 0)
-    return max(0.55, 1.0 - min(age_days, MEMORY_USAGE_WINDOW_DAYS - 1) * 0.07)
+    recent = []
+    for window in windows or []:
+        if not isinstance(window, dict):
+            continue
+        window_id = str(window.get("window_id") or "").strip()
+        if not window_id:
+            continue
+        current = parse_nightly_summary_date({"date": window.get("date", "")})
+        if anchor is None or current is None:
+            recent.append(window)
+            continue
+        age_days = (anchor - current).days
+        if 0 <= age_days < MEMORY_USAGE_WINDOW_DAYS:
+            recent.append(window)
+    return recent
 
 
 def filter_memory_usage_occurrence_dates(anchor_date, occurrence_dates):
@@ -3069,79 +2992,24 @@ def filter_memory_usage_occurrence_dates(anchor_date, occurrence_dates):
     return recent_dates
 
 
-def estimate_memory_window_likelihood(memory_item, window, terms, direct_window_ids):
-    window_id = window.get("window_id", "")
-    direct = bool(window_id and window_id in direct_window_ids)
-    compact_text = compact_value_match_text(memory_usage_window_text(window))
-    matched_terms = [term for term in terms if term and term in compact_text]
-    strong_matches = [
-        term
-        for term in matched_terms
-        if len(term) >= 6 or bool(re.search(r"[\u4e00-\u9fff]{3,}", term))
-    ]
-    context_match = memory_context_matches_window(memory_item, window)
-
-    likelihood = 1.0 if direct else 0.0
-    if len(matched_terms) >= 4:
-        likelihood = max(likelihood, 0.85)
-    elif len(matched_terms) >= 3:
-        likelihood = max(likelihood, 0.72)
-    elif len(matched_terms) >= 2:
-        likelihood = max(likelihood, 0.58)
-    elif strong_matches:
-        likelihood = max(likelihood, 0.42)
-
-    if context_match and matched_terms:
-        likelihood = min(1.0, likelihood + 0.1)
-
-    return {
-        "window_id": window_id,
-        "direct": direct,
-        "likelihood": likelihood,
-        "matched_terms": matched_terms[:5],
-        "context_match": context_match,
-    }
-
-
 def build_memory_usage_frequency(memory_item, usage_window_overview, recent_occurrence_dates=None):
     windows = (usage_window_overview or {}).get("windows", [])
     anchor_date = (usage_window_overview or {}).get("date", "") or current_local_datetime().date().isoformat()
-    source_windows = memory_item.get("source_windows", []) or []
-    direct_window_ids = {
-        ref.get("window_id", "")
-        for ref in source_windows
-        if ref.get("window_id", "")
-    }
-    terms = memory_usage_search_terms(memory_item)
-
-    score = 0.0
-    direct_matches = 0
-    estimated_matches = 0
-    context_hints = 0
-    matched_window_ids = []
-
-    for window in windows:
-        result = estimate_memory_window_likelihood(memory_item, window, terms, direct_window_ids)
-        likelihood = result["likelihood"]
-        if likelihood <= 0:
-            continue
-        weighted = likelihood * memory_usage_recency_weight(anchor_date, window.get("date", ""))
-        score += weighted
-        if result["direct"]:
-            direct_matches += 1
-        elif likelihood >= 0.42:
-            estimated_matches += 1
-        else:
-            context_hints += 1
-        if result["window_id"]:
-            matched_window_ids.append(result["window_id"])
+    direct_window_ids = memory_usage_direct_window_ids(memory_item)
+    recent_windows = memory_usage_recent_windows(anchor_date, windows)
+    matched_window_ids = [
+        window.get("window_id", "")
+        for window in recent_windows
+        if window.get("window_id", "") in direct_window_ids
+    ]
+    direct_matches = len(set(matched_window_ids))
 
     recent_occurrence_dates = filter_memory_usage_occurrence_dates(
         anchor_date,
         recent_occurrence_dates or [],
     )
-    occurrence_floor = len(set(recent_occurrence_dates)) * 0.45
-    score = max(score, occurrence_floor)
+    recent_occurrence_count = len(set(recent_occurrence_dates))
+    score = direct_matches + recent_occurrence_count * 0.45
     score = round(score, 2)
 
     if score >= 10:
@@ -3156,10 +3024,12 @@ def build_memory_usage_frequency(memory_item, usage_window_overview, recent_occu
         "usage_frequency_display": display_score,
         "usage_frequency_window_days": MEMORY_USAGE_WINDOW_DAYS,
         "usage_frequency_direct_window_count": direct_matches,
-        "usage_frequency_estimated_window_count": estimated_matches,
-        "usage_frequency_context_hint_count": context_hints,
+        "usage_frequency_estimated_window_count": 0,
+        "usage_frequency_context_hint_count": 0,
         "usage_frequency_matched_window_count": len(set(matched_window_ids)),
-        "usage_frequency_terms": terms[:12],
+        "usage_frequency_recent_occurrence_count": recent_occurrence_count,
+        "usage_frequency_terms": [],
+        "usage_frequency_score_kind": "traceable_evidence",
         "usage_frequency_sort_key": score,
     }
 
@@ -6593,7 +6463,9 @@ def enrich_nightly_memory_items(
                 "usage_frequency_estimated_window_count",
                 "usage_frequency_context_hint_count",
                 "usage_frequency_matched_window_count",
+                "usage_frequency_recent_occurrence_count",
                 "usage_frequency_terms",
+                "usage_frequency_score_kind",
                 "usage_frequency_sort_key",
             ):
                 current[key] = registry_row.get(key, 0 if key.endswith("_count") else registry_row.get(key, ""))
@@ -11511,8 +11383,8 @@ def make_memory_cards(items, include_bucket_meta=True, visible_count=4, meta_ren
         if item.get("usage_frequency_display"):
             window_days = item.get("usage_frequency_window_days", MEMORY_USAGE_WINDOW_DAYS)
             frequency_value = item.get("usage_frequency_display", "0")
-            submeta_parts_zh.append("{}日频率 {}".format(window_days, frequency_value))
-            submeta_parts_en.append("{}-day frequency {}".format(window_days, frequency_value))
+            submeta_parts_zh.append("{}日证据 {}".format(window_days, frequency_value))
+            submeta_parts_en.append("{}-day evidence {}".format(window_days, frequency_value))
         if item.get("occurrence_count", 0) > 1:
             occurrence_label = ui_text(item.get("occurrence_label", "整理命中"))
             occurrence_label_en = english_for_ui_text(occurrence_label)
@@ -11657,17 +11529,13 @@ def context_memory_frequency_label(item, language=None):
     usage_score = safe_float(item.get("usage_frequency_sort_key", item.get("usage_frequency", 0)))
     matched_windows = safe_int(item.get("usage_frequency_matched_window_count", 0))
     direct_windows = safe_int(item.get("usage_frequency_direct_window_count", 0))
-    estimated_windows = safe_int(item.get("usage_frequency_estimated_window_count", 0))
+    recent_occurrences = safe_int(item.get("usage_frequency_recent_occurrence_count", 0))
     occurrence_count = safe_int(item.get("occurrence_count", 0))
-    is_high_frequency = (
-        usage_score >= 1
-        or matched_windows >= 2
-        or direct_windows + estimated_windows >= 2
-        or occurrence_count >= 3
-    )
-    if is_high_frequency:
-        return localized("高频率", "High Frequency", language)
-    return localized("中频率", "Medium Frequency", language)
+    if direct_windows or matched_windows:
+        return localized("直接证据", "Direct Evidence", language)
+    if usage_score > 0 or recent_occurrences or occurrence_count >= 3:
+        return localized("近期证据", "Recent Evidence", language)
+    return localized("待验证", "Needs Evidence", language)
 
 
 def context_memory_priority_label(item, language=None):

@@ -3607,7 +3607,8 @@ Keep my own note.
         )
         self.assertGreater(durable_rows[0]["usage_frequency"], durable_rows[1]["usage_frequency"])
         self.assertGreaterEqual(durable_rows[0]["usage_frequency_direct_window_count"], 1)
-        self.assertGreaterEqual(durable_rows[0]["usage_frequency_estimated_window_count"], 1)
+        self.assertEqual(durable_rows[0]["usage_frequency_estimated_window_count"], 0)
+        self.assertEqual(durable_rows[0]["usage_frequency_score_kind"], "traceable_evidence")
         self.assertEqual(durable_rows[0]["usage_frequency_window_days"], 7)
 
     def test_memory_registry_infers_project_scope_for_legacy_source_windows(self):
@@ -4261,10 +4262,10 @@ Keep my own note.
 
         self.assertIn('class="memory-type-group"', cards_html)
         self.assertLess(cards_html.index(">流程<"), cards_html.index(">语义<"))
-        self.assertIn("长期记忆 · 高优先 · 高频率", cards_html)
-        self.assertIn("Long-term Memory · High Priority · High Frequency", cards_html)
-        self.assertIn("短期记忆 · 中优先 · 中频率", cards_html)
-        self.assertIn("低优先级记忆 · 中优先 · 中频率", cards_html)
+        self.assertIn("长期记忆 · 高优先 · 直接证据", cards_html)
+        self.assertIn("Long-term Memory · High Priority · Direct Evidence", cards_html)
+        self.assertIn("短期记忆 · 中优先 · 待验证", cards_html)
+        self.assertIn("低优先级记忆 · 中优先 · 待验证", cards_html)
         self.assertNotIn(" · 低优先 · ", cards_html)
         self.assertIn("查看来源与上下文", cards_html)
         self.assertIn("查看更多 1 条", cards_html)

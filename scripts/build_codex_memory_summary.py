@@ -48,6 +48,44 @@ DEFAULT_MAX_ROUTE_KEYWORDS = 4
 DEFAULT_MAX_PERSONAL_MEMORY_ITEMS = 0
 PERSONAL_MEMORY_TITLE_LIMIT = 72
 PERSONAL_MEMORY_NOTE_LIMIT = 96
+PERSONAL_MEMORY_CLI_DUPLICATE_THRESHOLD = 0.72
+PERSONAL_MEMORY_INTERNAL_DUPLICATE_THRESHOLD = 0.82
+
+SUMMARY_DEDUPE_STOPWORDS = {
+    "about",
+    "after",
+    "again",
+    "also",
+    "and",
+    "because",
+    "before",
+    "current",
+    "default",
+    "from",
+    "into",
+    "local",
+    "memory",
+    "must",
+    "only",
+    "should",
+    "that",
+    "the",
+    "this",
+    "use",
+    "user",
+    "when",
+    "with",
+    "上下文",
+    "个人",
+    "优先",
+    "使用",
+    "当前",
+    "默认",
+    "用户",
+    "记忆",
+    "需要",
+    "可以",
+}
 
 SECTION_PREFERENCE = "User preferences"
 SECTION_TIPS = "General Tips"
@@ -186,6 +224,53 @@ def normalize_summary_key(text):
     compact = re.sub(r"`+", "", compact)
     compact = re.sub(r"[^a-z0-9\u4e00-\u9fff]+", " ", compact)
     return compact.strip()
+
+
+def summary_match_tokens(text):
+    normalized = normalize_summary_key(text)
+    tokens = set()
+    for token in normalized.split():
+        if token in SUMMARY_DEDUPE_STOPWORDS:
+            continue
+        if re.search(r"[\u4e00-\u9fff]", token):
+            compact = re.sub(r"\s+", "", token)
+            if len(compact) >= 2 and compact not in SUMMARY_DEDUPE_STOPWORDS:
+                tokens.add(compact[:24])
+            for size in (4, 3, 2):
+                if len(compact) < size:
+                    continue
+                for index in range(0, len(compact) - size + 1):
+                    part = compact[index : index + size]
+                    if part not in SUMMARY_DEDUPE_STOPWORDS:
+                        tokens.add(part)
+                    if len(tokens) >= 48:
+                        return tokens
+            continue
+        if len(token) >= 4:
+            tokens.add(token[:32])
+    return tokens
+
+
+def summary_text_similarity(left, right):
+    left_key = normalize_summary_key(left)
+    right_key = normalize_summary_key(right)
+    if not left_key or not right_key:
+        return 0.0
+    if left_key == right_key:
+        return 1.0
+    shorter, longer = sorted((left_key, right_key), key=len)
+    if len(shorter) >= 12 and shorter in longer:
+        return 0.92
+    left_tokens = summary_match_tokens(left_key)
+    right_tokens = summary_match_tokens(right_key)
+    if not left_tokens or not right_tokens:
+        return 0.0
+    overlap = len(left_tokens & right_tokens)
+    if overlap == 0:
+        return 0.0
+    jaccard = overlap / len(left_tokens | right_tokens)
+    containment = overlap / min(len(left_tokens), len(right_tokens))
+    return max(jaccard, containment * 0.85)
 
 
 def capitalize_rule(text):
@@ -802,11 +887,38 @@ def existing_summary_match_keys(existing_sections):
     return keys
 
 
-def build_personal_memory_lines(items, token_budget, max_items, blocked_match_keys=None):
+def existing_summary_match_texts(existing_sections):
+    texts = []
+    for section_text in existing_sections.values():
+        for bullet in parse_bullets(section_text):
+            cleaned = strip_task_refs(bullet)
+            if cleaned and cleaned not in texts:
+                texts.append(cleaned)
+    return texts
+
+
+def personal_memory_item_match_text(item):
+    return collapse_whitespace("{} {}".format(item.title, item.value_note))
+
+
+def personal_memory_item_is_similar_to_texts(item, texts, threshold):
+    item_text = personal_memory_item_match_text(item)
+    return any(summary_text_similarity(item_text, text) >= threshold for text in texts or [])
+
+
+def build_personal_memory_lines(
+    items,
+    token_budget,
+    max_items,
+    blocked_match_keys=None,
+    blocked_match_texts=None,
+):
     if not items or token_budget <= 0:
         return [], 0, "heuristic"
 
     blocked_match_keys = blocked_match_keys or set()
+    blocked_match_texts = blocked_match_texts or []
+    selected_match_texts = []
     rendered = ["### Local personal memory registry", ""]
     heading_tokens, estimator = estimate_tokens("\n".join(rendered))
     used_tokens = heading_tokens
@@ -818,6 +930,18 @@ def build_personal_memory_lines(items, token_budget, max_items, blocked_match_ke
             break
 
         if personal_memory_item_match_keys(item) & blocked_match_keys:
+            continue
+        if personal_memory_item_is_similar_to_texts(
+            item,
+            blocked_match_texts,
+            PERSONAL_MEMORY_CLI_DUPLICATE_THRESHOLD,
+        ):
+            continue
+        if personal_memory_item_is_similar_to_texts(
+            item,
+            selected_match_texts,
+            PERSONAL_MEMORY_INTERNAL_DUPLICATE_THRESHOLD,
+        ):
             continue
 
         title = clip_text(item.title, PERSONAL_MEMORY_TITLE_LIMIT)
@@ -866,6 +990,7 @@ def build_personal_memory_lines(items, token_budget, max_items, blocked_match_ke
             continue
 
         rendered.extend(chosen_lines)
+        selected_match_texts.append(personal_memory_item_match_text(item))
         item_count += 1
 
     if item_count == 0:
@@ -967,6 +1092,7 @@ def render_summary(profile_lines, preference_lines, tip_lines, personal_memory_l
 
 def render_with_budgets(groups, existing_sections, personal_memory_items, budget):
     blocked_memory_keys = existing_summary_match_keys(existing_sections)
+    blocked_memory_texts = existing_summary_match_texts(existing_sections)
     profile_lines, _, _ = build_profile_lines(existing_sections, groups, budget.profile_tokens)
     preference_lines, _, _ = build_preference_lines(
         existing_sections,
@@ -991,6 +1117,7 @@ def render_with_budgets(groups, existing_sections, personal_memory_items, budget
         budget.personal_memory_tokens,
         budget.max_personal_memory_items,
         blocked_match_keys=blocked_memory_keys,
+        blocked_match_texts=blocked_memory_texts,
     )
     return render_summary(
         profile_lines,

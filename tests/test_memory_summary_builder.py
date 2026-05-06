@@ -80,8 +80,8 @@ They prefer direct edits when the target state is clear.
 
 
 SAMPLE_PERSONAL_MEMORY_REGISTRY = """
-{"date":"2026-04-26","source":"nightly_codex","bucket":"durable","title":"Default integrated memory mode","memory_type":"procedural","priority":"high","value_note":"Local memory stays in the state root, while a compressed bounded summary is synced into host context by default.","keywords":["memory","integrated","state root"]}
-{"date":"2026-04-25","source":"nightly_codex","bucket":"session","title":"Backfill command rollout","memory_type":"task","priority":"medium","value_note":"Users can copy a multi-day openrelix backfill command from the panel instead of executing shell from the browser.","keywords":["backfill","panel"]}
+{"date":"2026-04-26","source":"canonical","bucket":"durable","title":"Default integrated memory mode","memory_type":"procedural","priority":"high","scope":"global","injection_policy":"global_context","value_note":"Local memory stays in the state root, while a compressed bounded summary is synced into host context by default.","keywords":["memory","integrated","state root"]}
+{"date":"2026-04-25","source":"canonical","bucket":"session","title":"Backfill command rollout","memory_type":"task","priority":"medium","scope":"global","injection_policy":"global_context","value_note":"Users can copy a multi-day openrelix backfill command from the panel instead of executing shell from the browser.","keywords":["backfill","panel"]}
 {"date":"2026-04-24","source":"nightly_codex","bucket":"low_priority","title":"Do not inject this","memory_type":"semantic","priority":"low","value_note":"Low priority items stay out of the bounded context summary.","keywords":["skip"]}
 """
 
@@ -195,8 +195,9 @@ class MemorySummaryBuilderTests(unittest.TestCase):
 
     def test_personal_memory_registry_uses_runtime_language_fields(self):
         registry = (
-            '{"date":"2026-04-27","source":"nightly_codex","bucket":"durable",'
+            '{"date":"2026-04-27","source":"canonical","bucket":"durable",'
             '"title":"默认中文标题","title_en":"English runtime title",'
+            '"scope":"global","injection_policy":"global_context",'
             '"memory_type":"semantic","priority":"high","value_note":"默认中文说明",'
             '"value_note_en":"English runtime note","keywords":["language"]}\n'
         )
@@ -245,10 +246,44 @@ class MemorySummaryBuilderTests(unittest.TestCase):
             host_context_only=False,
         )
 
-        self.assertEqual([item.title for item in host_context_items], ["Global legacy item"])
+        self.assertEqual([item.title for item in host_context_items], [])
         policies = {item.title: item.injection_policy for item in all_items}
         self.assertEqual(policies["Project-only legacy item"], "project_context")
-        self.assertEqual(policies["Global legacy item"], "global_context")
+        self.assertEqual(policies["Global legacy item"], "on_demand")
+
+    def test_memory_summary_prefers_cli_native_memory_over_similar_openrelix_memory(self):
+        budget = build_codex_memory_summary.SummaryBudget(
+            target_tokens=620,
+            warn_tokens=680,
+            max_tokens=760,
+            profile_tokens=90,
+            preferences_tokens=100,
+            tips_tokens=100,
+            routes_tokens=120,
+            personal_memory_tokens=220,
+            max_preferences=2,
+            max_tips=2,
+            max_route_items=2,
+            max_route_keywords=2,
+            max_personal_memory_items=0,
+        )
+        existing_summary = SAMPLE_EXISTING_SUMMARY + "\n## General Tips\n\n- Use apply_patch first for file edits.\n"
+        personal_items = build_codex_memory_summary.parse_personal_memory_registry(
+            """
+{"date":"2026-05-06","source":"canonical","bucket":"durable","title":"Apply patch first","memory_type":"procedural","priority":"high","scope":"global","injection_policy":"global_context","value_note":"Use apply_patch first for file edits.","keywords":["patch"]}
+{"date":"2026-05-06","source":"canonical","bucket":"durable","title":"Keep runtime state outside repos","memory_type":"procedural","priority":"high","scope":"global","injection_policy":"global_context","value_note":"Runtime state should stay outside working repositories.","keywords":["state"]}
+"""
+        )
+
+        result = build_codex_memory_summary.build_memory_summary(
+            SAMPLE_MEMORY_INDEX,
+            existing_summary,
+            budget,
+            personal_memory_items=personal_items,
+        )
+
+        self.assertNotIn("Apply patch first", result.text)
+        self.assertIn("Keep runtime state outside repos", result.text)
 
     def test_memory_summary_dedupes_personal_memory_already_in_host_summary(self):
         budget = build_codex_memory_summary.SummaryBudget(

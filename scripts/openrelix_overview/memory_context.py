@@ -106,6 +106,35 @@ INJECTION_POLICY_KEYS = (
     "injection_scope",
 )
 
+LEGACY_SYNTHESIS_SOURCES = {
+    "legacy",
+    "nightly_claude",
+    "nightly_codex",
+    "openrelix_nightly",
+}
+
+APPROVED_GLOBAL_CONTEXT_SOURCES = {
+    "canonical",
+    "manual",
+    "openrelix",
+    "user_preference",
+}
+
+GLOBAL_CONTEXT_APPROVAL_KEYS = (
+    "global_context_approved",
+    "host_context_approved",
+    "injection_approved",
+)
+
+GLOBAL_CONTEXT_CONFIDENCE_KEYS = (
+    "global_context_confidence",
+    "host_context_confidence",
+    "injection_confidence",
+)
+
+TRUTHY_VALUES = {"1", "true", "yes", "y", "on", "approved"}
+APPROVED_CONFIDENCE_VALUES = {"approved", "canonical", "high", "manual", "trusted"}
+
 
 def collapse_whitespace(text):
     return " ".join(str(text or "").split()).strip()
@@ -136,6 +165,78 @@ def has_source_window_refs(item):
     if isinstance(value, (list, tuple)):
         return any(collapse_whitespace(part) for part in value)
     return bool(collapse_whitespace(value))
+
+
+def normalize_source_name(value):
+    return str(value or "").strip().lower().replace("-", "_")
+
+
+def memory_source_names_from_record(item):
+    if not isinstance(item, dict):
+        return set()
+    values = []
+    for key in ("source", "source_system", "host_source"):
+        value = collapse_whitespace(item.get(key, ""))
+        if value:
+            values.append(value)
+    for key in ("source_systems", "host_sources", "source_hosts"):
+        value = item.get(key)
+        if isinstance(value, (list, tuple, set)):
+            values.extend(part for part in value if collapse_whitespace(part))
+        elif collapse_whitespace(value):
+            values.append(value)
+    return {normalize_source_name(value) for value in values if normalize_source_name(value)}
+
+
+def record_truthy(item, keys):
+    if not isinstance(item, dict):
+        return False
+    return any(str(item.get(key, "")).strip().lower() in TRUTHY_VALUES for key in keys)
+
+
+def memory_record_has_global_context_approval(item):
+    if not isinstance(item, dict):
+        return False
+    if record_truthy(item, GLOBAL_CONTEXT_APPROVAL_KEYS):
+        return True
+    for key in GLOBAL_CONTEXT_CONFIDENCE_KEYS:
+        value = str(item.get(key, "")).strip().lower().replace("-", "_")
+        if value in APPROVED_CONFIDENCE_VALUES:
+            return True
+    sources = memory_source_names_from_record(item)
+    if sources & APPROVED_GLOBAL_CONTEXT_SOURCES:
+        return True
+    return bool(
+        first_record_value(
+            item,
+            (
+                "canonical_memory_id",
+                "canonical_id",
+            ),
+        )
+    )
+
+
+def memory_record_needs_global_context_approval(item):
+    return bool(memory_source_names_from_record(item) & LEGACY_SYNTHESIS_SOURCES)
+
+
+def memory_record_is_low_priority(item):
+    if not isinstance(item, dict):
+        return False
+    return str(item.get("bucket") or "").strip() == "low_priority" or str(
+        item.get("priority") or ""
+    ).strip().lower() == "low"
+
+
+def effective_host_context_policy(item, policy):
+    if policy != INJECTION_NEVER and memory_record_is_low_priority(item):
+        return INJECTION_LOCAL_ONLY
+    if policy != INJECTION_GLOBAL_CONTEXT:
+        return policy
+    if memory_record_needs_global_context_approval(item) and not memory_record_has_global_context_approval(item):
+        return INJECTION_ON_DEMAND
+    return policy
 
 
 def normalize_memory_scope(value):
@@ -188,11 +289,14 @@ def host_context_injection_policy_from_record(item):
     explicit_policy = first_record_value(item, INJECTION_POLICY_KEYS)
     policy = normalize_injection_policy(explicit_policy)
     if policy:
-        return policy
-    return default_injection_policy_for_scope(
-        memory_scope_from_record(item),
-        bucket=item.get("bucket", "") if isinstance(item, dict) else "",
-        priority=item.get("priority", "") if isinstance(item, dict) else "",
+        return effective_host_context_policy(item, policy)
+    return effective_host_context_policy(
+        item,
+        default_injection_policy_for_scope(
+            memory_scope_from_record(item),
+            bucket=item.get("bucket", "") if isinstance(item, dict) else "",
+            priority=item.get("priority", "") if isinstance(item, dict) else "",
+        ),
     )
 
 

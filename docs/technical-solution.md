@@ -95,9 +95,9 @@ AI host 自己的用户级目录、history、session 和 native memory 由各 ho
 
 默认安装开启本地个人记忆，并把同一份压缩后的 bounded summary 写入启用的 host context：Codex `memory_summary.md` 和 Claude Code `CLAUDE.md` 中的 OpenRelix 受控块。完整结构化记录仍保留在 state root；面板展示 host 原生记忆时会过滤 OpenRelix 注入块，避免把个人记忆登记册误标成 Codex/Claude 原生内容。需要严格隔离时使用 `--record-memory-only` 或 `--no-memory-summary`。
 
-Memory System v2 把 OpenRelix state root 作为权威存储，host native memory 只是可选消费端和外部信号源。上下文编译只允许有效 `injection_policy=global_context` 的记忆进入全局 host summary；`project_context`、`on_demand`、`local_only`、`never` 和低优先级记忆保留在本地 registry / index，不默认污染其他项目。Codex 侧如果用户关闭 `[features].memories`，同步命令会报告 `disabled`，不再把写入 `memory_summary.md` 视为有效注入。
+Memory System v2 把 OpenRelix state root 作为权威存储，host native memory 只是可选消费端和外部信号源。上下文编译只允许有效 `injection_policy=global_context` 且通过全局候选门禁的记忆进入 host summary；legacy/nightly 合成项即使带了旧的 global 标记，也会先降到 `on_demand`，除非有 canonical / manual / approved 标记。`project_context`、`on_demand`、`local_only`、`never` 和低优先级记忆保留在本地 registry / index，不默认污染其他项目。Codex 侧如果用户关闭 `[features].memories`，同步命令会报告 `disabled`，不再把写入 `memory_summary.md` 视为有效注入。
 
-压缩策略保持轻量：同签名记忆跨天归并，默认优先 eligible durable / session，low-priority 与非全局 scope 默认只留本地；默认 token budget 是 target 6.7K、warn 7.4K、max 8K，不把原始窗口明细塞进 host context。
+压缩策略保持轻量：同签名记忆跨天归并，默认优先 eligible durable / session，low-priority 与非全局 scope 默认只留本地；注入前会和 host 原生 memory 做近似去重，语义相近时优先保留 CLI 原生 memory。默认 token budget 是 target 6.7K、warn 7.4K、max 8K，不把原始窗口明细塞进 host context。
 
 ### 2. Repo 源码层
 
@@ -370,7 +370,7 @@ macOS 后台自动化模板。
 
 ### Nightly Memory Item
 
-夜间整理记忆兼容落在 `registry/memory_items.jsonl`。Memory System v2 的 canonical 记忆可以落在 `registry/memory_entries.jsonl`，上下文编译会优先读取 canonical registry，再兼容 legacy registry。新写入的 nightly 记忆会根据来源窗口补 `scope` 和 `injection_policy`：带 cwd / 项目来源的记忆默认是 `project_context`，无项目来源的通用记忆才默认 `global_context`。
+夜间整理记忆兼容落在 `registry/memory_items.jsonl`。Memory System v2 的 canonical 记忆可以落在 `registry/memory_entries.jsonl`，上下文编译会优先读取 canonical registry，再兼容 legacy registry。新写入的 nightly 记忆会根据来源窗口补 `scope` 和 `injection_policy`：带 cwd / 项目来源的记忆默认是 `project_context`；无项目来源的 legacy 通用记忆只作为 `global_context` 原始意图保存，注入时仍需 canonical / manual / approved 门禁，否则按 `on_demand` 处理。
 
 核心字段：
 

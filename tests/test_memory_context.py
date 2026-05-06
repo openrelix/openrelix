@@ -53,9 +53,24 @@ class MemoryContextPolicyTests(unittest.TestCase):
             "local_only",
         )
 
+    def test_low_priority_explicit_global_rows_stay_local(self):
+        row = {
+            "source": "canonical",
+            "bucket": "durable",
+            "priority": "low",
+            "scope": "global",
+            "injection_policy": "global_context",
+        }
+
+        self.assertEqual(
+            memory_context.host_context_injection_policy_from_record(row),
+            "local_only",
+        )
+        self.assertFalse(memory_context.memory_record_is_global_context(row))
+
     def test_policy_views_split_global_project_on_demand_and_local(self):
         rows = [
-            {"bucket": "durable", "title": "Global", "scope": "global"},
+            {"bucket": "durable", "title": "Global", "source": "canonical", "scope": "global"},
             {"bucket": "session", "title": "Project", "project_key": "openrelix"},
             {"bucket": "durable", "title": "Domain", "scope": "domain"},
             {"bucket": "low_priority", "title": "Local", "scope": "global"},
@@ -78,6 +93,38 @@ class MemoryContextPolicyTests(unittest.TestCase):
         self.assertEqual([row["title"] for row in views["project_context"]["rows"]], ["Project"])
         self.assertEqual([row["title"] for row in views["on_demand"]["rows"]], ["Domain"])
         self.assertEqual([row["title"] for row in views["local_only"]["rows"]], ["Local", "Never"])
+
+    def test_legacy_global_rows_require_explicit_approval(self):
+        row = {
+            "source": "nightly_codex",
+            "bucket": "durable",
+            "priority": "high",
+            "title": "Legacy global",
+            "scope": "global",
+            "injection_policy": "global_context",
+        }
+
+        self.assertEqual(
+            memory_context.host_context_injection_policy_from_record(row),
+            "on_demand",
+        )
+        self.assertFalse(memory_context.memory_record_is_global_context(row))
+
+    def test_approved_canonical_global_rows_can_enter_host_context(self):
+        row = {
+            "source": "canonical",
+            "bucket": "durable",
+            "priority": "high",
+            "title": "Global preference",
+            "scope": "global",
+            "injection_policy": "global_context",
+        }
+
+        self.assertEqual(
+            memory_context.host_context_injection_policy_from_record(row),
+            "global_context",
+        )
+        self.assertTrue(memory_context.memory_record_is_global_context(row))
 
     def test_policy_views_caps_selected_count_to_current_global_candidates(self):
         rows = [
