@@ -1827,7 +1827,7 @@ def sort_memory_summary_context_rows(context_rows):
 
 
 def select_memory_summary_context_rows(context_rows, max_items, token_budget):
-    if token_budget <= 0:
+    if not context_rows or token_budget <= 0:
         return [], 0
     heading_tokens, _ = estimate_summary_tokens("### Local personal memory registry\n")
     used_tokens = heading_tokens
@@ -1843,6 +1843,8 @@ def select_memory_summary_context_rows(context_rows, max_items, token_budget):
             continue
         used_tokens += row_tokens
         selected_rows.append(row)
+    if not selected_rows:
+        return [], 0
     return selected_rows, min(used_tokens, token_budget)
 
 
@@ -1934,21 +1936,8 @@ def build_personal_memory_token_usage(
         context_item_limit,
         personal_memory_budget_tokens,
     )
-    actual_summary_usage = (
-        read_personal_memory_summary_usage(memory_summary_path)
-        if memory_mode == "integrated"
-        else None
-    )
     count_label_zh = "约"
     count_label_en = "about"
-    if actual_summary_usage is not None and actual_summary_usage["count"] <= context_item_limit:
-        count_label_zh = "实际"
-        count_label_en = "actual"
-        estimated_context_item_count = actual_summary_usage["count"]
-        estimated_personal_memory_tokens = min(
-            actual_summary_usage["tokens"],
-            personal_memory_budget_tokens,
-        )
     estimated_tokens = estimated_personal_memory_tokens if memory_mode == "integrated" else 0
     max_tokens_display = compact_token_k(summary_max_tokens)
     target_tokens_display = compact_token_k(summary_target_tokens)
@@ -1959,16 +1948,15 @@ def build_personal_memory_token_usage(
     if memory_mode == "integrated":
         mode_label_zh = "Integrated"
         mode_label_en = "Integrated"
-        candidate_policy_zh = (
-            "候选上限 {} 条".format(context_item_limit)
-            if has_candidate_cap
-            else "候选不设条数上限"
-        )
-        candidate_policy_en = (
-            "candidate cap {}".format(context_item_limit)
-            if has_candidate_cap
-            else "no item cap"
-        )
+        if not context_rows:
+            candidate_policy_zh = "当前无全局候选"
+            candidate_policy_en = "no global candidates"
+        elif has_candidate_cap:
+            candidate_policy_zh = "候选上限 {} 条".format(context_item_limit)
+            candidate_policy_en = "candidate cap {}".format(context_item_limit)
+        else:
+            candidate_policy_zh = "候选不设条数上限"
+            candidate_policy_en = "no item cap"
         mode_note_zh = "{} 条留本地，{} {} 条进摘要（{}）".format(
             row_count,
             count_label_zh,

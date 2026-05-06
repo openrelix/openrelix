@@ -4054,8 +4054,8 @@ Keep my own note.
                 memory_summary_budget=test_summary_budget,
             )
         self.assertEqual(len(many_usage_rows), 8)
-        self.assertEqual(actual_usage["estimated_context_item_count"], 2)
-        self.assertIn("8 条留本地，实际 2 条进摘要", actual_usage["mode_note_zh"])
+        self.assertEqual(actual_usage["estimated_context_item_count"], 8)
+        self.assertIn("8 条留本地，约 8 条进摘要", actual_usage["mode_note_zh"])
 
         with TemporaryDirectory() as tmpdir:
             summary_path = Path(tmpdir) / "memory_summary.md"
@@ -4083,7 +4083,9 @@ Keep my own note.
             )
         self.assertEqual(stale_actual_usage["context_candidate_count"], 0)
         self.assertEqual(stale_actual_usage["estimated_context_item_count"], 0)
-        self.assertIn("1 条留本地，约 0 条进摘要", stale_actual_usage["mode_note_zh"])
+        self.assertEqual(stale_actual_usage["estimated_tokens"], 0)
+        self.assertEqual(stale_actual_usage["estimated_personal_memory_tokens"], 0)
+        self.assertIn("1 条留本地，约 0 条进摘要（当前无全局候选）", stale_actual_usage["mode_note_zh"])
 
         disabled = build_overview.build_personal_memory_token_usage([], "off")
         self.assertFalse(disabled["enabled"])
