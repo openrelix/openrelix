@@ -126,6 +126,48 @@ class MemoryContextPolicyTests(unittest.TestCase):
         )
         self.assertTrue(memory_context.memory_record_is_global_context(row))
 
+    def test_memory_storage_quality_drops_obvious_noise(self):
+        quality = memory_context.memory_storage_quality(
+            {
+                "bucket": "low_priority",
+                "priority": "low",
+                "title": "多个 Claude Code 窗口只是未登录、问候或退出",
+                "value_note": "这些窗口没有可复用结论。",
+            }
+        )
+
+        self.assertEqual(quality["disposition"], "drop")
+        self.assertEqual(quality["reason"], "hard_noise")
+
+    def test_memory_storage_quality_demotes_low_signal_primary_memory(self):
+        quality = memory_context.memory_storage_quality(
+            {
+                "bucket": "durable",
+                "priority": "medium",
+                "memory_type": "task",
+                "title": "看了面板",
+                "value_note": "当天看了面板。",
+                "source_window_ids": ["w1"],
+            }
+        )
+
+        self.assertIn(quality["disposition"], {"demote", "drop"})
+
+    def test_memory_storage_quality_keeps_reusable_rules(self):
+        quality = memory_context.memory_storage_quality(
+            {
+                "bucket": "durable",
+                "priority": "high",
+                "memory_type": "procedural",
+                "title": "OpenRelix bugfix 默认独立 worktree",
+                "value_note": "处理 OpenRelix bugfix 时，必须先切独立 worktree 并跑校验。",
+                "source_window_ids": ["w1"],
+            }
+        )
+
+        self.assertEqual(quality["disposition"], "keep")
+        self.assertGreaterEqual(quality["score"], 4)
+
     def test_policy_views_caps_selected_count_to_current_global_candidates(self):
         rows = [
             {"bucket": "session", "title": "Project", "project_key": "openrelix"},

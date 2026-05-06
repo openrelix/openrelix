@@ -1031,8 +1031,8 @@ PANEL_I18N_EN = {
     "这些数字来自当前整理结果，用来快速判断今天沉淀了多少内容。": (
         "These numbers come from the selected synthesis and help estimate how much was captured that day."
     ),
-    "当前登记册中 bucket = durable 的长期记忆，按近 7 日可追溯使用证据排序。": (
-        "Long-term memories where bucket = durable in the current registry, sorted by traceable 7-day usage evidence."
+    "当前登记册中 bucket = durable 的长期记忆，按近 7 日热度排序。": (
+        "Long-term memories where bucket = durable in the current registry, sorted by 7-day heat."
     ),
     "state root 下的 registry/memory_items.jsonl；同一条记忆跨天重复出现时会合并计算。": (
         "registry/memory_items.jsonl under the state root; repeated memories across days are merged."
@@ -1040,11 +1040,11 @@ PANEL_I18N_EN = {
     "这里展示的是当前主视图对应的整理结果；顶部指标卡统计的是 registry/memory_items.jsonl 的当前数量。": (
         "This shows the synthesis behind the current main view; top metric cards count the current registry/memory_items.jsonl state."
     ),
-    "7 日证据只来自可追溯信号：近 7 日直接来源窗口和同一记忆的近期整理日期；不会再用标题、关键词或说明去模糊匹配历史窗口。": (
-        "7-day evidence only uses traceable signals: direct source windows in the last 7 days and recent synthesis dates for the same memory. Titles, keywords, and notes no longer fuzzy-match historical windows."
+    "7 日热度来自可追溯信号：近 7 日直接来源窗口和同一记忆的近期整理日期；不会再用标题、关键词或说明去模糊匹配历史窗口。": (
+        "7-day heat uses traceable signals: direct source windows in the last 7 days and recent synthesis dates for the same memory. Titles, keywords, and notes no longer fuzzy-match historical windows."
     ),
-    "当前登记册中 bucket = session 的短期工作记忆，按近 7 日可追溯使用证据排序。": (
-        "Short-term work memories where bucket = session in the current registry, sorted by traceable 7-day usage evidence."
+    "当前登记册中 bucket = session 的短期工作记忆，按近 7 日热度排序。": (
+        "Short-term work memories where bucket = session in the current registry, sorted by 7-day heat."
     ),
     "更偏当前需求推进，未必适合长期沉淀。": (
         "More relevant to the current task and not always worth long-term capture."
@@ -1061,8 +1061,8 @@ PANEL_I18N_EN = {
     "保留但优先级较低，通常不作为主路径提示。": (
         "Retained with lower priority and usually not the primary path."
     ),
-    "按近 7 日可追溯使用证据排序；同一条记忆跨天重复出现时，会归并展示首次添加和最近更新。": (
-        "Sorted by traceable 7-day usage evidence. Repeated memories across days are merged with first-added and latest-updated dates."
+    "按近 7 日热度排序；同一条记忆跨天重复出现时，会归并展示首次添加和最近更新。": (
+        "Sorted by 7-day heat. Repeated memories across days are merged with first-added and latest-updated dates."
     ),
     "基于 registry/memory_items.jsonl 的整理日志，按记忆签名归并出的当前记忆视图。": (
         "Current memory view grouped by memory signature from registry/memory_items.jsonl synthesis logs."
@@ -1091,8 +1091,8 @@ PANEL_I18N_EN = {
     "最近更新：最近一次被 nightly 整理再次命中的日期。": (
         "Recently updated: the latest date this memory was hit again by nightly synthesis."
     ),
-    "7日证据：只统计近 7 日直接来源窗口和近期整理日期；不使用文本相似度估算。": (
-        "7-day evidence: only counts recent direct source windows and synthesis dates; text similarity is not used."
+    "7日热度：只统计近 7 日直接来源窗口和近期整理日期；不使用文本相似度估算。": (
+        "7-day heat: only counts recent direct source windows and synthesis dates; text similarity is not used."
     ),
     "如果当前页还能定位到来源窗口，会提供页内跳转；否则回退到原始窗口 JSON 或本地工作区链接。": (
         "If the source window can be located on this page, an in-page jump is shown; otherwise it falls back to the raw window JSON or local workspace link."
@@ -1713,6 +1713,21 @@ def load_jsonl(path: Path):
     return rows
 
 
+def normalize_loaded_memory_item_quality(item):
+    quality = overview_memory_context.memory_storage_quality(item, bucket=item.get("bucket", ""))
+    if quality["disposition"] == "drop":
+        return None
+    row = dict(item)
+    row.setdefault("storage_quality_score", quality["score"])
+    row.setdefault("storage_quality_reason", quality["reason"])
+    if quality["disposition"] == "demote":
+        row["bucket"] = "low_priority"
+        row["priority"] = "low"
+        row["scope"] = "local"
+        row["injection_policy"] = "local_only"
+    return row
+
+
 def load_memory_registry_items():
     canonical_path = REGISTRY_DIR / "memory_entries.jsonl"
     legacy_path = REGISTRY_DIR / "memory_items.jsonl"
@@ -1720,7 +1735,11 @@ def load_memory_registry_items():
     if canonical_path.exists() and canonical_path.stat().st_size > 0:
         rows.extend(load_jsonl(canonical_path))
     rows.extend(load_jsonl(legacy_path))
-    return rows
+    return [
+        row
+        for row in (normalize_loaded_memory_item_quality(item) for item in rows)
+        if row is not None
+    ]
 
 
 def load_asset_stats_snapshot(path=ASSET_STATS_LATEST_PATH):
@@ -11383,8 +11402,8 @@ def make_memory_cards(items, include_bucket_meta=True, visible_count=4, meta_ren
         if item.get("usage_frequency_display"):
             window_days = item.get("usage_frequency_window_days", MEMORY_USAGE_WINDOW_DAYS)
             frequency_value = item.get("usage_frequency_display", "0")
-            submeta_parts_zh.append("{}日证据 {}".format(window_days, frequency_value))
-            submeta_parts_en.append("{}-day evidence {}".format(window_days, frequency_value))
+            submeta_parts_zh.append("{}日热度 {}".format(window_days, frequency_value))
+            submeta_parts_en.append("{}-day heat {}".format(window_days, frequency_value))
         if item.get("occurrence_count", 0) > 1:
             occurrence_label = ui_text(item.get("occurrence_label", "整理命中"))
             occurrence_label_en = english_for_ui_text(occurrence_label)

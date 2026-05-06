@@ -3667,6 +3667,67 @@ Keep my own note.
         self.assertEqual(stale["usage_frequency"], 0)
         self.assertEqual(recent["usage_frequency"], 0.9)
 
+    def test_upsert_memory_items_filters_noise_and_demotes_weak_rows(self):
+        old_registry_dir = nightly_consolidate.REGISTRY_DIR
+        try:
+            with TemporaryDirectory() as tmpdir:
+                nightly_consolidate.REGISTRY_DIR = Path(tmpdir) / "registry"
+                summary = {
+                    "language": "zh",
+                    "window_summaries": [
+                        {
+                            "window_id": "w1",
+                            "cwd": "/tmp/openrelix",
+                        }
+                    ],
+                    "durable_memories": [
+                        {
+                            "title": "OpenRelix bugfix 默认独立 worktree",
+                            "memory_type": "procedural",
+                            "priority": "high",
+                            "value_note": "处理 OpenRelix bugfix 时，必须先切独立 worktree 并跑校验。",
+                            "source_window_ids": ["w1"],
+                            "keywords": ["worktree"],
+                        },
+                        {
+                            "title": "面板布局记录项需要整理",
+                            "memory_type": "task",
+                            "priority": "medium",
+                            "value_note": "面板布局还有一些零散细节需要后续人工整理归档。",
+                            "source_window_ids": ["w1"],
+                            "keywords": ["panel"],
+                        },
+                        {
+                            "title": "多个 Claude Code 窗口只是未登录、问候或退出",
+                            "memory_type": "task",
+                            "priority": "low",
+                            "value_note": "这些窗口没有可复用结论。",
+                            "source_window_ids": ["w1"],
+                            "keywords": ["claude"],
+                        },
+                    ],
+                    "session_memories": [],
+                    "low_priority_memories": [],
+                }
+
+                nightly_consolidate.upsert_memory_items("2026-05-06", summary)
+                rows = [
+                    json.loads(line)
+                    for line in (nightly_consolidate.REGISTRY_DIR / "memory_items.jsonl")
+                    .read_text(encoding="utf-8")
+                    .splitlines()
+                    if line.strip()
+                ]
+
+            rows_by_title = {row["title"]: row for row in rows}
+            self.assertEqual(rows_by_title["OpenRelix bugfix 默认独立 worktree"]["bucket"], "durable")
+            self.assertEqual(rows_by_title["面板布局记录项需要整理"]["bucket"], "low_priority")
+            self.assertEqual(rows_by_title["面板布局记录项需要整理"]["injection_policy"], "local_only")
+            self.assertNotIn("多个 Claude Code 窗口只是未登录、问候或退出", rows_by_title)
+            self.assertIn("storage_quality_score", rows_by_title["OpenRelix bugfix 默认独立 worktree"])
+        finally:
+            nightly_consolidate.REGISTRY_DIR = old_registry_dir
+
     def test_memory_registry_sorts_session_items_by_recent_usage_not_lifetime_occurrences(self):
         usage_window_overview = {
             "date": "2026-04-28",

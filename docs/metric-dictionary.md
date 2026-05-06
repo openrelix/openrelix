@@ -44,9 +44,9 @@
 - Grouping key: `bucket + memory_type + normalized title` with `value_note` as fallback when title is empty.
 - `created_at` in the dashboard memory view means the first date that grouped memory appeared in the log.
 - `updated_at` in the dashboard memory view means the most recent date that grouped memory appeared in the log.
-- Long-term and short-term memory cards are sorted by traceable 7-day usage evidence, not just by update time.
-- `usage_frequency` is now a deterministic evidence score. It only counts direct source-window references inside the 7-day window plus recent synthesis dates for the same memory; it no longer fuzzy-matches memory titles, keywords, or notes against recent window summaries.
-- The evidence window is bounded to the latest 7 daily captures for stable performance; the dashboard does not call an LLM during refresh.
+- Long-term and short-term memory cards are sorted by 7-day heat, not just by update time.
+- `usage_frequency` remains the backing field for compatibility, but the UI labels it as heat. It only counts direct source-window references inside the 7-day window plus recent synthesis dates for the same memory; it no longer fuzzy-matches memory titles, keywords, or notes against recent window summaries.
+- The heat window is bounded to the latest 7 daily captures for stable performance; the dashboard does not call an LLM during refresh.
 
 ## Host native memory views
 

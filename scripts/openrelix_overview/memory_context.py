@@ -1,6 +1,7 @@
 """Pure helpers for OpenRelix managed memory context policy views."""
 
 from collections import Counter
+import re
 
 
 MEMORY_SCOPE_GLOBAL = "global"
@@ -135,6 +136,62 @@ GLOBAL_CONTEXT_CONFIDENCE_KEYS = (
 TRUTHY_VALUES = {"1", "true", "yes", "y", "on", "approved"}
 APPROVED_CONFIDENCE_VALUES = {"approved", "canonical", "high", "manual", "trusted"}
 
+MEMORY_HARD_NOISE_PATTERNS = (
+    r"0\.2\.5\s*更新请求的重复窗口无结论",
+    r"claude.*(?:未登录|问候|退出)",
+    r"continue from where you left off",
+    r"合影提示词",
+    r"家(?:庭)?合影",
+    r"多个.*窗口.*(?:未登录|问候|退出)",
+    r"本地\s*tgz",
+    r"测试工件",
+    r"无结论",
+    r"没有结论",
+    r"暂无结论",
+    r"未登录",
+    r"问候",
+    r"退出",
+    r"重复窗口",
+    r"\bno conclusion\b",
+    r"\bnot logged in\b",
+    r"\blogin only\b",
+    r"\btest artifact\b",
+)
+
+MEMORY_WEAK_PATTERNS = (
+    r"^\s*轻量待查",
+    r"^\s*lightweight later review",
+    r"只是",
+    r"当天",
+    r"当前任务",
+    r"临时",
+    r"看了",
+    r"问了",
+    r"给过",
+    r"待查",
+    r"\btemporary\b",
+)
+
+MEMORY_STRONG_SIGNAL_PATTERNS = (
+    r"AGENTS\.md",
+    r"apply_patch",
+    r"catalog",
+    r"global_context",
+    r"injection_policy",
+    r"state root",
+    r"worktree",
+    r"(?:不要|不能|必须|应该|应当|应|默认|优先|避免|先|保持|确认|校验|验证|同步|隔离|留在|适合|通过|按需|只读|保留|限制)",
+    r"(?:规则|原则|策略|流程|路径|排障|映射|边界|兼容|配置|模型|索引|预算|注入|去重|召回|偏好|习惯|通用|可复用|长期)",
+    r"\b(?:avoid|boundary|canonical|dedupe|default|must|prefer|preference|rule|workflow|verify)\b",
+)
+
+MEMORY_QUESTION_PATTERNS = (
+    r"[?？]",
+    r"(?:什么|怎么|怎样|为何|为什么|吗|呢|是否|是不是|要不要|能不能|可不可以)",
+    r"(?:帮我|请|想要|想看|看下|看看)",
+    r"\b(?:how|what|why|can|should|please)\b",
+)
+
 
 def collapse_whitespace(text):
     return " ".join(str(text or "").split()).strip()
@@ -227,6 +284,108 @@ def memory_record_is_low_priority(item):
     return str(item.get("bucket") or "").strip() == "low_priority" or str(
         item.get("priority") or ""
     ).strip().lower() == "low"
+
+
+def memory_record_text_blob(item):
+    if not isinstance(item, dict):
+        return ""
+    parts = [
+        item.get("title", ""),
+        item.get("title_zh", ""),
+        item.get("title_en", ""),
+        item.get("value_note", ""),
+        item.get("value_note_zh", ""),
+        item.get("value_note_en", ""),
+    ]
+    keywords = item.get("keywords") or []
+    if isinstance(keywords, (list, tuple, set)):
+        parts.extend(keywords)
+    else:
+        parts.append(keywords)
+    return collapse_whitespace(" ".join(str(part or "") for part in parts))
+
+
+def regex_any(patterns, text):
+    return any(re.search(pattern, text, flags=re.IGNORECASE) for pattern in patterns)
+
+
+def memory_source_window_count(item):
+    if not isinstance(item, dict):
+        return 0
+    value = item.get("source_window_ids") or item.get("source_windows") or []
+    if isinstance(value, (list, tuple, set)):
+        return len([part for part in value if collapse_whitespace(part)])
+    return 1 if collapse_whitespace(value) else 0
+
+
+def memory_storage_quality(item, bucket=""):
+    """Classify whether a generated memory should be stored, demoted, or dropped."""
+    if not isinstance(item, dict):
+        return {"disposition": "drop", "score": 0, "reason": "invalid"}
+
+    bucket = str(bucket or item.get("bucket") or "").strip()
+    title = collapse_whitespace(item.get("title") or item.get("display_title") or "")
+    note = collapse_whitespace(item.get("value_note") or item.get("display_value_note") or "")
+    blob = memory_record_text_blob(item)
+    lowered_blob = blob.lower()
+    if not title and not note:
+        return {"disposition": "drop", "score": 0, "reason": "empty"}
+    if regex_any(MEMORY_HARD_NOISE_PATTERNS, lowered_blob):
+        return {"disposition": "drop", "score": 0, "reason": "hard_noise"}
+    if re.search(r"^\s*(?:轻量待查|lightweight later review)", title, flags=re.IGNORECASE):
+        return {"disposition": "drop", "score": 0, "reason": "lightweight_later_review"}
+
+    score = 0
+    reasons = []
+    memory_type = str(item.get("memory_type") or "").strip().lower()
+    priority = str(item.get("priority") or "").strip().lower()
+
+    if len(title) >= 8:
+        score += 1
+    if note and note != title and len(note) >= 18:
+        score += 1
+    if memory_type in {"preference", "procedural", "procedure", "rule", "mapping", "workflow"}:
+        score += 2
+        reasons.append("type")
+    elif memory_type == "semantic":
+        score += 1
+    elif memory_type == "task":
+        score -= 1
+
+    if priority == "high":
+        score += 2
+        reasons.append("priority")
+    elif priority == "medium":
+        score += 1
+    elif priority == "low":
+        score -= 1
+
+    if regex_any(MEMORY_STRONG_SIGNAL_PATTERNS, blob):
+        score += 3
+        reasons.append("strong_signal")
+    if memory_source_window_count(item) >= 2:
+        score += 1
+    try:
+        if int(item.get("occurrence_count") or 0) >= 2:
+            score += 1
+    except (TypeError, ValueError):
+        pass
+    if regex_any(MEMORY_WEAK_PATTERNS, lowered_blob):
+        score -= 2
+    if regex_any(MEMORY_QUESTION_PATTERNS, lowered_blob) and "strong_signal" not in reasons:
+        score -= 2
+
+    if bucket == "low_priority":
+        if score <= -2:
+            return {"disposition": "drop", "score": score, "reason": "weak_low_priority"}
+        return {"disposition": "keep", "score": score, "reason": "low_priority"}
+
+    threshold = 4 if bucket == "durable" else 3
+    if score >= threshold:
+        return {"disposition": "keep", "score": score, "reason": ",".join(reasons) or "useful"}
+    if score <= 0:
+        return {"disposition": "drop", "score": score, "reason": "low_signal"}
+    return {"disposition": "demote", "score": score, "reason": "below_primary_threshold"}
 
 
 def effective_host_context_policy(item, policy):

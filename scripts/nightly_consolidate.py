@@ -30,6 +30,7 @@ from asset_runtime import (
     personal_memory_enabled,
     sync_codex_exec_home,
 )
+from openrelix_overview import memory_context as overview_memory_context
 
 PATHS = get_runtime_paths()
 LANGUAGE = get_runtime_language(PATHS)
@@ -710,16 +711,16 @@ def build_prompt_with_learning(raw_payload, learning_context, language=None, com
         return """You are a nightly organization agent. Your job is to convert the user's questions and the final conclusions from multiple Codex windows on the same day into personal asset results that are readable and searchable the next day.
 
 Organization principles:
-1. Assume the user's same-day questions are valuable by default; do not discard them silently.
+1. Optimize for high-signal personal memory, not maximum item count. A good memory should help a future agent make a better decision.
 2. Classify results into long-term reusable memories, short-term work memories, and low-priority memories.
-3. Long-term reusable memories should be useful across days. They are usually methods, rules, module mappings, debugging paths, or stable preferences.
-4. Short-term work memories are usually tied to the current request, same-day task, or temporary decision, and may expire later.
-5. Low-priority memories should still be retained, but with lower priority so they do not dominate attention.
+3. Long-term reusable memories must be useful across days. They are usually methods, rules, module mappings, debugging paths, stable preferences, privacy boundaries, or workflow defaults.
+4. Short-term work memories should still carry a concrete next-step, decision, or local project state. Do not store mere greetings, login failures, repeated windows without conclusions, one-off artifacts, or vague "looked at X" notes.
+5. Low-priority memories are only for weak but potentially searchable facts. If an item has no future reuse value, omit it instead of padding the list.
 6. Write every generated summary, memory title, value_note, keyword, and next action in English. Preserve source identifiers, file paths, code symbols, command names, and user-provided proper nouns exactly.
 7. Do not invent facts. Only organize information from the input prompt and conclusion fields.
 8. source_window_ids must only use window_id values that appear in the input.
 9. learning_context is only for learning granularity, stability judgement, and avoiding regressions. Do not copy facts from learning_context back into today's result unless they also appear in today's input.
-10. If today's input signal is rich but you produce too few long-term or short-term memories, first reconsider whether your classification is too conservative.
+10. Prefer fewer, denser memories over many low-value cards. If today's input signal is rich but you produce too few long-term or short-term memories, first reconsider whether reusable rules, preferences, or debugging paths are being missed.
 11. If learning_context contains recent_window_learning, it represents recent batch summaries and patterns. Use it only to learn which window types deserve durable or session memories; do not import that historical content into today's output.
 12. recent_window_learning.coverage / batch_summaries represent full historical-window coverage; window_samples are only representative samples, not the complete historical set.
 13. For each window summary, write window_title as a plain-language title under 100 characters. Do not reuse raw window IDs, paths, Markdown, or numbered question labels as the title. Then populate summary_pairs with 1 to many readable question/conclusion pairs. If a window contains multiple distinct questions and conclusions, aggregate related turns but keep each pair one-to-one and ordered from oldest to newest.
@@ -742,16 +743,16 @@ Strictly base your output on these clusters. You may learn abstraction granulari
     return """你是一个夜间整理代理，负责把同一天内多个 Codex 主窗口里的用户问题与最终结论，整理成第二天可读、可检索的个人资产结果。
 
 整理原则：
-1. 默认认为用户当天问的内容都有价值，不要丢弃。
+1. 目标是高含金量个人记忆，不是凑条数。好的记忆应能让未来 agent 更快做对决策。
 2. 但要分类：长期可复用、短期工作记忆、低优先级记忆。
-3. 长期可复用记忆适合跨天复用，通常是方法、规则、模块映射、排障路径、稳定偏好。
-4. 短期工作记忆通常和当前需求、当天任务、临时决策有关，后续可能失效。
-5. 低优先级记忆也要保留，但优先级调低，不应占据主要注意力。
+3. 长期可复用记忆必须能跨天复用，通常是方法、规则、模块映射、排障路径、稳定偏好、隐私边界或 workflow 默认动作。
+4. 短期工作记忆也必须带明确的下一步、决策或本地项目状态。不要记录问候、登录失败、无结论重复窗口、一次性测试工件，或“看了 X”这类空泛笔记。
+5. 低优先级记忆只保留弱但未来可能检索的事实；完全没有复用价值的内容应省略，不要为了填满列表而输出。
 6. 所有输出都使用中文。
 7. 不要编造信息；仅根据输入里的 prompt 和 conclusion 整理。
 8. source_window_ids 必须只使用输入中出现过的 window_id。
 9. learning_context 只用于学习粒度、稳定性判断和避免回归，不能把其中未在当日输入里出现的事实抄回今天的结果。
-10. 如果当日输入信号已经很丰富，但你给出的长期 / 短期记忆过少，要先反思是否归类过于保守。
+10. 宁可少而密，不要多而散。如果当日输入信号已经很丰富，但你给出的长期 / 短期记忆过少，要先反思是否漏掉了可复用规则、偏好或排障路径。
 11. 如果 learning_context 里出现 recent_window_learning，它代表近几天窗口的批次摘要与模式，仅用于学习哪些窗口类型更适合抽象成 durable / session 记忆，不代表这些窗口内容应该直接进入今天的输出。
 12. recent_window_learning.coverage / batch_summaries 代表历史窗口的全量覆盖；window_samples 只是少量代表样本，不是历史窗口全集。
 13. 每个 window_summaries 项都要填写 window_title 和 summary_pairs。window_title 要用通俗易懂的话概括窗口主题，最好不超过 100 字；不要直接复用原始窗口 ID、路径、Markdown 或“问题1/问题2”这类编号标签当标题。summary_pairs 要聚合成 1 到多个可读的问题/结论对，同一组问题和结论必须一一对应，并按从旧到新的顺序排列。
@@ -3170,20 +3171,30 @@ def upsert_memory_items(date_str, summary):
         def rows_for(bucket_name, items):
             rows = []
             for item in items:
-                scope_metadata = memory_scope_metadata(summary, item, bucket_name)
+                quality_input = {**item, "bucket": bucket_name}
+                quality = overview_memory_context.memory_storage_quality(quality_input, bucket=bucket_name)
+                if quality["disposition"] == "drop":
+                    continue
+                effective_bucket = "low_priority" if quality["disposition"] == "demote" else bucket_name
+                scope_metadata = memory_scope_metadata(summary, item, effective_bucket)
+                priority = item.get("priority", "medium")
+                if effective_bucket == "low_priority":
+                    priority = "low"
                 rows.append(
                     {
                         "date": date_str,
                         "language": summary.get("language", current_language()),
                         "source": "nightly_codex",
-                        "bucket": bucket_name,
+                        "bucket": effective_bucket,
                         **scope_metadata,
-                        "title": item["title"],
-                        "memory_type": item["memory_type"],
-                        "priority": item["priority"],
-                        "value_note": item["value_note"],
-                        "source_window_ids": item["source_window_ids"],
-                        "keywords": item["keywords"],
+                        "title": item.get("title", ""),
+                        "memory_type": item.get("memory_type", "semantic"),
+                        "priority": priority,
+                        "value_note": item.get("value_note", ""),
+                        "source_window_ids": item.get("source_window_ids", []),
+                        "keywords": item.get("keywords", []),
+                        "storage_quality_score": quality["score"],
+                        "storage_quality_reason": quality["reason"],
                     }
                 )
             return rows

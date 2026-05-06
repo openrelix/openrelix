@@ -97,7 +97,7 @@ AI host 自己的用户级目录、history、session 和 native memory 由各 ho
 
 Memory System v2 把 OpenRelix state root 作为权威存储，host native memory 只是可选消费端和外部信号源。上下文编译只允许有效 `injection_policy=global_context` 且通过全局候选门禁的记忆进入 host summary；legacy/nightly 合成项即使带了旧的 global 标记，也会先降到 `on_demand`，除非有 canonical / manual / approved 标记。`project_context`、`on_demand`、`local_only`、`never` 和低优先级记忆保留在本地 registry / index，不默认污染其他项目。Codex 侧如果用户关闭 `[features].memories`，同步命令会报告 `disabled`，不再把写入 `memory_summary.md` 视为有效注入。
 
-压缩策略保持轻量：同签名记忆跨天归并，默认优先 eligible durable / session，low-priority 与非全局 scope 默认只留本地；注入前会和 host 原生 memory 做近似去重，语义相近时优先保留 CLI 原生 memory。默认 token budget 是 target 6.7K、warn 7.4K、max 8K，不把原始窗口明细塞进 host context。
+生成策略优先高含金量：问候、登录失败、无结论重复窗口、一次性测试工件和空泛“看了 X”笔记不会写入 registry；低信号 durable / session 会自动降到 low-priority。压缩策略保持轻量：同签名记忆跨天归并，默认优先 eligible durable / session，low-priority 与非全局 scope 默认只留本地；注入前会和 host 原生 memory 做近似去重，语义相近时优先保留 CLI 原生 memory。默认 token budget 是 target 6.7K、warn 7.4K、max 8K，不把原始窗口明细塞进 host context。
 
 ### 2. Repo 源码层
 
