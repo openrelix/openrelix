@@ -35,9 +35,6 @@ from build_codex_memory_summary import (
     PERSONAL_MEMORY_NOTE_LIMIT,
     PERSONAL_MEMORY_TITLE_LIMIT,
     estimate_tokens as estimate_summary_tokens,
-    host_context_injection_policy_from_record,
-    memory_record_is_global_context,
-    memory_scope_from_record,
     reverse_date_sort_key as memory_summary_reverse_date_sort_key,
 )
 from openrelix_overview import common as overview_common
@@ -48,6 +45,7 @@ from openrelix_overview import finder as overview_finder
 from openrelix_overview import i18n as overview_i18n
 from openrelix_overview import labels as overview_labels
 from openrelix_overview import local_paths as overview_local_paths
+from openrelix_overview import memory_context as overview_memory_context
 from openrelix_overview import mcp_usage as overview_mcp_usage
 from openrelix_overview import memory_registry as overview_memory_registry
 from openrelix_overview import redaction as overview_redaction
@@ -551,6 +549,18 @@ PANEL_I18N_EN = {
     "低优先级记忆": "Low-priority Memory",
     "个人资产记忆": "Personal Asset Memory",
     "记忆数量": "Memory Counts",
+    "上下文策略": "Context Policy",
+    "上下文编译": "Context Compiler",
+    "上下文预算": "Context Budget",
+    "全局上下文": "Global Context",
+    "项目上下文": "Project Context",
+    "按需召回": "On-demand Recall",
+    "本地保留": "Local Only",
+    "OpenRelix canonical memory -> host context 的策略预览": "Policy preview from OpenRelix canonical memory to host context",
+    "会进入通用 host context 的个人资产记忆": "Personal asset memories that enter the general host context",
+    "按项目、仓库或工作区隔离的记忆": "Memories isolated by project, repo, or workspace",
+    "适合检索命中后再使用的领域记忆": "Domain memories used only after retrieval matches",
+    "低优先或禁止注入的本地证据": "Local evidence with low priority or disabled injection",
     "总数": "Total",
     "个人资产-长期记忆": "Personal Asset - Long-term Memory",
     "个人资产-短期记忆": "Personal Asset - Short-term Memory",
@@ -1856,7 +1866,7 @@ def build_personal_memory_context_preview(
     summary_budget = memory_summary_budget or get_memory_summary_budget(PATHS)
     personal_memory_budget_tokens = summary_budget["personal_memory_tokens"]
     rows = memory_registry or []
-    context_rows = [row for row in rows if memory_record_is_global_context(row)]
+    context_rows = [row for row in rows if overview_memory_context.memory_record_is_global_context(row)]
     has_candidate_cap = MEMORY_SUMMARY_MAX_PERSONAL_MEMORY_ITEMS > 0
     context_item_limit = (
         min(len(context_rows), MEMORY_SUMMARY_MAX_PERSONAL_MEMORY_ITEMS)
@@ -1911,7 +1921,7 @@ def build_personal_memory_token_usage(
     rows = memory_registry or []
     row_count = len(rows)
     context_rows = sort_memory_summary_context_rows(
-        [row for row in rows if memory_record_is_global_context(row)]
+        [row for row in rows if overview_memory_context.memory_record_is_global_context(row)]
     )
     has_candidate_cap = MEMORY_SUMMARY_MAX_PERSONAL_MEMORY_ITEMS > 0
     context_item_limit = (
@@ -4516,8 +4526,8 @@ def build_memory_registry(memory_items, window_overview, usage_window_overview=N
                 "bucket": item.get("bucket", ""),
                 "memory_type": item.get("memory_type", ""),
                 "priority": item.get("priority", "medium"),
-                "scope": memory_scope_from_record(item),
-                "injection_policy": host_context_injection_policy_from_record(item),
+                "scope": overview_memory_context.memory_scope_from_record(item),
+                "injection_policy": overview_memory_context.host_context_injection_policy_from_record(item),
                 "project_key": item.get("project_key", ""),
                 "project_label": item.get("project_label", ""),
                 "title": item.get("title", ""),
@@ -4553,8 +4563,8 @@ def build_memory_registry(memory_items, window_overview, usage_window_overview=N
             group["_latest_sort"] = current_sort
             group["_latest_date"] = date_str
             group["priority"] = item.get("priority", group["priority"])
-            group["scope"] = memory_scope_from_record(item)
-            group["injection_policy"] = host_context_injection_policy_from_record(item)
+            group["scope"] = overview_memory_context.memory_scope_from_record(item)
+            group["injection_policy"] = overview_memory_context.host_context_injection_policy_from_record(item)
             group["project_key"] = item.get("project_key", group.get("project_key", ""))
             group["project_label"] = item.get("project_label", group.get("project_label", ""))
             group["title"] = item.get("title", group["title"])
@@ -8071,6 +8081,11 @@ def build_data(assets, usage_events, reviews, language=None):
         memory_mode,
         item_count=personal_memory_token_usage.get("estimated_context_item_count"),
     )
+    memory_policy_views = overview_memory_context.build_memory_policy_views(
+        memory_registry["rows"],
+        selected_global_rows=context_memory_preview,
+        token_usage=personal_memory_token_usage,
+    )
     known_project_names = collect_known_project_names(window_overview)
     codex_memory_summary_path_label = render_path(codex_memory_summary_path)
     codex_memory_index_path_label = render_path(codex_memory_index_path)
@@ -8587,6 +8602,7 @@ def build_data(assets, usage_events, reviews, language=None):
         "window_overview": window_overview,
         "memory_items": memory_items,
         "memory_registry": memory_registry["rows"],
+        "memory_policy_views": memory_policy_views,
         "personal_memory_token_usage": personal_memory_token_usage,
         "context_memory_preview": context_memory_preview,
         "codex_native_memory": codex_native_memory["rows"],
@@ -10925,10 +10941,11 @@ def make_side_nav():
         ("link", "project-context-section", "项目上下文", "Context", "项目上下文", "Context"),
         ("group", "记忆层", "Memory Layer"),
         ("link", "memory-section", "个人资产记忆", "Personal Asset Memory", "个人资产记忆", "Personal Asset Memory"),
-        ("child", "personal-memory-context-section", "进入 context", "In Context", "进入 host context 的记忆", "Memories in Host Context"),
-        ("child", "personal-memory-durable-section", "长期记忆", "Long-term Memory", "个人资产-长期记忆", "Personal Asset - Long-term Memory"),
-        ("child", "personal-memory-session-section", "短期工作记忆", "Short-term Work Memory", "个人资产-短期工作记忆", "Personal Asset - Short-term Work Memory"),
-        ("child", "personal-memory-low-priority-section", "低优先级记忆", "Low-priority Memory", "个人资产-低优先级记忆", "Personal Asset - Low-priority Memory"),
+        ("child", "personal-memory-compiler-section", "上下文编译", "Context Compiler", "个人资产记忆-上下文编译", "Personal Asset Memory - Context Compiler"),
+        ("child", "personal-memory-global-section", "全局上下文", "Global Context", "个人资产记忆-全局上下文", "Personal Asset Memory - Global Context"),
+        ("child", "personal-memory-project-section", "项目上下文", "Project Context", "个人资产记忆-项目上下文", "Personal Asset Memory - Project Context"),
+        ("child", "personal-memory-on-demand-section", "按需召回", "On-demand Recall", "个人资产记忆-按需召回", "Personal Asset Memory - On-demand Recall"),
+        ("child", "personal-memory-local-section", "本地保留", "Local Only", "个人资产记忆-本地保留", "Personal Asset Memory - Local Only"),
         ("link", "codex-native-section", "Codex 原生记忆", "Codex Native Memory", "Codex 原生记忆", "Codex Native Memory"),
         ("link", "claude-native-section", "Claude 原生记忆", "Claude Native Memory", "Claude Code 原生记忆", "Claude Code Native Memory"),
         ("group", "资产层", "Asset Layer"),
@@ -11084,6 +11101,152 @@ def make_personal_memory_count_widget(memory_registry):
         label=panel_language_text_html("记忆数量", "Memory Counts"),
         total=total_html,
         cards="".join(cards),
+    )
+
+
+def make_memory_policy_count_widget(policy_views):
+    compiler = (policy_views or {}).get("compiler", {})
+    total_memories = safe_int(compiler.get("total_count", 0))
+    selected_global = safe_int(compiler.get("selected_global_count", 0))
+    global_candidates = safe_int(compiler.get("global_candidate_count", 0))
+    global_value = (
+        "{}/{}".format(selected_global, global_candidates)
+        if global_candidates and selected_global != global_candidates
+        else str(selected_global)
+    )
+    total_html = panel_language_variant_html(
+        "共 {} 条".format(escape(str(total_memories))),
+        "{} total".format(escape(str(total_memories))),
+    )
+    items = [
+        ("全局", "Global", global_value),
+        ("项目", "Project", safe_int(compiler.get("project_context_count", 0))),
+        ("按需", "On-demand", safe_int(compiler.get("on_demand_count", 0))),
+        ("本地", "Local", safe_int(compiler.get("local_count", 0))),
+    ]
+    cards = []
+    for label_zh, label_en, value in items:
+        cards.append(
+            """
+              <div class="memory-count-item">
+                <span>{label}</span>
+                <b>{value}</b>
+              </div>
+            """.format(
+                label=panel_language_text_html(label_zh, label_en),
+                value=escape(str(value)),
+            )
+        )
+
+    return """
+        <aside class="memory-count-widget memory-policy-widget" aria-label="{aria_label}">
+          <div class="memory-count-topline">
+            <div class="memory-count-label">{label}</div>
+            <div class="memory-count-total">{total}</div>
+          </div>
+          <div class="memory-count-grid">
+            {cards}
+          </div>
+        </aside>
+    """.format(
+        aria_label=escape(panel_display_text("上下文策略"), quote=True),
+        label=panel_language_text_html("上下文策略", "Context Policy"),
+        total=total_html,
+        cards="".join(cards),
+    )
+
+
+def make_memory_context_compiler_body(policy_views):
+    compiler = (policy_views or {}).get("compiler", {})
+    total_count = safe_int(compiler.get("total_count", 0))
+    global_candidate_count = safe_int(compiler.get("global_candidate_count", 0))
+    selected_global_count = safe_int(compiler.get("selected_global_count", 0))
+    project_count = safe_int(compiler.get("project_context_count", 0))
+    on_demand_count = safe_int(compiler.get("on_demand_count", 0))
+    local_count = safe_int(compiler.get("local_count", 0))
+    meter_percent = max(0, min(100, safe_int(compiler.get("meter_percent", 0))))
+    value_display = panel_language_variant_html(
+        escape(compiler.get("value_display_zh") or ""),
+        escape(compiler.get("value_display_en") or ""),
+    )
+    status = panel_language_variant_html(
+        escape(compiler.get("status_label_zh") or ""),
+        escape(compiler.get("status_label_en") or ""),
+    )
+    mode_note = panel_language_variant_html(
+        escape(compiler.get("mode_note_zh") or ""),
+        escape(compiler.get("mode_note_en") or ""),
+    )
+
+    def stat_card(label_zh, label_en, value, note_zh, note_en):
+        return """
+          <article class="memory-compiler-stat">
+            <span>{label}</span>
+            <strong>{value}</strong>
+            <small>{note}</small>
+          </article>
+        """.format(
+            label=panel_language_text_html(label_zh, label_en),
+            value=escape(str(value)),
+            note=panel_language_text_html(note_zh, note_en),
+        )
+
+    stats = "".join(
+        [
+            stat_card(
+                "登记册总量",
+                "Registry Total",
+                total_count,
+                "OpenRelix 独立存储的 canonical 条目",
+                "Canonical entries stored by OpenRelix",
+            ),
+            stat_card(
+                "可进全局",
+                "Global Eligible",
+                global_candidate_count,
+                "仅通用、非低优先的 durable/session",
+                "Only global durable/session rows",
+            ),
+            stat_card(
+                "本次注入",
+                "Injected Now",
+                selected_global_count,
+                "受预算和去重后的 host context 预览",
+                "Host-context preview after budget and de-duplication",
+            ),
+            stat_card(
+                "隔离保留",
+                "Kept Out",
+                project_count + on_demand_count + local_count,
+                "项目、按需和本地条目不进全局上下文",
+                "Project, on-demand, and local rows stay out of global context",
+            ),
+        ]
+    )
+    return """
+      <div class="memory-compiler-body">
+        <div class="memory-compiler-meter">
+          <div class="memory-compiler-meter-topline">
+            <span>{budget_label}</span>
+            <b>{value_display}</b>
+            <em>{status}</em>
+          </div>
+          <div class="memory-token-meter" aria-hidden="true">
+            <div class="memory-token-meter-fill" style="width: {meter_percent}%"></div>
+          </div>
+          <p>{mode_note}</p>
+        </div>
+        <div class="memory-compiler-grid">
+          {stats}
+        </div>
+      </div>
+    """.format(
+        budget_label=panel_language_text_html("上下文预算", "Context Budget"),
+        value_display=value_display or "—",
+        status=status or "—",
+        meter_percent=meter_percent,
+        mode_note=mode_note or panel_language_text_html("当前没有可注入的个人资产记忆。", "No personal asset memory is currently injectable."),
+        stats=stats,
     )
 
 
@@ -11290,6 +11453,14 @@ def make_memory_cards(items, include_bucket_meta=True, visible_count=4, meta_ren
             if label:
                 label_en = ui_text(localized_context_label(label, language="en"))
                 return panel_language_text_html(label, label_en) if label_en != label else escape(label)
+        project_label = ui_text(item.get("project_label") or "")
+        if project_label:
+            project_label_en = ui_text(localized_context_label(project_label, language="en"))
+            return (
+                panel_language_text_html(project_label, project_label_en)
+                if project_label_en != project_label
+                else escape(project_label)
+            )
         context = ui_text(item.get("display_context") or "")
         if context:
             context_en = ui_text(localized_context_label(context, language="en"))
@@ -11524,6 +11695,35 @@ def make_context_memory_card_meta(item):
     )
 
 
+def memory_policy_label(item, language=None):
+    policy = overview_memory_context.host_context_injection_policy_from_record(item)
+    return overview_memory_context.policy_label(policy, language=current_language(language))
+
+
+def memory_scope_label(item, language=None):
+    scope = overview_memory_context.memory_scope_from_record(item)
+    return overview_memory_context.scope_label(scope, language=current_language(language))
+
+
+def make_policy_memory_card_meta(item):
+    meta_parts_zh = [
+        memory_policy_label(item, language="zh"),
+        memory_scope_label(item, language="zh"),
+        context_memory_bucket_label(item, language="zh"),
+        context_memory_priority_label(item, language="zh"),
+    ]
+    meta_parts_en = [
+        memory_policy_label(item, language="en"),
+        memory_scope_label(item, language="en"),
+        context_memory_bucket_label(item, language="en"),
+        context_memory_priority_label(item, language="en"),
+    ]
+    return panel_language_variant_html(
+        escape(" · ".join(part for part in meta_parts_zh if part)),
+        escape(" · ".join(part for part in meta_parts_en if part)),
+    )
+
+
 def make_memory_type_grouped_cards(items, include_bucket_meta=False, meta_renderer=None):
     if not items:
         return '<p class="empty">暂无。</p>'
@@ -11590,6 +11790,14 @@ def make_context_memory_type_grouped_cards(items):
         items,
         include_bucket_meta=False,
         meta_renderer=make_context_memory_card_meta,
+    )
+
+
+def make_policy_memory_type_grouped_cards(items):
+    return make_memory_type_grouped_cards(
+        items,
+        include_bucket_meta=False,
+        meta_renderer=make_policy_memory_card_meta,
     )
 
 
@@ -13401,6 +13609,11 @@ def build_html(data):
     panel_views = data.get("panel_views", {})
     project_contexts = data.get("project_contexts") or []
     memory_registry = data.get("memory_registry") or []
+    memory_policy_views = data.get("memory_policy_views") or overview_memory_context.build_memory_policy_views(
+        memory_registry,
+        selected_global_rows=data.get("context_memory_preview", []),
+        token_usage=data.get("personal_memory_token_usage", {}),
+    )
     codex_native_memory = data.get("codex_native_memory") or []
     codex_native_preference_rows = data.get("codex_native_preference_rows") or []
     codex_native_tip_rows = data.get("codex_native_tip_rows") or []
@@ -13718,27 +13931,27 @@ def build_html(data):
             },
         ],
     )
-    durable_memory_help = make_help_popover(
-        "个人资产-长期记忆",
+    memory_compiler_help = make_help_popover(
+        "上下文编译",
         [
             {
                 "label": "统计什么",
-                "body": "当前登记册中 bucket = durable 的长期记忆，按近 7 日估算使用频率排序。",
+                "body": "把 OpenRelix 独立登记册按注入策略拆分，展示哪些条目会进入 host context，哪些只在项目或本地保留。",
             },
             {
                 "label": "怎么算",
-                "body": "频率来自近 7 日窗口匹配：来源窗口直接命中权重最高，标题、关键词、说明与历史窗口摘要匹配会按相关度加权，项目上下文只做小幅加分。",
+                "body": "先按 scope 和 injection_policy 归一化；只有 global_context 且 bucket 为 durable/session 的条目会进入全局 bounded summary 候选。",
             },
         ],
     )
-    context_memory_help = make_help_popover(
-        "进入 host context 的记忆",
+    global_memory_help = make_help_popover(
+        "全局上下文",
         [
             {
                 "label": "统计什么",
                 "body": {
-                    "zh": "当前会进入 bounded summary 的个人资产记忆候选；只包含 durable 和 session bucket。",
-                    "en": "Personal asset memory candidates that fit the bounded summary; only durable and session buckets are included.",
+                    "zh": "当前会进入 bounded summary 的通用个人资产记忆；不同项目的记忆不会出现在这里。",
+                    "en": "Global personal asset memories that enter the bounded summary; project-specific memories do not appear here.",
                 },
             },
             {
@@ -13750,29 +13963,42 @@ def build_html(data):
             },
         ],
     )
-    session_memory_help = make_help_popover(
-        "个人资产-短期工作记忆",
+    project_memory_help = make_help_popover(
+        "项目上下文",
         [
             {
                 "label": "统计什么",
-                "body": "当前登记册中 bucket = session 的短期工作记忆，按近 7 日估算使用频率排序。",
+                "body": "绑定项目、仓库或工作区的个人资产记忆；保存在 OpenRelix 登记册，但不会注入全局 host context。",
             },
             {
                 "label": "含义",
-                "body": "这类内容对当前任务推进有帮助，但未必适合长期沉淀。",
+                "body": "这类条目适合在识别到同一项目时召回，避免污染其他项目的模型上下文。",
             },
         ],
     )
-    low_priority_memory_help = make_help_popover(
-        "个人资产-低优先级记忆",
+    on_demand_memory_help = make_help_popover(
+        "按需召回",
         [
             {
                 "label": "统计什么",
-                "body": "最近一次 nightly summary 里的 low_priority bucket 条目。",
+                "body": "领域型或检索型记忆，默认不进入 host context，需要任务命中时再召回。",
+            },
+            {
+                "label": "价值",
+                "body": "把有用但不应常驻上下文的信息留在独立系统里，降低 token 和错误注入风险。",
+            },
+        ],
+    )
+    local_memory_help = make_help_popover(
+        "本地保留",
+        [
+            {
+                "label": "统计什么",
+                "body": "低优先、本地私有或明确禁止注入的记忆；只作为资产证据保留。",
             },
             {
                 "label": "含义",
-                "body": "保留但优先级较低，通常不是第一推荐路径。",
+                "body": "这些条目不会进入 Codex 或 Claude Code 的上下文，主要用于审阅、回溯和后续人工提升。",
             },
         ],
     )
@@ -15092,6 +15318,116 @@ def build_html(data):
       font-weight: 780;
       line-height: 1;
       font-variant-numeric: tabular-nums;
+    }}
+
+    .memory-compiler-panel {{
+      overflow: hidden;
+    }}
+
+    .memory-compiler-body {{
+      display: grid;
+      gap: 16px;
+    }}
+
+    .memory-compiler-meter {{
+      display: grid;
+      gap: 10px;
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: var(--control);
+      min-width: 0;
+    }}
+
+    .memory-compiler-meter-topline {{
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto auto;
+      align-items: center;
+      gap: 12px;
+      min-width: 0;
+    }}
+
+    .memory-compiler-meter-topline span {{
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 780;
+      line-height: 1.35;
+    }}
+
+    .memory-compiler-meter-topline b {{
+      color: var(--ink);
+      font-size: 18px;
+      font-weight: 820;
+      font-variant-numeric: tabular-nums;
+      line-height: 1.1;
+      white-space: nowrap;
+    }}
+
+    .memory-compiler-meter-topline em {{
+      min-height: 24px;
+      display: inline-flex;
+      align-items: center;
+      padding: 0 10px;
+      border: 1px solid rgba(52, 199, 89, 0.24);
+      border-radius: 999px;
+      background: rgba(52, 199, 89, 0.12);
+      color: var(--green);
+      font-size: 12px;
+      font-style: normal;
+      font-weight: 760;
+      line-height: 1;
+      white-space: nowrap;
+    }}
+
+    .memory-compiler-meter p {{
+      margin: 0;
+      color: var(--slate);
+      font-size: 12px;
+      font-weight: 650;
+      line-height: 1.45;
+    }}
+
+    .memory-compiler-grid {{
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+    }}
+
+    .memory-compiler-stat {{
+      min-width: 0;
+      padding: 13px 14px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: var(--surface);
+    }}
+
+    .memory-compiler-stat span {{
+      display: block;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 780;
+      line-height: 1.25;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }}
+
+    .memory-compiler-stat strong {{
+      display: block;
+      margin-top: 8px;
+      color: var(--ink);
+      font-size: 28px;
+      font-weight: 820;
+      line-height: 1;
+      font-variant-numeric: tabular-nums;
+    }}
+
+    .memory-compiler-stat small {{
+      display: block;
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.35;
     }}
 
     .memory-token-topline {{
@@ -18631,6 +18967,15 @@ def build_html(data):
         grid-template-columns: repeat(2, minmax(0, 1fr));
       }}
 
+      .memory-compiler-grid {{
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }}
+
+      .memory-compiler-meter-topline {{
+        grid-template-columns: 1fr;
+        gap: 8px;
+      }}
+
       .memory-token-main {{
         grid-template-columns: 1fr;
         gap: 8px;
@@ -18823,33 +19168,38 @@ def build_html(data):
 
     <section class="memory-family" id="memory-section">
       {personal_asset_memory_family_header}
-      <section class="panel" id="personal-memory-context-section">
-        {context_memory_header}
+      <section class="panel memory-compiler-panel" id="personal-memory-compiler-section">
+        {memory_compiler_header}
+        {memory_compiler_body}
+      </section>
+
+      <section class="panel" id="personal-memory-global-section">
+        {global_memory_header}
         <div class="memory-group-list">
-          {context_memory_cards}
+          {global_memory_cards}
         </div>
       </section>
 
       <section class="grid memory-stack">
-        <section class="panel" id="personal-memory-durable-section">
-          {durable_memory_header}
+        <section class="panel" id="personal-memory-project-section">
+          {project_memory_header}
           <div class="memory-group-list">
-            {durable_memory_cards}
+            {project_memory_cards}
           </div>
         </section>
 
-        <section class="panel" id="personal-memory-session-section">
-          {session_memory_header}
+        <section class="panel" id="personal-memory-on-demand-section">
+          {on_demand_memory_header}
           <div class="memory-group-list">
-            {session_memory_cards}
+            {on_demand_memory_cards}
           </div>
         </section>
       </section>
 
-      <section class="panel" id="personal-memory-low-priority-section">
-        {low_priority_memory_header}
+      <section class="panel" id="personal-memory-local-section">
+        {local_memory_header}
         <div class="memory-group-list">
-          {low_priority_memory_cards}
+          {local_memory_cards}
         </div>
       </section>
 
@@ -22184,11 +22534,11 @@ def build_html(data):
         personal_asset_memory_family_header=make_memory_family_header(
             "个人资产记忆",
             "Personal Asset Memory",
-            "来自本地资产系统的 nightly 整理与结构化登记册。",
-            "From the local asset system's nightly synthesis and structured registry.",
+            "OpenRelix 独立存储，按策略编译给 Codex / Claude Code；项目记忆不会进入全局上下文。",
+            "Stored by OpenRelix and compiled into Codex / Claude Code by policy; project memories stay out of global context.",
             extra_html=(
-                make_personal_memory_count_widget(
-                    data.get("memory_registry", []),
+                make_memory_policy_count_widget(
+                    memory_policy_views,
                 )
                 + make_personal_memory_token_widget(
                     data.get("personal_memory_token_usage", {})
@@ -22207,25 +22557,31 @@ def build_html(data):
             "来自 Claude Code CLAUDE.md 与 projects/*/memory/*.md。",
             "From Claude Code CLAUDE.md and projects/*/memory/*.md.",
         ),
-        durable_memory_header=make_panel_header(
-            "个人资产-长期记忆",
-            "可跨天复用的条目",
-            durable_memory_help,
+        memory_compiler_header=make_panel_header(
+            "上下文编译",
+            "OpenRelix canonical memory -> host context 的策略预览",
+            memory_compiler_help,
         ),
-        context_memory_header=make_panel_header(
-            "进入 host context 的记忆",
-            "按当前 bounded summary 预算估算；按类型分组展示。",
-            context_memory_help,
+        memory_compiler_body=make_memory_context_compiler_body(memory_policy_views),
+        global_memory_header=make_panel_header(
+            "全局上下文",
+            "会进入通用 host context 的个人资产记忆",
+            global_memory_help,
         ),
-        session_memory_header=make_panel_header(
-            "个人资产-短期工作记忆",
-            "更偏当天任务推进",
-            session_memory_help,
+        project_memory_header=make_panel_header(
+            "项目上下文",
+            "按项目、仓库或工作区隔离的记忆",
+            project_memory_help,
         ),
-        low_priority_memory_header=make_panel_header(
-            "个人资产-低优先级记忆",
-            "保留但优先级较低",
-            low_priority_memory_help,
+        on_demand_memory_header=make_panel_header(
+            "按需召回",
+            "适合检索命中后再使用的领域记忆",
+            on_demand_memory_help,
+        ),
+        local_memory_header=make_panel_header(
+            "本地保留",
+            "低优先或禁止注入的本地证据",
+            local_memory_help,
         ),
         top_assets_header=make_panel_header(
             "近 30 天高频 skills 热度",
@@ -22254,20 +22610,17 @@ def build_html(data):
             extra_meta_html=window_overview_date_control,
         ),
         nightly_window_cards=make_window_summary_cards(window_overview),
-        durable_memory_cards=make_memory_type_grouped_cards(
-            data.get("nightly_memory_views", {}).get("durable", []),
-            include_bucket_meta=False,
+        global_memory_cards=make_policy_memory_type_grouped_cards(
+            memory_policy_views.get("global_context", {}).get("rows", []),
         ),
-        context_memory_cards=make_context_memory_type_grouped_cards(
-            data.get("context_memory_preview", []),
+        project_memory_cards=make_policy_memory_type_grouped_cards(
+            memory_policy_views.get("project_context", {}).get("rows", []),
         ),
-        session_memory_cards=make_memory_type_grouped_cards(
-            data.get("nightly_memory_views", {}).get("session", []),
-            include_bucket_meta=False,
+        on_demand_memory_cards=make_policy_memory_type_grouped_cards(
+            memory_policy_views.get("on_demand", {}).get("rows", []),
         ),
-        low_priority_memory_cards=make_memory_type_grouped_cards(
-            data.get("nightly_memory_views", {}).get("low_priority", []),
-            include_bucket_meta=False,
+        local_memory_cards=make_policy_memory_type_grouped_cards(
+            memory_policy_views.get("local_only", {}).get("rows", []),
         ),
         memory_registry_cards=make_memory_cards(memory_registry),
         codex_native_topic_header=make_panel_header(

@@ -244,6 +244,7 @@ class NightlyLogicTests(unittest.TestCase):
                 "window_overview": {},
                 "window_overview_views": [],
                 "memory_registry": [],
+                "memory_policy_views": {},
                 "nightly_memory_views": {},
                 "codex_native_memory": [],
                 "codex_native_memory_counts": {},
@@ -4350,9 +4351,12 @@ Keep my own note.
         self.assertIn("The local Token service is not running. Run openrelix open panel", html)
         self.assertIn("window.localStorage", html)
         self.assertNotIn("side-nav-sublabel", html)
-        self.assertIn("personal-memory-context-section", html)
-        self.assertIn("进入 host context 的记忆", html)
-        self.assertIn("personal-memory-durable-section", html)
+        self.assertIn("personal-memory-compiler-section", html)
+        self.assertIn("上下文编译", html)
+        self.assertIn("personal-memory-global-section", html)
+        self.assertIn("personal-memory-project-section", html)
+        self.assertIn("personal-memory-on-demand-section", html)
+        self.assertIn("personal-memory-local-section", html)
         self.assertIn("codex-native-topic-section", html)
         self.assertNotIn('data-nav-target="codex-native-topic-section"', html)
         self.assertNotIn('data-nav-target="codex-native-preference-section"', html)
@@ -4730,15 +4734,17 @@ Keep my own note.
         ]
         stack_start = main_template.index('class="grid memory-stack"')
         memory_stack = main_template[
-            stack_start : main_template.index("{low_priority_memory_header}", stack_start)
+            stack_start : main_template.index("{local_memory_header}", stack_start)
         ]
 
-        self.assertIn("{durable_memory_header}", memory_stack)
-        self.assertIn("{session_memory_header}", memory_stack)
+        self.assertIn("{project_memory_header}", memory_stack)
+        self.assertIn("{on_demand_memory_header}", memory_stack)
         self.assertNotIn('class="grid two-up"', memory_stack)
         self.assertIn('class="memory-group-list"', memory_stack)
         self.assertNotIn('class="review-grid memory-grid"', memory_stack)
-        self.assertIn("{low_priority_memory_header}", main_template)
+        self.assertIn("{memory_compiler_header}", main_template)
+        self.assertIn("{global_memory_header}", main_template)
+        self.assertIn("{local_memory_header}", main_template)
         self.assertNotIn("{memory_registry_header}", main_template)
         self.assertNotIn("{memory_registry_cards}", main_template)
 
@@ -4783,8 +4789,8 @@ Keep my own note.
         self.assertLess(main_template.index("{token_overview_panel}"), main_template.index("{daily_token_panel}"))
         self.assertLess(main_template.index("{daily_token_panel}"), main_template.index("{insight_section_html}"))
         self.assertLess(main_template.index("{project_context_body}"), main_template.index("{asset_metric_cards}"))
-        self.assertLess(main_template.index("{project_context_body}"), main_template.index("{durable_memory_header}"))
-        self.assertLess(main_template.index("{durable_memory_header}"), main_template.index("{asset_metric_cards}"))
+        self.assertLess(main_template.index("{project_context_body}"), main_template.index("{memory_compiler_header}"))
+        self.assertLess(main_template.index("{memory_compiler_header}"), main_template.index("{asset_metric_cards}"))
         for header in (
             "{codex_native_topic_header}",
             "{codex_native_preference_header}",

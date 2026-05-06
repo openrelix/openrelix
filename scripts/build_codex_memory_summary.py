@@ -16,6 +16,14 @@ from asset_runtime import (
     memory_summary_budget_from_max,
     normalize_language,
 )
+from openrelix_overview.memory_context import (
+    INJECTION_GLOBAL_CONTEXT,
+    MEMORY_SCOPE_GLOBAL,
+    first_record_value,
+    host_context_injection_policy_from_record,
+    memory_record_is_global_context,
+    memory_scope_from_record,
+)
 
 
 PATHS = get_runtime_paths()
@@ -44,70 +52,6 @@ PERSONAL_MEMORY_NOTE_LIMIT = 96
 SECTION_PREFERENCE = "User preferences"
 SECTION_TIPS = "General Tips"
 SECTION_PROFILE = "User Profile"
-
-MEMORY_SCOPE_GLOBAL = "global"
-MEMORY_SCOPE_DOMAIN = "domain"
-MEMORY_SCOPE_PROJECT = "project"
-MEMORY_SCOPE_REPO = "repo"
-MEMORY_SCOPE_HOST = "host"
-MEMORY_SCOPE_LOCAL = "local"
-
-INJECTION_GLOBAL_CONTEXT = "global_context"
-INJECTION_PROJECT_CONTEXT = "project_context"
-INJECTION_ON_DEMAND = "on_demand"
-INJECTION_LOCAL_ONLY = "local_only"
-INJECTION_NEVER = "never"
-
-MEMORY_SCOPE_ALIASES = {
-    "all": MEMORY_SCOPE_GLOBAL,
-    "common": MEMORY_SCOPE_GLOBAL,
-    "cross-scope": MEMORY_SCOPE_GLOBAL,
-    "cross_scope": MEMORY_SCOPE_GLOBAL,
-    "general": MEMORY_SCOPE_GLOBAL,
-    "global-context": MEMORY_SCOPE_GLOBAL,
-    "global_context": MEMORY_SCOPE_GLOBAL,
-    "personal": MEMORY_SCOPE_GLOBAL,
-    "user": MEMORY_SCOPE_GLOBAL,
-    "workspace": MEMORY_SCOPE_PROJECT,
-    "worktree": MEMORY_SCOPE_PROJECT,
-    "project-context": MEMORY_SCOPE_PROJECT,
-    "project_context": MEMORY_SCOPE_PROJECT,
-    "repository": MEMORY_SCOPE_REPO,
-    "host-native": MEMORY_SCOPE_HOST,
-    "host_native": MEMORY_SCOPE_HOST,
-    "native": MEMORY_SCOPE_HOST,
-    "private": MEMORY_SCOPE_LOCAL,
-    "state-root": MEMORY_SCOPE_LOCAL,
-    "state_root": MEMORY_SCOPE_LOCAL,
-}
-
-INJECTION_POLICY_ALIASES = {
-    "always": INJECTION_GLOBAL_CONTEXT,
-    "global": INJECTION_GLOBAL_CONTEXT,
-    "global-context": INJECTION_GLOBAL_CONTEXT,
-    "global_context": INJECTION_GLOBAL_CONTEXT,
-    "host": INJECTION_GLOBAL_CONTEXT,
-    "host-context": INJECTION_GLOBAL_CONTEXT,
-    "host_context": INJECTION_GLOBAL_CONTEXT,
-    "inject": INJECTION_GLOBAL_CONTEXT,
-    "project": INJECTION_PROJECT_CONTEXT,
-    "project-context": INJECTION_PROJECT_CONTEXT,
-    "project_context": INJECTION_PROJECT_CONTEXT,
-    "repo": INJECTION_PROJECT_CONTEXT,
-    "repository": INJECTION_PROJECT_CONTEXT,
-    "workspace": INJECTION_PROJECT_CONTEXT,
-    "demand": INJECTION_ON_DEMAND,
-    "on-demand": INJECTION_ON_DEMAND,
-    "on_demand": INJECTION_ON_DEMAND,
-    "search": INJECTION_ON_DEMAND,
-    "retrieval": INJECTION_ON_DEMAND,
-    "local": INJECTION_LOCAL_ONLY,
-    "local-only": INJECTION_LOCAL_ONLY,
-    "local_only": INJECTION_LOCAL_ONLY,
-    "off": INJECTION_NEVER,
-    "never": INJECTION_NEVER,
-    "none": INJECTION_NEVER,
-}
 
 
 @dataclass
@@ -470,89 +414,6 @@ def localized_record_value(item, field, language=None):
         if value:
             return value
     return ""
-
-
-def first_record_value(item, keys):
-    for key in keys:
-        value = collapse_whitespace(item.get(key, ""))
-        if value:
-            return value
-    return ""
-
-
-def normalize_memory_scope(value):
-    text = str(value or "").strip().lower().replace("_", "-")
-    if not text:
-        return ""
-    return MEMORY_SCOPE_ALIASES.get(text, text)
-
-
-def memory_scope_from_record(item):
-    explicit_scope = first_record_value(
-        item,
-        (
-            "scope",
-            "memory_scope",
-            "context_scope",
-            "applicability_scope",
-        ),
-    )
-    scope = normalize_memory_scope(explicit_scope)
-    if scope:
-        return scope
-
-    if any(collapse_whitespace(item.get(key, "")) for key in ("project_key", "project_label", "repo", "cwd")):
-        return MEMORY_SCOPE_PROJECT
-    return MEMORY_SCOPE_GLOBAL
-
-
-def normalize_injection_policy(value):
-    text = str(value or "").strip().lower().replace("_", "-")
-    if not text:
-        return ""
-    return INJECTION_POLICY_ALIASES.get(text, text)
-
-
-def default_injection_policy_for_scope(scope, bucket="", priority=""):
-    bucket = str(bucket or "").strip()
-    priority = str(priority or "").strip().lower()
-    if bucket == "low_priority" or priority == "low":
-        return INJECTION_LOCAL_ONLY
-    if scope == MEMORY_SCOPE_GLOBAL:
-        return INJECTION_GLOBAL_CONTEXT
-    if scope in {MEMORY_SCOPE_PROJECT, MEMORY_SCOPE_REPO, MEMORY_SCOPE_HOST}:
-        return INJECTION_PROJECT_CONTEXT
-    if scope == MEMORY_SCOPE_DOMAIN:
-        return INJECTION_ON_DEMAND
-    return INJECTION_LOCAL_ONLY
-
-
-def host_context_injection_policy_from_record(item):
-    explicit_policy = first_record_value(
-        item,
-        (
-            "injection_policy",
-            "context_policy",
-            "host_context_policy",
-            "injection_scope",
-        ),
-    )
-    policy = normalize_injection_policy(explicit_policy)
-    if policy:
-        return policy
-    return default_injection_policy_for_scope(
-        memory_scope_from_record(item),
-        bucket=item.get("bucket", ""),
-        priority=item.get("priority", ""),
-    )
-
-
-def memory_record_is_global_context(item):
-    if not isinstance(item, dict):
-        return False
-    if str(item.get("bucket") or "").strip() not in {"durable", "session"}:
-        return False
-    return host_context_injection_policy_from_record(item) == INJECTION_GLOBAL_CONTEXT
 
 
 def normalize_string_list(value):
