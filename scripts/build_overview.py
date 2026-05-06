@@ -2066,6 +2066,16 @@ def parse_nightly_summary_date(payload):
         return None
 
 
+def is_current_local_date(date_value):
+    if not date_value:
+        return False
+    try:
+        parsed_date = datetime.fromisoformat(str(date_value)).date()
+    except ValueError:
+        return False
+    return parsed_date == current_local_datetime().date()
+
+
 def nightly_summary_sort_key(payload):
     summary_date = parse_nightly_summary_date(payload)
     generated = parse_iso_datetime(payload.get("generated_at", ""))
@@ -8437,6 +8447,7 @@ def build_data(assets, usage_events, reviews, language=None):
         "daily_summary_views": daily_summary_views,
         "daily_summary_default_date": daily_summary_default_date,
         "daily_summary_select_dates": daily_summary_select_dates,
+        "today_date": today_date_str,
         "backfill": backfill,
         "asset_stats_snapshot": asset_stats_snapshot,
         "window_overview_views": window_overview_views,
@@ -11978,8 +11989,12 @@ def build_daily_summary_view(nightly, window_overview=None, project_contexts=Non
     note_text_zh = "这些数字来自当前整理结果，用来快速判断今天沉淀了多少内容。"
     note_text_en = "These numbers come from the selected synthesis and help estimate how much was captured that day."
     if stage == "preliminary":
-        note_text_zh = "当前是轻量整理，日报和记忆可能不准确；可运行 final 深度回溯查看全部可用的记忆和总结。"
-        note_text_en = "This is the lightweight pass, so the daily summary and memories may be inaccurate; run final deep backfill for all available memories and summaries."
+        if is_current_local_date(nightly.get("date", "")):
+            note_text_zh = "今天仍在进行中，当前只是轻量预览；日报和记忆是截至当前的快照，次日 final 深度整理会补齐。"
+            note_text_en = "Today is still in progress, so this is only a lightweight preview; the daily summary and memories are a snapshot so far, and final deep synthesis will fill them in tomorrow."
+        else:
+            note_text_zh = "当前是轻量整理，日报和记忆可能不准确；可运行 final 深度回溯查看全部可用的记忆和总结。"
+            note_text_en = "This is the lightweight pass, so the daily summary and memories may be inaccurate; run final deep backfill for all available memories and summaries."
     elif not nightly:
         note_text_zh = "当前还没有最近一次整理；生成后这里会自动切成摘要卡。"
         note_text_en = "No recent synthesis yet; this area will switch to a summary card after generation."
@@ -12228,13 +12243,19 @@ def make_nightly_summary_panel(
     backfill_panel_hidden = " hidden"
     selected_missing = selected_date in set(backfill.get("missing_dates", []))
     selected_preliminary = current_view.get("stage") == "preliminary"
-    if (selected_missing and not current_view.get("available")) or selected_preliminary:
+    selected_current_preliminary = selected_preliminary and is_current_local_date(selected_date)
+    if (selected_missing and not current_view.get("available")) or (
+        selected_preliminary and not selected_current_preliminary
+    ):
         backfill_panel_hidden = ""
     selected_backfill_command = backfill.get("commands_by_date", {}).get(
         selected_date,
         make_backfill_command(selected_date) if selected_date else "",
     )
     backfill_range_command = backfill.get("range_command", "")
+    if selected_current_preliminary:
+        selected_backfill_command = ""
+        backfill_range_command = ""
     backfill_range_hidden = (
         ""
         if backfill_range_command
@@ -12242,13 +12263,18 @@ def make_nightly_summary_panel(
         and not selected_preliminary
         else " hidden"
     )
-    backfill_title = "建议深度回溯" if selected_preliminary else "缺少整理结果"
-    backfill_note = (
-        "当前是轻量整理，日报和记忆可能不准确。可以复制命令在终端补跑 final 深度回溯。首次安装后，会自动触发深度回溯，请耐心等待。"
-        if selected_preliminary
-        else "该日期还没有整理结果。可以复制命令在终端手动回溯。"
-    )
-    backfill_single_label = "深度回溯" if selected_preliminary else "单日回溯"
+    if selected_current_preliminary:
+        backfill_title = "今日仍在进行中"
+        backfill_note = "今天还没结束，当前保留轻量预览；次日会自动生成 final 深度整理。"
+        backfill_single_label = "当日预览"
+    elif selected_preliminary:
+        backfill_title = "建议深度回溯"
+        backfill_note = "当前是轻量整理，日报和记忆可能不准确。可以复制命令在终端补跑 final 深度回溯。首次安装后，会自动触发深度回溯，请耐心等待。"
+        backfill_single_label = "深度回溯"
+    else:
+        backfill_title = "缺少整理结果"
+        backfill_note = "该日期还没有整理结果。可以复制命令在终端手动回溯。"
+        backfill_single_label = "单日回溯"
     backfill_panel = """
           <div class="nightly-backfill" id="nightly-backfill-panel"{hidden}>
             <div class="nightly-backfill-title" id="nightly-backfill-title">{title}</div>
@@ -13171,6 +13197,7 @@ def build_html(data):
             "daily_summaries": data.get("daily_summary_views", []),
             "daily_summary_default_date": data.get("daily_summary_default_date", ""),
             "daily_summary_select_dates": data.get("daily_summary_select_dates", []),
+            "today_date": data.get("today_date", ""),
             "backfill": data.get("backfill", {}),
             "window_overviews": window_overview_views,
             "window_overview_default_date": window_overview_default_date,
@@ -19081,6 +19108,23 @@ def build_html(data):
         return snapshot.backfill && typeof snapshot.backfill === "object" ? snapshot.backfill : {{}};
       }}
 
+      function snapshotTodayDate() {{
+        if (snapshot.today_date) {{
+          return snapshot.today_date;
+        }}
+        if (typeof snapshot.generated_at_iso === "string") {{
+          const match = snapshot.generated_at_iso.match(/^\\d{{4}}-\\d{{2}}-\\d{{2}}/);
+          if (match) {{
+            return match[0];
+          }}
+        }}
+        return "";
+      }}
+
+      function isCurrentSnapshotDate(dateValue) {{
+        return Boolean(dateValue) && dateValue === snapshotTodayDate();
+      }}
+
       function missingBackfillDates() {{
         const value = backfillState().missing_dates;
         return Array.isArray(value) ? value : [];
@@ -19107,8 +19151,11 @@ def build_html(data):
         }}
         const hasSummary = Boolean(summary);
         const isPreliminary = hasSummary && summary.stage === "preliminary";
+        const isCurrentPreliminary = isPreliminary && isCurrentSnapshotDate(dateValue);
         const missingDates = missingBackfillDates();
-        const shouldShow = Boolean(dateValue) && (isPreliminary || (!hasSummary && missingDates.includes(dateValue)));
+        const shouldShow = Boolean(dateValue) && (
+          (isPreliminary && !isCurrentPreliminary) || (!hasSummary && missingDates.includes(dateValue))
+        );
         elements.backfillPanel.hidden = !shouldShow;
         if (!shouldShow) {{
           if (elements.backfillStatus) {{

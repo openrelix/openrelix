@@ -8278,6 +8278,49 @@ Keep my own note.
         self.assertIn("openrelix backfill --from 2026-04-24 --to 2026-04-24 --stage final", html)
         self.assertIn('id="nightly-backfill-range" hidden', html)
 
+    def test_nightly_summary_panel_does_not_recommend_final_for_current_day_preview(self):
+        with mock.patch.object(
+            build_overview,
+            "current_local_datetime",
+            return_value=datetime.fromisoformat("2026-05-06T15:00:00+08:00"),
+        ):
+            summary_view = build_overview.build_daily_summary_view(
+                {
+                    "date": "2026-05-06",
+                    "stage": "preliminary",
+                    "day_summary": "轻量整理完成：读取 1 个窗口。",
+                    "raw_window_count": 1,
+                    "durable_memories": [],
+                    "session_memories": [1],
+                    "low_priority_memories": [],
+                },
+                {"window_count": 1},
+                [],
+            )
+            html = build_overview.make_nightly_summary_panel(
+                "每日整理结果",
+                "2026-05-06 · 预览",
+                "",
+                {},
+                {"window_count": 1},
+                [],
+                summary_views=[summary_view],
+                selected_date="2026-05-06",
+                selectable_dates=["2026-05-06"],
+                backfill={
+                    "missing_dates": [],
+                    "learn_window_days": 7,
+                    "range_command": "",
+                    "commands_by_date": {},
+                },
+            )
+
+        self.assertIn("今天仍在进行中", html)
+        self.assertIn("次日 final 深度整理会补齐", html)
+        self.assertIn('id="nightly-backfill-panel" hidden', html)
+        self.assertNotIn("建议深度回溯", html)
+        self.assertNotIn("openrelix backfill --from 2026-05-06 --to 2026-05-06 --stage final", html)
+
     def test_build_html_wires_window_overview_date_views(self):
         html = build_overview.build_html(
             {
