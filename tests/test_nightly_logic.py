@@ -3340,8 +3340,10 @@ Keep my own note.
         )
 
         self.assertIn("| 暂无 | 0 |", markdown)
-        self.assertIn("| 暂无 | 暂无 | 暂无 | 暂无 | 暂无 |", markdown)
-        self.assertIn("| 暂无 | 0 | 0 分钟 | 暂无 | 暂无 |", markdown)
+        self.assertIn("## 月度活动", markdown)
+        self.assertIn("## 近 30 天高频技能 Top 10", markdown)
+        self.assertIn("| 暂无 | 暂无 | 0 |", markdown)
+        self.assertNotIn("## 最近更新的资产", markdown)
         self.assertNotIn("| none | 0 |", markdown)
 
     def test_build_markdown_sanitizes_codex_native_memory_fail_closed_note(self):
@@ -4608,8 +4610,8 @@ Keep my own note.
 
         self.assertLess(top_start, review_start)
         self.assertNotIn('class="grid two-up"', main_template[top_start:review_start])
-        self.assertIn("<table>", top_section)
-        self.assertIn("{top_asset_rows}", top_section)
+        self.assertIn('class="asset-discovery-table top-skills-table"', top_section)
+        self.assertIn("{top_skill_rows}", top_section)
         self.assertIn('class="review-grid review-panel-grid"', review_section)
         self.assertIn("{review_cards}", review_section)
 
@@ -4706,8 +4708,9 @@ Keep my own note.
         self.assertLess(main_template.index("{asset_metric_cards}"), main_template.index("{type_panel}"))
         self.assertLess(main_template.index("{asset_metric_cards}"), main_template.index("{window_overview_header}"))
         self.assertLess(main_template.index("{type_panel}"), main_template.index("{month_panel}"))
-        self.assertLess(main_template.index("{month_panel}"), main_template.index("{scope_panel}"))
-        self.assertLess(main_template.index("{scope_panel}"), main_template.index("{domain_panel}"))
+        self.assertLess(main_template.index("{month_panel}"), main_template.index("{top_assets_header}"))
+        self.assertNotIn("{scope_panel}", main_template)
+        self.assertNotIn("{domain_panel}", main_template)
         self.assertLess(main_template.index("{usage_rows}"), main_template.index("{window_overview_header}"))
 
     def test_build_html_uses_light_system_dashboard_style(self):

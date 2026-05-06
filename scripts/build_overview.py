@@ -39,6 +39,7 @@ from build_codex_memory_summary import (
 )
 from openrelix_overview import common as overview_common
 from openrelix_overview import contract as overview_contract
+from openrelix_overview import asset_discovery as overview_asset_discovery
 from openrelix_overview import claude_desktop as overview_claude_desktop
 from openrelix_overview import i18n as overview_i18n
 from openrelix_overview import labels as overview_labels
@@ -86,6 +87,9 @@ SUMMARY_TERM_RANGE_DAYS = (1, 7)
 MEMORY_USAGE_WINDOW_DAYS = 7
 PROJECT_CONTEXT_TOPIC_VISIBLE_COUNT = 4
 TOKEN_METRIC_KEYS = {"today_token", "seven_day_token"}
+DISCOVERED_KIND_ORDER = overview_asset_discovery.DISCOVERED_KIND_ORDER
+DISCOVERED_TYPE_ORDER = overview_asset_discovery.HIGH_LEVEL_TYPE_ORDER
+DISCOVERED_NON_SKILL_KINDS = overview_asset_discovery.NON_SKILL_KINDS
 MEMORY_BRIEF_TITLE_LIMIT = 42
 MEMORY_BRIEF_BODY_LIMIT = 132
 MEMORY_BRIEF_FULL_TEXT_LIMIT = 520
@@ -468,6 +472,8 @@ PANEL_I18N_EN = {
     "条 tip": "tips",
     "条历史任务索引": "historical task index entries",
     "资产总数": "Total Assets",
+    "已发现资产": "Discovered Assets",
+    "已发现的 Codex / Claude 资产": "Discovered Codex / Claude Assets",
     "活跃资产": "Active Assets",
     "任务复盘": "Task Reviews",
     "复用记录": "Usage Events",
@@ -609,17 +615,14 @@ PANEL_I18N_EN = {
     "近 7 日热词": "Last 7 Days Hot Terms",
     "热词时间范围": "Hot terms date range",
     "资产类型分布": "Asset Type Distribution",
-    "项目 / 上下文分布": "Project / Context Distribution",
-    "月度新增": "Monthly Additions",
-    "适用层级": "Scope",
+    "月度活动": "Monthly Activity",
     "运行视图": "Runtime View",
     "记忆层": "Memory Layer",
     "资产层": "Asset Layer",
     "资产记忆": "Asset Memory",
-    "账本概览": "Ledger Overview",
-    "资产账本概览": "Asset Ledger Overview",
-    "这里看的是已经登记到本地账本里的资产、复盘和复用记录，不是注入 host context 的记忆摘要。": (
-        "This shows assets, reviews, and reuse records registered in the local ledger, not the memory summary injected into host context."
+    "资产层总览": "Asset Layer Overview",
+    "这里合并展示本机发现资产、手动账本条目、复盘和复用记录，不是注入 host context 的记忆摘要。": (
+        "This merges discovered local assets, manual ledger entries, reviews, and reuse records; it is not the memory summary injected into host context."
     ),
     "每日 Token 消耗": "Daily Token Usage",
     "今日 Token 构成": "Today Token Breakdown",
@@ -634,8 +637,7 @@ PANEL_I18N_EN = {
     "Claude Code 原生记忆-记忆条目": "Claude Code Native Memory - Memory Items",
     "Claude Code 原生记忆-偏好": "Claude Code Native Memory - Preferences",
     "Claude Code 原生记忆-通用 tips": "Claude Code Native Memory - General Tips",
-    "最近更新的资产": "Recently Updated Assets",
-    "复用价值较高的资产": "High-value Reusable Assets",
+    "近 30 天高频技能 Top 10": "Top 10 Skills (last 30 days)",
     "最近复盘": "Recent Reviews",
     "最近复用记录": "Recent Usage Events",
     "最近形成的脱敏任务复盘": "Recent sanitized task reviews",
@@ -644,9 +646,10 @@ PANEL_I18N_EN = {
     "每日窗口概览": "Daily Window Overview",
     "最近一次窗口概览": "Latest Window Overview",
     "资产": "Asset",
+    "名称": "Name",
+    "描述": "Description",
     "类型": "Type",
     "项目 / 上下文": "Project / Context",
-    "适用层级": "Scope",
     "更新时间": "Updated",
     "日期": "Date",
     "资产 ID": "Asset ID",
@@ -952,8 +955,8 @@ PANEL_I18N_EN = {
     "同名项目会合并，按最近活动时间排序。": (
         "Projects with the same name are merged and sorted by latest activity."
     ),
-    "这里数的是窗口上下文；上面的 项目 / 上下文分布 数的是资产条目。": (
-        "This counts window context; Project / Context Distribution above counts asset entries."
+    "这里数的是窗口上下文；资产层的类型与活动面板数的是资产和技能读取。": (
+        "This counts window context; the Asset Layer type and activity panels count assets and skill reads."
     ),
     "这是按日期切换的每日整理摘要卡，默认展示今天。": (
         "A daily synthesis card switchable by date, defaulting to today."
@@ -1085,13 +1088,6 @@ PANEL_I18N_EN = {
     ),
     "用户偏好、通用 tips 和历史任务索引已经拆到独立模块。": (
         "User preferences, general tips, and the historical task index are split into separate modules."
-    ),
-    "项目 / 上下文：资产最终归到的 display_context。": (
-        "Project / Context: the final display_context assigned to the asset."
-    ),
-    "适用层级：scope 的展示值。": "Scope: the display value of scope.",
-    "复用记录：这个资产已经被记录过多少次 usage event。": (
-        "Usage events: how many times this asset has been recorded in usage events."
     ),
     "cwd / project_label、问题数、结论数。": (
         "cwd / project_label, question count, and conclusion count."
@@ -1395,7 +1391,7 @@ CONTEXT_TOPIC_RULES = [
             "dashboard",
             "可视化",
             "当前项目上下文",
-            "项目 / 上下文分布",
+            "资产层图表",
             "数据同步",
             "重叠",
             "折线图",
@@ -2477,6 +2473,15 @@ def normalize_term(raw):
 def display_label(kind, value, language=None):
     return overview_labels.display_label(
         kind,
+        value,
+        language=language,
+        is_english_func=is_english,
+        humanize_func=humanize_identifier,
+    )
+
+
+def display_discovered_asset_kind(value, language=None):
+    return overview_labels.display_discovered_asset_kind(
         value,
         language=language,
         is_english_func=is_english,
@@ -7732,6 +7737,59 @@ def build_asset_mix_rows(assets, key_fn, label_fn=None, label_en_fn=None):
     return rows
 
 
+def make_discovered_panel_detail_item(row):
+    title = row.get("name") or row.get("identifier") or ""
+    title_en = panel_english_text(title) or title
+    meta = row.get("description") or row.get("identifier") or ""
+    meta_en = panel_english_text(meta) or english_freeform_text(meta, fallback_label="Asset")
+    return {
+        "title": title,
+        "title_en": title_en,
+        "meta": meta,
+        "meta_en": meta_en,
+    }
+
+
+def build_discovered_type_mix_rows(render_rows):
+    counts = overview_asset_discovery.high_level_type_counts(render_rows)
+    rows = []
+    for asset_type in DISCOVERED_TYPE_ORDER:
+        value = counts.get(asset_type, 0)
+        if value <= 0:
+            continue
+        details = [
+            make_discovered_panel_detail_item(row)
+            for row in sorted(
+                (item for item in render_rows if item.get("type") == asset_type),
+                key=lambda item: str(item.get("identifier") or item.get("name") or "").lower(),
+            )
+        ]
+        rows.append(
+            {
+                "label": display_discovered_asset_kind(asset_type, language="zh"),
+                "label_en": display_discovered_asset_kind(asset_type, language="en"),
+                "value": value,
+                "details": details,
+                "details_heading": "对应资产",
+                "details_heading_en": "Related assets",
+            }
+        )
+    return rows
+
+
+def normalized_asset_panels(data):
+    panels = dict(data.get("asset_panels") or {})
+    mix = data.get("mix") or {}
+    render_rows = data.get("asset_panel_rows") or data.get("discovered_asset_rows") or []
+    if "type" not in panels:
+        panels["type"] = build_discovered_type_mix_rows(render_rows) if render_rows else list(mix.get("type", []))
+    if "monthly_activity" not in panels:
+        panels["monthly_activity"] = list(mix.get("month", []))
+    if "top_skills" not in panels:
+        panels["top_skills"] = overview_asset_discovery.top_skill_rows(render_rows, limit=10) if render_rows else []
+    return panels
+
+
 def make_table(counter, headers, empty_label="none"):
     rows = counter_to_rows(counter)
     if not rows:
@@ -7823,6 +7881,20 @@ def build_data(assets, usage_events, reviews, language=None):
     display_nightly = select_display_nightly(primary_nightly, active_nightly)
     today = current_local_datetime().date()
     today_date_str = today.isoformat()
+    installed_assets = overview_asset_discovery.discover_installed_assets(PATHS)
+    discovered_snapshot = overview_asset_discovery.compute_activation_snapshot(
+        PATHS,
+        installed_assets,
+        today,
+        monthly_months=6,
+    )
+    all_discovered_assets = discovered_snapshot["assets"]
+    discovered_asset_frequency = discovered_snapshot["frequency_by_key"]
+    discovered_monthly_activity = discovered_snapshot["monthly_activity"]
+    discovered_assets = overview_asset_discovery.filter_renderable_assets(
+        all_discovered_assets,
+        discovered_asset_frequency,
+    )
     today_nightly = select_best_nightly_summary_for_date(nightly_candidates, today.isoformat())
     if today_nightly:
         display_nightly = today_nightly
@@ -7959,6 +8031,16 @@ def build_data(assets, usage_events, reviews, language=None):
         window_overview=window_overview,
         language=language,
     )
+    discovered_render_rows = overview_asset_discovery.aggregate_renderable_assets(
+        discovered_assets,
+        discovered_asset_frequency,
+    )
+    asset_panel_rows = overview_asset_discovery.merge_manual_asset_rows(
+        discovered_render_rows,
+        enriched_assets,
+    )
+    discovered_type_mix_rows = build_discovered_type_mix_rows(asset_panel_rows)
+    discovered_top_skill_rows = overview_asset_discovery.top_skill_rows(asset_panel_rows, limit=10)
     localized_usage_events = enrich_usage_events(recent_usage_events, language=language)
     minutes_saved_total = sum(
         safe_int(asset.get("estimated_minutes_saved", 0)) for asset in enriched_assets
@@ -8076,6 +8158,16 @@ def build_data(assets, usage_events, reviews, language=None):
             "label": localized("资产总数", "Total Assets", language),
             "value": len(assets),
             "caption": localized("资产注册表中的稳定条目", "Stable entries in the asset registry", language),
+        },
+        {
+            "key": "discovered_assets",
+            "label": localized("已发现资产", "Discovered Assets", language),
+            "value": len(discovered_assets),
+            "caption": localized(
+                "已扫描的 Codex / Claude 资产合计",
+                "Total Codex / Claude assets scanned on this machine",
+                language,
+            ),
         },
         {
             "key": "active_assets",
@@ -8253,6 +8345,7 @@ def build_data(assets, usage_events, reviews, language=None):
         "generated_at_iso": generated_at_iso,
         "summary": {
             "total_assets": len(assets),
+            "discovered_assets": len(discovered_assets),
             "active_assets": summary["active_assets"],
             "task_reviews": len(reviews),
             "tracked_usage_events": len(usage_events),
@@ -8306,6 +8399,16 @@ def build_data(assets, usage_events, reviews, language=None):
         "assets": {
             "recent": recent_assets,
             "top": top_assets,
+        },
+        "discovered_assets": discovered_assets,
+        "all_discovered_assets": all_discovered_assets,
+        "discovered_asset_frequency": discovered_asset_frequency,
+        "discovered_asset_rows": discovered_render_rows,
+        "asset_panel_rows": asset_panel_rows,
+        "asset_panels": {
+            "type": discovered_type_mix_rows,
+            "monthly_activity": discovered_monthly_activity,
+            "top_skills": discovered_top_skill_rows,
         },
         "reviews": reviews[:8],
         "usage_events": localized_usage_events[:10],
@@ -8405,6 +8508,7 @@ def build_data(assets, usage_events, reviews, language=None):
 
 def build_markdown(data):
     language = current_language(data.get("language"))
+    asset_panels = normalized_asset_panels(data)
     token_usage = data["token_usage"]
     nightly = data["nightly"] or {}
     active_nightly_note = data.get("active_nightly_note", "")
@@ -8477,19 +8581,11 @@ def build_markdown(data):
                 "",
                 "## Asset Type Distribution",
                 "",
-                make_table(Counter({row["label"]: row["value"] for row in data["mix"]["type"]}), ["Type", "Count"]),
+                make_table(Counter({row.get("label_en", row.get("label", "")): row["value"] for row in asset_panels["type"]}), ["Type", "Count"]),
                 "",
-                "## Monthly Additions",
+                "## Monthly Activity",
                 "",
-                make_table(Counter({row["label"]: row["value"] for row in data["mix"]["month"]}), ["Month", "Count"]),
-                "",
-                "## Scope",
-                "",
-                make_table(Counter({row["label"]: row["value"] for row in data["mix"].get("scope", [])}), ["Scope", "Count"]),
-                "",
-                "## Project / Context Distribution",
-                "",
-                make_table(Counter({row["label"]: row["value"] for row in data["mix"]["context"]}), ["Project / Context", "Count"]),
+                make_table(Counter({row["label"]: row["value"] for row in asset_panels["monthly_activity"]}), ["Month", "Active Skills"]),
                 "",
                 "## Current Project Context",
                 "",
@@ -8583,48 +8679,23 @@ def build_markdown(data):
         lines.extend(
             [
                 "",
-                "## Recently Updated Assets",
+                "## Top 10 Skills (last 30 days)",
                 "",
-                "| Title | Type | Project / Context | Scope | Updated |",
-                "| --- | --- | --- | --- | --- |",
+                "| Name | Description | 30d |",
+                "| --- | --- | --- |",
             ]
         )
-        if data["assets"]["recent"]:
-            for asset in data["assets"]["recent"]:
+        if asset_panels["top_skills"]:
+            for asset in asset_panels["top_skills"]:
                 lines.append(
-                    "| {} | {} | {} | {} | {} |".format(
-                        asset.get("display_title") or asset.get("title", ""),
-                        asset.get("display_type", asset.get("type", "")),
-                        asset.get("display_context", asset.get("display_domain", asset.get("domain", ""))),
-                        asset.get("display_scope", asset.get("scope", "")),
-                        asset.get("updated_at", ""),
+                    "| {} | {} | {} |".format(
+                        markdown_table_cell(asset.get("name") or asset.get("identifier", ""), limit=80),
+                        markdown_table_cell(asset.get("description", ""), limit=90),
+                        asset.get("windows_30d", 0),
                     )
                 )
         else:
-            lines.append("| None | None | None | None | None |")
-
-        lines.extend(
-            [
-                "",
-                "## High-value Reusable Assets",
-                "",
-                "| Title | Value Score | Estimated Saved | Evidence | Note |",
-                "| --- | --- | --- | --- | --- |",
-            ]
-        )
-        if data["assets"]["top"]:
-            for asset in data["assets"]["top"]:
-                lines.append(
-                    "| {} | {} | {} | {} | {} |".format(
-                        asset.get("display_title") or asset.get("title", ""),
-                        asset.get("estimated_value_score", 0),
-                        asset.get("estimated_minutes_saved_display", ""),
-                        asset.get("value_evidence_label", ""),
-                        (asset.get("display_value_note") or asset.get("value_note", "")).replace("|", "/"),
-                    )
-                )
-        else:
-            lines.append("| None | 0 | 0 min | None | None |")
+            lines.append("| None | None | 0 |")
 
         lines.extend(["", "## Reading Guide", ""])
         lines.extend("- {}".format(item) for item in data["reading_guide"])
@@ -8704,32 +8775,16 @@ def build_markdown(data):
             "## 资产类型分布",
             "",
             make_table(
-                Counter({row["label"]: row["value"] for row in data["mix"]["type"]}),
+                Counter({row["label"]: row["value"] for row in asset_panels["type"]}),
                 ["类型", "数量"],
                 empty_label="暂无",
             ),
             "",
-            "## 月度新增",
+            "## 月度活动",
             "",
             make_table(
-                Counter({row["label"]: row["value"] for row in data["mix"]["month"]}),
-                ["月份", "数量"],
-                empty_label="暂无",
-            ),
-            "",
-            "## 适用层级",
-            "",
-            make_table(
-                Counter({row["label"]: row["value"] for row in data["mix"].get("scope", [])}),
-                ["适用层级", "数量"],
-                empty_label="暂无",
-            ),
-            "",
-            "## 项目 / 上下文分布",
-            "",
-            make_table(
-                Counter({row["label"]: row["value"] for row in data["mix"]["context"]}),
-                ["项目 / 上下文", "数量"],
+                Counter({row["label"]: row["value"] for row in asset_panels["monthly_activity"]}),
+                ["月份", "活跃技能数"],
                 empty_label="暂无",
             ),
             "",
@@ -8830,50 +8885,24 @@ def build_markdown(data):
     lines.extend(
         [
             "",
-            "## 最近更新的资产",
+            "## 近 30 天高频技能 Top 10",
             "",
-            "| 标题 | 类型 | 项目 / 上下文 | 适用层级 | 更新时间 |",
-            "| --- | --- | --- | --- | --- |",
+            "| 名称 | 描述 | 30 天 |",
+            "| --- | --- | --- |",
         ]
     )
 
-    if data["assets"]["recent"]:
-        for asset in data["assets"]["recent"]:
+    if asset_panels["top_skills"]:
+        for asset in asset_panels["top_skills"]:
             lines.append(
-                "| {} | {} | {} | {} | {} |".format(
-                    asset.get("display_title") or asset.get("title", ""),
-                    asset.get("display_type", asset.get("type", "")),
-                    asset.get("display_context", asset.get("display_domain", asset.get("domain", ""))),
-                    asset.get("display_scope", asset.get("scope", "")),
-                    asset.get("updated_at", ""),
+                "| {} | {} | {} |".format(
+                    markdown_table_cell(asset.get("name") or asset.get("identifier", ""), limit=80),
+                    markdown_table_cell(asset.get("description", ""), limit=90),
+                    asset.get("windows_30d", 0),
                 )
             )
     else:
-        lines.append("| 暂无 | 暂无 | 暂无 | 暂无 | 暂无 |")
-
-    lines.extend(
-        [
-            "",
-            "## 复用价值较高的资产",
-            "",
-            "| 标题 | 价值分 | 估算节省 | 证据 | 说明 |",
-            "| --- | --- | --- | --- | --- |",
-        ]
-    )
-
-    if data["assets"]["top"]:
-        for asset in data["assets"]["top"]:
-            lines.append(
-                "| {} | {} | {} | {} | {} |".format(
-                    asset.get("display_title") or asset.get("title", ""),
-                    asset.get("estimated_value_score", 0),
-                    asset.get("estimated_minutes_saved_display", ""),
-                    asset.get("value_evidence_label", ""),
-                    (asset.get("display_value_note") or asset.get("value_note", "")).replace("|", "/"),
-                )
-            )
-    else:
-        lines.append("| 暂无 | 0 | 0 分钟 | 暂无 | 暂无 |")
+        lines.append("| 暂无 | 暂无 | 0 |")
 
     lines.extend(["", "## 阅读提示", ""])
     lines.extend("- {}".format(item) for item in data["reading_guide"])
@@ -9525,20 +9554,30 @@ def wrap_expandable_block(
     expanded_label="收起更多内容",
     item_label_en="",
     expanded_label_en="",
+    collapsed_label="",
+    collapsed_label_en="",
+    open_by_default=False,
 ):
     if not extra_html or extra_count <= 0:
         return primary_html
-    collapsed_label_html = panel_language_text_html(
-        "查看更多 {} {}".format(extra_count, item_label),
-        "Show {} more {}".format(extra_count, item_label_en or panel_english_text(item_label) or item_label),
-    )
+    if collapsed_label:
+        collapsed_label_html = panel_language_text_html(
+            collapsed_label,
+            collapsed_label_en or panel_english_text(collapsed_label) or collapsed_label,
+        )
+    else:
+        collapsed_label_html = panel_language_text_html(
+            "查看更多 {} {}".format(extra_count, item_label),
+            "Show {} more {}".format(extra_count, item_label_en or panel_english_text(item_label) or item_label),
+        )
     expanded_label_html = panel_language_text_html(
         expanded_label,
         expanded_label_en or panel_english_text(expanded_label) or expanded_label,
     )
+    open_attr = " open" if open_by_default else ""
     return """
         {primary_html}
-        <details class="content-more">
+        <details class="content-more"{open_attr}>
           <summary class="content-more-trigger">
             <span class="content-more-collapsed">{collapsed_label}</span>
             <span class="content-more-expanded">{expanded_label}</span>
@@ -9549,10 +9588,227 @@ def wrap_expandable_block(
         </details>
     """.format(
         primary_html=primary_html,
+        open_attr=open_attr,
         collapsed_label=collapsed_label_html,
         expanded_label=expanded_label_html,
         extra_container_class=escape(extra_container_class),
         extra_html=extra_html,
+    )
+
+
+def discovered_file_href(path):
+    path_text = str(path or "").strip()
+    if not path_text:
+        return ""
+    return "file://{}".format(quote(path_text, safe="/"))
+
+
+def make_discovered_asset_name_html(row):
+    name = str(row.get("name") or row.get("identifier") or "").strip()
+    if row.get("type") == "skill" and row.get("click_target"):
+        return '<a href="{href}" class="discovered-skill-name">{name}</a>'.format(
+            href=escape(discovered_file_href(row.get("click_target")), quote=True),
+            name=escape(name),
+        )
+    return escape(name)
+
+
+def make_discovered_description_html(row, limit=60):
+    raw_description = normalize_brand_display_text(row.get("description", ""))
+    if not raw_description:
+        raw_description = "—"
+    display_description = compact_preview_text(raw_description, limit=limit)
+    return '<span class="asset-discovery-description" title="{title}">{display}</span>'.format(
+        title=escape(raw_description, quote=True),
+        display=escape(display_description),
+    )
+
+
+def make_source_tag_row(row):
+    if row.get("type") != "skill":
+        return ""
+    tags = []
+    for source in row.get("source_labels", []) or []:
+        label = source.get("label", "")
+        if not label:
+            continue
+        tags.append(
+            '<span class="asset-source-tag">{}</span>'.format(
+                panel_language_text_html(label, source.get("label_en", "") or label)
+            )
+        )
+    if not tags:
+        return ""
+    return '<div class="asset-source-tags">{}</div>'.format(", ".join(tags))
+
+
+def make_discovered_asset_table_rows(rows):
+    def stat_cells(row):
+        if row.get("type") != "skill":
+            dash = escape("—")
+            return dash, dash, dash
+        return (
+            escape(str(safe_int(row.get("windows_7d", 0)))),
+            escape(str(safe_int(row.get("windows_30d", 0)))),
+            escape(str(row.get("last_seen") or "—")),
+        )
+
+    rendered_rows = []
+    for row in rows:
+        count_7d, count_30d, last_seen = stat_cells(row)
+        rendered_rows.append(
+            """
+          <tr data-asset-identifier="{identifier}" data-asset-type="{asset_type}">
+            <td>
+              <div class="asset-discovery-name">{name}</div>
+              {source_tags}
+            </td>
+            <td>{description}</td>
+            <td>{count_7d}</td>
+            <td>{count_30d}</td>
+            <td>{last_seen}</td>
+          </tr>
+            """.format(
+                identifier=escape(str(row.get("identifier") or ""), quote=True),
+                asset_type=escape(str(row.get("type") or ""), quote=True),
+                name=make_discovered_asset_name_html(row),
+                source_tags=make_source_tag_row(row),
+                description=make_discovered_description_html(row),
+                count_7d=count_7d,
+                count_30d=count_30d,
+                last_seen=last_seen,
+            )
+        )
+    return "".join(rendered_rows)
+
+
+def make_discovered_assets_section(render_rows):
+    render_rows = list(render_rows or [])
+
+    grouped = defaultdict(list)
+    for row in render_rows:
+        asset_type = row.get("type", "")
+        if asset_type:
+            grouped[asset_type].append(row)
+
+    summary_parts = []
+    for asset_type in DISCOVERED_TYPE_ORDER:
+        count = len(grouped.get(asset_type, []))
+        if count <= 0:
+            continue
+        summary_parts.append(
+            '<span class="asset-discovery-summary-item">{label} <strong>{count}</strong></span>'.format(
+                label=panel_language_text_html(
+                    display_discovered_asset_kind(asset_type, language="zh"),
+                    display_discovered_asset_kind(asset_type, language="en"),
+                ),
+                count=escape(str(count)),
+            )
+        )
+    summary_html = ""
+    if summary_parts:
+        summary_html = '<div class="asset-discovery-summary">{}</div>'.format(" · ".join(summary_parts))
+
+    last_activity_title = escape(
+        "{} / {}".format(
+            "模型最近一次读取此技能 SKILL.md 的本地日期；与技能的添加或修改时间无关。",
+            "Local date when the model most recently read this skill's SKILL.md. Not the skill's added or modified date.",
+        ),
+        quote=True,
+    )
+
+    def render_group(asset_type, rows):
+        sorted_rows = sorted(
+            rows,
+            key=lambda row: (
+                -safe_int(row.get("windows_30d", 0)),
+                str(row.get("identifier") or row.get("name") or "").lower(),
+            ),
+        )
+        table_html = """
+          <table class="asset-discovery-table">
+            <thead>
+              <tr>
+                <th>{name_header}</th>
+                <th>{description_header}</th>
+                <th title="{count_7d_title}">{count_7d_header}</th>
+                <th title="{count_30d_title}">{count_30d_header}</th>
+                <th title="{last_activity_title}">{last_activity_header}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows}
+            </tbody>
+          </table>
+        """.format(
+            name_header=panel_language_text_html("名称", "Name"),
+            description_header=panel_language_text_html("描述", "Description"),
+            count_7d_title=escape(
+                "{} / {}".format(
+                    "近 7 天，模型实际读取过该技能 SKILL.md 的会话数",
+                    "Sessions in the last 7 days where the model read this skill's SKILL.md",
+                ),
+                quote=True,
+            ),
+            count_7d_header=panel_language_text_html("7 天", "7d"),
+            count_30d_title=escape(
+                "{} / {}".format(
+                    "近 30 天，模型实际读取过该技能 SKILL.md 的会话数",
+                    "Sessions in the last 30 days where the model read this skill's SKILL.md",
+                ),
+                quote=True,
+            ),
+            count_30d_header=panel_language_text_html("30 天", "30d"),
+            last_activity_title=last_activity_title,
+            last_activity_header=panel_language_text_html("最近活动", "Last Activity"),
+            rows=make_discovered_asset_table_rows(sorted_rows),
+        )
+        label_zh = display_discovered_asset_kind(asset_type, language="zh")
+        label_en = display_discovered_asset_kind(asset_type, language="en")
+        title_zh = "{} · {}".format(label_zh, len(sorted_rows))
+        title_en = "{} · {}".format(label_en, len(sorted_rows))
+        return wrap_expandable_block(
+            "",
+            table_html,
+            len(sorted_rows),
+            label_zh,
+            "table-wrap asset-discovery-table-wrap",
+            expanded_label=title_zh,
+            item_label_en=label_en,
+            expanded_label_en=title_en,
+            collapsed_label=title_zh,
+            collapsed_label_en=title_en,
+            open_by_default=len(sorted_rows) <= 8,
+        )
+
+    groups_html = []
+    for asset_type in DISCOVERED_TYPE_ORDER:
+        rows = grouped.get(asset_type, [])
+        if rows:
+            groups_html.append(render_group(asset_type, rows))
+
+    if not groups_html:
+        groups_html.append('<p class="empty">{}</p>'.format(panel_language_text_html("暂无已发现资产。", "No discovered assets.")))
+
+    header = make_panel_header(
+        "已发现的 Codex / Claude 资产",
+        note_content_html=panel_language_text_html(
+            '从本机扫描到的可用资产，以及过去 30 天里被模型真实读取过的项目内 / 跨仓库技能。技能按名称聚合，频率统计基于模型读取 SKILL.md 的会话数；非技能类显示 "—"。',
+            'Assets scanned from this machine, plus project-local and external-repo skills the model actually read in the past 30 days. Skills aggregate by name, frequency counts sessions where the model read SKILL.md; non-skill types render "—".',
+        ),
+    )
+    return """
+      <section class="panel discovered-assets-panel" id="discovered-assets-section" data-discovered-assets-label="已发现资产 / Discovered Assets">
+        {header}
+        {summary}
+        <div class="asset-discovery-groups">
+          {groups}
+        </div>
+      </section>
+    """.format(
+        header=header,
+        summary=summary_html,
+        groups="".join(groups_html),
     )
 
 
@@ -9730,6 +9986,32 @@ def make_top_asset_rows(rows, group_id="top-asset-rows"):
         "收起更多资产",
         group_id,
     )
+
+
+def make_top_skill_rows(rows):
+    rows = list(rows or [])[:10]
+    if not rows:
+        return '<tr><td colspan="3" class="empty-cell">暂无高频技能。</td></tr>'
+
+    rendered = []
+    for row in rows:
+        rendered.append(
+            """
+            <tr data-asset-identifier="{identifier}" data-asset-type="skill">
+              <td>
+                <div class="asset-discovery-name">{name}</div>
+              </td>
+              <td>{description}</td>
+              <td>{count_30d}</td>
+            </tr>
+            """.format(
+                identifier=escape(str(row.get("identifier") or ""), quote=True),
+                name=make_discovered_asset_name_html(row),
+                description=make_discovered_description_html(row),
+                count_30d=escape(str(safe_int(row.get("windows_30d", 0)))),
+            )
+        )
+    return "".join(rendered)
 
 
 def make_review_cards(reviews):
@@ -10341,9 +10623,7 @@ def make_side_nav():
         ("child", "claude-native-preference-section", "用户偏好", "User Preferences", "Claude Code 原生记忆-用户偏好", "Claude Code Native Memory - User Preferences"),
         ("child", "claude-native-tip-section", "通用 tips", "General Tips", "Claude Code 原生记忆-通用 tips", "Claude Code Native Memory - General Tips"),
         ("group", "资产层", "Asset Layer"),
-        ("link", "asset-overview-section", "账本概览", "Ledger Overview", "资产注册表概览", "Asset Registry Overview"),
-        ("link", "assets-section", "资产明细", "Assets", "资产明细", "Assets"),
-        ("link", "top-assets-section", "复用价值", "Reuse Value", "复用价值", "Reuse Value"),
+        ("link", "asset-overview-section", "资产层", "Asset Layer", "资产层", "Asset Layer"),
         ("link", "reviews-section", "复盘记录", "Reviews", "复盘记录", "Reviews"),
         ("link", "window-overview-section", "窗口明细", "Windows", "窗口明细", "Windows"),
     ]
@@ -12549,8 +12829,11 @@ def build_metric_help_sections(metric):
     help_map = {
         "total_assets": [
             {
-                "label": "统计什么",
-                "body": "已登记到资产注册表的稳定资产总数。",
+                "label": "统计口径",
+                "body": {
+                    "zh": "仅来自手动登记的资产账本（assets.jsonl），不含本机扫描出的现有资产；后者请看「已发现资产」",
+                    "en": "Counts only the manually registered asset ledger (assets.jsonl). It excludes existing assets scanned from this machine; see Discovered Assets for those.",
+                },
             },
             {
                 "label": "数据来源",
@@ -12559,6 +12842,22 @@ def build_metric_help_sections(metric):
             {
                 "label": "不包含",
                 "body": "raw 对话、日志、报表，以及还没登记成资产的临时内容。",
+            },
+        ],
+        "discovered_assets": [
+            {
+                "label": "统计什么",
+                "body": {
+                    "zh": "从本机扫描到的 Codex / Claude 技能、提示词、规则、插件、启动项，以及近 30 天里真实读取过的项目内 / 跨仓库技能。",
+                    "en": "Codex / Claude skills, prompts, rules, plugins, launch agents scanned from this machine, plus project-local and external-repo skills actually read in the last 30 days.",
+                },
+            },
+            {
+                "label": "怎么算",
+                "body": {
+                    "zh": "项目本地技能和跨仓库技能仅在 30 天内至少 2 个会话读取过 SKILL.md 时显示。",
+                    "en": "Project-local and external-repo skills are shown only when at least 2 sessions read their SKILL.md in the last 30 days.",
+                },
             },
         ],
         "active_assets": [
@@ -12707,6 +13006,7 @@ def read_or_create_update_token():
 
 def build_html(data):
     language = current_language(data.get("language"))
+    asset_panels = normalized_asset_panels(data)
     base_make_help_popover = globals()["make_help_popover"]
     base_make_panel_header = globals()["make_panel_header"]
 
@@ -12895,61 +13195,34 @@ def build_html(data):
         window_source_note = "当前缺少原始 daily capture，已退回最近一次 nightly summary。"
     type_panel_help = make_help_popover(
         "资产类型分布",
-        build_asset_type_help_sections(
-            data.get("asset_type_scope_note", ""),
-            data.get("asset_type_guide", []),
-        ),
-        compact=True,
-    )
-    context_panel_help = make_help_popover(
-        "项目 / 上下文分布",
         [
             {
                 "label": "统计什么",
-                "body": "每条已登记资产最终落到哪个项目 / 上下文标签。这里数的是资产条目，不是窗口数。",
+                "body": {
+                    "zh": "按五类高阶资产类型汇总：技能、提示词、Rules、插件、启动项。",
+                    "en": "Groups assets into five high-level types: skills, prompts, rules, plugins, and automations.",
+                },
             },
             {
-                "label": "怎么算",
-                "body": [
-                    "先看 artifact_paths：如果能识别出真实仓库项目，就直接记仓库名。",
-                    "仓库项目推不出时，优先使用资产自己的 domain 作为业务归属。",
-                    "只有 repo project 和 domain 都不足以归类时，才从 title、value_note、notes、tags、source_task 做文本推断；再不行才回退到 ~/.codex、state root 这类特殊上下文。",
-                ],
-            },
-            {
-                "label": "为什么会看到 Codex 本地环境",
-                "body": "只有在业务项目和 domain 都无法归类时，且资产文件实际落在 ~/.codex 下，例如 skills、prompts、scripts、config，才会算到 Codex 本地环境。",
+                "label": "数据来源",
+                "body": {
+                    "zh": "包含本机扫描出的 Codex / Claude 资产；如果 assets.jsonl 有手动登记条目，也会并入同一组。",
+                    "en": "Includes Codex / Claude assets discovered on this machine; manual assets.jsonl rows are merged when present.",
+                },
             },
         ],
         compact=True,
     )
     month_panel_help = make_help_popover(
-        "月度新增",
+        "月度活动",
         [
             {
                 "label": "统计什么",
-                "body": "按资产的 created_at 月份统计新增条目数。",
+                "body": "近 6 个月每月被模型实际读取过 SKILL.md 的不同技能数，同名技能跨来源只算一个。",
             },
             {
-                "label": "注意",
-                "body": "这里看的是首次登记时间，不是最近更新时间。",
-            },
-        ],
-    )
-    scope_panel_help = make_help_popover(
-        "适用层级",
-        [
-            {
-                "label": "统计什么",
-                "body": "按 scope 字段统计资产的复用范围。",
-            },
-            {
-                "label": "标签含义",
-                "body": [
-                    "仅个人使用：更偏个人习惯、环境配置或私有工作方式。",
-                    "仓库场景复用：绑定某个仓库、业务线或固定场景。",
-                    "团队共享：适合多人共同遵守或复用。",
-                ],
+                "label": "数据来源",
+                "body": "来自本机 Codex 会话与 Claude 项目 session 中的技能读取事件；手动登记资产会并入资产集合，但没有读取事件时不计入月度活动。",
             },
         ],
     )
@@ -13047,7 +13320,7 @@ def build_html(data):
             },
             {
                 "label": "和上面的区别",
-                "body": "这里数的是窗口上下文；上面的 项目 / 上下文分布 数的是资产条目。",
+                "body": "这里数的是窗口上下文；资产层的类型与活动面板数的是资产和技能读取。",
             },
         ],
     )
@@ -13290,37 +13563,20 @@ def build_html(data):
         "task_group",
         language=language,
     )
-    recent_assets_help = make_help_popover(
-        "最近更新的资产",
-        [
-            {
-                "label": "排序方式",
-                "body": "按 updated_at 倒序，展示最近改动过的资产。",
-            },
-            {
-                "label": "列含义",
-                "body": [
-                    "项目 / 上下文：资产最终归到的 display_context。",
-                    "适用层级：scope 的展示值。",
-                    "复用记录：这个资产已经被记录过多少次 usage event。",
-                ],
-            },
-        ],
-    )
     top_assets_help = make_help_popover(
-        "复用价值较高的资产",
+        "近 30 天高频技能 Top 10",
         [
             {
                 "label": "排序方式",
-                "body": "按自动估算价值分倒序；分数由显式复用、近期窗口命中、估算节省分钟、资产类型基准和最近维护信号组成。",
+                "body": "按近 30 天模型读取 SKILL.md 的会话数倒序；并列时按名称升序。",
             },
             {
-                "label": "怎么看",
-                "body": "价值分衡量“这个资产是否持续减少重复工作或降低出错成本”；估算节省是分钟级近似，不需要用户手工维护 reuse_count。",
+                "label": "数据来源",
+                "body": "技能来源来自本机扫描和近 30 天项目内 / 跨仓库读取记录；同名技能跨来源会合并计数。",
             },
             {
-                "label": "证据",
-                "body": "显式复用记录权重最高；窗口命中是弱证据；没有直接证据的资产只保留类型和维护活跃度带来的潜在价值。",
+                "label": "点击名称",
+                "body": "可点击的技能名会打开该行优先来源的 SKILL.md。",
             },
         ],
     )
@@ -14078,6 +14334,83 @@ def build_html(data):
     .asset-ledger-section {{
       display: grid;
       gap: 18px;
+    }}
+
+    .asset-discovery-summary {{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px 10px;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 650;
+      line-height: 1.5;
+    }}
+
+    .asset-discovery-summary-item strong {{
+      color: var(--ink);
+      font-weight: 780;
+    }}
+
+    .asset-discovery-groups {{
+      display: grid;
+      gap: 12px;
+    }}
+
+    .asset-discovery-table-wrap {{
+      margin-top: 10px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: var(--control);
+    }}
+
+    .asset-discovery-table {{
+      min-width: 720px;
+      background: transparent;
+    }}
+
+    .asset-discovery-table th,
+    .asset-discovery-table td {{
+      padding: 9px 10px;
+    }}
+
+    .asset-discovery-table th:nth-child(2),
+    .asset-discovery-table td:nth-child(2) {{
+      width: 40%;
+      max-width: 40%;
+    }}
+
+    .asset-discovery-name {{
+      font-weight: 700;
+      line-height: 1.28;
+    }}
+
+    .discovered-skill-name {{
+      font-weight: 750;
+      text-decoration: none;
+    }}
+
+    .discovered-skill-name:hover {{
+      text-decoration: underline;
+    }}
+
+    .asset-source-tags {{
+      margin-top: 3px;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 600;
+      line-height: 1.35;
+    }}
+
+    .asset-source-tag {{
+      white-space: nowrap;
+    }}
+
+    .asset-discovery-description {{
+      display: block;
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }}
 
     .memory-family-head {{
@@ -18024,56 +18357,28 @@ def build_html(data):
       <section class="grid metrics-grid asset-metrics-grid">
         {asset_metric_cards}
       </section>
-    </section>
-
-    <section class="grid two-up">
-      {type_panel}
-      {month_panel}
-    </section>
-
-    <section class="grid two-up">
-      {scope_panel}
-      {domain_panel}
-    </section>
-
-    <section class="panel" id="assets-section">
-      {recent_assets_header}
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-	              <th>{asset_header}</th>
-	              <th>{type_header}</th>
-	              <th>{context_header}</th>
-	              <th>{scope_header}</th>
-	              <th>{updated_header}</th>
-	              <th>{usage_header_text}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {recent_asset_rows}
-          </tbody>
-        </table>
-      </div>
-    </section>
-
-    <section class="panel" id="top-assets-section">
-      {top_assets_header}
-      <div class="table-wrap">
-        <table>
-          <thead>
-          <tr>
-	            <th>{asset_header}</th>
-	            <th>{value_score_header}</th>
-	            <th>{estimated_saved_header}</th>
-	            <th>{evidence_header}</th>
-          </tr>
-          </thead>
-          <tbody>
-            {top_asset_rows}
-          </tbody>
-        </table>
-      </div>
+      <section class="grid two-up">
+        {type_panel}
+        {month_panel}
+      </section>
+      <section class="panel" id="top-assets-section">
+        {top_assets_header}
+        <div class="table-wrap asset-discovery-table-wrap top-skills-table-wrap">
+          <table class="asset-discovery-table top-skills-table">
+            <thead>
+              <tr>
+                <th>{asset_header}</th>
+                <th>{description_header}</th>
+                <th>{count_30d_header}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {top_skill_rows}
+            </tbody>
+          </table>
+        </div>
+      </section>
+      {discovered_assets_section}
     </section>
 
     <section class="panel" id="reviews-section">
@@ -21041,39 +21346,29 @@ def build_html(data):
         token_metric_cards="".join(token_metric_cards),
         asset_metric_cards="".join(asset_metric_cards),
         asset_ledger_kicker=panel_language_text_html("资产层", "Asset Layer"),
-        asset_ledger_title=panel_language_text_html("资产账本概览", "Asset Ledger Overview"),
+        asset_ledger_title=panel_language_text_html("资产层总览", "Asset Layer Overview"),
         asset_ledger_note=panel_language_text_html(
-            "这里看的是已经登记到本地账本里的资产、复盘和复用记录，不是注入 host context 的记忆摘要。",
-            "This shows assets, reviews, and reuse records registered in the local ledger, not the memory summary injected into host context.",
+            "这里合并展示本机发现资产、手动账本条目、复盘和复用记录，不是注入 host context 的记忆摘要。",
+            "This merges discovered local assets, manual ledger entries, reviews, and reuse records; it is not the memory summary injected into host context.",
+        ),
+        discovered_assets_section=make_discovered_assets_section(
+            data.get("discovered_asset_rows", []),
         ),
         token_filter_panel=make_token_filter_panel(token_usage),
         token_overview_panel=make_token_overview_panel(token_usage, token_overview_help),
         type_panel=make_bar_group(
             "资产类型分布",
-            data["mix"]["type"],
+            asset_panels["type"],
             "teal",
-            "来自资产注册表的稳定条目",
+            "包含本机发现资产；手动账本条目会并入统计",
             help_html=type_panel_help,
         ),
-        domain_panel=make_bar_group(
-            "项目 / 上下文分布",
-            data["mix"]["context"],
-            "amber",
-            "根据资产路径与最近工作自动归纳",
-            help_html=context_panel_help,
-        ),
         month_panel=make_bar_group(
-            "月度新增",
-            data["mix"]["month"],
+            "月度活动",
+            asset_panels["monthly_activity"],
             "slate",
+            "近 6 个月，按模型实际读取 SKILL.md 的活跃技能去重",
             help_html=month_panel_help,
-        ),
-        scope_panel=make_bar_group(
-            "适用层级",
-            data["mix"]["scope"],
-            "rose",
-            "按复用层级分类",
-            help_html=scope_panel_help,
         ),
         insight_section_html=insight_section_html,
         daily_token_panel=make_bar_group(
@@ -21165,14 +21460,9 @@ def build_html(data):
             "保留但优先级较低",
             low_priority_memory_help,
         ),
-        recent_assets_header=make_panel_header(
-            "最近更新的资产",
-            "最近一次变更的资产条目",
-            recent_assets_help,
-        ),
         top_assets_header=make_panel_header(
-            "复用价值较高的资产",
-            "按自动估算价值分排序",
+            "近 30 天高频技能 Top 10",
+            "按模型读取 SKILL.md 的会话数排序",
             top_assets_help,
         ),
         reviews_header=make_panel_header(
@@ -21251,19 +21541,12 @@ def build_html(data):
         claude_native_topic_cards=make_memory_cards(claude_native_topic_rows),
         claude_native_preference_cards=make_memory_cards(claude_native_preference_rows),
         claude_native_tip_cards=make_memory_cards(claude_native_tip_rows),
-        recent_asset_rows=make_asset_rows(panel_views.get("recent_assets", data["assets"]["recent"]), "recent-assets"),
-        top_asset_rows=make_top_asset_rows(panel_views.get("top_assets", data["assets"]["top"]), "top-assets"),
+        top_skill_rows=make_top_skill_rows(asset_panels["top_skills"]),
         review_cards=make_review_cards(panel_views.get("reviews", data["reviews"])),
         usage_rows=make_usage_rows(panel_views.get("usage_events", data["usage_events"]), "usage-events"),
-        asset_header=panel_language_text_html("资产"),
-        type_header=panel_language_text_html("类型"),
-        context_header=panel_language_text_html("项目 / 上下文"),
-        scope_header=panel_language_text_html("适用层级"),
-        updated_header=panel_language_text_html("更新时间"),
-        usage_header_text=panel_language_text_html("复用记录"),
-        value_score_header=panel_language_text_html("价值分"),
-        estimated_saved_header=panel_language_text_html("估算节省"),
-        evidence_header=panel_language_text_html("证据"),
+        asset_header=panel_language_text_html("名称", "Name"),
+        description_header=panel_language_text_html("描述", "Description"),
+        count_30d_header=panel_language_text_html("30 天", "30d"),
         date_header=panel_language_text_html("日期"),
         asset_id_header=panel_language_text_html("资产 ID"),
         task_header=panel_language_text_html("任务"),

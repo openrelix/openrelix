@@ -34,6 +34,7 @@ def runtime_paths_for_state(state_root):
         runtime_dir=state_root / "runtime",
         nightly_runner_dir=state_root / "runtime" / "nightly-runner",
         nightly_codex_home=state_root / "runtime" / "codex-nightly-home",
+        nightly_claude_home=state_root / "runtime" / "claude-nightly-home",
         log_dir=state_root / "log",
     )
 

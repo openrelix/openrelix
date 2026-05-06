@@ -618,6 +618,23 @@
     <section class="section">
       <div class="inner">
         <div class="changelog-list">
+          <article class="changelog-entry is-released" id="v0-2-10">
+            <div class="changelog-meta">
+              <span class="changelog-version">v0.2.10</span>
+              <span class="changelog-date">2026-05-06</span>
+              <span class="changelog-chip">已发布</span>
+            </div>
+            <div class="changelog-body">
+              <p>账本概览补齐"已发现资产"扫描与模型真实使用频率。</p>
+              <span class="group-title">功能</span>
+              <ul>
+                <li>账本概览扫描本机已安装的 Codex / Claude 技能、仓库技能、自定义提示词、Rules、插件与启动项；同时把过去 30 天里被模型读取过的项目内 / 跨仓库技能也纳入，按名字汇总，给出"已发现资产"卡片合计；原"资产总数"仍只反映手动登记的 assets.jsonl。</li>
+                <li>使用频率改为统计 Codex 会话与 Claude 项目 session 中模型读取 SKILL.md 的事件，按会话去重，列出 7 天 / 30 天活动数与最近活动日期；非技能类显示 "—"。技能名可点击跳转到对应的 SKILL.md 文件。</li>
+                <li>整理资产层看板：「资产类型分布」改为按高级类型（技能 / 提示词 / Rules / 插件 / 启动项）汇总，新增「月度活动」与「近 30 天高频技能 Top 10」，删除原来留空的「月度新增」「适用层级」「项目分布」「最近更新」面板。</li>
+              </ul>
+            </div>
+          </article>
+
           <article class="changelog-entry is-released" id="v0-2-9">
             <div class="changelog-meta">
               <span class="changelog-version">v0.2.9</span>

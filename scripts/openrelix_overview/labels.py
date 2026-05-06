@@ -151,6 +151,40 @@ DISPLAY_MEMORY_PRIORITY_EN = {
     "low": "Low Priority",
 }
 
+DISPLAY_DISCOVERED_ASSET_KIND = {
+    "skill": "技能",
+    "prompt": "提示词",
+    "rule": "Rules",
+    "plugin": "插件",
+    "automation": "启动项",
+    "codex_skill": "Codex 技能",
+    "claude_skill": "Claude 技能",
+    "repo_skill": "仓库技能",
+    "external_repo_skill": "跨仓库技能",
+    "project_skill": "项目本地技能",
+    "codex_prompt": "自定义提示词",
+    "codex_rule": "Rules",
+    "claude_plugin": "插件",
+    "launch_agent": "启动项",
+}
+
+DISPLAY_DISCOVERED_ASSET_KIND_EN = {
+    "skill": "Skills",
+    "prompt": "Prompts",
+    "rule": "Rules",
+    "plugin": "Plugins",
+    "automation": "Automations",
+    "codex_skill": "Codex Skills",
+    "claude_skill": "Claude Skills",
+    "repo_skill": "Repo Skills",
+    "external_repo_skill": "External Repo Skills",
+    "project_skill": "Project-Local Skills",
+    "codex_prompt": "Codex Prompts",
+    "codex_rule": "Rules",
+    "claude_plugin": "Claude Plugins",
+    "launch_agent": "Launch Agents",
+}
+
 
 def display_label(kind, value, language=None, is_english_func=None, humanize_func=None):
     is_english_func = is_english_func or (lambda current_language: current_language == "en")
@@ -214,3 +248,14 @@ def display_memory_priority(value, language=None, is_english_func=None, humanize
         return DISPLAY_MEMORY_PRIORITY[value]
     return humanize_func(value) or "未标注"
 
+
+def display_discovered_asset_kind(value, language=None, is_english_func=None, humanize_func=None):
+    is_english_func = is_english_func or (lambda current_language: current_language == "en")
+    humanize_func = humanize_func or (lambda current_value: str(current_value or ""))
+    if is_english_func(language):
+        if value in DISPLAY_DISCOVERED_ASSET_KIND_EN:
+            return DISPLAY_DISCOVERED_ASSET_KIND_EN[value]
+        return humanize_func(value) or "Unknown Assets"
+    if value in DISPLAY_DISCOVERED_ASSET_KIND:
+        return DISPLAY_DISCOVERED_ASSET_KIND[value]
+    return humanize_func(value) or "未分类资产"
