@@ -35,6 +35,44 @@ learn_memory="${OPENRELIX_REFRESH_LEARN_MEMORY:-0}"
 learn_window_days="${OPENRELIX_REFRESH_LEARN_WINDOW_DAYS:-0}"
 skip_unchanged="${OPENRELIX_REFRESH_SKIP_UNCHANGED:-0}"
 asset_layer_only="${OPENRELIX_REFRESH_ASSET_LAYER_ONLY:-0}"
+pipeline_run_id=""
+
+pipeline_status_start() {
+  local pipeline_kind="$1"
+  pipeline_run_id="$(
+    "$PYTHON_BIN" "$REPO_ROOT/scripts/openrelix_pipeline_status.py" start \
+      --pipeline "$pipeline_kind" \
+      --target-date "$target_date" \
+      --stage "$stage" \
+      --pid "$$" 2>/dev/null || true
+  )"
+}
+
+pipeline_status_step() {
+  local step_key="$1"
+  if [[ -z "$pipeline_run_id" ]]; then
+    return 0
+  fi
+  "$PYTHON_BIN" "$REPO_ROOT/scripts/openrelix_pipeline_status.py" step \
+    --run-id "$pipeline_run_id" \
+    --step "$step_key" >/dev/null 2>&1 || true
+}
+
+pipeline_status_finish() {
+  local exit_code=$?
+  if [[ -z "$pipeline_run_id" ]]; then
+    return "$exit_code"
+  fi
+  local status="completed"
+  if (( exit_code != 0 )); then
+    status="failed"
+  fi
+  "$PYTHON_BIN" "$REPO_ROOT/scripts/openrelix_pipeline_status.py" finish \
+    --run-id "$pipeline_run_id" \
+    --status "$status" \
+    --exit-code "$exit_code" >/dev/null 2>&1 || true
+  return "$exit_code"
+}
 
 while (( $# > 0 )); do
   case "$1" in
@@ -173,7 +211,11 @@ run_pending_memory_migration_if_needed() {
 
 case "${asset_layer_only:l}" in
   1|true|yes|on)
+    pipeline_status_start "asset_layer_refresh"
+    trap pipeline_status_finish EXIT
+    pipeline_status_step "asset_stats"
     write_asset_stats_snapshot_if_available
+    pipeline_status_step "build_panel"
     "$PYTHON_BIN" "$REPO_ROOT/scripts/build_overview.py"
     exit 0
     ;;
@@ -181,8 +223,12 @@ esac
 
 run_pending_memory_migration_if_needed
 
+pipeline_status_start "refresh_overview"
+trap pipeline_status_finish EXIT
+
 case "${learn_memory:l}" in
   1|true|yes|on)
+    pipeline_status_step "synthesize"
     extra_args=()
     if [[ "$learn_window_days" =~ '^[0-9]+$' ]] && (( learn_window_days > 0 )); then
       extra_args=(--learn-window-days "$learn_window_days")
@@ -197,9 +243,15 @@ case "${learn_memory:l}" in
     ;;
 esac
 
+pipeline_status_step "collect_activity"
 "$PYTHON_BIN" "$REPO_ROOT/scripts/collect_codex_activity.py" --date "$target_date" --stage manual
+pipeline_status_step "sync_summary"
 sync_host_memory_summary_state
+pipeline_status_step "display_cache"
 build_codex_native_display_cache_if_enabled
+pipeline_status_step "asset_stats"
 write_asset_stats_snapshot_if_available
+pipeline_status_step "build_panel"
 "$PYTHON_BIN" "$REPO_ROOT/scripts/build_overview.py"
+pipeline_status_step "rebuild_index"
 rebuild_sqlite_index_if_available

@@ -69,6 +69,7 @@
     "scripts/nightly_organize_today.sh",
     "scripts/openrelix_index.py",
     "scripts/openrelix_memory_migration.py",
+    "scripts/openrelix_pipeline_status.py",
     "scripts/openrelix_update_worker.py",
     "scripts/nightly_pipeline.sh",
     "scripts/refresh_overview.sh",

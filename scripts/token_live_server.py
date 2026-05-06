@@ -2,6 +2,7 @@
 
 import json
 import os
+import plistlib
 import secrets
 import subprocess
 import sys
@@ -23,6 +24,7 @@ from openrelix_overview.config import (
     LIVE_TOKEN_PORT,
 )
 from openrelix_overview.finder import FINDER_REVEAL_PATH, reveal_path_in_finder
+from openrelix_overview.pipeline_status import load_status as load_pipeline_status
 from openrelix_overview.token_fetcher import (
     fetch_ccusage_daily,
     normalize_token_provider,
@@ -39,6 +41,7 @@ RUNTIME_DIR = PATHS.runtime_dir
 CACHE_PATH = RUNTIME_DIR / "token-live-cache.json"
 CACHE_TTL_SECONDS = 90
 FETCH_LOCK = threading.Lock()
+REFRESH_LOCK = threading.RLock()
 
 OPENRELIX_CLI = PATHS.repo_root / "scripts" / "openrelix.py"
 UPDATE_WORKER_SCRIPT = PATHS.repo_root / "scripts" / "openrelix_update_worker.py"
@@ -178,15 +181,27 @@ def tail_text(text, max_lines=PANEL_REFRESH_LOG_TAIL_LINES):
     return "\n".join(lines)
 
 
-def build_panel_refresh_command(target_date=None):
+def build_panel_refresh_command(target_date=None, asset_layer_only=True):
     command = [
         "/bin/zsh",
         str(PATHS.repo_root / "scripts" / "refresh_overview.sh"),
-        "--asset-layer-only",
     ]
+    if asset_layer_only:
+        command.append("--asset-layer-only")
     if target_date:
         command.extend(["--date", str(target_date)])
     return command
+
+
+def read_overview_refresh_env():
+    plist_path = PATHS.launch_agents_dir / "io.github.openrelix.overview-refresh.plist"
+    try:
+        with plist_path.open("rb") as handle:
+            payload = plistlib.load(handle)
+    except (OSError, plistlib.InvalidFileException, ValueError):
+        return {}
+    env = payload.get("EnvironmentVariables")
+    return env if isinstance(env, dict) else {}
 
 
 def run_panel_refresh(target_date=None):
@@ -212,7 +227,7 @@ def run_panel_refresh(target_date=None):
     env["OPENRELIX_ENABLE_NATIVE_DISPLAY_POLISH"] = "0"
     try:
         completed = subprocess.run(
-            build_panel_refresh_command(target_date),
+            build_panel_refresh_command(target_date, asset_layer_only=True),
             cwd=str(PATHS.repo_root),
             env=env,
             capture_output=True,
@@ -259,6 +274,63 @@ def run_panel_refresh(target_date=None):
         "stdout_tail": tail_text(completed.stdout),
         "stderr_tail": tail_text(completed.stderr),
     }
+
+
+def start_manual_pipeline_refresh(target_date=None):
+    target_date = str(target_date or current_local_datetime().date().isoformat())
+    current = load_pipeline_status(PATHS)
+    if current.get("status") == "running":
+        snapshot = dict(current)
+        snapshot["ok"] = False
+        snapshot["started_now"] = False
+        snapshot["error"] = "pipeline_already_running"
+        return False, snapshot
+
+    refresh_script = PATHS.repo_root / "scripts" / "refresh_overview.sh"
+    if not refresh_script.exists():
+        return False, {
+            "ok": False,
+            "status": "failed",
+            "started_now": False,
+            "target_date": target_date,
+            "error": "refresh_script_not_found",
+        }
+
+    env = os.environ.copy()
+    env.update({str(key): str(value) for key, value in read_overview_refresh_env().items()})
+    env["AI_ASSET_STATE_DIR"] = str(PATHS.state_root)
+    env["CODEX_HOME"] = str(PATHS.codex_home)
+    env["OPENRELIX_REFRESH_DATE"] = target_date
+    try:
+        with REFRESH_LOCK:
+            proc = subprocess.Popen(
+                build_panel_refresh_command(target_date, asset_layer_only=False),
+                cwd=str(PATHS.repo_root),
+                env=env,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                close_fds=True,
+                start_new_session=True,
+            )
+    except Exception as exc:
+        return False, {
+            "ok": False,
+            "status": "failed",
+            "started_now": False,
+            "target_date": target_date,
+            "error": str(exc),
+        }
+
+    snapshot = load_pipeline_status(PATHS)
+    snapshot.update({
+        "ok": True,
+        "status": "running",
+        "started_now": True,
+        "target_date": target_date,
+        "pid": proc.pid,
+    })
+    return True, snapshot
 
 
 def start_update_async():
@@ -491,6 +563,10 @@ class TokenLiveHandler(BaseHTTPRequestHandler):
             self._send_json(200, update_state_snapshot())
             return
 
+        if parsed.path == "/pipeline-status":
+            self._send_json(200, load_pipeline_status(PATHS))
+            return
+
         if parsed.path != "/token-usage":
             self._send_json(404, {"ok": False, "error": "not_found"})
             return
@@ -575,6 +651,12 @@ class TokenLiveHandler(BaseHTTPRequestHandler):
             except (UnicodeDecodeError, json.JSONDecodeError):
                 payload = {}
             requested_date = str(payload.get("date", "") or "").strip()
+            mode = str(payload.get("mode", "") or "").strip()
+            if mode == "pipeline":
+                started, snapshot = start_manual_pipeline_refresh(requested_date or None)
+                snapshot["started_now"] = started
+                self._send_json(202 if snapshot.get("ok") else 409, snapshot, allow_origin=origin or None)
+                return
             snapshot = run_panel_refresh(requested_date or None)
             self._send_json(200 if snapshot.get("ok") else 503, snapshot, allow_origin=origin or None)
             return

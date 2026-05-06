@@ -237,6 +237,7 @@ class NightlyLogicTests(unittest.TestCase):
                 "usage_events": [],
                 "summary_terms": [],
                 "summary_term_views": [],
+                "pipeline_status": {},
                 "token_usage": {
                     "available": False,
                     "daily_rows": [],
@@ -260,7 +261,7 @@ class NightlyLogicTests(unittest.TestCase):
             (reports_dir / "overview.csv").write_text("id,title,type\n", encoding="utf-8")
             (reports_dir / "panel.html").write_text(
                 '<meta name="openrelix:version"><div class="app-shell">'
-                "token_usage memory_registry window_overview</main>",
+                "token_usage pipeline_status memory_registry window_overview</main>",
                 encoding="utf-8",
             )
 

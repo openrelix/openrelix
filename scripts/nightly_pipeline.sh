@@ -171,6 +171,43 @@ defer_global_refresh=0
 skip_learning_collect=0
 reuse_lightweight=0
 skip_unchanged="${OPENRELIX_NIGHTLY_SKIP_UNCHANGED:-1}"
+pipeline_run_id=""
+
+pipeline_status_start() {
+  pipeline_run_id="$(
+    "$PYTHON_BIN" "$REPO_ROOT/scripts/openrelix_pipeline_status.py" start \
+      --pipeline "nightly_pipeline" \
+      --target-date "$target_date" \
+      --stage "$stage" \
+      --pid "$$" 2>/dev/null || true
+  )"
+}
+
+pipeline_status_step() {
+  local step_key="$1"
+  if [[ -z "$pipeline_run_id" ]]; then
+    return 0
+  fi
+  "$PYTHON_BIN" "$REPO_ROOT/scripts/openrelix_pipeline_status.py" step \
+    --run-id "$pipeline_run_id" \
+    --step "$step_key" >/dev/null 2>&1 || true
+}
+
+pipeline_status_finish() {
+  local exit_code=$?
+  if [[ -z "$pipeline_run_id" ]]; then
+    return "$exit_code"
+  fi
+  local status="completed"
+  if (( exit_code != 0 )); then
+    status="failed"
+  fi
+  "$PYTHON_BIN" "$REPO_ROOT/scripts/openrelix_pipeline_status.py" finish \
+    --run-id "$pipeline_run_id" \
+    --status "$status" \
+    --exit-code "$exit_code" >/dev/null 2>&1 || true
+  return "$exit_code"
+}
 
 for ((i = 1; i <= ${#extra_args[@]}; i++)); do
   arg="${extra_args[$i]}"
@@ -213,6 +250,9 @@ case "${skip_unchanged:l}" in
     ;;
 esac
 
+pipeline_status_start
+trap pipeline_status_finish EXIT
+
 should_collect=1
 if [[ "$reuse_lightweight" == "1" ]]; then
   if "$PYTHON_BIN" - "$REPO_ROOT" "$target_date" <<'PY'
@@ -242,9 +282,11 @@ PY
 fi
 
 if [[ "$should_collect" == "1" ]]; then
+  pipeline_status_step "collect_activity"
   "$PYTHON_BIN" "$REPO_ROOT/scripts/collect_codex_activity.py" --date "$target_date" --stage "$stage"
 fi
 if [[ "$skip_learning_collect" != "1" ]] && [[ "$learn_window_days" =~ '^[0-9]+$' ]] && (( learn_window_days > 0 )); then
+  pipeline_status_step "collect_learning"
   "$PYTHON_BIN" - "$target_date" "$learn_window_days" <<'PY' | while IFS= read -r learning_date; do
 from datetime import date, timedelta
 import sys
@@ -257,12 +299,18 @@ PY
     "$PYTHON_BIN" "$REPO_ROOT/scripts/collect_codex_activity.py" --date "$learning_date" --stage final
   done
 fi
+pipeline_status_step "synthesize"
 "$PYTHON_BIN" "$REPO_ROOT/scripts/nightly_consolidate.py" --date "$target_date" --stage "$stage" "${nightly_args[@]}"
 if [[ "$defer_global_refresh" != "1" ]]; then
+  pipeline_status_step "rebuild_index"
   rebuild_sqlite_index_if_available
+  pipeline_status_step "sync_summary"
   sync_host_memory_summary_state
+  pipeline_status_step "display_cache"
   build_codex_native_display_cache_if_enabled
+  pipeline_status_step "asset_stats"
   write_asset_stats_snapshot_if_available
+  pipeline_status_step "build_panel"
   "$PYTHON_BIN" "$REPO_ROOT/scripts/build_overview.py"
 fi
 exit_if_latest_model_run_failed

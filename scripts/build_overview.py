@@ -48,6 +48,7 @@ from openrelix_overview import local_paths as overview_local_paths
 from openrelix_overview import memory_context as overview_memory_context
 from openrelix_overview import mcp_usage as overview_mcp_usage
 from openrelix_overview import memory_registry as overview_memory_registry
+from openrelix_overview import pipeline_status as overview_pipeline_status
 from openrelix_overview import redaction as overview_redaction
 from openrelix_overview import token_fetcher as overview_token_fetcher
 from openrelix_overview import token_usage as overview_token_usage
@@ -8142,6 +8143,7 @@ def build_data(assets, usage_events, reviews, language=None):
     )
     summary_terms = default_summary_term_view(summary_term_views).get("terms", [])
     token_usage = build_token_usage_view(resolve_ccusage_daily(), language=language)
+    pipeline_status = overview_pipeline_status.load_status(PATHS)
     daily_summary_views = build_daily_summary_views(nightly_candidates, language=language)
     backfill = build_backfill_view(nightly_candidates)
     asset_stats_snapshot = load_asset_stats_snapshot()
@@ -8478,6 +8480,7 @@ def build_data(assets, usage_events, reviews, language=None):
         "summary_terms": summary_terms,
         "summary_term_default_days": SUMMARY_TERM_DEFAULT_DAYS,
         "summary_term_views": summary_term_views,
+        "pipeline_status": pipeline_status,
         "token_usage": token_usage,
         "daily_summary_views": daily_summary_views,
         "daily_summary_default_date": daily_summary_default_date,
@@ -10850,6 +10853,7 @@ def make_side_nav():
         ("link", "overview-top", "总览", "Overview", "总览", "Overview"),
         ("link", "nightly-summary", "整理摘要", "Synthesis", "整理摘要", "Synthesis"),
         ("link", "token-section", "Token", "Token", "Token", "Token"),
+        ("link", "pipeline-section", "运行中", "Pipeline", "当前运行内容", "Current Pipeline"),
         ("link", "project-context-section", "项目上下文", "Context", "项目上下文", "Context"),
         ("group", "记忆层", "Memory Layer"),
         ("link", "memory-section", "个人资产记忆", "Personal Asset Memory", "个人资产记忆", "Personal Asset Memory"),
@@ -13204,6 +13208,181 @@ def make_window_summary_cards(window_overview, language=None):
     return "".join(cards)
 
 
+def pipeline_status_label(status, language=None):
+    labels = {
+        "running": ("运行中", "Running"),
+        "completed": ("已完成", "Completed"),
+        "failed": ("失败", "Failed"),
+        "idle": ("空闲", "Idle"),
+    }
+    zh, en = labels.get(str(status or "idle"), (str(status or "idle"), str(status or "idle")))
+    return localized(zh, en, language)
+
+
+def pipeline_status_time_label(payload, language=None):
+    status = str((payload or {}).get("status") or "idle")
+    if status == "running":
+        started = (payload or {}).get("started_at_iso", "")
+        return localized("开始于 {}".format(started or "—"), "Started {}".format(started or "—"), language)
+    ended = (payload or {}).get("ended_at_iso", "")
+    if ended:
+        return localized("结束于 {}".format(ended), "Ended {}".format(ended), language)
+    return localized("等待运行", "Waiting", language)
+
+
+def make_pipeline_step_track(steps):
+    if not steps:
+        return '<div class="pipeline-empty">{}</div>'.format(
+            panel_language_text_html("暂无 pipeline 步骤。", "No pipeline steps yet.")
+        )
+    rows = []
+    for step in steps:
+        status = escape(str(step.get("status") or "pending"), quote=True)
+        label = step.get("label") or step.get("key") or ""
+        label_en = step.get("label_en") or label
+        rows.append(
+            """
+            <div class="pipeline-step" data-step-status="{status}">
+              <span class="pipeline-step-dot" aria-hidden="true"></span>
+              <span class="pipeline-step-label">{label}</span>
+            </div>
+            """.format(
+                status=status,
+                label=panel_language_text_html(label, label_en),
+            )
+        )
+    return "".join(rows)
+
+
+def make_pipeline_recent_runs(rows):
+    if not rows:
+        return '<div class="pipeline-empty">{}</div>'.format(
+            panel_language_text_html("暂无近期运行记录。", "No recent runs yet.")
+        )
+    rendered = []
+    for row in rows[:4]:
+        title = row.get("title") or row.get("pipeline") or ""
+        title_en = row.get("title_en") or title
+        status = row.get("status") or "idle"
+        date_stage = " · ".join(
+            item for item in [row.get("target_date", ""), row.get("stage", "")] if item
+        )
+        if not date_stage:
+            date_stage = row.get("ended_at_iso") or row.get("started_at_iso") or "—"
+        rendered.append(
+            """
+            <div class="pipeline-history-row" data-status="{status}">
+              <span class="pipeline-history-title">{title}</span>
+              <span class="pipeline-history-meta">{meta}</span>
+            </div>
+            """.format(
+                status=escape(str(status), quote=True),
+                title=panel_language_text_html(title, title_en),
+                meta=panel_language_text_html(
+                    "{} · {}".format(pipeline_status_label(status, language="zh"), date_stage),
+                    "{} · {}".format(pipeline_status_label(status, language="en"), date_stage),
+                ),
+            )
+        )
+    return "".join(rendered)
+
+
+def make_pipeline_status_panel(status_payload, help_html=""):
+    payload = status_payload or {}
+    status = str(payload.get("status") or "idle")
+    title = payload.get("title") or "OpenRelix Pipeline"
+    title_en = payload.get("title_en") or title
+    message = payload.get("message") or "暂无正在运行的任务。"
+    message_en = payload.get("message_en") or "No active task."
+    failure_hint = payload.get("failure_hint") or ""
+    failure_hint_en = payload.get("failure_hint_en") or failure_hint
+    target_bits = [payload.get("target_date", ""), payload.get("stage", "")]
+    target_label = " · ".join(item for item in target_bits if item) or pipeline_status_time_label(payload)
+    step_index = safe_int(payload.get("current_step_index", 0))
+    step_count = safe_int(payload.get("step_count", 0))
+    progress_label = "—"
+    if step_count:
+        progress_label = "{}/{}".format(max(step_index, 1), step_count)
+    next_run = payload.get("next_run") or {}
+    next_title = next_run.get("title") or "暂无计划任务"
+    next_title_en = next_run.get("title_en") or "No scheduled task"
+    next_time = next_run.get("next_at_iso") or ""
+    next_stage = next_run.get("stage") or ""
+    next_meta_parts_zh = [next_time, next_stage]
+    next_meta_parts_en = [next_time, next_stage]
+    if next_run.get("learn_memory"):
+        next_meta_parts_zh.append("含学习刷新")
+        next_meta_parts_en.append("includes learning refresh")
+        learn_window_days = safe_int(next_run.get("learn_window_days", 0))
+        if learn_window_days:
+            next_meta_parts_zh.append("{} 天窗口".format(learn_window_days))
+            next_meta_parts_en.append("{}-day window".format(learn_window_days))
+    next_meta = " · ".join(item for item in next_meta_parts_zh if item) or "—"
+    next_meta_en = " · ".join(item for item in next_meta_parts_en if item) or "—"
+    return """
+    <section class="panel pipeline-panel" id="pipeline-section" data-pipeline-status="{status}">
+      {header}
+      <div class="pipeline-live-card">
+        <div class="pipeline-live-main">
+          <span class="pipeline-live-dot" aria-hidden="true"></span>
+          <div class="pipeline-live-copy">
+            <div class="pipeline-live-title" id="pipeline-live-title">{title}</div>
+            <div class="pipeline-live-message" id="pipeline-live-message">{message}</div>
+            <div class="pipeline-failure-hint" id="pipeline-failure-hint">{failure_hint}</div>
+          </div>
+        </div>
+        <div class="pipeline-live-meta">
+          <span id="pipeline-live-state">{state}</span>
+          <span id="pipeline-live-target">{target}</span>
+          <span id="pipeline-live-progress">{progress}</span>
+        </div>
+      </div>
+      <div class="pipeline-next-row">
+        <div class="pipeline-next-copy">
+          <span class="pipeline-next-label">{next_label}</span>
+          <strong id="pipeline-next-title">{next_title}</strong>
+          <span id="pipeline-next-time">{next_time}</span>
+        </div>
+        <div class="pipeline-actions">
+          <button class="action-button pipeline-run-button" type="button" id="pipeline-run-now-button">
+            <span class="button-spinner" aria-hidden="true"></span>
+            <span id="pipeline-run-now-label">{run_label}</span>
+          </button>
+          <span class="asset-refresh-status pipeline-run-status" id="pipeline-run-now-status" role="status" aria-live="polite"></span>
+        </div>
+      </div>
+      <div class="pipeline-step-track" id="pipeline-step-track">
+        {steps}
+      </div>
+      <div class="pipeline-history" id="pipeline-history">
+        {history}
+      </div>
+    </section>
+    """.format(
+        status=escape(status, quote=True),
+        header=make_panel_header(
+            "当前运行内容",
+            "展示最近一次 OpenRelix pipeline 的实时阶段",
+            help_html=help_html,
+        ),
+        title=panel_language_text_html(title, title_en),
+        message=panel_language_text_html(message, message_en),
+        failure_hint=panel_language_text_html(failure_hint, failure_hint_en) if failure_hint else "",
+        state=panel_language_text_html(
+            pipeline_status_label(status, language="zh"),
+            pipeline_status_label(status, language="en"),
+        ),
+        target=escape(target_label),
+        progress=escape(progress_label),
+        next_label=panel_language_text_html("下一次运行", "Next Run"),
+        next_title=panel_language_text_html(next_title, next_title_en),
+        next_time=panel_language_text_html(next_meta, next_meta_en),
+        run_label=panel_language_text_html("立即运行", "Run Now"),
+        steps=make_pipeline_step_track(payload.get("steps", [])),
+        history=make_pipeline_recent_runs(payload.get("recent_runs", [])),
+    )
+
+
 def build_window_overview_heading_note(window_overview, title, language=None):
     language = current_language(language)
     window_overview = window_overview or {}
@@ -13519,6 +13698,7 @@ def build_html(data):
             "backfill": data.get("backfill", {}),
             "window_overviews": window_overview_views,
             "window_overview_default_date": window_overview_default_date,
+            "pipeline_status": data.get("pipeline_status", {}),
         },
         ensure_ascii=False,
     ).replace("</", "<\\/")
@@ -14189,6 +14369,29 @@ def build_html(data):
         selected_date=data.get("daily_summary_default_date", ""),
         selectable_dates=data.get("daily_summary_select_dates", []),
         backfill=data.get("backfill", {}),
+    )
+    pipeline_status_help = make_help_popover(
+        "当前运行内容",
+        [
+            {
+                "label": "统计什么",
+                "body": {
+                    "zh": "读取 state root 下的轻量运行状态，只展示 pipeline 名称、阶段、日期和最近结果。",
+                    "en": "Reads the lightweight runtime status from the state root and shows only pipeline name, phase, date, and recent result.",
+                },
+            },
+            {
+                "label": "隐私边界",
+                "body": {
+                    "zh": "不展示命令行参数、日志、路径或模型输入输出；本地服务在线时会自动轮询最新状态。",
+                    "en": "Does not show command arguments, logs, paths, or model input/output; when the local service is online, the panel polls the latest status.",
+                },
+            },
+        ],
+    )
+    pipeline_status_panel = make_pipeline_status_panel(
+        data.get("pipeline_status", {}),
+        help_html=pipeline_status_help,
     )
     author_link_html = (
         '<a href="https://www.npmjs.com/~kk_kais" '
@@ -15491,6 +15694,272 @@ def build_html(data):
 
     .nightly-panel::after {{
       display: none;
+    }}
+
+    .pipeline-panel {{
+      display: grid;
+      gap: 16px;
+    }}
+
+    .pipeline-live-card {{
+      display: flex;
+      align-items: stretch;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: var(--metric-card);
+      min-width: 0;
+    }}
+
+    .pipeline-live-main {{
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      min-width: 0;
+    }}
+
+    .pipeline-live-dot {{
+      flex: 0 0 auto;
+      width: 11px;
+      height: 11px;
+      margin-top: 4px;
+      border-radius: 999px;
+      background: var(--slate);
+      box-shadow: 0 0 0 4px rgba(86, 96, 106, 0.12);
+    }}
+
+    .pipeline-panel[data-pipeline-status="running"] .pipeline-live-dot {{
+      background: var(--teal);
+      box-shadow: 0 0 0 4px rgba(0, 113, 227, 0.12);
+      animation: pipelinePulse 1.8s ease-in-out infinite;
+    }}
+
+    .pipeline-panel[data-pipeline-status="completed"] .pipeline-live-dot {{
+      background: var(--green);
+      box-shadow: 0 0 0 4px rgba(36, 138, 61, 0.12);
+    }}
+
+    .pipeline-panel[data-pipeline-status="failed"] .pipeline-live-dot {{
+      background: var(--rose);
+      box-shadow: 0 0 0 4px rgba(215, 0, 21, 0.12);
+    }}
+
+    @keyframes pipelinePulse {{
+      0%, 100% {{ transform: scale(1); opacity: 1; }}
+      50% {{ transform: scale(1.25); opacity: 0.72; }}
+    }}
+
+    .pipeline-live-copy {{
+      display: grid;
+      gap: 5px;
+      min-width: 0;
+    }}
+
+    .pipeline-live-title {{
+      color: var(--ink);
+      font-size: 17px;
+      font-weight: 760;
+      line-height: 1.25;
+      overflow-wrap: anywhere;
+    }}
+
+    .pipeline-live-message {{
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+      overflow-wrap: anywhere;
+    }}
+
+    .pipeline-failure-hint {{
+      max-width: 760px;
+      padding: 9px 11px;
+      border: 1px solid rgba(215, 0, 21, 0.16);
+      border-radius: 10px;
+      background: var(--danger-soft);
+      color: var(--rose);
+      font-size: 12px;
+      font-weight: 650;
+      line-height: 1.45;
+      overflow-wrap: anywhere;
+    }}
+
+    .pipeline-failure-hint:empty {{
+      display: none;
+    }}
+
+    .pipeline-live-meta {{
+      display: flex;
+      flex-wrap: wrap;
+      align-content: flex-start;
+      justify-content: flex-end;
+      gap: 6px;
+      min-width: min(260px, 100%);
+    }}
+
+    .pipeline-live-meta span,
+    .pipeline-history-meta {{
+      display: inline-flex;
+      align-items: center;
+      min-height: 26px;
+      padding: 4px 9px;
+      border-radius: 999px;
+      background: var(--chip-muted-bg);
+      color: var(--slate);
+      font-size: 12px;
+      font-weight: 700;
+      line-height: 1.25;
+    }}
+
+    .pipeline-next-row {{
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 14px 16px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: var(--soft);
+      min-width: 0;
+    }}
+
+    .pipeline-next-copy {{
+      display: grid;
+      gap: 4px;
+      min-width: 0;
+    }}
+
+    .pipeline-next-label {{
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 760;
+      letter-spacing: 0;
+    }}
+
+    .pipeline-next-copy strong {{
+      color: var(--ink);
+      font-size: 14px;
+      line-height: 1.28;
+      overflow-wrap: anywhere;
+    }}
+
+    .pipeline-next-copy span:last-child {{
+      color: var(--slate);
+      font-size: 12px;
+      line-height: 1.35;
+      overflow-wrap: anywhere;
+    }}
+
+    .pipeline-actions {{
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 10px;
+      min-width: min(300px, 100%);
+    }}
+
+    .pipeline-run-button {{
+      flex: 0 0 auto;
+    }}
+
+    .pipeline-run-status {{
+      max-width: 180px;
+      text-align: right;
+    }}
+
+    .pipeline-step-track {{
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(min(150px, 100%), 1fr));
+      gap: 8px;
+    }}
+
+    .pipeline-step {{
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+      min-height: 36px;
+      padding: 8px 10px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--soft);
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+      line-height: 1.25;
+    }}
+
+    .pipeline-step-dot {{
+      flex: 0 0 auto;
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: var(--line-strong);
+    }}
+
+    .pipeline-step[data-step-status="running"] {{
+      color: var(--teal);
+      background: var(--accent-soft);
+      border-color: var(--accent-soft-strong);
+    }}
+
+    .pipeline-step[data-step-status="running"] .pipeline-step-dot {{
+      background: var(--teal);
+    }}
+
+    .pipeline-step[data-step-status="completed"] .pipeline-step-dot {{
+      background: var(--green);
+    }}
+
+    .pipeline-step[data-step-status="failed"] {{
+      color: var(--rose);
+      background: var(--danger-soft);
+    }}
+
+    .pipeline-step[data-step-status="failed"] .pipeline-step-dot {{
+      background: var(--rose);
+    }}
+
+    .pipeline-step-label {{
+      min-width: 0;
+      overflow-wrap: anywhere;
+    }}
+
+    .pipeline-history {{
+      display: grid;
+      gap: 8px;
+    }}
+
+    .pipeline-history-row {{
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      min-width: 0;
+      padding: 10px 12px;
+      border-radius: 12px;
+      background: var(--soft);
+    }}
+
+    .pipeline-history-title {{
+      min-width: 0;
+      color: var(--ink);
+      font-size: 13px;
+      font-weight: 720;
+      overflow-wrap: anywhere;
+    }}
+
+    .pipeline-history-meta {{
+      flex: 0 1 auto;
+      white-space: normal;
+      text-align: right;
+    }}
+
+    .pipeline-empty {{
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
     }}
 
     .nightly-shell {{
@@ -18704,6 +19173,26 @@ def build_html(data):
         font-size: 21px;
       }}
 
+      .pipeline-live-card,
+      .pipeline-next-row,
+      .pipeline-history-row {{
+        display: grid;
+      }}
+
+      .pipeline-live-meta {{
+        justify-content: flex-start;
+        min-width: 0;
+      }}
+
+      .pipeline-actions {{
+        justify-content: flex-start;
+        min-width: 0;
+      }}
+
+      .pipeline-run-status {{
+        text-align: left;
+      }}
+
       .term-insight-grid {{
         grid-template-columns: 1fr;
       }}
@@ -19090,12 +19579,14 @@ def build_html(data):
 
     {insight_section_html}
 
+    {pipeline_status_panel}
+
     <section class="panel" id="project-context-section">
       {project_context_header}
       {project_context_body}
     </section>
 
-    <section class="memory-family" id="memory-section">
+    <section class="memory-family" id="memory-section" data-openrelix-section="memory_registry">
       {personal_asset_memory_family_header}
       <section class="panel memory-compiler-panel" id="personal-memory-compiler-section">
         {memory_compiler_header}
@@ -19295,6 +19786,7 @@ def build_html(data):
       const config = {{
         autoReloadMs: {auto_refresh_ms},
         liveEndpoint: {live_token_endpoint},
+        pipelineEndpoint: "http://127.0.0.1:8765/pipeline-status",
         livePollMs: {live_token_poll_ms},
         requestTimeoutMs: {live_token_timeout_ms},
       }};
@@ -19332,6 +19824,7 @@ def build_html(data):
         defaultTokenFilters: null,
         selectedNightlyDate: snapshot.daily_summary_default_date || "",
         selectedWindowOverviewDate: snapshot.window_overview_default_date || "",
+        pipelineStatus: snapshot.pipeline_status || null,
         refreshStatusKind: "",
         refreshStatusMessageKey: "",
       }};
@@ -19362,6 +19855,20 @@ def build_html(data):
         assetRefreshButton: document.getElementById("asset-layer-refresh-button"),
         assetRefreshLabel: document.getElementById("asset-layer-refresh-label"),
         assetRefreshStatus: document.getElementById("asset-layer-refresh-status"),
+        pipelinePanel: document.getElementById("pipeline-section"),
+        pipelineTitle: document.getElementById("pipeline-live-title"),
+        pipelineMessage: document.getElementById("pipeline-live-message"),
+        pipelineFailureHint: document.getElementById("pipeline-failure-hint"),
+        pipelineState: document.getElementById("pipeline-live-state"),
+        pipelineTarget: document.getElementById("pipeline-live-target"),
+        pipelineProgress: document.getElementById("pipeline-live-progress"),
+        pipelineNextTitle: document.getElementById("pipeline-next-title"),
+        pipelineNextTime: document.getElementById("pipeline-next-time"),
+        pipelineRunButton: document.getElementById("pipeline-run-now-button"),
+        pipelineRunLabel: document.getElementById("pipeline-run-now-label"),
+        pipelineRunStatus: document.getElementById("pipeline-run-now-status"),
+        pipelineStepTrack: document.getElementById("pipeline-step-track"),
+        pipelineHistory: document.getElementById("pipeline-history"),
         refreshButton: document.getElementById("token-refresh-button"),
         refreshLabel: document.getElementById("token-refresh-label"),
         refreshStatusText: document.getElementById("token-refresh-status-text"),
@@ -19391,6 +19898,228 @@ def build_html(data):
           .replace(/</g, "&lt;")
           .replace(/>/g, "&gt;")
           .replace(/"/g, "&quot;");
+      }}
+
+      function localizeValue(zh, en) {{
+        return currentLanguage === "en" ? (en || zh || "") : (zh || en || "");
+      }}
+
+      function pipelineStatusLabel(status) {{
+        const labels = {{
+          running: ["运行中", "Running"],
+          completed: ["已完成", "Completed"],
+          failed: ["失败", "Failed"],
+          idle: ["空闲", "Idle"],
+          pending: ["等待", "Pending"],
+        }};
+        const pair = labels[String(status || "idle")] || [String(status || "idle"), String(status || "idle")];
+        return localizeValue(pair[0], pair[1]);
+      }}
+
+      function pipelineTargetLabel(payload) {{
+        const parts = [];
+        if (payload && payload.target_date) parts.push(payload.target_date);
+        if (payload && payload.stage) parts.push(payload.stage);
+        if (parts.length) return parts.join(" · ");
+        if (payload && payload.status === "running" && payload.started_at_iso) {{
+          return (currentLanguage === "en" ? "Started " : "开始于 ") + payload.started_at_iso;
+        }}
+        if (payload && payload.ended_at_iso) {{
+          return (currentLanguage === "en" ? "Ended " : "结束于 ") + payload.ended_at_iso;
+        }}
+        return currentLanguage === "en" ? "Waiting" : "等待运行";
+      }}
+
+      function pipelineNextMeta(nextRun) {{
+        if (!nextRun || !nextRun.next_at_iso) {{
+          return currentLanguage === "en" ? "No schedule detected" : "未检测到计划任务";
+        }}
+        const parts = [nextRun.next_at_iso];
+        if (nextRun.stage) parts.push(nextRun.stage);
+        if (nextRun.learn_memory) {{
+          parts.push(currentLanguage === "en" ? "includes learning refresh" : "含学习刷新");
+          const learnWindowDays = Number(nextRun.learn_window_days || 0);
+          if (learnWindowDays > 0) {{
+            parts.push(currentLanguage === "en"
+              ? (learnWindowDays + "-day window")
+              : (learnWindowDays + " 天窗口"));
+          }}
+        }}
+        return parts.join(" · ");
+      }}
+
+      function setPipelineRunLoading(isLoading) {{
+        if (elements.pipelineRunButton) {{
+          elements.pipelineRunButton.classList.toggle("is-loading", isLoading);
+          elements.pipelineRunButton.disabled = isLoading;
+        }}
+        if (elements.pipelineRunLabel) {{
+          elements.pipelineRunLabel.textContent = isLoading
+            ? (currentLanguage === "en" ? "Starting" : "正在启动")
+            : (currentLanguage === "en" ? "Run Now" : "立即运行");
+        }}
+      }}
+
+      function setPipelineRunStatus(kind, message) {{
+        if (!elements.pipelineRunStatus) return;
+        elements.pipelineRunStatus.dataset.kind = kind || "";
+        elements.pipelineRunStatus.textContent = message || "";
+      }}
+
+      function renderPipelineSteps(steps) {{
+        if (!elements.pipelineStepTrack) return;
+        if (!Array.isArray(steps) || !steps.length) {{
+          elements.pipelineStepTrack.innerHTML = '<div class="pipeline-empty">' +
+            escapeHtml(currentLanguage === "en" ? "No pipeline steps yet." : "暂无 pipeline 步骤。") +
+            '</div>';
+          return;
+        }}
+        elements.pipelineStepTrack.innerHTML = steps.map(function (step) {{
+          const status = String((step && step.status) || "pending");
+          const label = localizeValue((step && step.label) || (step && step.key) || "", (step && step.label_en) || (step && step.label) || "");
+          return (
+            '<div class="pipeline-step" data-step-status="' + escapeHtml(status) + '">' +
+              '<span class="pipeline-step-dot" aria-hidden="true"></span>' +
+              '<span class="pipeline-step-label">' + escapeHtml(label) + '</span>' +
+            '</div>'
+          );
+        }}).join("");
+      }}
+
+      function renderPipelineHistory(rows) {{
+        if (!elements.pipelineHistory) return;
+        if (!Array.isArray(rows) || !rows.length) {{
+          elements.pipelineHistory.innerHTML = '<div class="pipeline-empty">' +
+            escapeHtml(currentLanguage === "en" ? "No recent runs yet." : "暂无近期运行记录。") +
+            '</div>';
+          return;
+        }}
+        elements.pipelineHistory.innerHTML = rows.slice(0, 4).map(function (row) {{
+          const status = String((row && row.status) || "idle");
+          const title = localizeValue((row && row.title) || (row && row.pipeline) || "", (row && row.title_en) || (row && row.title) || "");
+          const parts = [];
+          if (row && row.target_date) parts.push(row.target_date);
+          if (row && row.stage) parts.push(row.stage);
+          const meta = pipelineStatusLabel(status) + " · " + (parts.join(" · ") || (row && (row.ended_at_iso || row.started_at_iso)) || "—");
+          return (
+            '<div class="pipeline-history-row" data-status="' + escapeHtml(status) + '">' +
+              '<span class="pipeline-history-title">' + escapeHtml(title) + '</span>' +
+              '<span class="pipeline-history-meta">' + escapeHtml(meta) + '</span>' +
+            '</div>'
+          );
+        }}).join("");
+      }}
+
+      function updatePipelineStatus(payload) {{
+        if (!elements.pipelinePanel || !payload) return;
+        state.pipelineStatus = payload;
+        const status = String(payload.status || "idle");
+        const stepCount = Number(payload.step_count || 0);
+        const stepIndex = Number(payload.current_step_index || 0);
+        elements.pipelinePanel.setAttribute("data-pipeline-status", status);
+        if (elements.pipelineTitle) {{
+          elements.pipelineTitle.textContent = localizeValue(payload.title || "OpenRelix Pipeline", payload.title_en || payload.title || "");
+        }}
+        if (elements.pipelineMessage) {{
+          elements.pipelineMessage.textContent = localizeValue(payload.message || "暂无正在运行的任务。", payload.message_en || "No active task.");
+        }}
+        if (elements.pipelineFailureHint) {{
+          const failureHint = localizeValue(payload.failure_hint || "", payload.failure_hint_en || payload.failure_hint || "");
+          elements.pipelineFailureHint.textContent = failureHint;
+        }}
+        if (elements.pipelineState) {{
+          elements.pipelineState.textContent = pipelineStatusLabel(status);
+        }}
+        if (elements.pipelineTarget) {{
+          elements.pipelineTarget.textContent = pipelineTargetLabel(payload);
+        }}
+        if (elements.pipelineProgress) {{
+          elements.pipelineProgress.textContent = stepCount ? (Math.max(stepIndex, 1) + "/" + stepCount) : "—";
+        }}
+        const nextRun = payload.next_run || {{}};
+        if (elements.pipelineNextTitle) {{
+          elements.pipelineNextTitle.textContent = localizeValue(nextRun.title || "暂无计划任务", nextRun.title_en || "No scheduled task");
+        }}
+        if (elements.pipelineNextTime) {{
+          elements.pipelineNextTime.textContent = pipelineNextMeta(nextRun);
+        }}
+        renderPipelineSteps(payload.steps || []);
+        renderPipelineHistory(payload.recent_runs || []);
+      }}
+
+      async function refreshPipelineStatus() {{
+        if (!elements.pipelinePanel) return;
+        try {{
+          const response = await fetchWithTimeout(config.pipelineEndpoint, Math.min(config.requestTimeoutMs, 5000));
+          if (!response.ok) throw new Error("HTTP " + response.status);
+          const payload = await response.json();
+          updatePipelineStatus(payload);
+        }} catch (error) {{
+          if (state.pipelineStatus) {{
+            updatePipelineStatus(state.pipelineStatus);
+          }}
+        }}
+      }}
+
+      function runPipelineNow() {{
+        const endpoint = openrelixMetaAttr("data-asset-refresh-endpoint");
+        const token = openrelixMetaAttr("data-update-token");
+        if (!endpoint || !token || !window.fetch) {{
+          setPipelineRunStatus(
+            "error",
+            currentLanguage === "en"
+              ? "Local service is not running. Open the panel through OpenRelix first."
+              : "本地服务未启动。请先通过 OpenRelix 打开面板。"
+          );
+          return;
+        }}
+        const headers = {{ "Content-Type": "application/json" }};
+        headers["X-OpenRelix-Token"] = token;
+        setPipelineRunLoading(true);
+        setPipelineRunStatus(
+          "loading",
+          currentLanguage === "en" ? "Starting pipeline..." : "正在启动任务…"
+        );
+        fetch(endpoint, {{
+          method: "POST",
+          headers: headers,
+          body: JSON.stringify({{ mode: "pipeline" }})
+        }})
+          .then(function (response) {{
+            return response.json().catch(function () {{
+              return null;
+            }}).then(function (payload) {{
+              if (!response.ok || !payload || payload.ok === false) {{
+                throw new Error((payload && payload.error) || ("HTTP " + response.status));
+              }}
+              return payload;
+            }});
+          }})
+          .then(function (payload) {{
+            updatePipelineStatus(payload);
+            setPipelineRunStatus(
+              "success",
+              currentLanguage === "en" ? "Started. Status will update here." : "已启动，状态会在这里更新。"
+            );
+            window.setTimeout(refreshPipelineStatus, 1200);
+          }})
+          .catch(function (error) {{
+            const message = error && String(error.message || "");
+            const alreadyRunning = message.indexOf("pipeline_already_running") >= 0;
+            const offline = !message || error.name === "TypeError" || message.indexOf("Failed to fetch") >= 0;
+            setPipelineRunStatus(
+              "error",
+              alreadyRunning
+                ? (currentLanguage === "en" ? "A pipeline is already running." : "已有任务正在运行。")
+                : (offline
+                  ? (currentLanguage === "en" ? "Local service is not running." : "本地服务未启动。")
+                  : (currentLanguage === "en" ? "Start failed; try again later." : "启动失败，稍后重试。"))
+            );
+            refreshPipelineStatus();
+          }})
+          .finally(function () {{
+            setPipelineRunLoading(false);
+          }});
       }}
 
       function pluralEn(count, singular, plural) {{
@@ -19941,6 +20670,9 @@ def build_html(data):
         }}
         if (state.selectedWindowOverviewDate) {{
           renderWindowOverview(state.selectedWindowOverviewDate);
+        }}
+        if (state.pipelineStatus) {{
+          updatePipelineStatus(state.pipelineStatus);
         }}
         syncDateControlValues();
         translateStaticText();
@@ -22029,6 +22761,11 @@ def build_html(data):
           refreshAssetLayer();
         }});
       }}
+      if (elements.pipelineRunButton) {{
+        elements.pipelineRunButton.addEventListener("click", function () {{
+          runPipelineNow();
+        }});
+      }}
       window.setInterval(updateSnapshotAge, 60 * 1000);
       window.setInterval(function () {{
         if (state.tokenUsage) {{
@@ -22038,7 +22775,10 @@ def build_html(data):
       window.setInterval(function () {{
         refreshTokenUsage(false);
       }}, config.livePollMs);
+      window.setInterval(refreshPipelineStatus, Math.min(config.livePollMs, 10000));
       refreshTokenUsage(false);
+      updatePipelineStatus(state.pipelineStatus || snapshot.pipeline_status || null);
+      refreshPipelineStatus();
       window.setTimeout(function () {{
         window.location.reload();
       }}, config.autoReloadMs);
@@ -22439,6 +23179,7 @@ def build_html(data):
             extra_classes="token-panel",
             help_html=today_token_help,
         ),
+        pipeline_status_panel=pipeline_status_panel,
         nightly_summary_panel=nightly_summary_panel,
         project_context_header=make_panel_header(
             "当前项目上下文",
