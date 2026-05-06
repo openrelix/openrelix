@@ -899,10 +899,43 @@ class AssetDiscoveryTests(unittest.TestCase):
         self.assertIn("30 天技能读取", html)
         self.assertIn("11", html)
         self.assertNotIn("30 天技能会话", html)
+        self.assertNotIn("锚点 2026-05-05", html)
         self.assertNotIn("openrelix asset-stats --date 2026-05-05", html)
         self.assertNotIn("快照文件", html)
         self.assertNotIn("Alpha", html)
         self.assertNotIn("Snapshot Top Skills", html)
+
+    def test_asset_stats_snapshot_panel_prefers_display_asset_count(self):
+        snapshot = {
+            "date": "2026-05-05",
+            "generated_at": "2026-05-05T12:00:00+08:00",
+            "summary": {
+                "renderable_assets": 12,
+                "display_assets": 9,
+                "active_skills_30d": 2,
+                "skill_reads_30d": 11,
+                "skill_sessions_30d": 7,
+            },
+        }
+
+        html = build_overview.make_asset_stats_snapshot_panel(snapshot, "2026-05-05")
+
+        self.assertIn(">9</strong>", html)
+        self.assertIn("按名称聚合后展示", html)
+        self.assertNotIn(">12</strong>", html)
+
+    def test_asset_refresh_meta_renders_snapshot_anchor_above_button_copy(self):
+        snapshot = {
+            "date": "2026-05-05",
+            "generated_at": "2026-05-05T12:00:00+08:00",
+            "summary": {"display_assets": 9},
+        }
+
+        html = build_overview.make_asset_refresh_meta_html(snapshot, "2026-05-06")
+
+        self.assertIn('class="asset-refresh-meta"', html)
+        self.assertIn("锚点 2026-05-05 · 生成 05-05 12:00", html)
+        self.assertIn("Anchor 2026-05-05 · generated 05-05 12:00", html)
 
     def test_asset_stats_snapshot_panel_uses_session_label_for_legacy_snapshot(self):
         snapshot = {

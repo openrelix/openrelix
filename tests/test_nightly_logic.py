@@ -4775,6 +4775,8 @@ Keep my own note.
         self.assertIn("memory-family-head asset-ledger-head", source)
         self.assertIn("memory-family-head.asset-ledger-head", source)
         self.assertIn("action-button asset-refresh-button", source)
+        self.assertIn("asset-refresh-meta", source)
+        self.assertIn("{asset_refresh_meta_html}", source)
 
     def test_build_html_uses_light_system_dashboard_style(self):
         source = (ROOT / "scripts" / "build_overview.py").read_text(encoding="utf-8")
@@ -5831,7 +5833,15 @@ Keep my own note.
                 stderr="",
             )
 
-            with mock.patch.object(token_live_server, "PATHS", paths), mock.patch.object(
+            with mock.patch.object(token_live_server, "PATHS", paths), mock.patch.dict(
+                os.environ,
+                {
+                    "AI_ASSET_STATE_DIR": "/tmp/wrong-state",
+                    "CODEX_HOME": "/tmp/wrong-codex",
+                    "OPENRELIX_ENABLE_NATIVE_DISPLAY_POLISH": "1",
+                },
+                clear=False,
+            ), mock.patch.object(
                 token_live_server.subprocess,
                 "run",
                 return_value=completed,
@@ -5849,6 +5859,7 @@ Keep my own note.
         self.assertEqual(run.call_args.kwargs["cwd"], str(ROOT))
         self.assertEqual(run.call_args.kwargs["env"]["AI_ASSET_STATE_DIR"], str(root / "state"))
         self.assertEqual(run.call_args.kwargs["env"]["CODEX_HOME"], str(root / "codex-home"))
+        self.assertEqual(run.call_args.kwargs["env"]["OPENRELIX_REFRESH_DATE"], "2026-05-06")
         self.assertEqual(run.call_args.kwargs["env"]["OPENRELIX_ENABLE_NATIVE_DISPLAY_POLISH"], "0")
         self.assertTrue(run.call_args.kwargs["capture_output"])
         self.assertEqual(run.call_args.kwargs["timeout"], token_live_server.PANEL_REFRESH_TIMEOUT_SECONDS)

@@ -7829,6 +7829,27 @@ def build_discovered_type_mix_rows(render_rows):
     return rows
 
 
+def asset_stats_snapshot_note(snapshot, default_date):
+    snapshot = snapshot if isinstance(snapshot, dict) else {}
+    summary = snapshot.get("summary") if isinstance(snapshot.get("summary"), dict) else {}
+    has_snapshot = bool(summary)
+    date_text = str(snapshot.get("date") or default_date or "").strip()
+    generated_text = display_short_local_datetime(snapshot.get("generated_at", "")) if has_snapshot else ""
+    if has_snapshot:
+        return (
+            "锚点 {} · 生成 {}".format(date_text, generated_text),
+            "Anchor {} · generated {}".format(date_text, generated_text),
+        )
+    return ("等待首次单次统计快照", "Waiting for the first single stats snapshot")
+
+
+def make_asset_refresh_meta_html(snapshot, default_date):
+    note_zh, note_en = asset_stats_snapshot_note(snapshot, default_date)
+    return '<span class="asset-refresh-meta">{}</span>'.format(
+        panel_language_text_html(note_zh, note_en)
+    )
+
+
 def normalized_asset_panels(data):
     panels = dict(data.get("asset_panels") or {})
     mix = data.get("mix") or {}
@@ -8091,7 +8112,7 @@ def build_data(assets, usage_events, reviews, language=None):
         discovered_render_rows,
         enriched_assets,
     )
-    discovered_type_mix_rows = build_discovered_type_mix_rows(asset_panel_rows)
+    discovered_type_mix_rows = build_discovered_type_mix_rows(discovered_render_rows)
     discovered_top_skill_rows = overview_asset_discovery.top_skill_rows(asset_panel_rows, limit=None)
     mcp_usage_view = overview_mcp_usage.build_mcp_usage_view(
         PATHS,
@@ -8225,10 +8246,10 @@ def build_data(assets, usage_events, reviews, language=None):
         {
             "key": "discovered_assets",
             "label": localized("已发现资产", "Discovered Assets", language),
-            "value": len(discovered_assets),
+            "value": len(discovered_render_rows),
             "caption": localized(
-                "本机扫描 + 近 30 天真实读过的技能",
-                "Local discovery plus skills read in the last 30 days",
+                "按名称聚合后的可展示资产",
+                "Displayable assets after name-based grouping",
                 language,
             ),
         },
@@ -8395,7 +8416,7 @@ def build_data(assets, usage_events, reviews, language=None):
         "generated_at_iso": generated_at_iso,
         "summary": {
             "total_assets": len(assets),
-            "discovered_assets": len(discovered_assets),
+            "discovered_assets": len(discovered_render_rows),
             "active_assets": summary["active_assets"],
             "task_reviews": len(reviews),
             "tracked_usage_events": len(usage_events),
@@ -9866,14 +9887,7 @@ def make_asset_stats_snapshot_panel(snapshot, default_date):
     snapshot = snapshot if isinstance(snapshot, dict) else {}
     summary = snapshot.get("summary") if isinstance(snapshot.get("summary"), dict) else {}
     has_snapshot = bool(summary)
-    date_text = str(snapshot.get("date") or default_date or "").strip()
-    generated_text = display_short_local_datetime(snapshot.get("generated_at", "")) if has_snapshot else ""
-    note_zh = "锚点 {} · 生成 {}".format(date_text, generated_text) if has_snapshot else "等待首次单次统计快照"
-    note_en = "Anchor {} · generated {}".format(date_text, generated_text) if has_snapshot else "Waiting for the first single stats snapshot"
-    header = make_panel_header(
-        "单次资产统计",
-        note_content_html=panel_language_text_html(note_zh, note_en),
-    )
+    header = make_panel_header("单次资产统计")
     skill_reads = summary.get("skill_reads_30d") if has_snapshot else None
     if skill_reads is None:
         skill_activity_stat = (
@@ -9896,9 +9910,9 @@ def make_asset_stats_snapshot_panel(snapshot, default_date):
         (
             "已发现资产",
             "Discovered",
-            summary.get("renderable_assets", "—") if has_snapshot else "—",
-            "过滤后可展示",
-            "Renderable after filtering",
+            summary.get("display_assets", summary.get("renderable_assets", "—")) if has_snapshot else "—",
+            "按名称聚合后展示",
+            "Displayable after grouping by name",
         ),
         (
             "30 天活跃技能",
@@ -14675,12 +14689,22 @@ def build_html(data):
     }}
 
     .asset-ledger-actions {{
-      display: flex;
-      align-items: center;
+      display: grid;
+      justify-items: end;
       justify-content: flex-end;
-      flex-wrap: wrap;
-      gap: 8px 10px;
+      gap: 8px;
       min-width: min(260px, 100%);
+    }}
+
+    .asset-refresh-meta {{
+      display: block;
+      max-width: 300px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+      line-height: 1.4;
+      overflow-wrap: anywhere;
+      text-align: right;
     }}
 
     .action-button.asset-refresh-button {{
@@ -18519,7 +18543,13 @@ def build_html(data):
 
       .asset-ledger-actions {{
         justify-content: flex-start;
+        justify-items: start;
         min-width: 0;
+      }}
+
+      .asset-refresh-meta {{
+        max-width: none;
+        text-align: left;
       }}
 
       .asset-refresh-status {{
@@ -18837,6 +18867,7 @@ def build_html(data):
           <p class="memory-family-note">{asset_ledger_note}</p>
         </div>
         <div class="asset-ledger-actions">
+          {asset_refresh_meta_html}
           <button class="action-button asset-refresh-button" type="button" id="asset-layer-refresh-button">
             <span class="button-spinner" aria-hidden="true"></span>
             <span id="asset-layer-refresh-label">{asset_refresh_label}</span>
@@ -22020,6 +22051,10 @@ def build_html(data):
         asset_ledger_kicker=panel_language_text_html("资产层", "Asset Layer"),
         asset_ledger_title=panel_language_text_html("资产层总览", "Asset Layer Overview"),
         asset_refresh_label=panel_language_text_html("刷新资产层", "Refresh Asset Layer"),
+        asset_refresh_meta_html=make_asset_refresh_meta_html(
+            data.get("asset_stats_snapshot", {}),
+            current_local_datetime().date().isoformat(),
+        ),
         asset_ledger_note=panel_language_text_html(
             "这里合并展示本机发现资产、登记册条目、复盘和复用记录，不是注入 host context 的记忆摘要。",
             "This merges discovered local assets, registry entries, reviews, and reuse records; it is not the memory summary injected into host context.",

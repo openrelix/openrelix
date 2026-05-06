@@ -206,10 +206,10 @@ def run_panel_refresh(target_date=None):
         }
 
     env = os.environ.copy()
-    env.setdefault("AI_ASSET_STATE_DIR", str(PATHS.state_root))
-    env.setdefault("CODEX_HOME", str(PATHS.codex_home))
-    env.setdefault("OPENRELIX_REFRESH_DATE", target_date)
-    env.setdefault("OPENRELIX_ENABLE_NATIVE_DISPLAY_POLISH", "0")
+    env["AI_ASSET_STATE_DIR"] = str(PATHS.state_root)
+    env["CODEX_HOME"] = str(PATHS.codex_home)
+    env["OPENRELIX_REFRESH_DATE"] = target_date
+    env["OPENRELIX_ENABLE_NATIVE_DISPLAY_POLISH"] = "0"
     try:
         completed = subprocess.run(
             build_panel_refresh_command(target_date),
