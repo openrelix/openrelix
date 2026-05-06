@@ -414,7 +414,7 @@ PANEL_I18N_EN = {
     "正在查询 Token": "Checking Token",
     "刷新资产层": "Refresh Asset Layer",
     "正在刷新资产层": "Refreshing Asset Layer",
-    "正在刷新资产层…": "Refreshing the asset layer...",
+    "正在刷新资产层，通常需要几十秒…": "Refreshing the asset layer. This usually takes a few dozen seconds...",
     "资产层已刷新，正在重新载入面板。": "Asset layer refreshed. Reloading the panel.",
     "资产层刷新失败，稍后重试。": "Asset layer refresh failed. Try again later.",
     "本地服务未启动。请运行 openrelix open panel 后再刷新资产层。": (
@@ -14667,7 +14667,7 @@ def build_html(data):
       gap: 18px;
     }}
 
-    .asset-ledger-head {{
+    .memory-family-head.asset-ledger-head {{
       display: flex;
       align-items: flex-start;
       justify-content: space-between;
@@ -14683,8 +14683,12 @@ def build_html(data):
       min-width: min(260px, 100%);
     }}
 
-    .asset-refresh-button {{
+    .action-button.asset-refresh-button {{
       flex: 0 0 auto;
+      border: 0;
+      background: var(--teal);
+      color: #ffffff;
+      box-shadow: 0 12px 24px rgba(0, 113, 227, 0.18);
       white-space: nowrap;
     }}
 
@@ -18508,7 +18512,7 @@ def build_html(data):
         font-size: 24px;
       }}
 
-      .asset-ledger-head {{
+      .memory-family-head.asset-ledger-head {{
         display: grid;
         gap: 12px;
       }}
@@ -18833,7 +18837,7 @@ def build_html(data):
           <p class="memory-family-note">{asset_ledger_note}</p>
         </div>
         <div class="asset-ledger-actions">
-          <button class="action-button secondary asset-refresh-button" type="button" id="asset-layer-refresh-button">
+          <button class="action-button asset-refresh-button" type="button" id="asset-layer-refresh-button">
             <span class="button-spinner" aria-hidden="true"></span>
             <span id="asset-layer-refresh-label">{asset_refresh_label}</span>
           </button>
@@ -20268,7 +20272,7 @@ def build_html(data):
         headers["X-OpenRelix-Token"] = token;
         let shouldReload = false;
         setAssetRefreshLoading(true);
-        setAssetRefreshStatus("loading", "正在刷新资产层…");
+        setAssetRefreshStatus("loading", "正在刷新资产层，通常需要几十秒…");
         fetch(endpoint, {{
           method: "POST",
           headers: headers,

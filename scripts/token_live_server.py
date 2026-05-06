@@ -182,6 +182,7 @@ def build_panel_refresh_command(target_date=None):
     command = [
         "/bin/zsh",
         str(PATHS.repo_root / "scripts" / "refresh_overview.sh"),
+        "--asset-layer-only",
     ]
     if target_date:
         command.extend(["--date", str(target_date)])

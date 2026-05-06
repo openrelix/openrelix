@@ -34,6 +34,7 @@ stage="${OPENRELIX_REFRESH_STAGE:-manual}"
 learn_memory="${OPENRELIX_REFRESH_LEARN_MEMORY:-0}"
 learn_window_days="${OPENRELIX_REFRESH_LEARN_WINDOW_DAYS:-0}"
 skip_unchanged="${OPENRELIX_REFRESH_SKIP_UNCHANGED:-0}"
+asset_layer_only="${OPENRELIX_REFRESH_ASSET_LAYER_ONLY:-0}"
 
 while (( $# > 0 )); do
   case "$1" in
@@ -59,6 +60,10 @@ while (( $# > 0 )); do
       ;;
     --skip-if-unchanged)
       skip_unchanged=1
+      shift
+      ;;
+    --asset-layer-only)
+      asset_layer_only=1
       shift
       ;;
     *)
@@ -150,6 +155,14 @@ write_asset_stats_snapshot_if_available() {
     echo "refresh_overview: asset stats snapshot failed; using previous snapshot." >&2
   fi
 }
+
+case "${asset_layer_only:l}" in
+  1|true|yes|on)
+    write_asset_stats_snapshot_if_available
+    "$PYTHON_BIN" "$REPO_ROOT/scripts/build_overview.py"
+    exit 0
+    ;;
+esac
 
 case "${learn_memory:l}" in
   1|true|yes|on)

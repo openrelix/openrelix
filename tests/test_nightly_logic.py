@@ -4772,6 +4772,9 @@ Keep my own note.
         self.assertIn("function refreshAssetLayer", source)
         self.assertIn("function openFinderPath", source)
         self.assertIn("wireFinderOpenActions", source)
+        self.assertIn("memory-family-head asset-ledger-head", source)
+        self.assertIn("memory-family-head.asset-ledger-head", source)
+        self.assertIn("action-button asset-refresh-button", source)
 
     def test_build_html_uses_light_system_dashboard_style(self):
         source = (ROOT / "scripts" / "build_overview.py").read_text(encoding="utf-8")
@@ -5841,6 +5844,7 @@ Keep my own note.
         self.assertEqual(result["asset_stats_path"], str(root / "reports" / "asset-stats-latest.json"))
         command = run.call_args.args[0]
         self.assertEqual(command[:2], ["/bin/zsh", str(ROOT / "scripts" / "refresh_overview.sh")])
+        self.assertIn("--asset-layer-only", command)
         self.assertEqual(command[-2:], ["--date", "2026-05-06"])
         self.assertEqual(run.call_args.kwargs["cwd"], str(ROOT))
         self.assertEqual(run.call_args.kwargs["env"]["AI_ASSET_STATE_DIR"], str(root / "state"))
@@ -6686,6 +6690,65 @@ Keep my own note.
         self.assertLess(
             lines.index("openrelix asset-stats --date 2026-05-06 --no-refresh"),
             lines.index("build_overview "),
+        )
+
+    def test_refresh_overview_asset_layer_only_skips_heavy_steps(self):
+        with TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            scripts_dir = root / "scripts"
+            scripts_dir.mkdir(parents=True)
+            refresh_script = scripts_dir / "refresh_overview.sh"
+            order_log = root / "order.log"
+            refresh_script.write_text(
+                (ROOT / "scripts" / "refresh_overview.sh").read_text(encoding="utf-8"),
+                encoding="utf-8",
+            )
+            for script_name, marker in (
+                ("collect_codex_activity.py", "collect"),
+                ("sync_host_memory_summary.py", "sync"),
+                ("openrelix_index.py", "index"),
+                ("build_overview.py", "build_overview"),
+            ):
+                (scripts_dir / script_name).write_text(
+                    "\n".join(
+                        [
+                            "import os, sys",
+                            "with open(os.environ['OPENRELIX_TEST_ORDER_LOG'], 'a', encoding='utf-8') as fh:",
+                            "    fh.write('{} ' + ' '.join(sys.argv[1:]) + '\\n')".format(marker),
+                        ]
+                    ),
+                    encoding="utf-8",
+                )
+            (scripts_dir / "openrelix.py").write_text(
+                "\n".join(
+                    [
+                        "import os, sys",
+                        "with open(os.environ['OPENRELIX_TEST_ORDER_LOG'], 'a', encoding='utf-8') as fh:",
+                        "    fh.write('openrelix ' + ' '.join(sys.argv[1:]) + '\\n')",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            env = dict(os.environ)
+            env["OPENRELIX_TEST_ORDER_LOG"] = str(order_log)
+            env["OPENRELIX_REFRESH_DATE"] = "2026-05-06"
+
+            result = subprocess.run(
+                ["/bin/zsh", str(refresh_script), "--asset-layer-only"],
+                cwd=str(root),
+                env=env,
+                capture_output=True,
+                text=True,
+            )
+            lines = order_log.read_text(encoding="utf-8").splitlines()
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(
+            lines,
+            [
+                "openrelix asset-stats --date 2026-05-06 --no-refresh",
+                "build_overview ",
+            ],
         )
 
     def test_nightly_pipeline_returns_nonzero_when_latest_model_run_failed(self):
