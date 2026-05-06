@@ -24,6 +24,7 @@ from . import redaction as overview_redaction
 HIGH_LEVEL_TYPE = {
     "codex_skill": "skill",
     "claude_skill": "skill",
+    "agent_skill": "skill",
     "repo_skill": "skill",
     "external_repo_skill": "skill",
     "project_skill": "skill",
@@ -42,6 +43,7 @@ HIGH_LEVEL_TYPE_ORDER = (
 DISCOVERED_KIND_ORDER = (
     "codex_skill",
     "claude_skill",
+    "agent_skill",
     "repo_skill",
     "external_repo_skill",
     "project_skill",
@@ -53,6 +55,7 @@ DISCOVERED_KIND_ORDER = (
 INSTALLED_DISCOVERY_KINDS = (
     "codex_skill",
     "claude_skill",
+    "agent_skill",
     "repo_skill",
     "codex_prompt",
     "codex_rule",
@@ -62,6 +65,7 @@ INSTALLED_DISCOVERY_KINDS = (
 SKILL_ASSET_KINDS = {
     "codex_skill",
     "claude_skill",
+    "agent_skill",
     "repo_skill",
     "external_repo_skill",
     "project_skill",
@@ -476,6 +480,7 @@ def discover_installed_assets(paths):
     """
     codex_skill_root = paths.codex_home / "skills"
     claude_skill_root = Path.home() / ".claude" / "skills"
+    agent_skill_root = Path.home() / ".agents" / "skills"
     repo_skill_root = paths.repo_skill_root
     discovered = []
     discovered.extend(
@@ -486,6 +491,7 @@ def discover_installed_assets(paths):
         )
     )
     discovered.extend(_discover_skill_dir(claude_skill_root, "claude_skill", "~/.claude/skills"))
+    discovered.extend(_discover_skill_dir(agent_skill_root, "agent_skill", "~/.agents/skills"))
     discovered.extend(_discover_skill_dir(repo_skill_root, "repo_skill", ".agents/skills"))
     discovered.extend(_discover_codex_prompts(paths))
     discovered.extend(_discover_codex_rules(paths))
@@ -576,11 +582,14 @@ def classify_skill_manifest_path(raw_path, paths):
     if absolute_path is not None:
         codex_skill_root = paths.codex_home / "skills"
         claude_skill_root = Path.home() / ".claude" / "skills"
+        agent_skill_root = Path.home() / ".agents" / "skills"
         repo_skill_root = paths.repo_skill_root
         if _direct_skill_under_root(absolute_path, codex_skill_root, identifier):
             return ("codex_skill", identifier)
         if _direct_skill_under_root(absolute_path, claude_skill_root, identifier):
             return ("claude_skill", identifier)
+        if _direct_skill_under_root(absolute_path, agent_skill_root, identifier):
+            return ("agent_skill", identifier)
         if _direct_skill_under_root(absolute_path, repo_skill_root, identifier):
             return ("repo_skill", identifier)
 
@@ -1242,6 +1251,8 @@ def top_skill_rows(render_rows, limit=10):
         row
         for row in render_rows or []
         if _high_level_type(row.get("type", "")) == "skill"
+        and not row.get("is_manual")
+        and int(row.get("read_events_30d") or row.get("windows_30d") or 0) > 0
     ]
     sorted_rows = sorted(
         rows,

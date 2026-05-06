@@ -137,6 +137,7 @@ class AssetDiscoveryTests(unittest.TestCase):
         expected = {
             "codex_skill": "skill",
             "claude_skill": "skill",
+            "agent_skill": "skill",
             "repo_skill": "skill",
             "external_repo_skill": "skill",
             "project_skill": "skill",
@@ -164,6 +165,16 @@ class AssetDiscoveryTests(unittest.TestCase):
         assets = self.assets_by_key(asset_discovery.discover_installed_assets(self.paths))
 
         self.assertIn("claude_skill:bravo", assets)
+
+    def test_discovers_global_agent_skill(self):
+        manifest = self.write_skill(self.home / ".agents" / "skills", "agent", description="Agent helper")
+
+        assets = self.assets_by_key(asset_discovery.discover_installed_assets(self.paths))
+
+        self.assertIn("agent_skill:agent", assets)
+        self.assertEqual(assets["agent_skill:agent"]["description"], "Agent helper")
+        self.assertEqual(assets["agent_skill:agent"]["manifest_path"], "~/.agents/skills/agent/SKILL.md")
+        self.assertEqual(assets["agent_skill:agent"]["manifest_abspath"], str(manifest.resolve()))
 
     def test_discovers_repo_skill(self):
         self.write_skill(self.paths.repo_skill_root, "repo-helper", description="Repo helper")
@@ -591,6 +602,23 @@ class AssetDiscoveryTests(unittest.TestCase):
         self.assertEqual(foo["windows_30d"], 9)
         self.assertEqual(foo["click_target"], str(codex_manifest))
 
+    def test_click_target_falls_back_to_global_agent_skill_for_project_read(self):
+        agent_manifest = self.write_skill(
+            self.home / ".agents" / "skills",
+            "android-cr",
+            description="Agent source",
+        )
+        installed = asset_discovery.discover_installed_assets(self.paths)
+        self.write_codex_rollout(self.today, "one", ["cat .../skills/android-cr/SKILL.md"])
+
+        assets, frequency = self.compute(installed)
+        rows = asset_discovery.aggregate_renderable_assets(assets, frequency)
+        android_cr = [row for row in rows if row["identifier"] == "android-cr"][0]
+
+        self.assertEqual(android_cr["windows_30d"], 1)
+        self.assertEqual(android_cr["click_target"], str(agent_manifest.resolve()))
+        self.assertEqual(android_cr["description"], "Agent source")
+
     def test_discovered_skill_name_uses_finder_button_instead_of_file_href(self):
         html = build_overview.make_discovered_asset_name_html(
             {
@@ -701,6 +729,19 @@ class AssetDiscoveryTests(unittest.TestCase):
         self.assertIn('data-asset-identifier="skill-02"', html)
         self.assertIn('data-asset-identifier="skill-01"', html)
         self.assertLess(html.index('data-asset-identifier="skill-01"'), html.index("查看更多 2 个技能热度"))
+
+    def test_top_skill_rows_exclude_manual_and_zero_activity_rows(self):
+        rows = [
+            {"type": "skill", "identifier": "active", "name": "active", "windows_30d": 2, "read_events_30d": 3},
+            {"type": "skill", "identifier": "quiet", "name": "quiet", "windows_30d": 0, "read_events_30d": 0},
+            {"type": "playbook", "identifier": "review", "name": "review", "is_manual": True, "windows_30d": 0, "read_events_30d": 0},
+        ]
+
+        html = build_overview.make_top_skill_rows(asset_discovery.top_skill_rows(rows, limit=None))
+
+        self.assertIn('data-asset-identifier="active"', html)
+        self.assertNotIn('data-asset-identifier="quiet"', html)
+        self.assertNotIn('data-asset-identifier="review"', html)
 
     def test_mcp_usage_counts_real_function_call_names(self):
         session_root = self.paths.codex_home / "sessions" / "2026" / "05" / "05"
@@ -883,12 +924,14 @@ class AssetDiscoveryTests(unittest.TestCase):
     def test_path_classifier_follows_canonical_roots(self):
         codex_manifest = self.paths.codex_home / "skills" / "foo" / "SKILL.md"
         claude_manifest = self.home / ".claude" / "skills" / "bar" / "SKILL.md"
+        agent_manifest = self.home / ".agents" / "skills" / "agent" / "SKILL.md"
         repo_manifest = self.paths.repo_skill_root / "baz" / "SKILL.md"
         external_manifest = self.root / "other" / ".agents" / "skills" / "qux" / "SKILL.md"
         project_manifest = self.root / "project" / "skills" / "local" / "SKILL.md"
 
         self.assertEqual(asset_discovery.classify_skill_manifest_path(str(codex_manifest), self.paths), ("codex_skill", "foo"))
         self.assertEqual(asset_discovery.classify_skill_manifest_path(str(claude_manifest), self.paths), ("claude_skill", "bar"))
+        self.assertEqual(asset_discovery.classify_skill_manifest_path(str(agent_manifest), self.paths), ("agent_skill", "agent"))
         self.assertEqual(asset_discovery.classify_skill_manifest_path(str(repo_manifest), self.paths), ("repo_skill", "baz"))
         self.assertEqual(asset_discovery.classify_skill_manifest_path(str(external_manifest), self.paths), ("external_repo_skill", "qux"))
         self.assertEqual(asset_discovery.classify_skill_manifest_path("skills/local/SKILL.md", self.paths), ("project_skill", "local"))
