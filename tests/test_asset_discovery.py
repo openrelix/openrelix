@@ -752,6 +752,37 @@ class AssetDiscoveryTests(unittest.TestCase):
         self.assertEqual(view["active_servers"], 2)
         self.assertEqual(view["tools"][0]["label"], "figma/get_design_context")
         self.assertEqual(view["tools"][0]["sessions"], 1)
+        self.assertIn("Figma", view["tools"][0]["description"])
+        self.assertIn("design context", view["tools"][0]["description_en"])
+
+    def test_mcp_usage_panel_renders_tool_descriptions_as_table(self):
+        html = build_overview.make_mcp_usage_panel(
+            {
+                "lookback_days": 30,
+                "total_calls": 3,
+                "active_tools": 1,
+                "tools": [
+                    {
+                        "name": "mcp__playwright__browser_navigate",
+                        "server": "playwright",
+                        "tool": "browser_navigate",
+                        "label": "playwright/browser_navigate",
+                        "description": "在本地浏览器打开或跳转到指定 URL。",
+                        "description_en": "Navigate the local browser to a URL.",
+                        "calls": 3,
+                        "sessions": 2,
+                        "last_seen": "2026-05-06",
+                    }
+                ],
+            }
+        )
+
+        self.assertIn("mcp-usage-table", html)
+        self.assertIn("playwright/browser_navigate", html)
+        self.assertIn("在本地浏览器打开或跳转到指定 URL。", html)
+        self.assertIn("<th", html)
+        self.assertIn("调用", html)
+        self.assertIn("会话", html)
 
     def test_single_asset_stats_snapshot_anchors_frequency_to_requested_date(self):
         manifest = self.write_skill(self.paths.codex_home / "skills", "foo", name="Foo")

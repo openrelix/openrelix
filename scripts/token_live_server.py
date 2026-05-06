@@ -45,6 +45,9 @@ UPDATE_WORKER_SCRIPT = PATHS.repo_root / "scripts" / "openrelix_update_worker.py
 UPDATE_STATUS_PATH = RUNTIME_DIR / "update-status.json"
 UPDATE_TIMEOUT_SECONDS = 600
 UPDATE_LOG_TAIL_LINES = 12
+PANEL_REFRESH_PATH = "/run-refresh"
+PANEL_REFRESH_TIMEOUT_SECONDS = 180
+PANEL_REFRESH_LOG_TAIL_LINES = 20
 UPDATE_LOCK = threading.RLock()
 UPDATE_STATE = {
     "status": "idle",
@@ -61,7 +64,12 @@ _UPDATE_TOKEN_CACHE = None
 _UPDATE_TOKEN_LOCK = threading.Lock()
 ALLOWED_PANEL_ORIGIN_PREFIXES = ("file://",)
 ALLOWED_PANEL_ORIGIN_EXACT = {"null"}
-TRUSTED_POST_PATHS = {"/run-update", CLAUDE_DESKTOP_OPEN_PATH, FINDER_REVEAL_PATH}
+TRUSTED_POST_PATHS = {
+    "/run-update",
+    PANEL_REFRESH_PATH,
+    CLAUDE_DESKTOP_OPEN_PATH,
+    FINDER_REVEAL_PATH,
+}
 
 
 def get_update_token():
@@ -161,6 +169,95 @@ def build_update_worker_command():
         "--python-bin",
         sys.executable,
     ]
+
+
+def tail_text(text, max_lines=PANEL_REFRESH_LOG_TAIL_LINES):
+    lines = str(text or "").splitlines()
+    if max_lines > 0 and len(lines) > max_lines:
+        lines = lines[-max_lines:]
+    return "\n".join(lines)
+
+
+def build_panel_refresh_command(target_date=None):
+    command = [
+        "/bin/zsh",
+        str(PATHS.repo_root / "scripts" / "refresh_overview.sh"),
+    ]
+    if target_date:
+        command.extend(["--date", str(target_date)])
+    return command
+
+
+def run_panel_refresh(target_date=None):
+    target_date = str(target_date or current_local_datetime().date().isoformat())
+    started_at = time.time()
+    refresh_script = PATHS.repo_root / "scripts" / "refresh_overview.sh"
+    if not refresh_script.exists():
+        return {
+            "ok": False,
+            "status": "failed",
+            "target_date": target_date,
+            "started_at": started_at,
+            "ended_at": time.time(),
+            "exit_code": None,
+            "error": "refresh_script_not_found",
+            "script": str(refresh_script),
+        }
+
+    env = os.environ.copy()
+    env.setdefault("AI_ASSET_STATE_DIR", str(PATHS.state_root))
+    env.setdefault("CODEX_HOME", str(PATHS.codex_home))
+    env.setdefault("OPENRELIX_REFRESH_DATE", target_date)
+    env.setdefault("OPENRELIX_ENABLE_NATIVE_DISPLAY_POLISH", "0")
+    try:
+        completed = subprocess.run(
+            build_panel_refresh_command(target_date),
+            cwd=str(PATHS.repo_root),
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=PANEL_REFRESH_TIMEOUT_SECONDS,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as exc:
+        return {
+            "ok": False,
+            "status": "failed",
+            "target_date": target_date,
+            "started_at": started_at,
+            "ended_at": time.time(),
+            "exit_code": None,
+            "error": "refresh_timeout",
+            "timeout_seconds": PANEL_REFRESH_TIMEOUT_SECONDS,
+            "stdout_tail": tail_text(getattr(exc, "stdout", "")),
+            "stderr_tail": tail_text(getattr(exc, "stderr", "")),
+        }
+    except Exception as exc:
+        return {
+            "ok": False,
+            "status": "failed",
+            "target_date": target_date,
+            "started_at": started_at,
+            "ended_at": time.time(),
+            "exit_code": None,
+            "error": str(exc),
+        }
+
+    ok = completed.returncode == 0
+    return {
+        "ok": ok,
+        "status": "completed" if ok else "failed",
+        "target_date": target_date,
+        "started_at": started_at,
+        "ended_at": time.time(),
+        "exit_code": completed.returncode,
+        "error": "" if ok else "refresh_failed",
+        "panel_path": str(PATHS.reports_dir / "panel.html"),
+        "overview_data_path": str(PATHS.reports_dir / "overview-data.json"),
+        "asset_stats_path": str(PATHS.reports_dir / "asset-stats-latest.json"),
+        "stdout_tail": tail_text(completed.stdout),
+        "stderr_tail": tail_text(completed.stderr),
+    }
 
 
 def start_update_async():
@@ -470,6 +567,15 @@ class TokenLiveHandler(BaseHTTPRequestHandler):
             if snapshot.get("error") in {"finder_unsupported_platform", "finder_open_failed"}:
                 status_code = 503
             self._send_json(status_code, snapshot, allow_origin=origin or None)
+            return
+        if parsed.path == PANEL_REFRESH_PATH:
+            try:
+                payload = json.loads(body.decode("utf-8")) if body else {}
+            except (UnicodeDecodeError, json.JSONDecodeError):
+                payload = {}
+            requested_date = str(payload.get("date", "") or "").strip()
+            snapshot = run_panel_refresh(requested_date or None)
+            self._send_json(200 if snapshot.get("ok") else 503, snapshot, allow_origin=origin or None)
             return
         started, snapshot = start_update_async()
         snapshot["started_now"] = started

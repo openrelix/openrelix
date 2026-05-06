@@ -4765,7 +4765,11 @@ Keep my own note.
         source = (ROOT / "scripts" / "build_overview.py").read_text(encoding="utf-8")
 
         self.assertIn("data-finder-open-endpoint", source)
+        self.assertIn("data-asset-refresh-endpoint", source)
         self.assertIn("data-open-finder-path", source)
+        self.assertIn("asset-layer-refresh-button", source)
+        self.assertIn("刷新资产层", source)
+        self.assertIn("function refreshAssetLayer", source)
         self.assertIn("function openFinderPath", source)
         self.assertIn("wireFinderOpenActions", source)
 
@@ -5803,8 +5807,47 @@ Keep my own note.
             self.assertEqual(overview_finder.reveal_path_in_finder(str(missing))["error"], "path_not_found")
             self.assertEqual(overview_finder.reveal_path_in_finder(relative)["error"], "path_not_found")
 
-    def test_token_live_trusts_finder_reveal_endpoint(self):
+    def test_token_live_trusts_local_panel_post_endpoints(self):
         self.assertIn(overview_finder.FINDER_REVEAL_PATH, token_live_server.TRUSTED_POST_PATHS)
+        self.assertIn(token_live_server.PANEL_REFRESH_PATH, token_live_server.TRUSTED_POST_PATHS)
+
+    def test_panel_refresh_runs_refresh_overview_for_requested_date(self):
+        with TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            paths = replace(
+                token_live_server.PATHS,
+                repo_root=ROOT,
+                state_root=root / "state",
+                codex_home=root / "codex-home",
+                reports_dir=root / "reports",
+            )
+            completed = subprocess.CompletedProcess(
+                args=[],
+                returncode=0,
+                stdout="refreshed\n",
+                stderr="",
+            )
+
+            with mock.patch.object(token_live_server, "PATHS", paths), mock.patch.object(
+                token_live_server.subprocess,
+                "run",
+                return_value=completed,
+            ) as run:
+                result = token_live_server.run_panel_refresh("2026-05-06")
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["status"], "completed")
+        self.assertEqual(result["target_date"], "2026-05-06")
+        self.assertEqual(result["asset_stats_path"], str(root / "reports" / "asset-stats-latest.json"))
+        command = run.call_args.args[0]
+        self.assertEqual(command[:2], ["/bin/zsh", str(ROOT / "scripts" / "refresh_overview.sh")])
+        self.assertEqual(command[-2:], ["--date", "2026-05-06"])
+        self.assertEqual(run.call_args.kwargs["cwd"], str(ROOT))
+        self.assertEqual(run.call_args.kwargs["env"]["AI_ASSET_STATE_DIR"], str(root / "state"))
+        self.assertEqual(run.call_args.kwargs["env"]["CODEX_HOME"], str(root / "codex-home"))
+        self.assertEqual(run.call_args.kwargs["env"]["OPENRELIX_ENABLE_NATIVE_DISPLAY_POLISH"], "0")
+        self.assertTrue(run.call_args.kwargs["capture_output"])
+        self.assertEqual(run.call_args.kwargs["timeout"], token_live_server.PANEL_REFRESH_TIMEOUT_SECONDS)
 
     def test_panel_update_starts_detached_worker_and_persists_status(self):
         with TemporaryDirectory() as tmpdir:

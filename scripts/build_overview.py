@@ -412,6 +412,14 @@ PANEL_I18N_EN = {
     "刚刚生成": "Generated just now",
     "实时刷新 Token": "Refresh Token",
     "正在查询 Token": "Checking Token",
+    "刷新资产层": "Refresh Asset Layer",
+    "正在刷新资产层": "Refreshing Asset Layer",
+    "正在刷新资产层…": "Refreshing the asset layer...",
+    "资产层已刷新，正在重新载入面板。": "Asset layer refreshed. Reloading the panel.",
+    "资产层刷新失败，稍后重试。": "Asset layer refresh failed. Try again later.",
+    "本地服务未启动。请运行 openrelix open panel 后再刷新资产层。": (
+        "The local service is not running. Run openrelix open panel, then refresh the asset layer again."
+    ),
     "先展示本地快照，再实时同步最新 Token。": "Showing the local snapshot first, then syncing the latest Token usage.",
     "页面已打开，正在同步最新 Token…": "Page opened. Syncing the latest Token usage...",
     "正在实时查询最新 Token…": "Querying the latest Token usage...",
@@ -460,6 +468,7 @@ PANEL_I18N_EN = {
     "收起更多复盘": "Collapse more reviews",
     "收起更多记录": "Collapse more records",
     "收起更多上下文": "Collapse more contexts",
+    "收起 MCP 工具": "Collapse MCP tools",
     "用户偏好": "User Preferences",
     "通用 tips": "General Tips",
     "历史任务索引": "Historical Task Index",
@@ -640,6 +649,9 @@ PANEL_I18N_EN = {
     "资产层": "Asset Layer",
     "资产记忆": "Asset Memory",
     "资产层总览": "Asset Layer Overview",
+    "这里合并展示本机发现资产、登记册条目、复盘和复用记录，不是注入 host context 的记忆摘要。": (
+        "This merges discovered local assets, registry entries, reviews, and reuse records; it is not the memory summary injected into host context."
+    ),
     "这里合并展示本机发现资产、手动账本条目、复盘和复用记录，不是注入 host context 的记忆摘要。": (
         "This merges discovered local assets, registry entries, reviews, and reuse records; it is not the memory summary injected into host context."
     ),
@@ -689,6 +701,8 @@ PANEL_I18N_EN = {
     "节省分钟": "Minutes Saved",
     "价值分": "Value Score",
     "证据": "Evidence",
+    "调用": "Calls",
+    "会话": "Sessions",
     "问题": "Questions",
     "结论": "Conclusions",
     "问题摘要": "Question Summary",
@@ -8083,7 +8097,7 @@ def build_data(assets, usage_events, reviews, language=None):
         PATHS,
         today,
         lookback_days=30,
-        limit=10,
+        limit=None,
     )
     localized_usage_events = enrich_usage_events(recent_usage_events, language=language)
     minutes_saved_total = sum(
@@ -10158,35 +10172,76 @@ def make_mcp_usage_panel(mcp_usage, help_html=""):
         "Last {} days, {} MCP calls across {} active tools".format(lookback_days, total_calls, active_tools),
     )
 
-    rows = []
-    for tool in tools:
-        calls = safe_int(tool.get("calls", 0))
-        sessions = safe_int(tool.get("sessions", 0))
-        last_seen = tool.get("last_seen") or "—"
-        rows.append(
-            {
-                "label": tool.get("label") or tool.get("name") or "",
-                "label_en": tool.get("label") or tool.get("name") or "",
-                "value": calls,
-                "display": str(calls),
-                "details": [
-                    {
-                        "title": tool.get("tool") or tool.get("name") or "",
-                        "title_en": tool.get("tool") or tool.get("name") or "",
-                        "meta": "{} 会话 · 最近 {}".format(sessions, last_seen),
-                        "meta_en": "{} sessions · latest {}".format(sessions, last_seen),
-                    }
-                ],
-                "details_heading": "调用细节",
-                "details_heading_en": "Call details",
-            }
+    def render_row(tool, row_class="", group_id="", hidden_attr=""):
+        attrs = [
+            'data-mcp-name="{}"'.format(escape(str(tool.get("name") or ""), quote=True)),
+        ]
+        if row_class:
+            attrs.append('class="{}"'.format(escape(row_class, quote=True)))
+        if group_id:
+            attrs.append('data-expand-group="{}"'.format(escape(group_id, quote=True)))
+        if hidden_attr:
+            attrs.append("hidden")
+        description = tool.get("description") or "来自 {} MCP 服务的工具调用。".format(
+            tool.get("server") or "MCP"
         )
+        description_en = tool.get("description_en") or tool.get("description") or "MCP tool call."
+        return """
+            <tr {row_attrs}>
+              <td>
+                <div class="asset-discovery-name">{name}</div>
+              </td>
+              <td>
+                <span class="asset-discovery-description">{description}</span>
+              </td>
+              <td>{calls}</td>
+              <td>{sessions}</td>
+            </tr>
+            """.format(
+            row_attrs=" ".join(attrs),
+            name=escape(str(tool.get("label") or tool.get("name") or "")),
+            description=panel_language_text_html(description, description_en),
+            calls=escape(str(safe_int(tool.get("calls", 0)))),
+            sessions=escape(str(safe_int(tool.get("sessions", 0)))),
+        )
+
+    rows_html = (
+        make_table_expand_rows(
+            tools,
+            render_row,
+            10,
+            4,
+            "个 MCP 工具",
+            "收起 MCP 工具",
+            "mcp-usage-rows",
+        )
+        if tools
+        else '<tr><td colspan="4" class="empty-cell">暂无 MCP 调用。</td></tr>'
+    )
 
     return """
     <section class="panel" id="mcp-usage-section">
       {header_html}
-      <div class="bar-group">
-        {items}
+      <div class="table-wrap asset-discovery-table-wrap mcp-usage-table-wrap">
+        <table class="asset-discovery-table top-skills-table mcp-usage-table">
+          <colgroup>
+            <col class="top-skills-name-col">
+            <col class="top-skills-description-col">
+            <col class="top-skills-count-col">
+            <col class="top-skills-count-col">
+          </colgroup>
+          <thead>
+            <tr>
+              <th>{name_header}</th>
+              <th>{description_header}</th>
+              <th>{calls_header}</th>
+              <th>{sessions_header}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows_html}
+          </tbody>
+        </table>
       </div>
     </section>
     """.format(
@@ -10195,7 +10250,11 @@ def make_mcp_usage_panel(mcp_usage, help_html=""):
             help_html=help_html,
             note_content_html=note_html,
         ),
-        items=make_bar_rows(rows, "teal") if rows else '<p class="empty">暂无 MCP 调用。</p>',
+        name_header=panel_language_text_html("名称", "Name"),
+        description_header=panel_language_text_html("描述", "Description"),
+        calls_header=panel_language_text_html("调用", "Calls"),
+        sessions_header=panel_language_text_html("会话", "Sessions"),
+        rows_html=rows_html,
     )
 
 
@@ -13446,12 +13505,32 @@ def build_html(data):
         "MCP 使用热度",
         [
             {
+                "label": "MCP 是什么",
+                "body": {
+                    "zh": "MCP 是 Model Context Protocol。这里可以把它理解成 Codex 可调用的外部工具入口，比如浏览器、Figma、飞书、IDE 索引或本地自动化。",
+                    "en": "MCP means Model Context Protocol. In this panel it represents external tools Codex can call, such as browser automation, Figma, Feishu, IDE indexes, or local automations.",
+                },
+            },
+            {
                 "label": "统计什么",
-                "body": "近 30 天 Codex 会话中真实 function_call 名称为 mcp__server__tool 的 MCP 调用次数。",
+                "body": {
+                    "zh": "统计近 30 天 Codex 会话里真实 function_call 名称形如 mcp__server__tool 的调用次数，并按 server/tool 聚合。",
+                    "en": "Counts real function_call entries in the last 30 days whose names look like mcp__server__tool, grouped by server/tool.",
+                },
+            },
+            {
+                "label": "怎么看",
+                "body": {
+                    "zh": "例如 playwright/browser_navigate 表示 Codex 调过 Playwright 的浏览器导航工具；次数越高，说明这类外部工具在近期任务里越常被用到。",
+                    "en": "For example, playwright/browser_navigate means Codex called Playwright's browser navigation tool; higher counts mean that external tool was used more often recently.",
+                },
             },
             {
                 "label": "隐私边界",
-                "body": "这里只保留 server/tool 名称、调用次数、命中会话数和最近日期，不展示工具参数或返回内容。",
+                "body": {
+                    "zh": "这里只保留 server/tool 名称、调用次数、命中会话数和最近日期，不展示工具参数或返回内容。",
+                    "en": "Only server/tool names, call counts, session counts, and latest dates are shown. Tool arguments and returned content are not displayed.",
+                },
             },
         ],
     )
@@ -13931,7 +14010,7 @@ def build_html(data):
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="openrelix:version" content="{current_version}" data-pkg="{npm_package}" data-update-endpoint="{update_endpoint}" data-update-status-endpoint="{update_status_endpoint}" data-claude-desktop-endpoint="{claude_desktop_endpoint}" data-finder-open-endpoint="{finder_open_endpoint}" data-update-token="{update_token}">
+  <meta name="openrelix:version" content="{current_version}" data-pkg="{npm_package}" data-update-endpoint="{update_endpoint}" data-update-status-endpoint="{update_status_endpoint}" data-asset-refresh-endpoint="{asset_refresh_endpoint}" data-claude-desktop-endpoint="{claude_desktop_endpoint}" data-finder-open-endpoint="{finder_open_endpoint}" data-update-token="{update_token}">
   <title>{document_title}</title>
   <script>
     (function () {{
@@ -14588,6 +14667,46 @@ def build_html(data):
       gap: 18px;
     }}
 
+    .asset-ledger-head {{
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+    }}
+
+    .asset-ledger-actions {{
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      flex-wrap: wrap;
+      gap: 8px 10px;
+      min-width: min(260px, 100%);
+    }}
+
+    .asset-refresh-button {{
+      flex: 0 0 auto;
+      white-space: nowrap;
+    }}
+
+    .asset-refresh-status {{
+      min-width: 0;
+      max-width: 260px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 650;
+      line-height: 1.4;
+      overflow-wrap: anywhere;
+      text-align: right;
+    }}
+
+    .asset-refresh-status[data-kind="success"] {{
+      color: var(--green);
+    }}
+
+    .asset-refresh-status[data-kind="error"] {{
+      color: var(--rose);
+    }}
+
     .asset-stats-snapshot-panel {{
       display: grid;
       gap: 14px;
@@ -14705,6 +14824,10 @@ def build_html(data):
     .top-skills-table .content-more-cell {{
       padding-left: 10px;
       padding-right: 10px;
+    }}
+
+    .mcp-usage-table .asset-discovery-name {{
+      overflow-wrap: anywhere;
     }}
 
     .asset-discovery-name {{
@@ -18385,6 +18508,21 @@ def build_html(data):
         font-size: 24px;
       }}
 
+      .asset-ledger-head {{
+        display: grid;
+        gap: 12px;
+      }}
+
+      .asset-ledger-actions {{
+        justify-content: flex-start;
+        min-width: 0;
+      }}
+
+      .asset-refresh-status {{
+        max-width: none;
+        text-align: left;
+      }}
+
       .memory-family-title-row {{
         display: block;
       }}
@@ -18694,6 +18832,13 @@ def build_html(data):
           <h2>{asset_ledger_title}</h2>
           <p class="memory-family-note">{asset_ledger_note}</p>
         </div>
+        <div class="asset-ledger-actions">
+          <button class="action-button secondary asset-refresh-button" type="button" id="asset-layer-refresh-button">
+            <span class="button-spinner" aria-hidden="true"></span>
+            <span id="asset-layer-refresh-label">{asset_refresh_label}</span>
+          </button>
+          <span class="asset-refresh-status" id="asset-layer-refresh-status" role="status" aria-live="polite"></span>
+        </div>
       </div>
       <section class="grid metrics-grid asset-metrics-grid">
         {asset_metric_cards}
@@ -18849,6 +18994,9 @@ def build_html(data):
         backfillRangeCommand: document.getElementById("nightly-backfill-range-command"),
         backfillStatus: document.getElementById("nightly-backfill-status"),
         backfillCopyButtons: Array.from(document.querySelectorAll("[data-backfill-copy]")),
+        assetRefreshButton: document.getElementById("asset-layer-refresh-button"),
+        assetRefreshLabel: document.getElementById("asset-layer-refresh-label"),
+        assetRefreshStatus: document.getElementById("asset-layer-refresh-status"),
         refreshButton: document.getElementById("token-refresh-button"),
         refreshLabel: document.getElementById("token-refresh-label"),
         refreshStatusText: document.getElementById("token-refresh-status-text"),
@@ -18966,6 +19114,10 @@ def build_html(data):
             " · " + pluralEn(match[2], "source date") +
             " · " + pluralEn(match[3], "window") +
             " · " + match[4];
+        }}
+        match = text.match(/^查看更多 (\\d+) 个 MCP 工具$/);
+        if (match) {{
+          return "Show " + match[1] + " more MCP tools";
         }}
         match = text.match(/^直接读取 (.+) 的“What's in Memory”记忆条目(?:，.+)?。$/);
         if (match) {{
@@ -20085,6 +20237,75 @@ def build_html(data):
         if (elements.refreshStatusText) {{
           elements.refreshStatusText.textContent = messageKey ? tokenRefreshStatusText(messageKey) : text;
         }}
+      }}
+
+      function setAssetRefreshLoading(isLoading) {{
+        if (elements.assetRefreshButton) {{
+          elements.assetRefreshButton.classList.toggle("is-loading", isLoading);
+          elements.assetRefreshButton.disabled = isLoading;
+        }}
+        if (elements.assetRefreshLabel) {{
+          elements.assetRefreshLabel.textContent = isLoading ? t("正在刷新资产层") : t("刷新资产层");
+        }}
+      }}
+
+      function setAssetRefreshStatus(kind, messageKey) {{
+        if (!elements.assetRefreshStatus) {{
+          return;
+        }}
+        elements.assetRefreshStatus.dataset.kind = kind || "";
+        elements.assetRefreshStatus.textContent = messageKey ? t(messageKey) : "";
+      }}
+
+      function refreshAssetLayer() {{
+        const endpoint = openrelixMetaAttr("data-asset-refresh-endpoint");
+        const token = openrelixMetaAttr("data-update-token");
+        if (!endpoint || !token || !window.fetch) {{
+          setAssetRefreshStatus("error", "本地服务未启动。请运行 openrelix open panel 后再刷新资产层。");
+          return;
+        }}
+        const headers = {{ "Content-Type": "application/json" }};
+        headers["X-OpenRelix-Token"] = token;
+        let shouldReload = false;
+        setAssetRefreshLoading(true);
+        setAssetRefreshStatus("loading", "正在刷新资产层…");
+        fetch(endpoint, {{
+          method: "POST",
+          headers: headers,
+          body: JSON.stringify({{}})
+        }})
+          .then(function (response) {{
+            return response.json().catch(function () {{
+              return null;
+            }}).then(function (payload) {{
+              if (!response.ok || !payload || payload.ok === false) {{
+                throw new Error((payload && payload.error) || ("HTTP " + response.status));
+              }}
+              return payload;
+            }});
+          }})
+          .then(function () {{
+            shouldReload = true;
+            setAssetRefreshStatus("success", "资产层已刷新，正在重新载入面板。");
+            window.setTimeout(function () {{
+              window.location.reload();
+            }}, 700);
+          }})
+          .catch(function (error) {{
+            const message = error && String(error.message || "");
+            const offline = !message || error.name === "TypeError" || message.indexOf("Failed to fetch") >= 0;
+            setAssetRefreshStatus(
+              "error",
+              offline
+                ? "本地服务未启动。请运行 openrelix open panel 后再刷新资产层。"
+                : "资产层刷新失败，稍后重试。"
+            );
+          }})
+          .finally(function () {{
+            if (!shouldReload) {{
+              setAssetRefreshLoading(false);
+            }}
+          }});
       }}
 
       function compactTokenValue(value) {{
@@ -21438,6 +21659,11 @@ def build_html(data):
           refreshTokenUsage(true);
         }});
       }}
+      if (elements.assetRefreshButton) {{
+        elements.assetRefreshButton.addEventListener("click", function () {{
+          refreshAssetLayer();
+        }});
+      }}
       window.setInterval(updateSnapshotAge, 60 * 1000);
       window.setInterval(function () {{
         if (state.tokenUsage) {{
@@ -21733,6 +21959,7 @@ def build_html(data):
         npm_package=escape(PROJECT_PACKAGE_NAME, quote=True),
         update_endpoint=escape("http://{}:{}/run-update".format(LIVE_TOKEN_HOST, LIVE_TOKEN_PORT), quote=True),
         update_status_endpoint=escape("http://{}:{}/update-status".format(LIVE_TOKEN_HOST, LIVE_TOKEN_PORT), quote=True),
+        asset_refresh_endpoint=escape("http://{}:{}/run-refresh".format(LIVE_TOKEN_HOST, LIVE_TOKEN_PORT), quote=True),
         claude_desktop_endpoint=escape(
             "http://{}:{}{}".format(
                 LIVE_TOKEN_HOST,
@@ -21788,6 +22015,7 @@ def build_html(data):
         asset_metric_cards="".join(asset_metric_cards),
         asset_ledger_kicker=panel_language_text_html("资产层", "Asset Layer"),
         asset_ledger_title=panel_language_text_html("资产层总览", "Asset Layer Overview"),
+        asset_refresh_label=panel_language_text_html("刷新资产层", "Refresh Asset Layer"),
         asset_ledger_note=panel_language_text_html(
             "这里合并展示本机发现资产、登记册条目、复盘和复用记录，不是注入 host context 的记忆摘要。",
             "This merges discovered local assets, registry entries, reviews, and reuse records; it is not the memory summary injected into host context.",
