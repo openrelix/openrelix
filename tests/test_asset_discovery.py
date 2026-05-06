@@ -700,6 +700,7 @@ class AssetDiscoveryTests(unittest.TestCase):
         self.assertIn('class="content-more-extra-row"', html)
         self.assertIn('data-asset-identifier="skill-02"', html)
         self.assertIn('data-asset-identifier="skill-01"', html)
+        self.assertLess(html.index('data-asset-identifier="skill-01"'), html.index("查看更多 2 个技能热度"))
 
     def test_mcp_usage_counts_real_function_call_names(self):
         session_root = self.paths.codex_home / "sessions" / "2026" / "05" / "05"

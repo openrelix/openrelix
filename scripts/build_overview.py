@@ -475,7 +475,7 @@ PANEL_I18N_EN = {
     "条偏好": "preferences",
     "条 tip": "tips",
     "条历史任务索引": "historical task index entries",
-    "手动登记资产": "Registered Assets",
+    "登记册资产": "Registry Assets",
     "已发现资产": "Discovered Assets",
     "已发现的 Codex / Claude 资产": "Discovered Codex / Claude Assets",
     "单次资产统计": "Single Asset Stats",
@@ -483,11 +483,11 @@ PANEL_I18N_EN = {
     "正在打开": "Opening",
     "已发送": "Sent",
     "打开失败": "Open failed",
-    "手动活跃资产": "Active Registered Assets",
+    "登记册活跃资产": "Active Registry Assets",
     "任务复盘": "Task Reviews",
     "复用记录": "Usage Events",
     "节省时长": "Time Saved",
-    "手动仓库资产": "Repo-scoped Registered Assets",
+    "登记册仓库资产": "Repo-scoped Registry Assets",
     "今日 Token": "Today Token",
     "今日": "Today",
     "近 7 日 Token": "7-day Token",
@@ -498,6 +498,7 @@ PANEL_I18N_EN = {
     "全部": "All",
     "全部来源": "All Sources",
     "粒度": "Granularity",
+    "如何登记": "How to register",
     "按日": "Daily",
     "按月": "Monthly",
     "起始日期": "Start Date",
@@ -641,7 +642,7 @@ PANEL_I18N_EN = {
     "资产记忆": "Asset Memory",
     "资产层总览": "Asset Layer Overview",
     "这里合并展示本机发现资产、手动账本条目、复盘和复用记录，不是注入 host context 的记忆摘要。": (
-        "This merges discovered local assets, manual ledger entries, reviews, and reuse records; it is not the memory summary injected into host context."
+        "This merges discovered local assets, registry entries, reviews, and reuse records; it is not the memory summary injected into host context."
     ),
     "每日 Token 消耗": "Daily Token Usage",
     "今日 Token 构成": "Today Token Breakdown",
@@ -8200,11 +8201,11 @@ def build_data(assets, usage_events, reviews, language=None):
     metrics = [
         {
             "key": "total_assets",
-            "label": localized("手动登记资产", "Registered Assets", language),
+            "label": localized("登记册资产", "Registry Assets", language),
             "value": len(assets),
             "caption": localized(
-                "assets.jsonl 中的稳定条目，不含本机扫描发现",
-                "Stable assets in assets.jsonl, excluding local discovery",
+                "registry/assets.jsonl 条目；新增技能只算已发现资产",
+                "registry/assets.jsonl rows; new skills count as discovered only",
                 language,
             ),
         },
@@ -8220,7 +8221,7 @@ def build_data(assets, usage_events, reviews, language=None):
         },
         {
             "key": "active_assets",
-            "label": localized("手动活跃资产", "Active Registered Assets", language),
+            "label": localized("登记册活跃资产", "Active Registry Assets", language),
             "value": summary["active_assets"],
             "caption": localized(
                 "assets.jsonl 中 status=active 的条目",
@@ -8236,7 +8237,7 @@ def build_data(assets, usage_events, reviews, language=None):
         },
         {
             "key": "repo_scoped_assets",
-            "label": localized("手动仓库资产", "Repo-scoped Registered Assets", language),
+            "label": localized("登记册仓库资产", "Repo-scoped Registry Assets", language),
             "value": summary["scope_counter"].get("repo", 0),
             "caption": localized(
                 "assets.jsonl 中 scope=repo 的条目",
@@ -8750,10 +8751,10 @@ def build_markdown(data):
         "",
         "## 核心指标",
         "",
-        "- 手动登记资产：`{}`".format(data["summary"]["total_assets"]),
+        "- 登记册资产：`{}`".format(data["summary"]["total_assets"]),
         "- 已发现资产：`{}`".format(data["summary"].get("discovered_assets", 0)),
-        "- 手动活跃资产：`{}`".format(data["summary"]["active_assets"]),
-        "- 手动仓库资产：`{}`".format(data["summary"].get("repo_scoped_assets", 0)),
+        "- 登记册活跃资产：`{}`".format(data["summary"]["active_assets"]),
+        "- 登记册仓库资产：`{}`".format(data["summary"].get("repo_scoped_assets", 0)),
         "- 任务复盘：`{}`".format(data["summary"]["task_reviews"]),
         "- 每日窗口数：`{}`".format(data["summary"]["daily_window_count"]),
         "- 今日 Token：`{}`".format(token_usage["today_total_tokens_display"]),
@@ -10004,7 +10005,7 @@ def make_table_expand_rows(
         collapsed_label=toggle_label,
         expanded_label=expanded_label,
     )
-    return primary_rows + toggle_row + extra_rows
+    return primary_rows + extra_rows + toggle_row
 
 
 def make_asset_rows(rows, group_id="asset-rows"):
@@ -13083,17 +13084,23 @@ def build_metric_help_sections(metric):
             {
                 "label": "统计口径",
                 "body": {
-                    "zh": "仅来自手动登记的资产账本（assets.jsonl），不含本机扫描出的现有资产；后者请看「已发现资产」。",
-                    "en": "Counts only the manually registered asset ledger (assets.jsonl). It excludes existing assets scanned from this machine; see Discovered Assets for those.",
+                    "zh": "仅统计 OpenRelix 登记册里的稳定资产（state root 下的 registry/assets.jsonl），不含本机扫描出的现有资产；后者请看「已发现资产」。",
+                    "en": "Counts only stable assets in the OpenRelix registry (registry/assets.jsonl under the state root). It excludes existing assets scanned from this machine; see Discovered Assets for those.",
                 },
             },
             {
-                "label": "数据来源",
-                "body": "state root 下的 registry/assets.jsonl。",
+                "label": "如何登记",
+                "body": {
+                    "zh": "通常通过 /memory-review 或 memory-review 工作流在复盘时写入 registry/assets.jsonl；也可以直接维护这个 JSONL 登记册。单纯新增 SKILL.md 不会进入这里。",
+                    "en": "Usually written through the /memory-review or memory-review workflow during task review; you can also maintain registry/assets.jsonl directly. Adding a SKILL.md alone does not enter this registry.",
+                },
             },
             {
                 "label": "不包含",
-                "body": "raw 对话、日志、报表，以及还没登记成资产的临时内容。",
+                "body": {
+                    "zh": "新增的技能、raw 对话、日志、报表，以及还没写入登记册的临时内容。",
+                    "en": "Newly added skills, raw conversations, logs, reports, and temporary content that has not been written to the registry.",
+                },
             },
         ],
         "discovered_assets": [
@@ -13115,11 +13122,17 @@ def build_metric_help_sections(metric):
         "active_assets": [
             {
                 "label": "统计什么",
-                "body": "手动资产账本中 status = active 的条目数量。",
+                "body": {
+                    "zh": "OpenRelix 登记册中 status = active 的条目数量。",
+                    "en": "Number of OpenRelix registry rows where status = active.",
+                },
             },
             {
                 "label": "和已发现资产的关系",
-                "body": "它是 assets.jsonl 的子集；自动扫描发现的技能不会自动进入这里。",
+                "body": {
+                    "zh": "它是 registry/assets.jsonl 的子集；自动扫描发现的技能不会自动进入这里。",
+                    "en": "It is a subset of registry/assets.jsonl; automatically discovered skills do not enter this count by themselves.",
+                },
             },
         ],
         "task_reviews": [
@@ -13135,11 +13148,17 @@ def build_metric_help_sections(metric):
         "repo_scoped_assets": [
             {
                 "label": "统计什么",
-                "body": "手动资产账本中 scope = repo 的条目数量。",
+                "body": {
+                    "zh": "OpenRelix 登记册中 scope = repo 的条目数量。",
+                    "en": "Number of OpenRelix registry rows where scope = repo.",
+                },
             },
             {
                 "label": "和已发现资产的关系",
-                "body": "它是 assets.jsonl 的子集；本机发现到的仓库技能不会自动算作手动仓库资产。",
+                "body": {
+                    "zh": "它是 registry/assets.jsonl 的子集；本机发现到的仓库技能不会自动算作登记册仓库资产。",
+                    "en": "It is a subset of registry/assets.jsonl; repo skills discovered on this machine are not counted as repo-scoped registry assets by themselves.",
+                },
             },
         ],
         "today_token": [
@@ -13439,8 +13458,8 @@ def build_html(data):
             {
                 "label": "数据来源",
                 "body": {
-                    "zh": "包含本机扫描出的 Codex / Claude 资产；如果 assets.jsonl 有手动登记条目，也会并入同一组。",
-                    "en": "Includes Codex / Claude assets discovered on this machine; manual assets.jsonl rows are merged when present.",
+                    "zh": "包含本机扫描出的 Codex / Claude 资产；如果 registry/assets.jsonl 有登记册条目，也会并入同一组。",
+                    "en": "Includes Codex / Claude assets discovered on this machine; registry/assets.jsonl rows are merged when present.",
                 },
             },
         ],
@@ -13451,11 +13470,17 @@ def build_html(data):
         [
             {
                 "label": "统计什么",
-                "body": "近 6 个月每月被模型实际读取过 SKILL.md 的不同技能数，同名技能跨来源只算一个；最新月份排在最上方。",
+                "body": {
+                    "zh": "近 6 个月每月被模型实际读取过 SKILL.md 的不同技能数，同名技能跨来源只算一个；最新月份排在最上方。",
+                    "en": "Distinct skills whose SKILL.md files were actually read by the model each month in the last 6 months; same-name skills across sources count once, newest month first.",
+                },
             },
             {
                 "label": "数据来源",
-                "body": "来自本机 Codex 会话与 Claude 项目 session 中的技能读取事件；手动登记资产会并入资产集合，但没有读取事件时不计入月度活动。",
+                "body": {
+                    "zh": "来自本机 Codex 会话与 Claude 项目 session 中的技能读取事件；登记册资产会并入资产集合，但没有读取事件时不计入月度活动。",
+                    "en": "Comes from skill-read events in local Codex sessions and Claude project sessions; registry assets are merged into the asset set, but they do not count as monthly activity without read events.",
+                },
             },
         ],
     )
@@ -14745,6 +14770,43 @@ def build_html(data):
     .asset-discovery-table td:nth-child(2) {{
       width: 40%;
       max-width: 40%;
+    }}
+
+    .top-skills-table {{
+      table-layout: fixed;
+      min-width: 860px;
+    }}
+
+    .top-skills-name-col {{
+      width: 23%;
+    }}
+
+    .top-skills-description-col {{
+      width: auto;
+    }}
+
+    .top-skills-count-col {{
+      width: 76px;
+    }}
+
+    .top-skills-table th:nth-child(2),
+    .top-skills-table td:nth-child(2) {{
+      width: auto;
+      max-width: none;
+    }}
+
+    .top-skills-table th:nth-child(3),
+    .top-skills-table th:nth-child(4),
+    .top-skills-table td:nth-child(3),
+    .top-skills-table td:nth-child(4) {{
+      text-align: right;
+      white-space: nowrap;
+      font-variant-numeric: tabular-nums;
+    }}
+
+    .top-skills-table .content-more-cell {{
+      padding-left: 10px;
+      padding-right: 10px;
     }}
 
     .asset-discovery-name {{
@@ -18748,6 +18810,12 @@ def build_html(data):
         {top_assets_header}
         <div class="table-wrap asset-discovery-table-wrap top-skills-table-wrap">
           <table class="asset-discovery-table top-skills-table">
+            <colgroup>
+              <col class="top-skills-name-col">
+              <col class="top-skills-description-col">
+              <col class="top-skills-count-col">
+              <col class="top-skills-count-col">
+            </colgroup>
             <thead>
               <tr>
                 <th>{asset_header}</th>
@@ -21824,7 +21892,7 @@ def build_html(data):
         asset_ledger_title=panel_language_text_html("资产层总览", "Asset Layer Overview"),
         asset_ledger_note=panel_language_text_html(
             "这里合并展示本机发现资产、手动账本条目、复盘和复用记录，不是注入 host context 的记忆摘要。",
-            "This merges discovered local assets, manual ledger entries, reviews, and reuse records; it is not the memory summary injected into host context.",
+            "This merges discovered local assets, registry entries, reviews, and reuse records; it is not the memory summary injected into host context.",
         ),
         asset_stats_snapshot_panel=make_asset_stats_snapshot_panel(
             data.get("asset_stats_snapshot", {}),
