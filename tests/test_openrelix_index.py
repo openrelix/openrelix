@@ -225,6 +225,43 @@ class OpenRelixIndexTests(unittest.TestCase):
                 [{"question": "add search command", "conclusion": "search command is next"}],
             )
 
+    def test_rebuild_indexes_canonical_memory_entries(self):
+        with TemporaryDirectory() as tmpdir:
+            paths = runtime_paths_for_state(tmpdir)
+            self.write_fixture_state(paths)
+            canonical_path = paths.registry_dir / "memory_entries.jsonl"
+            canonical_path.write_text(
+                json.dumps(
+                    {
+                        "date": "2026-05-06",
+                        "language": "en",
+                        "source": "canonical",
+                        "bucket": "durable",
+                        "title": "Canonical global memory",
+                        "memory_type": "procedural",
+                        "priority": "high",
+                        "scope": "global",
+                        "injection_policy": "global_context",
+                        "project_key": "",
+                        "project_label": "",
+                        "value_note": "Independent memory storage should still be searchable.",
+                        "source_window_ids": ["w-index"],
+                        "keywords": ["canonical"],
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            db_path = Path(tmpdir) / "runtime" / "test-index.sqlite3"
+
+            stats = openrelix_index.rebuild_index(paths, db_path)
+            results = openrelix_index.search_memories("canonical", paths=paths, db_path=db_path)
+
+            self.assertEqual(stats["memory_rows"], 3)
+            self.assertEqual(results[0]["title"], "Canonical global memory")
+            self.assertEqual(results[0]["scope"], "global")
+            self.assertEqual(results[0]["injection_policy"], "global_context")
+
     def test_failed_model_summary_keeps_window_raw_fallback_in_index(self):
         with TemporaryDirectory() as tmpdir:
             paths = runtime_paths_for_state(tmpdir)

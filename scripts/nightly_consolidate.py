@@ -3107,6 +3107,49 @@ def render_markdown(summary, language=None):
     return "\n".join(lines) + "\n"
 
 
+def memory_scope_metadata(summary, item, bucket_name):
+    if bucket_name == "low_priority":
+        return {
+            "scope": "local",
+            "injection_policy": "local_only",
+            "project_key": "",
+            "project_label": "",
+        }
+
+    windows_by_id = {
+        str(window.get("window_id", "")): window
+        for window in summary.get("window_summaries", [])
+        if isinstance(window, dict) and window.get("window_id")
+    }
+    labels = []
+    for window_id in item.get("source_window_ids", []):
+        window = windows_by_id.get(str(window_id))
+        if not window:
+            continue
+        label = humanize_context_label(
+            window.get("cwd", ""),
+            language=summary.get("language", current_language()),
+        )
+        if label and label not in labels:
+            labels.append(label)
+
+    if labels:
+        label = labels[0]
+        return {
+            "scope": "project",
+            "injection_policy": "project_context",
+            "project_key": re.sub(r"[^a-z0-9\u4e00-\u9fff]+", "-", str(label).lower()).strip("-"),
+            "project_label": label,
+        }
+
+    return {
+        "scope": "global",
+        "injection_policy": "global_context",
+        "project_key": "",
+        "project_label": "",
+    }
+
+
 def upsert_memory_items(date_str, summary):
     if not PERSONAL_MEMORY_ENABLED:
         return
@@ -3127,12 +3170,14 @@ def upsert_memory_items(date_str, summary):
         def rows_for(bucket_name, items):
             rows = []
             for item in items:
+                scope_metadata = memory_scope_metadata(summary, item, bucket_name)
                 rows.append(
                     {
                         "date": date_str,
                         "language": summary.get("language", current_language()),
                         "source": "nightly_codex",
                         "bucket": bucket_name,
+                        **scope_metadata,
                         "title": item["title"],
                         "memory_type": item["memory_type"],
                         "priority": item["priority"],

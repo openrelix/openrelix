@@ -14,7 +14,7 @@ from urllib.parse import quote
 from asset_runtime import ensure_state_layout, get_runtime_paths
 
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 DEFAULT_LIMIT = 20
 
 
@@ -242,6 +242,8 @@ def iter_jsonl(path):
 
 
 def source_file_kind(paths, path):
+    if path == paths.registry_dir / "memory_entries.jsonl":
+        return "memory_entries"
     if path == paths.registry_dir / "memory_items.jsonl":
         return "memory_items"
     try:
@@ -262,7 +264,11 @@ def source_file_kind(paths, path):
 
 
 def collect_source_files(paths):
-    candidates = [paths.registry_dir / "memory_items.jsonl"]
+    candidates = []
+    canonical_memory_path = paths.registry_dir / "memory_entries.jsonl"
+    if canonical_memory_path.exists() and canonical_memory_path.stat().st_size > 0:
+        candidates.append(canonical_memory_path)
+    candidates.append(paths.registry_dir / "memory_items.jsonl")
     if paths.raw_daily_dir.exists():
         candidates.extend(sorted(paths.raw_daily_dir.glob("*.json")))
     if paths.raw_windows_dir.exists():
@@ -527,6 +533,10 @@ def normalize_memory_item(item, source_file, source_line):
                 compact_text(item.get("bucket", "")),
                 compact_text(item.get("memory_type", "")),
                 compact_text(item.get("priority", "")),
+                compact_text(item.get("scope", "")),
+                compact_text(item.get("injection_policy", "")),
+                compact_text(item.get("project_key", "")),
+                compact_text(item.get("project_label", "")),
             ]
         )
     )
@@ -537,6 +547,10 @@ def normalize_memory_item(item, source_file, source_line):
         "bucket": compact_text(item.get("bucket", "")),
         "memory_type": compact_text(item.get("memory_type", "")),
         "priority": compact_text(item.get("priority", "medium")),
+        "scope": compact_text(item.get("scope", "")),
+        "injection_policy": compact_text(item.get("injection_policy", "")),
+        "project_key": compact_text(item.get("project_key", "")),
+        "project_label": compact_text(item.get("project_label", "")),
         "title": title,
         "title_zh": title_zh,
         "title_en": title_en,
@@ -624,6 +638,10 @@ def create_schema(conn, fts_enabled):
           bucket TEXT,
           memory_type TEXT,
           priority TEXT,
+          scope TEXT,
+          injection_policy TEXT,
+          project_key TEXT,
+          project_label TEXT,
           title TEXT,
           title_zh TEXT,
           title_en TEXT,
@@ -805,12 +823,14 @@ def insert_memory(conn, row, fts_enabled):
         """
         INSERT INTO memory_items(
           date, language, source, bucket, memory_type, priority,
+          scope, injection_policy, project_key, project_label,
           title, title_zh, title_en, value_note, value_note_zh, value_note_en,
           keywords_json, source_window_ids_json, memory_key, source_file,
           source_line, search_text
         )
         VALUES (
           :date, :language, :source, :bucket, :memory_type, :priority,
+          :scope, :injection_policy, :project_key, :project_label,
           :title, :title_zh, :title_en, :value_note, :value_note_zh, :value_note_en,
           :keywords_json, :source_window_ids_json, :memory_key, :source_file,
           :source_line, :search_text
@@ -1020,14 +1040,19 @@ def rebuild_index(paths=None, db_path=None):
 
             skipped_memory_rows = 0
             memory_rows = 0
-            memory_path = paths.registry_dir / "memory_items.jsonl"
-            for line_no, item in iter_jsonl(memory_path) or []:
-                if not isinstance(item, dict):
-                    skipped_memory_rows += 1
-                    continue
-                row = normalize_memory_item(item, memory_path, line_no)
-                insert_memory(conn, row, fts_enabled)
-                memory_rows += 1
+            memory_paths = []
+            canonical_memory_path = paths.registry_dir / "memory_entries.jsonl"
+            if canonical_memory_path.exists() and canonical_memory_path.stat().st_size > 0:
+                memory_paths.append(canonical_memory_path)
+            memory_paths.append(paths.registry_dir / "memory_items.jsonl")
+            for memory_path in memory_paths:
+                for line_no, item in iter_jsonl(memory_path) or []:
+                    if not isinstance(item, dict):
+                        skipped_memory_rows += 1
+                        continue
+                    row = normalize_memory_item(item, memory_path, line_no)
+                    insert_memory(conn, row, fts_enabled)
+                    memory_rows += 1
 
             summaries, daily_summary_rows, skipped_summary_files = summary_maps(paths)
             for row in daily_summary_rows:
@@ -1154,6 +1179,10 @@ def row_to_memory(row):
         "bucket": row["bucket"],
         "memory_type": row["memory_type"],
         "priority": row["priority"],
+        "scope": row["scope"],
+        "injection_policy": row["injection_policy"],
+        "project_key": row["project_key"],
+        "project_label": row["project_label"],
         "title": row["title"],
         "title_zh": row["title_zh"],
         "title_en": row["title_en"],

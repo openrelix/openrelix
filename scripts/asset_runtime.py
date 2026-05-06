@@ -952,6 +952,7 @@ def ensure_state_layout(paths: Optional[RuntimePaths] = None) -> RuntimePaths:
     for file_path in (
         paths.registry_dir / "assets.jsonl",
         paths.registry_dir / "usage_events.jsonl",
+        paths.registry_dir / "memory_entries.jsonl",
         paths.registry_dir / "memory_items.jsonl",
     ):
         file_path.touch(exist_ok=True)

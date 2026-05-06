@@ -86,6 +86,14 @@ SAMPLE_PERSONAL_MEMORY_REGISTRY = """
 """
 
 
+SCOPED_PERSONAL_MEMORY_REGISTRY = """
+{"date":"2026-05-06","source":"canonical","bucket":"durable","title":"Global patch preference","memory_type":"procedural","priority":"high","scope":"global","injection_policy":"global_context","value_note":"Use apply_patch first for file edits.","keywords":["patch"]}
+{"date":"2026-05-06","source":"canonical","bucket":"durable","title":"Project-only Gradle cleanup","memory_type":"procedural","priority":"high","scope":"project","injection_policy":"project_context","project_label":"Android App","value_note":"Only use this cleanup inside the Android project.","keywords":["gradle"]}
+{"date":"2026-05-06","source":"canonical","bucket":"session","title":"Domain-only bridge diagnosis","memory_type":"semantic","priority":"medium","scope":"domain","value_note":"Keep this available through on-demand recall, not global context.","keywords":["bridge"]}
+{"date":"2026-05-06","source":"canonical","bucket":"session","title":"Local follow-up","memory_type":"task","priority":"medium","scope":"local","injection_policy":"local_only","value_note":"Keep this out of host context.","keywords":["todo"]}
+"""
+
+
 class MemorySummaryBuilderTests(unittest.TestCase):
     def test_build_memory_summary_respects_budget_and_stays_parseable(self):
         budget = build_codex_memory_summary.SummaryBudget(
@@ -206,6 +214,53 @@ class MemorySummaryBuilderTests(unittest.TestCase):
         self.assertEqual(english_items[0].value_note, "English runtime note")
         self.assertEqual(chinese_items[0].title, "默认中文标题")
         self.assertEqual(chinese_items[0].value_note, "默认中文说明")
+
+    def test_personal_memory_registry_only_injects_global_context_by_default(self):
+        host_context_items = build_codex_memory_summary.parse_personal_memory_registry(
+            SCOPED_PERSONAL_MEMORY_REGISTRY
+        )
+        all_items = build_codex_memory_summary.parse_personal_memory_registry(
+            SCOPED_PERSONAL_MEMORY_REGISTRY,
+            host_context_only=False,
+        )
+
+        self.assertEqual([item.title for item in host_context_items], ["Global patch preference"])
+        self.assertEqual(len(all_items), 4)
+        policies = {item.title: item.injection_policy for item in all_items}
+        self.assertEqual(policies["Project-only Gradle cleanup"], "project_context")
+        self.assertEqual(policies["Domain-only bridge diagnosis"], "on_demand")
+        self.assertEqual(policies["Local follow-up"], "local_only")
+
+    def test_memory_summary_dedupes_personal_memory_already_in_host_summary(self):
+        budget = build_codex_memory_summary.SummaryBudget(
+            target_tokens=620,
+            warn_tokens=680,
+            max_tokens=760,
+            profile_tokens=90,
+            preferences_tokens=100,
+            tips_tokens=100,
+            routes_tokens=120,
+            personal_memory_tokens=220,
+            max_preferences=2,
+            max_tips=2,
+            max_route_items=2,
+            max_route_keywords=2,
+            max_personal_memory_items=0,
+        )
+        existing_summary = SAMPLE_EXISTING_SUMMARY + "\n## What's in Memory\n\n- Global patch preference\n"
+        personal_items = build_codex_memory_summary.parse_personal_memory_registry(
+            SCOPED_PERSONAL_MEMORY_REGISTRY
+        )
+
+        result = build_codex_memory_summary.build_memory_summary(
+            SAMPLE_MEMORY_INDEX,
+            existing_summary,
+            budget,
+            personal_memory_items=personal_items,
+        )
+
+        self.assertNotIn("### Local personal memory registry", result.text)
+        self.assertNotIn("Project-only Gradle cleanup", result.text)
 
     def test_personal_memory_context_lines_stay_compact_and_keep_metadata(self):
         item = build_codex_memory_summary.PersonalMemoryItem(

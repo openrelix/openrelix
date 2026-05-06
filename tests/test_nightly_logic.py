@@ -3012,6 +3012,24 @@ Keep my own note.
             self.assertIn("# User notes", claude_text)
             self.assertNotIn(sync_host_memory_summary.MANAGED_START, claude_text)
 
+    def test_sync_host_memory_summary_skips_codex_when_memories_are_disabled(self):
+        with TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            paths = replace(
+                sync_host_memory_summary.PATHS,
+                codex_home=root / "codex-home",
+            )
+            config_path = paths.codex_home / "config.toml"
+            config_path.parent.mkdir(parents=True)
+            config_path.write_text("[features]\nmemories = false\n", encoding="utf-8")
+
+            with mock.patch.object(sync_host_memory_summary, "PATHS", paths):
+                result = sync_host_memory_summary.sync_codex_summary("## What's in Memory\n\n- Should not sync\n")
+
+            self.assertEqual(result["status"], "disabled")
+            self.assertEqual(result["memory_feature"], "disabled")
+            self.assertFalse((paths.codex_home / "memories" / "memory_summary.md").exists())
+
     def test_invalid_utf8_codex_memory_index_keeps_overview_available(self):
         sample_summary = """## What's in Memory
 
@@ -4198,6 +4216,18 @@ Keep my own note.
                 "bucket": "durable",
                 "memory_type": "procedural",
                 "priority": "high",
+                "display_title": "项目专属记忆",
+                "display_value_note": "这个记忆只能在项目上下文里使用。",
+                "scope": "project",
+                "injection_policy": "project_context",
+                "usage_frequency_sort_key": 99,
+                "updated_at": "2026-04-30",
+                "occurrence_count": 20,
+            },
+            {
+                "bucket": "durable",
+                "memory_type": "procedural",
+                "priority": "high",
                 "display_title": "长期高优记忆",
                 "display_value_note": "长期高优摘要。",
                 "usage_frequency_sort_key": 0,
@@ -4221,6 +4251,12 @@ Keep my own note.
         )
 
         self.assertEqual([row["display_title"] for row in preview], ["长期高优记忆"])
+        usage = build_overview.build_personal_memory_token_usage(
+            rows,
+            "integrated",
+            memory_summary_budget=budget,
+        )
+        self.assertEqual(usage["context_candidate_count"], 2)
         self.assertEqual(
             build_overview.build_personal_memory_context_preview(
                 rows,
@@ -9685,6 +9721,9 @@ Keep my own note.
                 self.assertGreater(len(summary["window_summaries"][0]["keywords"]), 1)
                 self.assertEqual(summary["durable_memories"][0]["source_window_ids"], ["w1"])
                 self.assertEqual(registry_rows[0]["bucket"], "durable")
+                self.assertEqual(registry_rows[0]["scope"], "project")
+                self.assertEqual(registry_rows[0]["injection_policy"], "project_context")
+                self.assertEqual(registry_rows[0]["project_label"], "openrelix")
         finally:
             nightly_consolidate.RAW_DIR = old_raw_dir
             nightly_consolidate.CONSOLIDATED_DIR = old_consolidated_dir

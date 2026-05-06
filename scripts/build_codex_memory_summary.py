@@ -22,6 +22,7 @@ PATHS = get_runtime_paths()
 LANGUAGE = get_runtime_language(PATHS)
 DEFAULT_MEMORY_INDEX = PATHS.codex_home / "memories" / "MEMORY.md"
 DEFAULT_MEMORY_SUMMARY = PATHS.runtime_dir / "codex-native-memory-summary.md"
+DEFAULT_CANONICAL_MEMORY_REGISTRY = PATHS.registry_dir / "memory_entries.jsonl"
 DEFAULT_PERSONAL_MEMORY_REGISTRY = PATHS.registry_dir / "memory_items.jsonl"
 
 DEFAULT_TARGET_TOKENS = 6700
@@ -44,6 +45,70 @@ SECTION_PREFERENCE = "User preferences"
 SECTION_TIPS = "General Tips"
 SECTION_PROFILE = "User Profile"
 
+MEMORY_SCOPE_GLOBAL = "global"
+MEMORY_SCOPE_DOMAIN = "domain"
+MEMORY_SCOPE_PROJECT = "project"
+MEMORY_SCOPE_REPO = "repo"
+MEMORY_SCOPE_HOST = "host"
+MEMORY_SCOPE_LOCAL = "local"
+
+INJECTION_GLOBAL_CONTEXT = "global_context"
+INJECTION_PROJECT_CONTEXT = "project_context"
+INJECTION_ON_DEMAND = "on_demand"
+INJECTION_LOCAL_ONLY = "local_only"
+INJECTION_NEVER = "never"
+
+MEMORY_SCOPE_ALIASES = {
+    "all": MEMORY_SCOPE_GLOBAL,
+    "common": MEMORY_SCOPE_GLOBAL,
+    "cross-scope": MEMORY_SCOPE_GLOBAL,
+    "cross_scope": MEMORY_SCOPE_GLOBAL,
+    "general": MEMORY_SCOPE_GLOBAL,
+    "global-context": MEMORY_SCOPE_GLOBAL,
+    "global_context": MEMORY_SCOPE_GLOBAL,
+    "personal": MEMORY_SCOPE_GLOBAL,
+    "user": MEMORY_SCOPE_GLOBAL,
+    "workspace": MEMORY_SCOPE_PROJECT,
+    "worktree": MEMORY_SCOPE_PROJECT,
+    "project-context": MEMORY_SCOPE_PROJECT,
+    "project_context": MEMORY_SCOPE_PROJECT,
+    "repository": MEMORY_SCOPE_REPO,
+    "host-native": MEMORY_SCOPE_HOST,
+    "host_native": MEMORY_SCOPE_HOST,
+    "native": MEMORY_SCOPE_HOST,
+    "private": MEMORY_SCOPE_LOCAL,
+    "state-root": MEMORY_SCOPE_LOCAL,
+    "state_root": MEMORY_SCOPE_LOCAL,
+}
+
+INJECTION_POLICY_ALIASES = {
+    "always": INJECTION_GLOBAL_CONTEXT,
+    "global": INJECTION_GLOBAL_CONTEXT,
+    "global-context": INJECTION_GLOBAL_CONTEXT,
+    "global_context": INJECTION_GLOBAL_CONTEXT,
+    "host": INJECTION_GLOBAL_CONTEXT,
+    "host-context": INJECTION_GLOBAL_CONTEXT,
+    "host_context": INJECTION_GLOBAL_CONTEXT,
+    "inject": INJECTION_GLOBAL_CONTEXT,
+    "project": INJECTION_PROJECT_CONTEXT,
+    "project-context": INJECTION_PROJECT_CONTEXT,
+    "project_context": INJECTION_PROJECT_CONTEXT,
+    "repo": INJECTION_PROJECT_CONTEXT,
+    "repository": INJECTION_PROJECT_CONTEXT,
+    "workspace": INJECTION_PROJECT_CONTEXT,
+    "demand": INJECTION_ON_DEMAND,
+    "on-demand": INJECTION_ON_DEMAND,
+    "on_demand": INJECTION_ON_DEMAND,
+    "search": INJECTION_ON_DEMAND,
+    "retrieval": INJECTION_ON_DEMAND,
+    "local": INJECTION_LOCAL_ONLY,
+    "local-only": INJECTION_LOCAL_ONLY,
+    "local_only": INJECTION_LOCAL_ONLY,
+    "off": INJECTION_NEVER,
+    "never": INJECTION_NEVER,
+    "none": INJECTION_NEVER,
+}
+
 
 @dataclass
 class TaskGroup:
@@ -64,8 +129,13 @@ class PersonalMemoryItem:
     memory_type: str = ""
     priority: str = "medium"
     value_note: str = ""
+    scope: str = MEMORY_SCOPE_GLOBAL
+    injection_policy: str = INJECTION_GLOBAL_CONTEXT
+    project_key: str = ""
+    project_label: str = ""
     updated_at: str = ""
     keywords: list[str] = field(default_factory=list)
+    source_systems: list[str] = field(default_factory=list)
     occurrence_count: int = 1
 
 
@@ -110,6 +180,11 @@ def parse_args():
     )
     parser.add_argument("--memory-index", default=str(DEFAULT_MEMORY_INDEX))
     parser.add_argument("--memory-summary", default=str(DEFAULT_MEMORY_SUMMARY))
+    parser.add_argument(
+        "--canonical-memory-registry",
+        default=str(DEFAULT_CANONICAL_MEMORY_REGISTRY),
+        help="OpenRelix Memory System v2 canonical registry. Used before the legacy registry when present.",
+    )
     parser.add_argument("--personal-memory-registry", default=str(DEFAULT_PERSONAL_MEMORY_REGISTRY))
     parser.add_argument("--target-tokens", type=int)
     parser.add_argument("--warn-tokens", type=int)
@@ -397,7 +472,144 @@ def localized_record_value(item, field, language=None):
     return ""
 
 
-def parse_personal_memory_registry(text, language=None):
+def first_record_value(item, keys):
+    for key in keys:
+        value = collapse_whitespace(item.get(key, ""))
+        if value:
+            return value
+    return ""
+
+
+def normalize_memory_scope(value):
+    text = str(value or "").strip().lower().replace("_", "-")
+    if not text:
+        return ""
+    return MEMORY_SCOPE_ALIASES.get(text, text)
+
+
+def memory_scope_from_record(item):
+    explicit_scope = first_record_value(
+        item,
+        (
+            "scope",
+            "memory_scope",
+            "context_scope",
+            "applicability_scope",
+        ),
+    )
+    scope = normalize_memory_scope(explicit_scope)
+    if scope:
+        return scope
+
+    if any(collapse_whitespace(item.get(key, "")) for key in ("project_key", "project_label", "repo", "cwd")):
+        return MEMORY_SCOPE_PROJECT
+    return MEMORY_SCOPE_GLOBAL
+
+
+def normalize_injection_policy(value):
+    text = str(value or "").strip().lower().replace("_", "-")
+    if not text:
+        return ""
+    return INJECTION_POLICY_ALIASES.get(text, text)
+
+
+def default_injection_policy_for_scope(scope, bucket="", priority=""):
+    bucket = str(bucket or "").strip()
+    priority = str(priority or "").strip().lower()
+    if bucket == "low_priority" or priority == "low":
+        return INJECTION_LOCAL_ONLY
+    if scope == MEMORY_SCOPE_GLOBAL:
+        return INJECTION_GLOBAL_CONTEXT
+    if scope in {MEMORY_SCOPE_PROJECT, MEMORY_SCOPE_REPO, MEMORY_SCOPE_HOST}:
+        return INJECTION_PROJECT_CONTEXT
+    if scope == MEMORY_SCOPE_DOMAIN:
+        return INJECTION_ON_DEMAND
+    return INJECTION_LOCAL_ONLY
+
+
+def host_context_injection_policy_from_record(item):
+    explicit_policy = first_record_value(
+        item,
+        (
+            "injection_policy",
+            "context_policy",
+            "host_context_policy",
+            "injection_scope",
+        ),
+    )
+    policy = normalize_injection_policy(explicit_policy)
+    if policy:
+        return policy
+    return default_injection_policy_for_scope(
+        memory_scope_from_record(item),
+        bucket=item.get("bucket", ""),
+        priority=item.get("priority", ""),
+    )
+
+
+def memory_record_is_global_context(item):
+    if not isinstance(item, dict):
+        return False
+    if str(item.get("bucket") or "").strip() not in {"durable", "session"}:
+        return False
+    return host_context_injection_policy_from_record(item) == INJECTION_GLOBAL_CONTEXT
+
+
+def normalize_string_list(value):
+    if value is None:
+        return []
+    if isinstance(value, list):
+        values = value
+    elif isinstance(value, tuple):
+        values = list(value)
+    else:
+        values = re.split(r"[，,]\s*", str(value))
+    normalized = []
+    for item in values:
+        text = collapse_whitespace(item)
+        if text and text not in normalized:
+            normalized.append(text)
+    return normalized
+
+
+def memory_source_systems_from_record(item):
+    source_systems = normalize_string_list(
+        item.get("source_systems")
+        or item.get("host_sources")
+        or item.get("source_hosts")
+    )
+    source = collapse_whitespace(item.get("source", ""))
+    if source and source not in source_systems:
+        source_systems.append(source)
+    return source_systems
+
+
+def merge_string_lists(left, right, limit=8):
+    merged = list(left or [])
+    for item in right or []:
+        if item and item not in merged:
+            merged.append(item)
+    return merged[:limit]
+
+
+def personal_memory_group_key(item, bucket, title, scope, injection_policy):
+    explicit_id = first_record_value(
+        item,
+        (
+            "memory_id",
+            "canonical_memory_id",
+            "canonical_id",
+            "memory_key",
+        ),
+    )
+    if explicit_id:
+        return normalize_summary_key(explicit_id)
+    return normalize_summary_key(
+        "{} {} {} {}".format(bucket, scope, injection_policy, title)
+    )
+
+
+def parse_personal_memory_registry(text, language=None, host_context_only=True):
     language = current_language(language)
     grouped = {}
     for raw_line in text.splitlines():
@@ -419,13 +631,19 @@ def parse_personal_memory_registry(text, language=None):
         if not title:
             continue
 
+        scope = memory_scope_from_record(item)
+        injection_policy = host_context_injection_policy_from_record(item)
+        if host_context_only and injection_policy != INJECTION_GLOBAL_CONTEXT:
+            continue
+
         value_note = localized_record_value(item, "value_note", language=language)
         keywords = item.get("keywords") or []
         if not isinstance(keywords, list):
             keywords = split_keywords(str(keywords))
         keywords = [collapse_whitespace(keyword) for keyword in keywords if collapse_whitespace(keyword)]
         updated_at = memory_date_value(item)
-        key = normalize_summary_key("{} {}".format(bucket, title))
+        source_systems = memory_source_systems_from_record(item)
+        key = personal_memory_group_key(item, bucket, title, scope, injection_policy)
         current = grouped.get(key)
         if current is None:
             grouped[key] = PersonalMemoryItem(
@@ -434,18 +652,28 @@ def parse_personal_memory_registry(text, language=None):
                 memory_type=str(item.get("memory_type") or "semantic"),
                 priority=str(item.get("priority") or "medium"),
                 value_note=value_note,
+                scope=scope,
+                injection_policy=injection_policy,
+                project_key=str(item.get("project_key") or ""),
+                project_label=str(item.get("project_label") or ""),
                 updated_at=updated_at,
                 keywords=keywords[:6],
+                source_systems=source_systems[:6],
                 occurrence_count=1,
             )
             continue
 
         current.occurrence_count += 1
+        current.source_systems = merge_string_lists(current.source_systems, source_systems)
         if updated_at >= current.updated_at:
             current.title = title
             current.memory_type = str(item.get("memory_type") or current.memory_type or "semantic")
             current.priority = str(item.get("priority") or current.priority or "medium")
             current.value_note = value_note or current.value_note
+            current.scope = scope or current.scope
+            current.injection_policy = injection_policy or current.injection_policy
+            current.project_key = str(item.get("project_key") or current.project_key or "")
+            current.project_label = str(item.get("project_label") or current.project_label or "")
             current.updated_at = updated_at
             current.keywords = keywords[:6] or current.keywords
 
@@ -680,10 +908,44 @@ def build_route_lines(groups, token_budget, max_items, max_keywords):
     return rendered, used_tokens, estimator
 
 
-def build_personal_memory_lines(items, token_budget, max_items):
+def personal_memory_item_match_keys(item):
+    keys = set()
+    for value in (item.title, item.value_note):
+        normalized = normalize_summary_key(value)
+        if normalized:
+            keys.add(normalized)
+    combined = normalize_summary_key("{} {}".format(item.title, item.value_note))
+    if combined:
+        keys.add(combined)
+    return keys
+
+
+def summary_bullet_match_keys(text):
+    cleaned = strip_task_refs(text)
+    cleaned = re.sub(r"^\[[^\]]+\]\s*", "", cleaned).strip()
+    if cleaned.startswith("- "):
+        cleaned = cleaned[2:].strip()
+    keys = set()
+    for value in (cleaned, cleaned.split(" - ", 1)[0], cleaned.split(":", 1)[0]):
+        normalized = normalize_summary_key(value)
+        if normalized:
+            keys.add(normalized)
+    return keys
+
+
+def existing_summary_match_keys(existing_sections):
+    keys = set()
+    for section_text in existing_sections.values():
+        for bullet in parse_bullets(section_text):
+            keys.update(summary_bullet_match_keys(bullet))
+    return keys
+
+
+def build_personal_memory_lines(items, token_budget, max_items, blocked_match_keys=None):
     if not items or token_budget <= 0:
         return [], 0, "heuristic"
 
+    blocked_match_keys = blocked_match_keys or set()
     rendered = ["### Local personal memory registry", ""]
     heading_tokens, estimator = estimate_tokens("\n".join(rendered))
     used_tokens = heading_tokens
@@ -693,6 +955,9 @@ def build_personal_memory_lines(items, token_budget, max_items):
     for item in items:
         if has_item_cap and item_count >= max_items:
             break
+
+        if personal_memory_item_match_keys(item) & blocked_match_keys:
+            continue
 
         title = clip_text(item.title, PERSONAL_MEMORY_TITLE_LIMIT)
         note = clip_text(item.value_note, PERSONAL_MEMORY_NOTE_LIMIT)
@@ -840,6 +1105,7 @@ def render_summary(profile_lines, preference_lines, tip_lines, personal_memory_l
 
 
 def render_with_budgets(groups, existing_sections, personal_memory_items, budget):
+    blocked_memory_keys = existing_summary_match_keys(existing_sections)
     profile_lines, _, _ = build_profile_lines(existing_sections, groups, budget.profile_tokens)
     preference_lines, _, _ = build_preference_lines(
         existing_sections,
@@ -863,6 +1129,7 @@ def render_with_budgets(groups, existing_sections, personal_memory_items, budget
         personal_memory_items,
         budget.personal_memory_tokens,
         budget.max_personal_memory_items,
+        blocked_match_keys=blocked_memory_keys,
     )
     return render_summary(
         profile_lines,
@@ -930,6 +1197,18 @@ def load_text_if_exists(path):
     return path.read_text(encoding="utf-8")
 
 
+def load_memory_registry_text(canonical_path, legacy_path):
+    canonical_text = load_text_if_exists(canonical_path).strip()
+    legacy_text = load_text_if_exists(legacy_path).strip()
+    if canonical_text and legacy_text:
+        return "{}\n{}\n".format(canonical_text, legacy_text)
+    if canonical_text:
+        return canonical_text + "\n"
+    if legacy_text:
+        return legacy_text + "\n"
+    return ""
+
+
 def build_budget_from_args(args):
     runtime_budget = (
         memory_summary_budget_from_max(args.max_tokens)
@@ -962,11 +1241,16 @@ def main():
     args = parse_args()
     memory_index_path = Path(args.memory_index).expanduser()
     memory_summary_path = Path(args.memory_summary).expanduser()
+    canonical_memory_registry_path = Path(args.canonical_memory_registry).expanduser()
     personal_memory_registry_path = Path(args.personal_memory_registry).expanduser()
 
     memory_index_text = load_text_if_exists(memory_index_path)
     existing_summary_text = load_text_if_exists(memory_summary_path)
-    personal_memory_text = "" if args.no_personal_memory else load_text_if_exists(personal_memory_registry_path)
+    personal_memory_text = (
+        ""
+        if args.no_personal_memory
+        else load_memory_registry_text(canonical_memory_registry_path, personal_memory_registry_path)
+    )
     personal_memory_items = parse_personal_memory_registry(personal_memory_text, language=LANGUAGE)
     if not memory_index_text and not existing_summary_text and not personal_memory_items:
         print(

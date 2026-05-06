@@ -2,6 +2,7 @@
 
 import argparse
 import json
+import re
 import subprocess
 import sys
 
@@ -40,10 +41,56 @@ def build_shared_summary():
     return output_path, output_path.read_text(encoding="utf-8")
 
 
+def codex_memories_feature_state(paths=None):
+    paths = paths or PATHS
+    config_path = paths.codex_home / "config.toml"
+    try:
+        lines = config_path.read_text(encoding="utf-8").splitlines()
+    except FileNotFoundError:
+        return "unknown"
+    except (OSError, UnicodeDecodeError):
+        return "unknown"
+
+    in_features = False
+    for raw_line in lines:
+        line = raw_line.split("#", 1)[0].strip()
+        if not line:
+            continue
+        if line.startswith("[") and line.endswith("]"):
+            in_features = line.strip("[]").strip() == "features"
+            continue
+        if not in_features:
+            continue
+        match = re.match(r"^memories\s*=\s*(.+)$", line)
+        if not match:
+            continue
+        value = match.group(1).strip().strip('"').strip("'").lower()
+        if value in {"1", "true", "yes", "on"}:
+            return "enabled"
+        if value in {"0", "false", "no", "off"}:
+            return "disabled"
+        return "unknown"
+    return "unknown"
+
+
 def sync_codex_summary(summary_text):
     target = PATHS.codex_home / "memories" / "memory_summary.md"
+    feature_state = codex_memories_feature_state(PATHS)
+    if feature_state == "disabled":
+        return {
+            "host": "codex",
+            "path": str(target),
+            "status": "disabled",
+            "detail": "codex memories disabled in config.toml",
+            "memory_feature": feature_state,
+        }
     atomic_write_text(target, summary_text)
-    return target
+    return {
+        "host": "codex",
+        "path": str(target),
+        "status": "synced",
+        "memory_feature": feature_state,
+    }
 
 
 def clear_codex_summary():
@@ -99,7 +146,7 @@ def sync_claude_summary(summary_text):
     except (FileNotFoundError, OSError, UnicodeDecodeError):
         existing_text = ""
     atomic_write_text(target, replace_managed_block(existing_text, managed_claude_block(summary_text)))
-    return target
+    return {"host": "claude", "path": str(target), "status": "synced"}
 
 
 def clear_claude_summary():
@@ -127,6 +174,7 @@ def main():
     memory_mode = get_memory_mode(PATHS)
     targets = get_host_context_targets(PATHS) if memory_mode == "integrated" else []
     synced = []
+    skipped = []
     cleared = []
 
     summary_path = None
@@ -135,12 +183,16 @@ def main():
         summary_path, summary_text = build_shared_summary()
 
     if "codex" in targets:
-        synced.append({"host": "codex", "path": str(sync_codex_summary(summary_text))})
+        codex_result = sync_codex_summary(summary_text)
+        if codex_result.get("status") == "synced":
+            synced.append(codex_result)
+        else:
+            skipped.append(codex_result)
     else:
         cleared.append(clear_codex_summary())
 
     if "claude" in targets:
-        synced.append({"host": "claude", "path": str(sync_claude_summary(summary_text))})
+        synced.append(sync_claude_summary(summary_text))
     else:
         cleared.append(clear_claude_summary())
 
@@ -150,6 +202,7 @@ def main():
         "summary_path": str(summary_path) if summary_path else "",
         "targets": targets,
         "synced": synced,
+        "skipped": skipped,
         "cleared": cleared,
     }
     if args.print_json:

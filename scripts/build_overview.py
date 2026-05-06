@@ -35,6 +35,9 @@ from build_codex_memory_summary import (
     PERSONAL_MEMORY_NOTE_LIMIT,
     PERSONAL_MEMORY_TITLE_LIMIT,
     estimate_tokens as estimate_summary_tokens,
+    host_context_injection_policy_from_record,
+    memory_record_is_global_context,
+    memory_scope_from_record,
     reverse_date_sort_key as memory_summary_reverse_date_sort_key,
 )
 from openrelix_overview import common as overview_common
@@ -1700,6 +1703,16 @@ def load_jsonl(path: Path):
     return rows
 
 
+def load_memory_registry_items():
+    canonical_path = REGISTRY_DIR / "memory_entries.jsonl"
+    legacy_path = REGISTRY_DIR / "memory_items.jsonl"
+    rows = []
+    if canonical_path.exists() and canonical_path.stat().st_size > 0:
+        rows.extend(load_jsonl(canonical_path))
+    rows.extend(load_jsonl(legacy_path))
+    return rows
+
+
 def load_asset_stats_snapshot(path=ASSET_STATS_LATEST_PATH):
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
@@ -1843,7 +1856,7 @@ def build_personal_memory_context_preview(
     summary_budget = memory_summary_budget or get_memory_summary_budget(PATHS)
     personal_memory_budget_tokens = summary_budget["personal_memory_tokens"]
     rows = memory_registry or []
-    context_rows = [row for row in rows if row.get("bucket") in {"durable", "session"}]
+    context_rows = [row for row in rows if memory_record_is_global_context(row)]
     has_candidate_cap = MEMORY_SUMMARY_MAX_PERSONAL_MEMORY_ITEMS > 0
     context_item_limit = (
         min(len(context_rows), MEMORY_SUMMARY_MAX_PERSONAL_MEMORY_ITEMS)
@@ -1898,7 +1911,7 @@ def build_personal_memory_token_usage(
     rows = memory_registry or []
     row_count = len(rows)
     context_rows = sort_memory_summary_context_rows(
-        [row for row in rows if row.get("bucket") in {"durable", "session"}]
+        [row for row in rows if memory_record_is_global_context(row)]
     )
     has_candidate_cap = MEMORY_SUMMARY_MAX_PERSONAL_MEMORY_ITEMS > 0
     context_item_limit = (
@@ -4503,6 +4516,10 @@ def build_memory_registry(memory_items, window_overview, usage_window_overview=N
                 "bucket": item.get("bucket", ""),
                 "memory_type": item.get("memory_type", ""),
                 "priority": item.get("priority", "medium"),
+                "scope": memory_scope_from_record(item),
+                "injection_policy": host_context_injection_policy_from_record(item),
+                "project_key": item.get("project_key", ""),
+                "project_label": item.get("project_label", ""),
                 "title": item.get("title", ""),
                 "title_zh": item.get("title_zh", ""),
                 "title_en": item.get("title_en", ""),
@@ -4536,6 +4553,10 @@ def build_memory_registry(memory_items, window_overview, usage_window_overview=N
             group["_latest_sort"] = current_sort
             group["_latest_date"] = date_str
             group["priority"] = item.get("priority", group["priority"])
+            group["scope"] = memory_scope_from_record(item)
+            group["injection_policy"] = host_context_injection_policy_from_record(item)
+            group["project_key"] = item.get("project_key", group.get("project_key", ""))
+            group["project_label"] = item.get("project_label", group.get("project_label", ""))
             group["title"] = item.get("title", group["title"])
             group["title_zh"] = item.get("title_zh", group.get("title_zh", ""))
             group["title_en"] = item.get("title_en", group.get("title_en", ""))
@@ -4622,6 +4643,10 @@ def build_memory_registry(memory_items, window_overview, usage_window_overview=N
             "display_memory_type": display_memory_type(group["memory_type"], language=language),
             "priority": group["priority"],
             "display_priority": display_memory_priority(group["priority"], language=language),
+            "scope": group.get("scope", ""),
+            "injection_policy": group.get("injection_policy", ""),
+            "project_key": group.get("project_key", ""),
+            "project_label": group.get("project_label", ""),
             "title": group["title"],
             "display_title": localized_record_field(group, "title", language=language, default=group["title"]),
             "display_title_en": localized_record_field(group, "title", language="en", default=group["title"]),
@@ -7981,7 +8006,7 @@ def sort_top_assets(enriched_assets):
 
 def build_data(assets, usage_events, reviews, language=None):
     language = current_language(language)
-    memory_items = load_jsonl(REGISTRY_DIR / "memory_items.jsonl")
+    memory_items = load_memory_registry_items()
     nightly_candidates = load_nightly_summary_candidates()
     primary_nightly, active_nightly = load_primary_and_active_nightly_summaries()
     display_nightly = select_display_nightly(primary_nightly, active_nightly)
