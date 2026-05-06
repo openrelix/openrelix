@@ -176,12 +176,34 @@ def raw_window_summary_pairs(prompts, conclusions, limit=6):
     return pairs
 
 
-def summary_model_completed(summary):
+MODEL_COMPLETED_STATUSES = {"completed", "ok", "success", "succeeded"}
+MODEL_FAILED_STATUSES = {"failed", "error", "fallback"}
+
+
+def summary_status_kind(summary):
+    if not summary:
+        return "raw_fallback"
+    generation = compact_text((summary or {}).get("summary_generation", "")).lower()
+    stage = compact_text(
+        (summary or {}).get("summary_stage") or (summary or {}).get("stage", "")
+    ).lower()
     status = compact_text(
         (summary or {}).get("model_status")
         or (summary or {}).get("last_run_model_status", "")
     ).lower()
-    return status not in {"failed", "error", "fallback"}
+    if status in MODEL_FAILED_STATUSES:
+        return "raw_fallback"
+    if status in MODEL_COMPLETED_STATUSES:
+        return "summarized"
+    if generation == "lightweight" or status == "skipped_lightweight" or stage == "preliminary":
+        return "lightweight"
+    if not status:
+        return "summarized"
+    return "raw_fallback"
+
+
+def summary_model_completed(summary):
+    return summary_status_kind(summary) == "summarized"
 
 
 def normalize_search_key(text):
@@ -392,6 +414,7 @@ def summary_maps(paths):
             current["summary_date"] = date_str
             current["summary_stage"] = stage
             current["model_status"] = model_status
+            current["summary_generation"] = compact_text(payload.get("summary_generation", ""))
             by_window_key[(date_str, window_id)] = current
     return by_window_key, daily_rows, skipped
 
@@ -444,14 +467,15 @@ def normalize_window(window, raw_path, summary=None):
         or summary.get("summary_pairs")
         or summary.get("window_title")
     )
-    has_summary = summary_model_completed(summary) and summary_has_content
+    organized_status = summary_status_kind(summary)
+    has_summary = organized_status in {"summarized", "lightweight"} and summary_has_content
     if has_summary:
         question_summary = compact_text(summary.get("question_summary", "") or first_prompt_text)
         main_takeaway = compact_text(summary.get("main_takeaway", "") or last_conclusion_text or first_prompt_text)
     else:
         question_summary = compact_text(first_prompt_text)
         main_takeaway = compact_text(last_conclusion_text or first_prompt_text)
-    summary_status = "summarized" if has_summary else "raw_fallback"
+    summary_status = organized_status if has_summary else "raw_fallback"
     if has_summary:
         summary_pairs = normalize_summary_pairs(
             summary.get("summary_pairs", []),

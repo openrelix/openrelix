@@ -6816,15 +6816,49 @@ def raw_window_summary_pairs(prompts, conclusions, limit=4):
     return pairs
 
 
-def window_summary_model_completed(latest_nightly):
+MODEL_COMPLETED_STATUSES = {"completed", "ok", "success", "succeeded"}
+MODEL_FAILED_STATUSES = {"failed", "error", "fallback"}
+
+
+def window_summary_status_kind(latest_nightly):
     if not latest_nightly:
-        return False
+        return "raw_fallback"
+    generation = str(latest_nightly.get("summary_generation") or "").strip().lower()
+    stage = str(latest_nightly.get("stage") or "").strip().lower()
     status = str(
         latest_nightly.get("model_status")
         or latest_nightly.get("last_run_model_status")
-        or "completed"
+        or ""
     ).strip().lower()
-    return status not in {"failed", "error", "fallback"}
+    if status in MODEL_FAILED_STATUSES:
+        return "raw_fallback"
+    if status in MODEL_COMPLETED_STATUSES:
+        return "summarized"
+    if generation == "lightweight" or status == "skipped_lightweight" or stage == "preliminary":
+        return "lightweight"
+    if not status:
+        return "summarized"
+    return "raw_fallback"
+
+
+def window_summary_model_completed(latest_nightly):
+    return window_summary_status_kind(latest_nightly) == "summarized"
+
+
+def window_summary_status_label(summary_status, language=None):
+    if summary_status == "summarized":
+        return localized("大模型已做智能整理", "AI-organized", language)
+    if summary_status == "lightweight":
+        return localized(
+            "轻度回溯快速整理，未做大模型总结",
+            "Quick lightweight organization; no AI model summary yet",
+            language,
+        )
+    return localized(
+        "暂未做二次学习和总结，当前展示原始问题和结论",
+        "Codex summary has not run yet; showing raw questions and conclusions",
+        language,
+    )
 
 
 def build_window_items_from_daily_capture(daily_capture, latest_nightly=None, language=None):
@@ -6837,7 +6871,7 @@ def build_window_items_from_daily_capture(daily_capture, latest_nightly=None, la
                 nightly_map[window_id] = item
 
     items = []
-    codex_summary_completed = window_summary_model_completed(latest_nightly)
+    nightly_summary_status = window_summary_status_kind(latest_nightly)
     for raw_window in (daily_capture or {}).get("windows", []):
         window_id = raw_window.get("window_id", "")
         ai_host = str(raw_window.get("ai_host") or "codex").strip().lower()
@@ -6849,34 +6883,29 @@ def build_window_items_from_daily_capture(daily_capture, latest_nightly=None, la
         conclusions = raw_window.get("conclusions", [])
         first_prompt = prompts[0] if prompts else {}
         last_conclusion = conclusions[-1] if conclusions else {}
-        has_codex_summary = bool(nightly_item) and codex_summary_completed
+        has_organized_summary = bool(nightly_item) and nightly_summary_status in {
+            "summarized",
+            "lightweight",
+        }
         raw_question_summary = first_prompt.get("text", "")
         raw_main_takeaway = last_conclusion.get("text", "") or raw_question_summary
         question_summary = (
             nightly_item.get("question_summary") or raw_question_summary
-            if has_codex_summary
+            if has_organized_summary
             else raw_question_summary
         )
         main_takeaway = (
             nightly_item.get("main_takeaway") or raw_main_takeaway
-            if has_codex_summary
+            if has_organized_summary
             else raw_main_takeaway
         )
         question_summary = normalize_brand_display_text(question_summary)
         main_takeaway = normalize_brand_display_text(main_takeaway)
         nightly_pairs = normalize_window_summary_pairs(nightly_item.get("summary_pairs", []))
         raw_summary_pairs = raw_window_summary_pairs(prompts, conclusions)
-        summary_pairs = nightly_pairs if has_codex_summary else raw_summary_pairs
-        summary_status = "summarized" if has_codex_summary else "raw_fallback"
-        summary_status_label = (
-            localized("大模型已做智能整理", "AI-organized", language)
-            if has_codex_summary
-            else localized(
-                "暂未做二次学习和总结，当前展示原始问题和结论",
-                "AI summary has not run yet; showing raw questions and conclusions",
-                language,
-            )
-        )
+        summary_pairs = nightly_pairs if has_organized_summary else raw_summary_pairs
+        summary_status = nightly_summary_status if has_organized_summary else "raw_fallback"
+        summary_status_label = window_summary_status_label(summary_status, language)
         raw_title = (raw_summary_pairs[0].get("question", "") if raw_summary_pairs else question_summary)
         learned_title = (
             nightly_item.get("window_title")
@@ -6885,7 +6914,7 @@ def build_window_items_from_daily_capture(daily_capture, latest_nightly=None, la
             or question_summary
         )
         window_title = compact_preview_text(
-            normalize_brand_display_text(learned_title if has_codex_summary else raw_title),
+            normalize_brand_display_text(learned_title if has_organized_summary else raw_title),
             limit=100,
         )
         window_summary = window_display_summary(
@@ -6977,19 +7006,11 @@ def build_window_overview(latest_nightly, language=None, target_date=""):
 
     if not daily_capture:
         fallback_items = []
-        codex_summary_completed = window_summary_model_completed(latest_nightly)
+        nightly_summary_status = window_summary_status_kind(latest_nightly)
         for item in (latest_nightly or {}).get("window_summaries", []):
             cwd = item.get("cwd", "")
-            summary_status = "summarized" if codex_summary_completed else "raw_fallback"
-            summary_status_label = (
-                localized("大模型已做智能整理", "AI-organized", language)
-                if codex_summary_completed
-                else localized(
-                    "暂未做二次学习和总结，当前展示原始问题和结论",
-                    "AI summary has not run yet; showing raw questions and conclusions",
-                    language,
-                )
-            )
+            summary_status = nightly_summary_status
+            summary_status_label = window_summary_status_label(summary_status, language)
             ai_host = str(item.get("ai_host") or "codex").strip().lower()
             if ai_host not in {"codex", "claude"}:
                 ai_host = "codex"
@@ -12925,9 +12946,14 @@ def make_window_summary_cards(window_overview, language=None):
             timeline=render_summary_pair_timeline(pairs),
         )
 
-    def render_summary_mode_controls(has_raw_pairs):
+    def render_summary_mode_controls(has_raw_pairs, summary_status):
         if not has_raw_pairs:
             return ""
+        ai_label = (
+            localized("快速整理", "Quick summary", language)
+            if summary_status == "lightweight"
+            else localized("智能整理", "AI summary", language)
+        )
         return """
                   <div class="window-summary-mode-controls" role="group" aria-label="{aria_label}">
                     <button type="button" class="window-summary-mode-button" data-window-summary-mode="ai" aria-pressed="true">{ai_label}</button>
@@ -12935,7 +12961,7 @@ def make_window_summary_cards(window_overview, language=None):
                   </div>
         """.format(
             aria_label=escape(localized("切换问答视图", "Switch question and conclusion view", language), quote=True),
-            ai_label=escape(localized("智能整理", "AI summary", language)),
+            ai_label=escape(ai_label),
             raw_label=escape(localized("原始信息", "Raw info", language)),
         )
 
@@ -12971,11 +12997,22 @@ def make_window_summary_cards(window_overview, language=None):
             )
         elif summary_status == "summarized":
             summary_status_label = localized("大模型已做智能整理", "AI-organized", language)
+        elif summary_status == "lightweight":
+            summary_status_label = localized(
+                "轻度回溯快速整理，未做大模型总结",
+                "Quick lightweight organization; no AI model summary yet",
+                language,
+            )
         else:
             summary_status_label = str(item.get("summary_status_label", "") or "").strip()
         summary_status_html = ""
         if summary_status_label:
-            status_class = "is-ai" if summary_status == "summarized" else "is-raw"
+            if summary_status == "summarized":
+                status_class = "is-ai"
+            elif summary_status == "lightweight":
+                status_class = "is-lightweight"
+            else:
+                status_class = "is-raw"
             summary_status_html = """
                     <div class="window-card-status {status_class}" data-summary-status="{summary_status}">{summary_status_label}</div>
             """.format(
@@ -13052,9 +13089,9 @@ def make_window_summary_cards(window_overview, language=None):
             main_takeaway_preview_html = '<div class="window-card-pair-preview"><div class="window-card-pair-row"><span class="window-card-pair-body">{}</span></div></div>'.format(
                 fallback_takeaway
             )
-        show_raw_toggle = summary_status == "summarized" and bool(raw_summary_pairs)
+        show_raw_toggle = summary_status in {"summarized", "lightweight"} and bool(raw_summary_pairs)
         initial_summary_mode = "raw" if summary_status == "raw_fallback" else "ai"
-        summary_mode_controls_html = render_summary_mode_controls(show_raw_toggle)
+        summary_mode_controls_html = render_summary_mode_controls(show_raw_toggle, summary_status)
         summary_mode_panels_html = render_summary_mode_panel(summary_pairs, initial_summary_mode)
         if show_raw_toggle:
             summary_mode_panels_html += render_summary_mode_panel(raw_summary_pairs, "raw")
@@ -17669,6 +17706,11 @@ def build_html(data):
     .window-card-status.is-ai {{
       border-color: rgba(20, 184, 166, 0.32);
       background: rgba(20, 184, 166, 0.12);
+    }}
+
+    .window-card-status.is-lightweight {{
+      border-color: rgba(59, 130, 246, 0.32);
+      background: rgba(59, 130, 246, 0.12);
     }}
 
     .window-card-status.is-raw {{

@@ -5316,6 +5316,103 @@ Keep my own note.
         self.assertIn("结论2", detail_html)
         self.assertIn("原始结论2", detail_html)
 
+    def test_window_cards_mark_lightweight_summary_without_model_badge(self):
+        html = build_overview.make_window_summary_cards(
+            {
+                "date": "2026-05-03",
+                "windows": [
+                    {
+                        "window_id": "w-lightweight",
+                        "display_index": 1,
+                        "project_label": "OpenRelix",
+                        "window_title": "停止后台的回溯",
+                        "question_count": 1,
+                        "conclusion_count": 1,
+                        "question_summary": "问题1：停止后台的回溯",
+                        "main_takeaway": "结论1：已停止后台回溯任务。",
+                        "summary_pairs": [
+                            {
+                                "question": "停止后台的回溯",
+                                "conclusion": "已停止后台回溯任务。",
+                            }
+                        ],
+                        "raw_summary_pairs": [
+                            {
+                                "question": "停止后台的回溯",
+                                "conclusion": "我终止的是这棵进程树。",
+                            }
+                        ],
+                        "summary_status": "lightweight",
+                        "keywords": ["openrelix", "回溯任务"],
+                        "latest_activity_display": "05-03 23:50",
+                        "started_at_display": "05-03 23:40",
+                        "recent_prompts": [],
+                        "recent_conclusions": [],
+                    }
+                ],
+            }
+        )
+
+        self.assertIn("轻度回溯快速整理，未做大模型总结", html)
+        self.assertIn('data-summary-status="lightweight"', html)
+        self.assertIn("快速整理", html)
+        self.assertIn("原始信息", html)
+        self.assertNotIn("大模型已做智能整理", html)
+        self.assertNotIn("AI-organized", html)
+
+    def test_window_overview_keeps_lightweight_summary_separate_from_model_summary(self):
+        daily_capture = {
+            "date": "2026-05-03",
+            "windows": [
+                {
+                    "date": "2026-05-03",
+                    "window_id": "w-lightweight",
+                    "cwd": "/tmp/openrelix",
+                    "source": "app_server",
+                    "prompt_count": 1,
+                    "conclusion_count": 1,
+                    "prompts": [{"local_time": "2026-05-03T23:40:00+08:00", "text": "原始问题"}],
+                    "conclusions": [
+                        {"completed_at": "2026-05-03T23:50:00+08:00", "text": "原始结论"}
+                    ],
+                }
+            ],
+        }
+        latest_nightly = {
+            "date": "2026-05-03",
+            "stage": "preliminary",
+            "model_status": "skipped_lightweight",
+            "summary_generation": "lightweight",
+            "window_summaries": [
+                {
+                    "window_id": "w-lightweight",
+                    "cwd": "/tmp/openrelix",
+                    "window_title": "轻量整理标题",
+                    "question_summary": "问题1：轻量整理问题",
+                    "main_takeaway": "结论1：轻量整理结论",
+                    "summary_pairs": [
+                        {
+                            "question": "轻量整理问题",
+                            "conclusion": "轻量整理结论",
+                        }
+                    ],
+                    "keywords": ["openrelix"],
+                }
+            ],
+        }
+
+        items = build_overview.build_window_items_from_daily_capture(
+            daily_capture,
+            latest_nightly=latest_nightly,
+            language="zh",
+        )
+
+        self.assertEqual(items[0]["summary_status"], "lightweight")
+        self.assertEqual(items[0]["window_title"], "轻量整理标题")
+        self.assertIn("轻量整理问题", items[0]["question_summary"])
+        self.assertIn("轻量整理结论", items[0]["main_takeaway"])
+        self.assertIn("未做大模型总结", items[0]["summary_status_label"])
+
     def test_window_cards_hide_codex_app_button_for_non_uuid_resume_id(self):
         html = build_overview.make_window_summary_cards(
             {

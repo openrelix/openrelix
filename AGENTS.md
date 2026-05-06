@@ -20,6 +20,12 @@
 - Prefer installer or template changes over one-off local setup instructions.
 - When adding automation, make state roots and Codex home paths configurable through environment variables.
 
+## Git / Worktree Merge Rules
+
+- For feature development or bug fixes, proactively create and work from a dedicated git worktree without waiting for the user to remind you.
+- When finishing development from a worktree branch and preparing to merge remotely, merge through local `main` and target `origin/main`; do not merge into other remote branches such as `origin/xxx`.
+- After a worktree branch has been merged into both local `main` and `origin/main`, delete the corresponding local branch. If its worktree is clean, remove that worktree too.
+
 ## Commit Checks
 
 - Before committing OpenRelix changes, run `python3 scripts/check_personal_info.py`, `git diff --check`, and focused tests for the touched code.
