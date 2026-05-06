@@ -576,6 +576,54 @@ class AssetDiscoveryTests(unittest.TestCase):
 
         self.assertEqual(first_identifier, "alpha")
 
+    def test_single_asset_stats_snapshot_anchors_frequency_to_requested_date(self):
+        manifest = self.write_skill(self.paths.codex_home / "skills", "foo", name="Foo")
+        self.write_codex_rollout(self.today, "today", ["cat {}".format(manifest)])
+        self.write_codex_rollout(self.today - timedelta(days=8), "old", ["cat {}".format(manifest)])
+
+        snapshot = asset_discovery.build_asset_stats_snapshot(
+            self.paths,
+            self.today,
+            generated_at="2026-05-05T12:00:00+08:00",
+            monthly_months=2,
+        )
+
+        self.assertEqual(snapshot["date"], "2026-05-05")
+        self.assertEqual(snapshot["lookback"]["windows_7d_start"], "2026-04-29")
+        self.assertEqual(snapshot["lookback"]["windows_30d_start"], "2026-04-06")
+        self.assertEqual(snapshot["summary"]["active_skills_7d"], 1)
+        self.assertEqual(snapshot["summary"]["active_skills_30d"], 1)
+        self.assertEqual(snapshot["summary"]["skill_sessions_7d"], 1)
+        self.assertEqual(snapshot["summary"]["skill_sessions_30d"], 2)
+        self.assertEqual(snapshot["top_skills"][0]["identifier"], "foo")
+        self.assertEqual(snapshot["top_skills"][0]["windows_30d"], 2)
+        self.assertEqual(
+            {row["label"]: row["value"] for row in snapshot["monthly_activity"]},
+            {"2026-04": 1, "2026-05": 1},
+        )
+
+    def test_asset_stats_snapshot_panel_renders_single_backfill_command(self):
+        snapshot = {
+            "date": "2026-05-05",
+            "generated_at": "2026-05-05T12:00:00+08:00",
+            "command": "openrelix asset-stats --date 2026-05-05",
+            "summary": {
+                "renderable_assets": 3,
+                "active_skills_30d": 2,
+                "skill_sessions_30d": 7,
+            },
+            "top_skills": [
+                {"identifier": "alpha", "name": "Alpha", "windows_30d": 5},
+            ],
+        }
+
+        html = build_overview.make_asset_stats_snapshot_panel(snapshot, "2026-05-05")
+
+        self.assertIn('id="asset-stats-snapshot-section"', html)
+        self.assertIn("openrelix asset-stats --date 2026-05-05", html)
+        self.assertIn("Alpha", html)
+        self.assertIn("Snapshot Top Skills", html)
+
     def test_path_classifier_follows_canonical_roots(self):
         codex_manifest = self.paths.codex_home / "skills" / "foo" / "SKILL.md"
         claude_manifest = self.home / ".claude" / "skills" / "bar" / "SKILL.md"

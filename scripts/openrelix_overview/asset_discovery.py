@@ -1196,3 +1196,53 @@ def top_skill_rows(render_rows, limit=10):
             str(row.get("identifier") or row.get("name") or "").lower(),
         ),
     )[:limit]
+
+
+def build_asset_stats_snapshot(paths, target_date, generated_at=None, monthly_months=6, top_limit=10):
+    """Build a single-date asset statistics snapshot without writing state."""
+    anchor = _coerce_date(target_date)
+    installed_assets = discover_installed_assets(paths)
+    activation_snapshot = compute_activation_snapshot(
+        paths,
+        installed_assets,
+        anchor,
+        monthly_months=monthly_months,
+    )
+    all_assets = activation_snapshot["assets"]
+    frequency_by_key = activation_snapshot["frequency_by_key"]
+    renderable_assets = filter_renderable_assets(all_assets, frequency_by_key)
+    render_rows = aggregate_renderable_assets(renderable_assets, frequency_by_key)
+    skill_rows = [row for row in render_rows if _high_level_type(row.get("type", "")) == "skill"]
+    type_counts = high_level_type_counts(render_rows)
+    generated_at = generated_at or datetime.now().astimezone().isoformat(timespec="seconds")
+
+    return {
+        "schema_version": 1,
+        "date": anchor.isoformat(),
+        "generated_at": str(generated_at),
+        "lookback": {
+            "windows_7d_start": (anchor - timedelta(days=6)).isoformat(),
+            "windows_30d_start": (anchor - timedelta(days=29)).isoformat(),
+            "monthly_months": int(monthly_months or 0),
+        },
+        "summary": {
+            "installed_assets": len(installed_assets),
+            "all_discovered_assets": len(all_assets),
+            "renderable_assets": len(renderable_assets),
+            "display_assets": len(render_rows),
+            "active_skills_7d": sum(1 for row in skill_rows if int(row.get("windows_7d") or 0) > 0),
+            "active_skills_30d": sum(1 for row in skill_rows if int(row.get("windows_30d") or 0) > 0),
+            "skill_sessions_7d": sum(int(row.get("windows_7d") or 0) for row in skill_rows),
+            "skill_sessions_30d": sum(int(row.get("windows_30d") or 0) for row in skill_rows),
+        },
+        "type_counts": [
+            {
+                "type": asset_type,
+                "value": type_counts.get(asset_type, 0),
+            }
+            for asset_type in HIGH_LEVEL_TYPE_ORDER
+            if type_counts.get(asset_type, 0) > 0
+        ],
+        "monthly_activity": activation_snapshot["monthly_activity"],
+        "top_skills": top_skill_rows(render_rows, limit=top_limit),
+    }

@@ -967,6 +967,7 @@ class NightlyLogicTests(unittest.TestCase):
             help_text = openrelix.build_parser().format_help()
         self.assertIn("OpenRelix 命令集", help_text)
         self.assertIn("运行指定日期的 review 流水线并打印摘要", help_text)
+        self.assertIn("asset-stats", help_text)
         self.assertIn("位置参数", help_text)
         self.assertIn("显示帮助并退出", help_text)
         self.assertNotIn("Run today's review pipeline", help_text)
@@ -976,6 +977,7 @@ class NightlyLogicTests(unittest.TestCase):
             help_text = openrelix.build_parser().format_help()
         self.assertIn("OpenRelix command set", help_text)
         self.assertIn("Run the review pipeline for a target date", help_text)
+        self.assertIn("Build a single asset statistics snapshot", help_text)
 
     def test_openrelix_core_summary_uses_chinese_review_label(self):
         stream = io.StringIO()
@@ -4705,6 +4707,8 @@ Keep my own note.
             "{codex_native_task_group_header}",
         ):
             self.assertLess(main_template.index(header), main_template.index("{asset_metric_cards}"))
+        self.assertLess(main_template.index("{asset_metric_cards}"), main_template.index("{asset_stats_snapshot_panel}"))
+        self.assertLess(main_template.index("{asset_stats_snapshot_panel}"), main_template.index("{type_panel}"))
         self.assertLess(main_template.index("{asset_metric_cards}"), main_template.index("{type_panel}"))
         self.assertLess(main_template.index("{asset_metric_cards}"), main_template.index("{window_overview_header}"))
         self.assertLess(main_template.index("{type_panel}"), main_template.index("{month_panel}"))

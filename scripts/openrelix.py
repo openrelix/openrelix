@@ -28,6 +28,7 @@ from asset_runtime import (
     DEFAULT_CLAUDE_MODEL,
     DEFAULT_CODEX_MODEL,
     LEGACY_APP_SLUGS,
+    atomic_write_json,
     atomic_write_text,
     ensure_state_layout,
     get_activity_host,
@@ -55,6 +56,7 @@ from asset_runtime import (
     sync_codex_exec_home,
     write_runtime_config,
 )
+from openrelix_overview import asset_discovery as overview_asset_discovery
 from openrelix_overview.token_fetcher import fetch_ccusage_daily, normalize_token_provider
 from openrelix_overview.token_usage import build_token_usage_view, normalize_token_group_by
 
@@ -67,6 +69,7 @@ ACTIVITY_HOST = get_activity_host(PATHS)
 MODEL_CLI = get_model_cli(PATHS)
 REPO_ROOT = PATHS.repo_root
 REPORTS_DIR = PATHS.reports_dir
+ASSET_STATS_LATEST_PATH = REPORTS_DIR / "asset-stats-latest.json"
 CONSOLIDATED_DAILY_DIR = PATHS.consolidated_daily_dir
 REFRESH_SCRIPT = REPO_ROOT / "scripts" / "refresh_overview.sh"
 NIGHTLY_PIPELINE_SCRIPT = REPO_ROOT / "scripts" / "nightly_pipeline.sh"
@@ -674,6 +677,53 @@ def build_parser():
         "--json",
         action="store_true",
         help=localized("以 JSON 打印 Token 视图。", "Print the token view as JSON."),
+    )
+
+    asset_stats = subparsers.add_parser(
+        "asset-stats",
+        help=localized(
+            "生成单次资产统计快照并更新面板。",
+            "Build a single asset statistics snapshot and update the panel.",
+        ),
+    )
+    asset_stats.add_argument(
+        "--date",
+        default=current_date_str(),
+        help=localized(
+            "统计锚点日期，格式 YYYY-MM-DD。默认今天。",
+            "Anchor date in YYYY-MM-DD. Default: today.",
+        ),
+    )
+    asset_stats.add_argument(
+        "--monthly-months",
+        type=int,
+        default=6,
+        help=localized(
+            "月度活动回看月份数，默认 6。",
+            "Number of months for monthly activity, default 6.",
+        ),
+    )
+    asset_stats.add_argument(
+        "--top-limit",
+        type=int,
+        default=10,
+        help=localized(
+            "高频技能列表最多保留条数，默认 10。",
+            "Maximum top-skill rows to keep, default 10.",
+        ),
+    )
+    asset_stats.add_argument(
+        "--no-refresh",
+        action="store_true",
+        help=localized(
+            "只写入统计快照，不重建 overview 和 panel。",
+            "Only write the stats snapshot; do not rebuild overview and panel.",
+        ),
+    )
+    asset_stats.add_argument(
+        "--json",
+        action="store_true",
+        help=localized("以 JSON 打印统计快照。", "Print the stats snapshot as JSON."),
     )
 
     index = subparsers.add_parser(
@@ -3594,6 +3644,64 @@ def command_tokens(args):
             print("  provider: {}".format(provider_label))
 
 
+def normalize_positive_int(value, label):
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError) as exc:
+        raise SystemExit(localized(
+            "{} 必须是整数: {}".format(label, value),
+            "{} must be an integer: {}".format(label, value),
+        )) from exc
+    if parsed <= 0:
+        raise SystemExit(localized(
+            "{} 必须大于 0: {}".format(label, value),
+            "{} must be greater than 0: {}".format(label, value),
+        ))
+    return parsed
+
+
+def command_asset_stats(args):
+    target_date = parse_date_arg(args.date, "--date")
+    monthly_months = normalize_positive_int(args.monthly_months, "--monthly-months")
+    top_limit = normalize_positive_int(args.top_limit, "--top-limit")
+    snapshot = overview_asset_discovery.build_asset_stats_snapshot(
+        PATHS,
+        target_date,
+        monthly_months=monthly_months,
+        top_limit=top_limit,
+    )
+    snapshot["command"] = "openrelix asset-stats --date {}".format(snapshot["date"])
+    REPORTS_DIR.mkdir(parents=True, exist_ok=True)
+    atomic_write_json(ASSET_STATS_LATEST_PATH, snapshot)
+
+    refreshed = False
+    if not args.no_refresh:
+        if not args.json:
+            print(localized("刷新中: 重建 overview 和面板。", "Refreshing: rebuilding overview and panel."), flush=True)
+        run_checked_quiet([sys.executable, str(BUILD_OVERVIEW_SCRIPT)])
+        refreshed = True
+
+    if args.json:
+        print_json(
+            {
+                "snapshot_path": str(ASSET_STATS_LATEST_PATH),
+                "panel_path": str(REPORTS_DIR / "panel.html"),
+                "refreshed": refreshed,
+                "snapshot": snapshot,
+            }
+        )
+        return
+
+    summary = snapshot.get("summary", {})
+    print(localized("资产统计快照已生成", "Asset stats snapshot generated"))
+    print("- date: {}".format(snapshot.get("date", "")))
+    print("- snapshot: {}".format(ASSET_STATS_LATEST_PATH))
+    print("- panel: {}".format(REPORTS_DIR / "panel.html"))
+    print("- discovered_assets: {}".format(summary.get("renderable_assets", 0)))
+    print("- active_skills_30d: {}".format(summary.get("active_skills_30d", 0)))
+    print("- skill_sessions_30d: {}".format(summary.get("skill_sessions_30d", 0)))
+
+
 def print_index_results(kind, rows):
     if not rows:
         print(localized("未找到结果。", "No results."))
@@ -4331,6 +4439,9 @@ def main():
         return
     if args.command == "tokens":
         command_tokens(args)
+        return
+    if args.command == "asset-stats":
+        command_asset_stats(args)
         return
     if args.command == "index":
         command_index(args)
