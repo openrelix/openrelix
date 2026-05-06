@@ -577,9 +577,16 @@ PANEL_I18N_EN = {
     "该日期暂无整理结果。": "No synthesis for this date.",
     "未整理": "Not synthesized",
     "缺少整理结果": "Missing synthesis",
+    "今日仍在进行中": "Today is still in progress",
     "建议深度回溯": "Recommended deep backfill",
     "该日期还没有整理结果。可以复制命令在终端手动回溯。": (
         "This date has no synthesis yet. Copy the command and run it in a terminal to backfill it."
+    ),
+    "今天还没结束，当前还没有轻量预览；可先运行今日轻量整理刷新面板，次日会自动生成 final 深度整理。": (
+        "Today is not over yet and no lightweight preview exists. Run today's lightweight synthesis to refresh the panel; final deep synthesis will run tomorrow."
+    ),
+    "今天还没结束，当前保留轻量预览；次日会自动生成 final 深度整理。": (
+        "Today is not over yet, so the lightweight preview remains active. Final deep synthesis will run tomorrow."
     ),
     "当前是轻量整理，日报和记忆可能不准确。可以复制命令在终端补跑 final 深度回溯。首次安装后，会自动触发深度回溯，请耐心等待。": (
         "This is the lightweight pass, so the daily summary and memories may be inaccurate. "
@@ -587,6 +594,8 @@ PANEL_I18N_EN = {
         "OpenRelix starts deep backfill automatically; please wait."
     ),
     "单日回溯": "Single-date backfill",
+    "轻量整理": "Lightweight synthesis",
+    "当日预览": "Daily preview",
     "深度回溯": "Deep backfill",
     "多日回溯": "Multi-day backfill",
     "复制命令": "Copy command",
@@ -2347,6 +2356,10 @@ def make_backfill_dates_command(dates, learn_window_days=BACKFILL_LEARN_WINDOW_D
         str(learn_window_days),
     ]
     return " ".join(shell_quote(part) for part in parts)
+
+
+def make_current_day_preview_command():
+    return "openrelix review --stage preliminary --learn-window-days 0"
 
 
 def build_backfill_view(nightly_candidates, lookback_days=BACKFILL_LOOKBACK_DAYS):
@@ -12243,6 +12256,9 @@ def make_nightly_summary_panel(
     backfill_panel_hidden = " hidden"
     selected_missing = selected_date in set(backfill.get("missing_dates", []))
     selected_preliminary = current_view.get("stage") == "preliminary"
+    selected_current_missing = (
+        selected_missing and not current_view.get("available") and is_current_local_date(selected_date)
+    )
     selected_current_preliminary = selected_preliminary and is_current_local_date(selected_date)
     if (selected_missing and not current_view.get("available")) or (
         selected_preliminary and not selected_current_preliminary
@@ -12253,6 +12269,9 @@ def make_nightly_summary_panel(
         make_backfill_command(selected_date) if selected_date else "",
     )
     backfill_range_command = backfill.get("range_command", "")
+    if selected_current_missing:
+        selected_backfill_command = make_current_day_preview_command()
+        backfill_range_command = ""
     if selected_current_preliminary:
         selected_backfill_command = ""
         backfill_range_command = ""
@@ -12263,7 +12282,11 @@ def make_nightly_summary_panel(
         and not selected_preliminary
         else " hidden"
     )
-    if selected_current_preliminary:
+    if selected_current_missing:
+        backfill_title = "今日仍在进行中"
+        backfill_note = "今天还没结束，当前还没有轻量预览；可先运行今日轻量整理刷新面板，次日会自动生成 final 深度整理。"
+        backfill_single_label = "轻量整理"
+    elif selected_current_preliminary:
         backfill_title = "今日仍在进行中"
         backfill_note = "今天还没结束，当前保留轻量预览；次日会自动生成 final 深度整理。"
         backfill_single_label = "当日预览"
@@ -19125,6 +19148,10 @@ def build_html(data):
         return Boolean(dateValue) && dateValue === snapshotTodayDate();
       }}
 
+      function currentDayPreviewCommand() {{
+        return "openrelix review --stage preliminary --learn-window-days 0";
+      }}
+
       function missingBackfillDates() {{
         const value = backfillState().missing_dates;
         return Array.isArray(value) ? value : [];
@@ -19141,6 +19168,9 @@ def build_html(data):
         if (!dateValue) {{
           return "";
         }}
+        if (isCurrentSnapshotDate(dateValue)) {{
+          return currentDayPreviewCommand();
+        }}
         const days = backfill.learn_window_days || 7;
         return "openrelix backfill --from " + dateValue + " --to " + dateValue + " --stage final --learn-window-days " + days;
       }}
@@ -19151,8 +19181,10 @@ def build_html(data):
         }}
         const hasSummary = Boolean(summary);
         const isPreliminary = hasSummary && summary.stage === "preliminary";
+        const isCurrentDate = isCurrentSnapshotDate(dateValue);
         const isCurrentPreliminary = isPreliminary && isCurrentSnapshotDate(dateValue);
         const missingDates = missingBackfillDates();
+        const isCurrentMissing = !hasSummary && isCurrentDate && missingDates.includes(dateValue);
         const shouldShow = Boolean(dateValue) && (
           (isPreliminary && !isCurrentPreliminary) || (!hasSummary && missingDates.includes(dateValue))
         );
@@ -19164,19 +19196,21 @@ def build_html(data):
           return;
         }}
         const singleCommand = commandForBackfillDate(dateValue);
-        const rangeCommand = isPreliminary ? "" : (backfillState().range_command || "");
+        const rangeCommand = (isPreliminary || isCurrentMissing) ? "" : (backfillState().range_command || "");
         if (elements.backfillTitle) {{
-          elements.backfillTitle.textContent = t(isPreliminary ? "建议深度回溯" : "缺少整理结果");
+          elements.backfillTitle.textContent = t(isCurrentMissing ? "今日仍在进行中" : (isPreliminary ? "建议深度回溯" : "缺少整理结果"));
         }}
         if (elements.backfillNote) {{
           elements.backfillNote.textContent = t(
-            isPreliminary
+            isCurrentMissing
+              ? "今天还没结束，当前还没有轻量预览；可先运行今日轻量整理刷新面板，次日会自动生成 final 深度整理。"
+              : isPreliminary
               ? "当前是轻量整理，日报和记忆可能不准确。可以复制命令在终端补跑 final 深度回溯。首次安装后，会自动触发深度回溯，请耐心等待。"
               : "该日期还没有整理结果。可以复制命令在终端手动回溯。"
           );
         }}
         if (elements.backfillSingleLabel) {{
-          elements.backfillSingleLabel.textContent = t(isPreliminary ? "深度回溯" : "单日回溯");
+          elements.backfillSingleLabel.textContent = t(isCurrentMissing ? "轻量整理" : (isPreliminary ? "深度回溯" : "单日回溯"));
         }}
         if (elements.backfillSingleCommand) {{
           elements.backfillSingleCommand.textContent = singleCommand;

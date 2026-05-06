@@ -8239,6 +8239,36 @@ Keep my own note.
         self.assertIn("openrelix backfill --from 2026-04-24 --to 2026-04-24", html)
         self.assertIn("data-backfill-copy=\"single\"", html)
 
+    def test_nightly_summary_panel_uses_preview_command_for_current_day_missing_date(self):
+        with mock.patch.object(
+            build_overview,
+            "current_local_datetime",
+            return_value=datetime.fromisoformat("2026-05-06T15:00:00+08:00"),
+        ):
+            html = build_overview.make_nightly_summary_panel(
+                "每日整理结果",
+                "暂无夜间整理结果",
+                "",
+                {},
+                {"window_count": 0},
+                [],
+                summary_views=[],
+                selected_date="2026-05-06",
+                selectable_dates=["2026-05-06"],
+                backfill={
+                    "missing_dates": ["2026-05-06"],
+                    "range_command": "openrelix backfill --dates '2026-05-06' --stage final --learn-window-days 7",
+                    "commands_by_date": {
+                        "2026-05-06": "openrelix backfill --from 2026-05-06 --to 2026-05-06 --stage final --learn-window-days 7",
+                    },
+                },
+            )
+
+        self.assertIn("今日仍在进行中", html)
+        self.assertIn("轻量整理", html)
+        self.assertIn("openrelix review --stage preliminary --learn-window-days 0", html)
+        self.assertNotIn("openrelix backfill --from 2026-05-06 --to 2026-05-06 --stage final", html)
+
     def test_nightly_summary_panel_shows_final_backfill_command_for_preliminary_date(self):
         summary_view = build_overview.build_daily_summary_view(
             {
