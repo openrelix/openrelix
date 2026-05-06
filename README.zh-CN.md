@@ -27,6 +27,7 @@ GitHub 项目页：[openrelix/openrelix](https://github.com/openrelix/openrelix)
 ## 文档
 
 - [技术方案](docs/technical-solution.md)：架构、数据流、模块职责、运行时状态和发布边界。
+- [开发者指南](docs/developer-guide.md)：面向贡献者的 0.2.10 代码结构、改动边界和验证流程。
 - [学习指南](docs/learning-guide.md)：给使用者、贡献者和维护者的阅读与验证路径。
 - [开源安装说明与项目说明](docs/open-source-install-and-project-overview.md)：当前 macOS 预览版的中文安装指南和项目解释。
 - [产品展示页](docs/product-showcase.html)：可部署到 GitHub Pages 的中英双语展示页和脱敏面板预览。
