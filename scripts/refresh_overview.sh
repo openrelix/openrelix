@@ -136,6 +136,21 @@ rebuild_sqlite_index_if_available() {
   fi
 }
 
+write_asset_stats_snapshot_if_available() {
+  local disable_asset_stats="${OPENRELIX_DISABLE_ASSET_STATS_REFRESH:-0}"
+  case "${disable_asset_stats:l}" in
+    1|true|yes|on)
+      return 0
+      ;;
+  esac
+  if [[ ! -f "$REPO_ROOT/scripts/openrelix.py" ]]; then
+    return 0
+  fi
+  if ! "$PYTHON_BIN" "$REPO_ROOT/scripts/openrelix.py" asset-stats --date "$target_date" --no-refresh >/dev/null; then
+    echo "refresh_overview: asset stats snapshot failed; using previous snapshot." >&2
+  fi
+}
+
 case "${learn_memory:l}" in
   1|true|yes|on)
     extra_args=()
@@ -155,5 +170,6 @@ esac
 "$PYTHON_BIN" "$REPO_ROOT/scripts/collect_codex_activity.py" --date "$target_date" --stage manual
 sync_host_memory_summary_state
 build_codex_native_display_cache_if_enabled
+write_asset_stats_snapshot_if_available
 "$PYTHON_BIN" "$REPO_ROOT/scripts/build_overview.py"
 rebuild_sqlite_index_if_available

@@ -97,6 +97,21 @@ rebuild_sqlite_index_if_available() {
   fi
 }
 
+write_asset_stats_snapshot_if_available() {
+  local disable_asset_stats="${OPENRELIX_DISABLE_ASSET_STATS_REFRESH:-0}"
+  case "${disable_asset_stats:l}" in
+    1|true|yes|on)
+      return 0
+      ;;
+  esac
+  if [[ ! -f "$REPO_ROOT/scripts/openrelix.py" ]]; then
+    return 0
+  fi
+  if ! "$PYTHON_BIN" "$REPO_ROOT/scripts/openrelix.py" asset-stats --date "$target_date" --no-refresh >/dev/null; then
+    echo "nightly_pipeline: asset stats snapshot failed; using previous snapshot." >&2
+  fi
+}
+
 exit_if_latest_model_run_failed() {
   local failure_message=""
   set +e
@@ -247,6 +262,7 @@ if [[ "$defer_global_refresh" != "1" ]]; then
   rebuild_sqlite_index_if_available
   sync_host_memory_summary_state
   build_codex_native_display_cache_if_enabled
+  write_asset_stats_snapshot_if_available
   "$PYTHON_BIN" "$REPO_ROOT/scripts/build_overview.py"
 fi
 exit_if_latest_model_run_failed

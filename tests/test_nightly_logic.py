@@ -6578,6 +6578,73 @@ Keep my own note.
             self.assertEqual(disabled_result.returncode, 0, disabled_result.stderr)
             self.assertFalse(marker_path.exists())
 
+    def test_refresh_overview_writes_asset_stats_before_panel_rebuild(self):
+        with TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            scripts_dir = root / "scripts"
+            scripts_dir.mkdir(parents=True)
+            refresh_script = scripts_dir / "refresh_overview.sh"
+            order_log = root / "order.log"
+            refresh_script.write_text(
+                (ROOT / "scripts" / "refresh_overview.sh").read_text(encoding="utf-8"),
+                encoding="utf-8",
+            )
+            (scripts_dir / "asset_runtime.py").write_text(
+                "\n".join(
+                    [
+                        "def get_runtime_language(*args, **kwargs):",
+                        "    return 'en'",
+                        "def get_memory_mode(*args, **kwargs):",
+                        "    return 'local-only'",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            for script_name, marker in (
+                ("collect_codex_activity.py", "collect"),
+                ("sync_host_memory_summary.py", "sync"),
+                ("build_overview.py", "build_overview"),
+            ):
+                (scripts_dir / script_name).write_text(
+                    "\n".join(
+                        [
+                            "import os, sys",
+                            "with open(os.environ['OPENRELIX_TEST_ORDER_LOG'], 'a', encoding='utf-8') as fh:",
+                            "    fh.write('{} ' + ' '.join(sys.argv[1:]) + '\\n')".format(marker),
+                        ]
+                    ),
+                    encoding="utf-8",
+                )
+            (scripts_dir / "openrelix.py").write_text(
+                "\n".join(
+                    [
+                        "import os, sys",
+                        "with open(os.environ['OPENRELIX_TEST_ORDER_LOG'], 'a', encoding='utf-8') as fh:",
+                        "    fh.write('openrelix ' + ' '.join(sys.argv[1:]) + '\\n')",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            env = dict(os.environ)
+            env["OPENRELIX_TEST_ORDER_LOG"] = str(order_log)
+            env["OPENRELIX_REFRESH_DATE"] = "2026-05-06"
+
+            result = subprocess.run(
+                ["/bin/zsh", str(refresh_script)],
+                cwd=str(root),
+                env=env,
+                capture_output=True,
+                text=True,
+            )
+            lines = order_log.read_text(encoding="utf-8").splitlines()
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("openrelix asset-stats --date 2026-05-06 --no-refresh", lines)
+        self.assertLess(
+            lines.index("openrelix asset-stats --date 2026-05-06 --no-refresh"),
+            lines.index("build_overview "),
+        )
+
     def test_nightly_pipeline_returns_nonzero_when_latest_model_run_failed(self):
         with TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -6752,6 +6819,99 @@ Keep my own note.
         self.assertNotIn("--defer-global-refresh", nightly_args)
         self.assertNotIn("--skip-learning-collect", nightly_args)
         self.assertFalse(overview_exists)
+
+    def test_nightly_pipeline_writes_asset_stats_before_panel_rebuild(self):
+        with TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            scripts_dir = root / "scripts"
+            scripts_dir.mkdir(parents=True)
+            consolidated_daily_dir = root / "consolidated" / "daily"
+            order_log = root / "order.log"
+            pipeline_script = scripts_dir / "nightly_pipeline.sh"
+            pipeline_script.write_text(
+                (ROOT / "scripts" / "nightly_pipeline.sh").read_text(encoding="utf-8"),
+                encoding="utf-8",
+            )
+            (scripts_dir / "asset_runtime.py").write_text(
+                "\n".join(
+                    [
+                        "import os",
+                        "from pathlib import Path",
+                        "class RuntimePaths:",
+                        "    consolidated_daily_dir = Path(os.environ['OPENRELIX_TEST_CONSOLIDATED_DAILY_DIR'])",
+                        "def get_runtime_paths():",
+                        "    return RuntimePaths()",
+                        "def get_memory_mode(*args, **kwargs):",
+                        "    return 'local-only'",
+                        "def get_runtime_language(*args, **kwargs):",
+                        "    return 'en'",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            for script_name, marker in (
+                ("collect_codex_activity.py", "collect"),
+                ("sync_host_memory_summary.py", "sync"),
+                ("build_overview.py", "build_overview"),
+            ):
+                (scripts_dir / script_name).write_text(
+                    "\n".join(
+                        [
+                            "import os, sys",
+                            "with open(os.environ['OPENRELIX_TEST_ORDER_LOG'], 'a', encoding='utf-8') as fh:",
+                            "    fh.write('{} ' + ' '.join(sys.argv[1:]) + '\\n')".format(marker),
+                        ]
+                    ),
+                    encoding="utf-8",
+                )
+            (scripts_dir / "nightly_consolidate.py").write_text(
+                "\n".join(
+                    [
+                        "import argparse, json, os, sys",
+                        "from pathlib import Path",
+                        "with open(os.environ['OPENRELIX_TEST_ORDER_LOG'], 'a', encoding='utf-8') as fh:",
+                        "    fh.write('nightly ' + ' '.join(sys.argv[1:]) + '\\n')",
+                        "parser = argparse.ArgumentParser()",
+                        "parser.add_argument('--date')",
+                        "parser.add_argument('--stage')",
+                        "parser.add_argument('--skip-if-unchanged', action='store_true')",
+                        "args = parser.parse_args()",
+                        "summary_dir = Path(os.environ['OPENRELIX_TEST_CONSOLIDATED_DAILY_DIR']) / args.date",
+                        "summary_dir.mkdir(parents=True, exist_ok=True)",
+                        "(summary_dir / 'summary.json').write_text(json.dumps({'date': args.date}), encoding='utf-8')",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            (scripts_dir / "openrelix.py").write_text(
+                "\n".join(
+                    [
+                        "import os, sys",
+                        "with open(os.environ['OPENRELIX_TEST_ORDER_LOG'], 'a', encoding='utf-8') as fh:",
+                        "    fh.write('openrelix ' + ' '.join(sys.argv[1:]) + '\\n')",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            env = dict(os.environ)
+            env["OPENRELIX_TEST_CONSOLIDATED_DAILY_DIR"] = str(consolidated_daily_dir)
+            env["OPENRELIX_TEST_ORDER_LOG"] = str(order_log)
+
+            result = subprocess.run(
+                ["/bin/zsh", str(pipeline_script), "2026-05-06", "preliminary"],
+                cwd=str(root),
+                env=env,
+                capture_output=True,
+                text=True,
+            )
+            lines = order_log.read_text(encoding="utf-8").splitlines()
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("openrelix asset-stats --date 2026-05-06 --no-refresh", lines)
+        self.assertLess(
+            lines.index("openrelix asset-stats --date 2026-05-06 --no-refresh"),
+            lines.index("build_overview "),
+        )
 
     def test_nightly_pipeline_defaults_to_skip_and_consumes_no_skip_flag(self):
         with TemporaryDirectory() as tmpdir:
