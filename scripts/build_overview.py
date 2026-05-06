@@ -475,7 +475,7 @@ PANEL_I18N_EN = {
     "条偏好": "preferences",
     "条 tip": "tips",
     "条历史任务索引": "historical task index entries",
-    "资产总数": "Total Assets",
+    "手动登记资产": "Registered Assets",
     "已发现资产": "Discovered Assets",
     "已发现的 Codex / Claude 资产": "Discovered Codex / Claude Assets",
     "单次资产统计": "Single Asset Stats",
@@ -483,11 +483,11 @@ PANEL_I18N_EN = {
     "正在打开": "Opening",
     "已发送": "Sent",
     "打开失败": "Open failed",
-    "活跃资产": "Active Assets",
+    "手动活跃资产": "Active Registered Assets",
     "任务复盘": "Task Reviews",
     "复用记录": "Usage Events",
     "节省时长": "Time Saved",
-    "仓库场景资产": "Repo-scoped Assets",
+    "手动仓库资产": "Repo-scoped Registered Assets",
     "今日 Token": "Today Token",
     "今日": "Today",
     "近 7 日 Token": "7-day Token",
@@ -676,7 +676,6 @@ PANEL_I18N_EN = {
     "任务": "Task",
     "节省分钟": "Minutes Saved",
     "价值分": "Value Score",
-    "估算节省": "Estimated Saved",
     "证据": "Evidence",
     "问题": "Questions",
     "结论": "Conclusions",
@@ -8204,25 +8203,33 @@ def build_data(assets, usage_events, reviews, language=None):
     metrics = [
         {
             "key": "total_assets",
-            "label": localized("资产总数", "Total Assets", language),
+            "label": localized("手动登记资产", "Registered Assets", language),
             "value": len(assets),
-            "caption": localized("资产注册表中的稳定条目", "Stable entries in the asset registry", language),
+            "caption": localized(
+                "assets.jsonl 中的稳定条目，不含本机扫描发现",
+                "Stable assets in assets.jsonl, excluding local discovery",
+                language,
+            ),
         },
         {
             "key": "discovered_assets",
             "label": localized("已发现资产", "Discovered Assets", language),
             "value": len(discovered_assets),
             "caption": localized(
-                "已扫描的 Codex / Claude 资产合计",
-                "Total Codex / Claude assets scanned on this machine",
+                "本机扫描 + 近 30 天真实读过的技能",
+                "Local discovery plus skills read in the last 30 days",
                 language,
             ),
         },
         {
             "key": "active_assets",
-            "label": localized("活跃资产", "Active Assets", language),
+            "label": localized("手动活跃资产", "Active Registered Assets", language),
             "value": summary["active_assets"],
-            "caption": localized("当前仍在使用的条目", "Entries still in active use", language),
+            "caption": localized(
+                "assets.jsonl 中 status=active 的条目",
+                "assets.jsonl entries with status=active",
+                language,
+            ),
         },
         {
             "key": "task_reviews",
@@ -8231,31 +8238,14 @@ def build_data(assets, usage_events, reviews, language=None):
             "caption": localized("本地保存的脱敏复盘", "Sanitized local reviews", language),
         },
         {
-            "key": "tracked_usage_events",
-            "label": localized("复用记录", "Usage Events", language),
-            "value": len(usage_events),
-            "caption": localized("被记录下来的复用时刻", "Recorded reuse events", language),
-        },
-        {
-            "key": "tracked_minutes_saved",
-            "label": localized("估算节省", "Estimated Saved", language),
-            "value": minutes_saved_total,
-            "caption": localized(
-                "按复用记录和近期工作命中自动估算的分钟数",
-                "Minutes estimated from reuse events and recent work matches",
-                language,
-            ),
-            "meta": localized(
-                "原始记录分钟数 {}".format(recorded_minutes_saved_total),
-                "Recorded minutes {}".format(recorded_minutes_saved_total),
-                language,
-            ),
-        },
-        {
             "key": "repo_scoped_assets",
-            "label": localized("仓库场景资产", "Repo-scoped Assets", language),
+            "label": localized("手动仓库资产", "Repo-scoped Registered Assets", language),
             "value": summary["scope_counter"].get("repo", 0),
-            "caption": localized("绑定某个仓库或场景的条目", "Entries bound to a repo or scenario", language),
+            "caption": localized(
+                "assets.jsonl 中 scope=repo 的条目",
+                "assets.jsonl entries with scope=repo",
+                language,
+            ),
         },
         {
             "key": "today_token",
@@ -8535,8 +8525,8 @@ def build_data(assets, usage_events, reviews, language=None):
                 language,
             ),
             localized(
-                "优先关注复用证据和估算节省，这两个指标最能体现沉淀是否有效。",
-                "Prioritize reuse evidence and estimated saved time; they best show whether the system is working.",
+                "先看「已发现资产」和「高频技能热度」：前者说明本机可用资产面，后者说明模型最近真实读了哪些技能。",
+                "Start with Discovered Assets and Skill Hotness: one shows available local assets, the other shows which skills the model actually read recently.",
                 language,
             ),
             localized(
@@ -8574,11 +8564,11 @@ def build_markdown(data):
             "",
             "## Key Metrics",
             "",
-            "- Total assets: `{}`".format(data["summary"]["total_assets"]),
-            "- Active assets: `{}`".format(data["summary"]["active_assets"]),
+            "- Registered assets: `{}`".format(data["summary"]["total_assets"]),
+            "- Discovered assets: `{}`".format(data["summary"].get("discovered_assets", 0)),
+            "- Active registered assets: `{}`".format(data["summary"]["active_assets"]),
+            "- Repo-scoped registered assets: `{}`".format(data["summary"].get("repo_scoped_assets", 0)),
             "- Task reviews: `{}`".format(data["summary"]["task_reviews"]),
-            "- Usage events: `{}`".format(data["summary"]["tracked_usage_events"]),
-            "- Estimated saved time: `{}`".format(data["summary"]["tracked_minutes_saved"]),
             "- Daily windows: `{}`".format(data["summary"]["daily_window_count"]),
             "- Today Token: `{}`".format(token_usage["today_total_tokens_display"]),
             "- 7-day Token: `{}`".format(token_usage["seven_day_total_tokens_display"]),
@@ -8763,11 +8753,11 @@ def build_markdown(data):
         "",
         "## 核心指标",
         "",
-        "- 资产总数：`{}`".format(data["summary"]["total_assets"]),
-        "- 活跃资产：`{}`".format(data["summary"]["active_assets"]),
+        "- 手动登记资产：`{}`".format(data["summary"]["total_assets"]),
+        "- 已发现资产：`{}`".format(data["summary"].get("discovered_assets", 0)),
+        "- 手动活跃资产：`{}`".format(data["summary"]["active_assets"]),
+        "- 手动仓库资产：`{}`".format(data["summary"].get("repo_scoped_assets", 0)),
         "- 任务复盘：`{}`".format(data["summary"]["task_reviews"]),
-        "- 复用记录：`{}`".format(data["summary"]["tracked_usage_events"]),
-        "- 估算节省：`{}`".format(data["summary"]["tracked_minutes_saved"]),
         "- 每日窗口数：`{}`".format(data["summary"]["daily_window_count"]),
         "- 今日 Token：`{}`".format(token_usage["today_total_tokens_display"]),
         "- 近 7 日 Token：`{}`".format(token_usage["seven_day_total_tokens_display"]),
@@ -13096,7 +13086,7 @@ def build_metric_help_sections(metric):
             {
                 "label": "统计口径",
                 "body": {
-                    "zh": "仅来自手动登记的资产账本（assets.jsonl），不含本机扫描出的现有资产；后者请看「已发现资产」",
+                    "zh": "仅来自手动登记的资产账本（assets.jsonl），不含本机扫描出的现有资产；后者请看「已发现资产」。",
                     "en": "Counts only the manually registered asset ledger (assets.jsonl). It excludes existing assets scanned from this machine; see Discovered Assets for those.",
                 },
             },
@@ -13128,11 +13118,11 @@ def build_metric_help_sections(metric):
         "active_assets": [
             {
                 "label": "统计什么",
-                "body": "状态为 active 的资产数量。",
+                "body": "手动资产账本中 status = active 的条目数量。",
             },
             {
-                "label": "怎么看",
-                "body": "活跃表示当前仍建议继续复用，不代表当天一定刚被使用。",
+                "label": "和已发现资产的关系",
+                "body": "它是 assets.jsonl 的子集；自动扫描发现的技能不会自动进入这里。",
             },
         ],
         "task_reviews": [
@@ -13145,34 +13135,14 @@ def build_metric_help_sections(metric):
                 "body": "state root 下的 reviews/ 目录；卡片里的“复盘文件”可以直接打开对应 Markdown。",
             },
         ],
-        "tracked_usage_events": [
-            {
-                "label": "统计什么",
-                "body": "已经被记录下来的资产复用事件总数。",
-            },
-            {
-                "label": "数据来源",
-                "body": "state root 下的 registry/usage_events.jsonl。",
-            },
-        ],
-        "tracked_minutes_saved": [
-            {
-                "label": "统计什么",
-                "body": "按显式复用记录、近期窗口命中和资产类型基准自动估算的节省分钟数。",
-            },
-            {
-                "label": "怎么看",
-                "body": "这不是精确测速；它用于排序和趋势观察，原始 usage event 里的 minutes_saved 只作为强证据之一。",
-            },
-        ],
         "repo_scoped_assets": [
             {
                 "label": "统计什么",
-                "body": "scope = repo 的资产数量。",
+                "body": "手动资产账本中 scope = repo 的条目数量。",
             },
             {
-                "label": "含义",
-                "body": "这类资产通常绑定某个仓库、模块或固定工作场景。",
+                "label": "和已发现资产的关系",
+                "body": "它是 assets.jsonl 的子集；本机发现到的仓库技能不会自动算作手动仓库资产。",
             },
         ],
         "today_token": [

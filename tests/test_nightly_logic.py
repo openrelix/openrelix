@@ -3450,8 +3450,17 @@ Keep my own note.
             for source in data["codex_native_memory"][0].get("source_files", [])
         ]
         self.assertIn("missing", source_statuses)
+        metric_keys = [metric.get("key") for metric in data["metrics"]]
+        metric_labels = [metric.get("label") for metric in data["metrics"]]
+        self.assertNotIn("tracked_usage_events", metric_keys)
+        self.assertNotIn("tracked_minutes_saved", metric_keys)
+        self.assertIn("手动登记资产", metric_labels)
+        self.assertIn("手动活跃资产", metric_labels)
+        self.assertIn("手动仓库资产", metric_labels)
         self.assertIn("MEMORY.md 未检测到", data["codex_native_memory_comparison"]["note"])
         html = build_overview.build_html(data)
+        self.assertNotIn('<div class="metric-label" data-role="label">复用记录</div>', html)
+        self.assertNotIn('<div class="metric-label" data-role="label">估算节省</div>', html)
         self.assertIn("MEMORY.md 未检测到", html)
         self.assertIn('<span class="memory-chip is-muted"', html)
         self.assertNotIn(">MEMORY.md 未检测到</a>", html)
