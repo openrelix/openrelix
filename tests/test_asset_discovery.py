@@ -304,6 +304,44 @@ class AssetDiscoveryTests(unittest.TestCase):
         _assets, frequency = self.compute(installed)
 
         self.assertEqual(frequency["codex_skill:foo"]["windows_30d"], 1)
+        self.assertEqual(frequency["codex_skill:foo"]["read_events_30d"], 2)
+
+    def test_codex_parallel_tool_use_counts_nested_skill_reads(self):
+        manifest = self.write_skill(self.paths.codex_home / "skills", "foo")
+        installed = asset_discovery.discover_installed_assets(self.paths)
+        self.write_codex_rollout(
+            self.today,
+            "parallel",
+            [],
+            extra_lines=[
+                {
+                    "type": "response_item",
+                    "payload": {
+                        "type": "function_call",
+                        "name": "multi_tool_use.parallel",
+                        "arguments": json.dumps(
+                            {
+                                "tool_uses": [
+                                    {
+                                        "recipient_name": "functions.exec_command",
+                                        "parameters": {"cmd": "cat {}".format(manifest)},
+                                    },
+                                    {
+                                        "recipient_name": "functions.exec_command",
+                                        "parameters": {"cmd": "sed -n '1p' {}".format(manifest)},
+                                    },
+                                ]
+                            }
+                        ),
+                    },
+                }
+            ],
+        )
+
+        _assets, frequency = self.compute(installed)
+
+        self.assertEqual(frequency["codex_skill:foo"]["windows_30d"], 1)
+        self.assertEqual(frequency["codex_skill:foo"]["read_events_30d"], 2)
 
     def test_codex_rollout_counts_multiple_sessions_on_same_date(self):
         manifest = self.write_skill(self.paths.codex_home / "skills", "foo")
@@ -339,11 +377,12 @@ class AssetDiscoveryTests(unittest.TestCase):
     def test_claude_tool_use_activation_counts_read_manifest(self):
         manifest = self.write_skill(self.home / ".claude" / "skills", "bar")
         installed = asset_discovery.discover_installed_assets(self.paths)
-        self.write_claude_session("c1", "2026-05-05T12:00:00+00:00", [manifest], mtime_day=self.today)
+        self.write_claude_session("c1", "2026-05-05T12:00:00+00:00", [manifest, manifest], mtime_day=self.today)
 
         _assets, frequency = self.compute(installed)
 
         self.assertEqual(frequency["claude_skill:bar"]["windows_30d"], 1)
+        self.assertEqual(frequency["claude_skill:bar"]["read_events_30d"], 2)
 
     def test_claude_session_mtime_pre_prunes_old_file(self):
         manifest = self.write_skill(self.home / ".claude" / "skills", "bar")
@@ -614,17 +653,18 @@ class AssetDiscoveryTests(unittest.TestCase):
         for removed in ("适用层级", "项目 / 上下文分布", "最近更新的资产"):
             self.assertEqual(html.count(removed), 0)
 
-    def test_top_skill_rows_sort_by_30d_desc_then_name(self):
+    def test_top_skill_rows_sort_by_30d_reads_then_sessions_then_name(self):
         rows = [
-            {"type": "skill", "identifier": "beta", "name": "beta", "description": "", "windows_30d": 4},
-            {"type": "skill", "identifier": "alpha", "name": "alpha", "description": "", "windows_30d": 8},
-            {"type": "skill", "identifier": "gamma", "name": "gamma", "description": "", "windows_30d": 4},
+            {"type": "skill", "identifier": "beta", "name": "beta", "description": "", "windows_30d": 4, "read_events_30d": 9},
+            {"type": "skill", "identifier": "alpha", "name": "alpha", "description": "", "windows_30d": 8, "read_events_30d": 8},
+            {"type": "skill", "identifier": "gamma", "name": "gamma", "description": "", "windows_30d": 4, "read_events_30d": 9},
         ]
 
         html = build_overview.make_top_skill_rows(asset_discovery.top_skill_rows(rows))
         first_identifier = re.search(r'<tr data-asset-identifier="([^"]+)"', html).group(1)
 
-        self.assertEqual(first_identifier, "alpha")
+        self.assertEqual(first_identifier, "beta")
+        self.assertIn("<td>9</td>", html)
 
     def test_single_asset_stats_snapshot_anchors_frequency_to_requested_date(self):
         manifest = self.write_skill(self.paths.codex_home / "skills", "foo", name="Foo")
@@ -645,11 +685,33 @@ class AssetDiscoveryTests(unittest.TestCase):
         self.assertEqual(snapshot["summary"]["active_skills_30d"], 1)
         self.assertEqual(snapshot["summary"]["skill_sessions_7d"], 1)
         self.assertEqual(snapshot["summary"]["skill_sessions_30d"], 2)
+        self.assertEqual(snapshot["summary"]["skill_reads_7d"], 1)
+        self.assertEqual(snapshot["summary"]["skill_reads_30d"], 2)
         self.assertEqual(snapshot["top_skills"][0]["identifier"], "foo")
         self.assertEqual(snapshot["top_skills"][0]["windows_30d"], 2)
+        self.assertEqual(snapshot["top_skills"][0]["read_events_30d"], 2)
         self.assertEqual(
             {row["label"]: row["value"] for row in snapshot["monthly_activity"]},
             {"2026-04": 1, "2026-05": 1},
+        )
+
+    def test_single_asset_stats_monthly_one_still_scans_full_30d_frequency(self):
+        manifest = self.write_skill(self.paths.codex_home / "skills", "foo", name="Foo")
+        self.write_codex_rollout(self.today, "today", ["cat {}".format(manifest)])
+        self.write_codex_rollout(self.today - timedelta(days=8), "old", ["cat {}".format(manifest)])
+
+        snapshot = asset_discovery.build_asset_stats_snapshot(
+            self.paths,
+            self.today,
+            generated_at="2026-05-05T12:00:00+08:00",
+            monthly_months=1,
+        )
+
+        self.assertEqual(snapshot["summary"]["skill_sessions_30d"], 2)
+        self.assertEqual(snapshot["summary"]["skill_reads_30d"], 2)
+        self.assertEqual(
+            {row["label"]: row["value"] for row in snapshot["monthly_activity"]},
+            {"2026-05": 1},
         )
 
     def test_asset_stats_snapshot_panel_renders_single_backfill_command(self):
@@ -660,10 +722,11 @@ class AssetDiscoveryTests(unittest.TestCase):
             "summary": {
                 "renderable_assets": 3,
                 "active_skills_30d": 2,
+                "skill_reads_30d": 11,
                 "skill_sessions_30d": 7,
             },
             "top_skills": [
-                {"identifier": "alpha", "name": "Alpha", "windows_30d": 5},
+                {"identifier": "alpha", "name": "Alpha", "read_events_30d": 9, "windows_30d": 5},
             ],
         }
 
@@ -672,6 +735,8 @@ class AssetDiscoveryTests(unittest.TestCase):
         self.assertIn('id="asset-stats-snapshot-section"', html)
         self.assertIn("openrelix asset-stats --date 2026-05-05", html)
         self.assertIn("Alpha", html)
+        self.assertIn("11", html)
+        self.assertIn("9", html)
         self.assertIn("Snapshot Top Skills", html)
 
     def test_path_classifier_follows_canonical_roots(self):

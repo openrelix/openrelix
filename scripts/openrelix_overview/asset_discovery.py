@@ -97,7 +97,13 @@ def _high_level_type(kind):
 
 
 def zero_frequency():
-    return {"windows_7d": 0, "windows_30d": 0, "last_seen": None}
+    return {
+        "windows_7d": 0,
+        "windows_30d": 0,
+        "read_events_7d": 0,
+        "read_events_30d": 0,
+        "last_seen": None,
+    }
 
 
 def _kind_index(kind):
@@ -627,6 +633,19 @@ def _hit_key_and_row(raw_path, paths):
     }
 
 
+def _merge_session_hit(hits, hit):
+    if not hit:
+        return
+    key = hit.get("asset_key")
+    if not key:
+        return
+    if key not in hits:
+        row = dict(hit)
+        row["read_events"] = 0
+        hits[key] = row
+    hits[key]["read_events"] = int(hits[key].get("read_events") or 0) + int(hit.get("read_events") or 1)
+
+
 def _scan_codex_session(session_path, paths):
     hits = OrderedDict()
     try:
@@ -652,8 +671,7 @@ def _scan_codex_session(session_path, paths):
         except UnicodeDecodeError:
             continue
         for hit in _hits_from_codex_json_line(line, paths):
-            if hit and hit["asset_key"] not in hits:
-                hits[hit["asset_key"]] = hit
+            _merge_session_hit(hits, hit)
     return hits
 
 
@@ -711,8 +729,7 @@ def _scan_claude_session(session_path, paths, mtime_date):
             file_path = input_payload.get("file_path") if isinstance(input_payload, dict) else ""
             for raw_path, _identifier in _skill_manifest_hits(file_path):
                 hit = _hit_key_and_row(raw_path, paths)
-                if hit and hit["asset_key"] not in hits:
-                    hits[hit["asset_key"]] = hit
+                _merge_session_hit(hits, hit)
     return (session_date or mtime_date, hits)
 
 
@@ -763,17 +780,27 @@ def _hits_from_codex_json_line(line, paths):
     payload_obj = obj.get("payload")
     if not isinstance(payload_obj, dict):
         return []
-    if payload_obj.get("type") != "function_call" or payload_obj.get("name") not in _EXEC_COMMAND_NAMES:
+    if payload_obj.get("type") != "function_call":
         return []
     args = _parse_arguments(payload_obj.get("arguments"))
-    cmd = args.get("cmd", "")
-    if not isinstance(cmd, str) or "SKILL.md" not in cmd:
-        return []
+    command_texts = []
+    if payload_obj.get("name") in _EXEC_COMMAND_NAMES:
+        command_texts.append(args.get("cmd", ""))
+    elif payload_obj.get("name") == "multi_tool_use.parallel":
+        for tool_use in args.get("tool_uses") or []:
+            if not isinstance(tool_use, dict) or tool_use.get("recipient_name") not in _EXEC_COMMAND_NAMES:
+                continue
+            parameters = tool_use.get("parameters")
+            if isinstance(parameters, dict):
+                command_texts.append(parameters.get("cmd", ""))
     hits = []
-    for raw_path, _identifier in _skill_manifest_hits(cmd):
-        hit = _hit_key_and_row(raw_path, paths)
-        if hit:
-            hits.append(hit)
+    for cmd in command_texts:
+        if not isinstance(cmd, str) or "SKILL.md" not in cmd:
+            continue
+        for raw_path, _identifier in _skill_manifest_hits(cmd):
+            hit = _hit_key_and_row(raw_path, paths)
+            if hit:
+                hits.append(hit)
     return hits
 
 
@@ -827,8 +854,7 @@ def _scan_codex_sessions_with_rg(paths, lookback_start, anchor):
             continue
         session_hits = sessions.setdefault(session_path, (session_date, OrderedDict()))[1]
         for hit in _hits_from_codex_json_line(json_line, paths):
-            if hit["asset_key"] not in session_hits:
-                session_hits[hit["asset_key"]] = hit
+            _merge_session_hit(session_hits, hit)
     return list(sessions.values())
 
 
@@ -876,9 +902,12 @@ def _record_activation(date_value, hits, assets_by_key, frequency_by_key, frontm
                 continue
             assets_by_key[key] = row
         stats = frequency_by_key.setdefault(key, zero_frequency())
+        read_events = max(int(hit.get("read_events") or 0), 1)
         stats["windows_30d"] += 1
+        stats["read_events_30d"] = int(stats.get("read_events_30d") or 0) + read_events
         if date_value >= seven_day_start:
             stats["windows_7d"] += 1
+            stats["read_events_7d"] = int(stats.get("read_events_7d") or 0) + read_events
         if not stats.get("last_seen") or date_text > stats["last_seen"]:
             stats["last_seen"] = date_text
 
@@ -913,18 +942,19 @@ def _record_monthly_activity(date_value, hits, monthly_activity):
 def compute_activation_snapshot(paths, installed, today, monthly_months=6):
     """Return discovered assets, 30-day frequency, and optional monthly activity.
 
-    Frequency semantics remain the same as compute_activations_and_extend:
-    windows_7d/windows_30d count deduped sessions within the last 7/30 days.
-    monthly_activity is a separate six-month view of distinct active skill
-    identifiers, collapsed across skill sub-kinds.
+    Frequency exposes both deduped sessions and raw SKILL.md read events:
+    windows_7d/windows_30d count sessions, while read_events_7d/read_events_30d
+    count tool calls that read skill manifests. monthly_activity is a separate
+    month view of distinct active skill identifiers, collapsed across sub-kinds.
     """
     anchor = _coerce_date(today)
     month_labels = _recent_month_labels(anchor, monthly_months)
     monthly_activity = OrderedDict((label, set()) for label in month_labels)
+    frequency_start = anchor - timedelta(days=29)
     if month_labels:
-        lookback_start = _month_start(anchor, max(int(monthly_months or 0) - 1, 0))
+        lookback_start = min(_month_start(anchor, max(int(monthly_months or 0) - 1, 0)), frequency_start)
     else:
-        lookback_start = anchor - timedelta(days=29)
+        lookback_start = frequency_start
 
     assets_by_key = OrderedDict()
     frequency_by_key = {}
@@ -975,8 +1005,9 @@ def compute_activation_snapshot(paths, installed, today, monthly_months=6):
 def compute_activations_and_extend(paths, installed, today):
     """Return discovered assets plus real SKILL.md activation frequencies.
 
-    The returned frequency keys are named windows_7d/windows_30d for backward
-    compatibility with the panel, but each count is a deduped session count.
+    The returned frequency keeps windows_7d/windows_30d for backward
+    compatibility; those values are deduped session counts. read_events_7d and
+    read_events_30d hold the raw manifest-read count.
     """
     snapshot = compute_activation_snapshot(paths, installed, today, monthly_months=0)
     return (snapshot["assets"], snapshot["frequency_by_key"])
@@ -996,9 +1027,13 @@ def filter_renderable_assets(assets, frequency_by_key):
 
 def _stats_for_asset(asset, frequency_by_key):
     stats = dict(frequency_by_key.get(asset.get("asset_key", ""), {}) or {})
+    read_events_7d = stats.get("read_events_7d")
+    read_events_30d = stats.get("read_events_30d")
     return {
         "windows_7d": int(stats.get("windows_7d") or 0),
         "windows_30d": int(stats.get("windows_30d") or 0),
+        "read_events_7d": int(read_events_7d if read_events_7d is not None else stats.get("windows_7d") or 0),
+        "read_events_30d": int(read_events_30d if read_events_30d is not None else stats.get("windows_30d") or 0),
         "last_seen": stats.get("last_seen") or "",
     }
 
@@ -1030,8 +1065,10 @@ def _skill_source_row(asset, frequency_by_key):
 
 def _source_sort_key(source):
     return (
+        int(source.get("read_events_30d") or 0),
         int(source.get("windows_30d") or 0),
         str(source.get("last_seen") or ""),
+        int(source.get("read_events_7d") or 0),
         int(source.get("windows_7d") or 0),
         -_kind_index(source.get("kind", "")),
     )
@@ -1096,6 +1133,8 @@ def aggregate_renderable_assets(assets, frequency_by_key):
                 "description": asset.get("description", ""),
                 "windows_7d": stats["windows_7d"],
                 "windows_30d": stats["windows_30d"],
+                "read_events_7d": stats["read_events_7d"],
+                "read_events_30d": stats["read_events_30d"],
                 "last_seen": stats["last_seen"],
                 "click_target": "",
                 "sources": [],
@@ -1121,6 +1160,8 @@ def aggregate_renderable_assets(assets, frequency_by_key):
                 "description": description_source.get("description", ""),
                 "windows_7d": sum(int(source.get("windows_7d") or 0) for source in sources),
                 "windows_30d": sum(int(source.get("windows_30d") or 0) for source in sources),
+                "read_events_7d": sum(int(source.get("read_events_7d") or 0) for source in sources),
+                "read_events_30d": sum(int(source.get("read_events_30d") or 0) for source in sources),
                 "last_seen": _latest_seen(sources),
                 "click_target": openable.get("manifest_abspath", ""),
                 "sources": sources,
@@ -1166,6 +1207,8 @@ def manual_asset_render_row(asset):
         "description": description,
         "windows_7d": 0,
         "windows_30d": 0,
+        "read_events_7d": 0,
+        "read_events_30d": 0,
         "last_seen": "",
         "click_target": "",
         "sources": [],
@@ -1198,6 +1241,7 @@ def top_skill_rows(render_rows, limit=10):
     return sorted(
         rows,
         key=lambda row: (
+            -int(row.get("read_events_30d") or row.get("windows_30d") or 0),
             -int(row.get("windows_30d") or 0),
             str(row.get("identifier") or row.get("name") or "").lower(),
         ),
@@ -1240,6 +1284,8 @@ def build_asset_stats_snapshot(paths, target_date, generated_at=None, monthly_mo
             "active_skills_30d": sum(1 for row in skill_rows if int(row.get("windows_30d") or 0) > 0),
             "skill_sessions_7d": sum(int(row.get("windows_7d") or 0) for row in skill_rows),
             "skill_sessions_30d": sum(int(row.get("windows_30d") or 0) for row in skill_rows),
+            "skill_reads_7d": sum(int(row.get("read_events_7d") or 0) for row in skill_rows),
+            "skill_reads_30d": sum(int(row.get("read_events_30d") or 0) for row in skill_rows),
         },
         "type_counts": [
             {

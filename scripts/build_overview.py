@@ -8723,21 +8723,22 @@ def build_markdown(data):
                 "",
                 "## Top 10 Skills (last 30 days)",
                 "",
-                "| Name | Description | 30d |",
-                "| --- | --- | --- |",
+                "| Name | Description | 30d Reads | 30d Sessions |",
+                "| --- | --- | --- | --- |",
             ]
         )
         if asset_panels["top_skills"]:
             for asset in asset_panels["top_skills"]:
                 lines.append(
-                    "| {} | {} | {} |".format(
+                    "| {} | {} | {} | {} |".format(
                         markdown_table_cell(asset.get("name") or asset.get("identifier", ""), limit=80),
                         markdown_table_cell(asset.get("description", ""), limit=90),
+                        asset.get("read_events_30d", asset.get("windows_30d", 0)),
                         asset.get("windows_30d", 0),
                     )
                 )
         else:
-            lines.append("| None | None | 0 |")
+            lines.append("| None | None | 0 | 0 |")
 
         lines.extend(["", "## Reading Guide", ""])
         lines.extend("- {}".format(item) for item in data["reading_guide"])
@@ -8929,22 +8930,23 @@ def build_markdown(data):
             "",
             "## 近 30 天高频技能 Top 10",
             "",
-            "| 名称 | 描述 | 30 天 |",
-            "| --- | --- | --- |",
+            "| 名称 | 描述 | 30 天读取 | 30 天会话 |",
+            "| --- | --- | --- | --- |",
         ]
     )
 
     if asset_panels["top_skills"]:
         for asset in asset_panels["top_skills"]:
             lines.append(
-                "| {} | {} | {} |".format(
+                "| {} | {} | {} | {} |".format(
                     markdown_table_cell(asset.get("name") or asset.get("identifier", ""), limit=80),
                     markdown_table_cell(asset.get("description", ""), limit=90),
+                    asset.get("read_events_30d", asset.get("windows_30d", 0)),
                     asset.get("windows_30d", 0),
                 )
             )
     else:
-        lines.append("| 暂无 | 暂无 | 0 |")
+        lines.append("| 暂无 | 暂无 | 0 | 0 |")
 
     lines.extend(["", "## 阅读提示", ""])
     lines.extend("- {}".format(item) for item in data["reading_guide"])
@@ -9880,11 +9882,18 @@ def make_asset_stats_snapshot_panel(snapshot, default_date):
             "Deduped by skill name",
         ),
         (
+            "30 天技能读取",
+            "30d Skill Reads",
+            summary.get("skill_reads_30d", summary.get("skill_sessions_30d", "—")) if has_snapshot else "—",
+            "模型读取 SKILL.md",
+            "Model SKILL.md reads",
+        ),
+        (
             "30 天技能会话",
             "30d Skill Sessions",
             summary.get("skill_sessions_30d", "—") if has_snapshot else "—",
-            "模型读取 SKILL.md",
-            "Model SKILL.md reads",
+            "按会话去重",
+            "Deduped by session",
         ),
     ]
     stats_html = []
@@ -9909,15 +9918,19 @@ def make_asset_stats_snapshot_panel(snapshot, default_date):
         name = str(row.get("name") or row.get("identifier") or "").strip()
         if not name:
             continue
+        reads = safe_int(row.get("read_events_30d", row.get("windows_30d", 0)))
+        sessions = safe_int(row.get("windows_30d", 0))
         top_rows.append(
             """
             <div class="asset-stats-top-row">
               <span>{name}</span>
               <strong>{count}</strong>
+              <small>{sessions}</small>
             </div>
             """.format(
                 name=escape(name),
-                count=escape(str(row.get("windows_30d") or 0)),
+                count=escape(str(reads)),
+                sessions=panel_language_text_html("{} 会话".format(sessions), "{} sessions".format(sessions)),
             )
         )
     if not top_rows:
@@ -10135,7 +10148,7 @@ def make_top_asset_rows(rows, group_id="top-asset-rows"):
 def make_top_skill_rows(rows):
     rows = list(rows or [])[:10]
     if not rows:
-        return '<tr><td colspan="3" class="empty-cell">暂无高频技能。</td></tr>'
+        return '<tr><td colspan="4" class="empty-cell">暂无高频技能。</td></tr>'
 
     rendered = []
     for row in rows:
@@ -10146,13 +10159,15 @@ def make_top_skill_rows(rows):
                 <div class="asset-discovery-name">{name}</div>
               </td>
               <td>{description}</td>
-              <td>{count_30d}</td>
+              <td>{reads_30d}</td>
+              <td>{sessions_30d}</td>
             </tr>
             """.format(
                 identifier=escape(str(row.get("identifier") or ""), quote=True),
                 name=make_discovered_asset_name_html(row),
                 description=make_discovered_description_html(row),
-                count_30d=escape(str(safe_int(row.get("windows_30d", 0)))),
+                reads_30d=escape(str(safe_int(row.get("read_events_30d", row.get("windows_30d", 0))))),
+                sessions_30d=escape(str(safe_int(row.get("windows_30d", 0)))),
             )
         )
     return "".join(rendered)
@@ -13739,7 +13754,7 @@ def build_html(data):
         [
             {
                 "label": "排序方式",
-                "body": "按近 30 天模型读取 SKILL.md 的会话数倒序；并列时按名称升序。",
+                "body": "按近 30 天模型读取 SKILL.md 的工具调用次数倒序；会话数作为去重活跃度辅助展示。",
             },
             {
                 "label": "数据来源",
@@ -14577,7 +14592,7 @@ def build_html(data):
 
     .asset-stats-top-row {{
       display: grid;
-      grid-template-columns: minmax(0, 1fr) auto;
+      grid-template-columns: minmax(0, 1fr) auto auto;
       align-items: center;
       gap: 10px;
       padding: 8px 10px;
@@ -14597,6 +14612,13 @@ def build_html(data):
 
     .asset-stats-top-row strong {{
       color: var(--accent-strong);
+    }}
+
+    .asset-stats-top-row small {{
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 650;
+      white-space: nowrap;
     }}
 
     .asset-discovery-summary {{
@@ -18646,7 +18668,8 @@ def build_html(data):
               <tr>
                 <th>{asset_header}</th>
                 <th>{description_header}</th>
-                <th>{count_30d_header}</th>
+                <th>{skill_reads_30d_header}</th>
+                <th>{skill_sessions_30d_header}</th>
               </tr>
             </thead>
             <tbody>
@@ -21834,7 +21857,7 @@ def build_html(data):
         ),
         top_assets_header=make_panel_header(
             "近 30 天高频技能 Top 10",
-            "按模型读取 SKILL.md 的会话数排序",
+            "按模型读取 SKILL.md 的次数排序",
             top_assets_help,
         ),
         reviews_header=make_panel_header(
@@ -21919,6 +21942,8 @@ def build_html(data):
         asset_header=panel_language_text_html("名称", "Name"),
         description_header=panel_language_text_html("描述", "Description"),
         count_30d_header=panel_language_text_html("30 天", "30d"),
+        skill_reads_30d_header=panel_language_text_html("读取", "Reads"),
+        skill_sessions_30d_header=panel_language_text_html("会话", "Sessions"),
         date_header=panel_language_text_html("日期"),
         asset_id_header=panel_language_text_html("资产 ID"),
         task_header=panel_language_text_html("任务"),

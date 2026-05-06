@@ -3699,6 +3699,7 @@ def command_asset_stats(args):
     print("- panel: {}".format(REPORTS_DIR / "panel.html"))
     print("- discovered_assets: {}".format(summary.get("renderable_assets", 0)))
     print("- active_skills_30d: {}".format(summary.get("active_skills_30d", 0)))
+    print("- skill_reads_30d: {}".format(summary.get("skill_reads_30d", summary.get("skill_sessions_30d", 0))))
     print("- skill_sessions_30d: {}".format(summary.get("skill_sessions_30d", 0)))
 
 

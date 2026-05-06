@@ -3345,7 +3345,7 @@ Keep my own note.
         self.assertIn("| 暂无 | 0 |", markdown)
         self.assertIn("## 月度活动", markdown)
         self.assertIn("## 近 30 天高频技能 Top 10", markdown)
-        self.assertIn("| 暂无 | 暂无 | 0 |", markdown)
+        self.assertIn("| 暂无 | 暂无 | 0 | 0 |", markdown)
         self.assertNotIn("## 最近更新的资产", markdown)
         self.assertNotIn("| none | 0 |", markdown)
 
