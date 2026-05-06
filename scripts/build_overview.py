@@ -98,7 +98,6 @@ MEMORY_BRIEF_BODY_LIMIT = 132
 MEMORY_BRIEF_FULL_TEXT_LIMIT = 520
 PANEL_PATH_LABEL = render_path(REPORTS_DIR / "panel.html")
 OVERVIEW_JSON_PATH_LABEL = render_path(REPORTS_DIR / "overview-data.json")
-ASSET_STATS_PATH_LABEL = render_path(ASSET_STATS_LATEST_PATH)
 PERSONAL_REDACTION_LABEL = overview_redaction.PERSONAL_REDACTION_LABEL
 
 
@@ -9855,15 +9854,30 @@ def make_asset_stats_snapshot_panel(snapshot, default_date):
     has_snapshot = bool(summary)
     date_text = str(snapshot.get("date") or default_date or "").strip()
     generated_text = display_short_local_datetime(snapshot.get("generated_at", "")) if has_snapshot else ""
-    command_text = str(snapshot.get("command") or "openrelix asset-stats --date {}".format(date_text)).strip()
-    if not command_text:
-        command_text = "openrelix asset-stats"
     note_zh = "锚点 {} · 生成 {}".format(date_text, generated_text) if has_snapshot else "等待首次单次统计快照"
     note_en = "Anchor {} · generated {}".format(date_text, generated_text) if has_snapshot else "Waiting for the first single stats snapshot"
     header = make_panel_header(
         "单次资产统计",
         note_content_html=panel_language_text_html(note_zh, note_en),
     )
+    skill_reads = summary.get("skill_reads_30d") if has_snapshot else None
+    if skill_reads is None:
+        skill_activity_stat = (
+            "30 天技能会话",
+            "30d Skill Sessions",
+            summary.get("skill_sessions_30d", "—") if has_snapshot else "—",
+            "按会话去重",
+            "Deduped by session",
+        )
+    else:
+        skill_activity_stat = (
+            "30 天技能读取",
+            "30d Skill Reads",
+            skill_reads,
+            "模型读取 SKILL.md",
+            "Model SKILL.md reads",
+        )
+
     stat_items = [
         (
             "已发现资产",
@@ -9879,20 +9893,7 @@ def make_asset_stats_snapshot_panel(snapshot, default_date):
             "按技能名去重",
             "Deduped by skill name",
         ),
-        (
-            "30 天技能读取",
-            "30d Skill Reads",
-            summary.get("skill_reads_30d", summary.get("skill_sessions_30d", "—")) if has_snapshot else "—",
-            "模型读取 SKILL.md",
-            "Model SKILL.md reads",
-        ),
-        (
-            "30 天技能会话",
-            "30d Skill Sessions",
-            summary.get("skill_sessions_30d", "—") if has_snapshot else "—",
-            "按会话去重",
-            "Deduped by session",
-        ),
+        skill_activity_stat,
     ]
     stats_html = []
     for label_zh, label_en, value, meta_zh, meta_en in stat_items:
@@ -9911,59 +9912,16 @@ def make_asset_stats_snapshot_panel(snapshot, default_date):
             )
         )
 
-    top_rows = []
-    for row in (snapshot.get("top_skills") or [])[:5]:
-        name = str(row.get("name") or row.get("identifier") or "").strip()
-        if not name:
-            continue
-        reads = safe_int(row.get("read_events_30d", row.get("windows_30d", 0)))
-        sessions = safe_int(row.get("windows_30d", 0))
-        top_rows.append(
-            """
-            <div class="asset-stats-top-row">
-              <span>{name}</span>
-              <strong>{count}</strong>
-              <small>{sessions}</small>
-            </div>
-            """.format(
-                name=escape(name),
-                count=escape(str(reads)),
-                sessions=panel_language_text_html("{} 会话".format(sessions), "{} sessions".format(sessions)),
-            )
-        )
-    if not top_rows:
-        top_rows.append(
-            '<p class="empty">{}</p>'.format(panel_language_text_html("暂无高频技能快照。", "No top-skill snapshot yet."))
-        )
-
     return """
       <section class="panel asset-stats-snapshot-panel" id="asset-stats-snapshot-section">
         {header}
         <div class="asset-stats-summary-grid">
           {stats}
         </div>
-        <div class="asset-stats-command">
-          <span>{command_label}</span>
-          <code>{command}</code>
-        </div>
-        <div class="asset-stats-source">
-          <span>{source_label}</span>
-          <code>{source_path}</code>
-        </div>
-        <div class="asset-stats-top-list">
-          <div class="asset-stats-top-title">{top_title}</div>
-          {top_rows}
-        </div>
       </section>
     """.format(
         header=header,
         stats="".join(stats_html),
-        command_label=panel_language_text_html("单次回溯命令", "Single backfill command"),
-        command=escape(command_text),
-        source_label=panel_language_text_html("快照文件", "Snapshot file"),
-        source_path=escape(ASSET_STATS_PATH_LABEL),
-        top_title=panel_language_text_html("快照 Top 技能", "Snapshot Top Skills"),
-        top_rows="".join(top_rows),
     )
 
 
@@ -14650,10 +14608,7 @@ def build_html(data):
       background: var(--control);
     }}
 
-    .asset-stats-summary-item span,
-    .asset-stats-command span,
-    .asset-stats-source span,
-    .asset-stats-top-title {{
+    .asset-stats-summary-item span {{
       color: var(--muted);
       font-size: 12px;
       font-weight: 760;
@@ -14670,63 +14625,6 @@ def build_html(data):
       color: var(--muted);
       font-size: 12px;
       line-height: 1.35;
-    }}
-
-    .asset-stats-command,
-    .asset-stats-source {{
-      display: grid;
-      grid-template-columns: minmax(112px, auto) minmax(0, 1fr);
-      align-items: center;
-      gap: 10px;
-      min-width: 0;
-    }}
-
-    .asset-stats-command code,
-    .asset-stats-source code {{
-      display: block;
-      min-width: 0;
-      overflow-x: auto;
-      padding: 9px 10px;
-      border-radius: 10px;
-      background: var(--control);
-      color: var(--ink);
-      white-space: nowrap;
-    }}
-
-    .asset-stats-top-list {{
-      display: grid;
-      gap: 8px;
-    }}
-
-    .asset-stats-top-row {{
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) auto auto;
-      align-items: center;
-      gap: 10px;
-      padding: 8px 10px;
-      border: 1px solid var(--line);
-      border-radius: 10px;
-      background: var(--control);
-    }}
-
-    .asset-stats-top-row span {{
-      min-width: 0;
-      overflow: hidden;
-      color: var(--ink);
-      font-weight: 700;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }}
-
-    .asset-stats-top-row strong {{
-      color: var(--accent-strong);
-    }}
-
-    .asset-stats-top-row small {{
-      color: var(--muted);
-      font-size: 12px;
-      font-weight: 650;
-      white-space: nowrap;
     }}
 
     .asset-discovery-summary {{
@@ -18804,7 +18702,6 @@ def build_html(data):
       <section class="grid two-up">
         {type_panel}
         {month_panel}
-        {mcp_usage_panel}
       </section>
       <section class="panel" id="top-assets-section">
         {top_assets_header}
@@ -18830,6 +18727,7 @@ def build_html(data):
           </table>
         </div>
       </section>
+      {mcp_usage_panel}
       {discovered_assets_section}
     </section>
 
@@ -21891,7 +21789,7 @@ def build_html(data):
         asset_ledger_kicker=panel_language_text_html("资产层", "Asset Layer"),
         asset_ledger_title=panel_language_text_html("资产层总览", "Asset Layer Overview"),
         asset_ledger_note=panel_language_text_html(
-            "这里合并展示本机发现资产、手动账本条目、复盘和复用记录，不是注入 host context 的记忆摘要。",
+            "这里合并展示本机发现资产、登记册条目、复盘和复用记录，不是注入 host context 的记忆摘要。",
             "This merges discovered local assets, registry entries, reviews, and reuse records; it is not the memory summary injected into host context.",
         ),
         asset_stats_snapshot_panel=make_asset_stats_snapshot_panel(
@@ -21907,7 +21805,7 @@ def build_html(data):
             "资产类型分布",
             asset_panels["type"],
             "teal",
-            "包含本机发现资产；手动账本条目会并入统计",
+            "包含本机发现资产；登记册条目会并入统计",
             help_html=type_panel_help,
         ),
         month_panel=make_bar_group(

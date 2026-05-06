@@ -4755,6 +4755,8 @@ Keep my own note.
         self.assertLess(main_template.index("{asset_metric_cards}"), main_template.index("{window_overview_header}"))
         self.assertLess(main_template.index("{type_panel}"), main_template.index("{month_panel}"))
         self.assertLess(main_template.index("{month_panel}"), main_template.index("{top_assets_header}"))
+        self.assertLess(main_template.index("{top_skill_rows}"), main_template.index("{mcp_usage_panel}"))
+        self.assertLess(main_template.index("{mcp_usage_panel}"), main_template.index("{discovered_assets_section}"))
         self.assertNotIn("{scope_panel}", main_template)
         self.assertNotIn("{domain_panel}", main_template)
         self.assertLess(main_template.index("{usage_rows}"), main_template.index("{window_overview_header}"))

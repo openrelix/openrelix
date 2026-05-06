@@ -805,7 +805,7 @@ class AssetDiscoveryTests(unittest.TestCase):
             {"2026-05": 1},
         )
 
-    def test_asset_stats_snapshot_panel_renders_single_backfill_command(self):
+    def test_asset_stats_snapshot_panel_renders_summary_only(self):
         snapshot = {
             "date": "2026-05-05",
             "generated_at": "2026-05-05T12:00:00+08:00",
@@ -824,11 +824,30 @@ class AssetDiscoveryTests(unittest.TestCase):
         html = build_overview.make_asset_stats_snapshot_panel(snapshot, "2026-05-05")
 
         self.assertIn('id="asset-stats-snapshot-section"', html)
-        self.assertIn("openrelix asset-stats --date 2026-05-05", html)
-        self.assertIn("Alpha", html)
+        self.assertIn("30 天技能读取", html)
         self.assertIn("11", html)
-        self.assertIn("9", html)
-        self.assertIn("Snapshot Top Skills", html)
+        self.assertNotIn("30 天技能会话", html)
+        self.assertNotIn("openrelix asset-stats --date 2026-05-05", html)
+        self.assertNotIn("快照文件", html)
+        self.assertNotIn("Alpha", html)
+        self.assertNotIn("Snapshot Top Skills", html)
+
+    def test_asset_stats_snapshot_panel_uses_session_label_for_legacy_snapshot(self):
+        snapshot = {
+            "date": "2026-05-05",
+            "generated_at": "2026-05-05T12:00:00+08:00",
+            "summary": {
+                "renderable_assets": 3,
+                "active_skills_30d": 2,
+                "skill_sessions_30d": 7,
+            },
+        }
+
+        html = build_overview.make_asset_stats_snapshot_panel(snapshot, "2026-05-05")
+
+        self.assertIn("30 天技能会话", html)
+        self.assertIn("按会话去重", html)
+        self.assertNotIn("30 天技能读取", html)
 
     def test_path_classifier_follows_canonical_roots(self):
         codex_manifest = self.paths.codex_home / "skills" / "foo" / "SKILL.md"
