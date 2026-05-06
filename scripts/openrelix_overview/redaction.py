@@ -23,6 +23,36 @@ LEGACY_BRAND_PHRASES = (
 )
 
 
+LOCAL_EXECUTION_ATTR_PATTERNS = (
+    r"href=([\"'])file://[^\"']+\1",
+    r"href=\\([\"'])file://[^\\]+?\\\1",
+    r"data-open-finder-path=([\"'])[^\"']+\1",
+    r"data-open-finder-path=\\([\"'])[^\\]+?\\\1",
+)
+
+
+def protect_local_execution_attrs(text):
+    protected = []
+
+    def protect(match):
+        placeholder = "\x00OPENRELIX_LOCAL_ATTR_{}_{}\x00".format(
+            len(protected),
+            uuid.uuid4().hex,
+        )
+        protected.append((placeholder, match.group(0)))
+        return placeholder
+
+    for pattern in LOCAL_EXECUTION_ATTR_PATTERNS:
+        text = re.sub(pattern, protect, text)
+    return text, protected
+
+
+def restore_protected_text(text, protected):
+    for placeholder, original in protected:
+        text = text.replace(placeholder, original)
+    return text
+
+
 def load_personal_redaction_patterns(paths=None, denylist_env_var="OPENRELIX_PERSONAL_DENYLIST"):
     paths = paths or get_runtime_paths()
     candidates = []
@@ -64,20 +94,11 @@ def redact_personal_text(value, patterns=(), redaction_label=PERSONAL_REDACTION_
         return value
     text = value
 
-    protected_file_hrefs = []
-
-    def protect_file_href(match):
-        placeholder = "\x00OPENRELIX_FILE_HREF_{}_{}\x00".format(
-            len(protected_file_hrefs),
-            uuid.uuid4().hex,
-        )
-        protected_file_hrefs.append((placeholder, match.group(0)))
-        return placeholder
-
     # Keep local file links clickable in the generated local panel while still
-    # redacting visible text and title attributes around those links.
-    text = re.sub(r"href=([\"'])file://[^\"']+\1", protect_file_href, text)
-    text = re.sub(r"href=\\([\"'])file://[^\\]+?\\\1", protect_file_href, text)
+    # redacting visible text and title attributes around those links. Finder
+    # reveal buttons need the same treatment because the hidden path is the
+    # action payload, not display text.
+    text, protected_local_attrs = protect_local_execution_attrs(text)
 
     text = re.sub(r"file:///(?:Users|home)/[^/\\\s<>\"']+", "file://~", text)
     text = re.sub(r"(?:/Users|/home)/[^/\\\s<>\"']+", "~", text)
@@ -99,9 +120,7 @@ def redact_personal_text(value, patterns=(), redaction_label=PERSONAL_REDACTION_
     text = re.sub(r"https?://[^\\\s<>\"']+", redact_url, text)
     for pattern in patterns:
         text = pattern.sub(redaction_label, text)
-    for placeholder, original in protected_file_hrefs:
-        text = text.replace(placeholder, original)
-    return text
+    return restore_protected_text(text, protected_local_attrs)
 
 
 def normalize_brand_display_text(
@@ -117,12 +136,14 @@ def normalize_brand_display_text(
     text = str(value or "")
     if not text:
         return text
+    text, protected_local_attrs = protect_local_execution_attrs(text)
     for source, target in brand_replacements:
         text = text.replace(source, target)
     for phrase in legacy_phrases:
         text = text.replace(phrase, brand_display_name)
     text = re.sub(r"\bAPA\b", brand_display_name, text)
-    return redact_personal_text(text, patterns=patterns, redaction_label=redaction_label)
+    text = redact_personal_text(text, patterns=patterns, redaction_label=redaction_label)
+    return restore_protected_text(text, protected_local_attrs)
 
 
 def normalize_brand_display_payload(value, normalize_text_func):

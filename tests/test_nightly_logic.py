@@ -30,6 +30,7 @@ import sync_host_memory_summary  # noqa: E402
 import token_live_server  # noqa: E402
 from openrelix_overview import contract as overview_contract  # noqa: E402
 from openrelix_overview import claude_desktop  # noqa: E402
+from openrelix_overview import finder as overview_finder  # noqa: E402
 from openrelix_overview import token_fetcher  # noqa: E402
 
 
@@ -3689,6 +3690,18 @@ Keep my own note.
         self.assertIn('href="{}"'.format(fixture_href), redacted)
         self.assertIn('title="~', redacted)
 
+    def test_redaction_preserves_finder_open_path_attributes(self):
+        skill_path = "/" + "Users" + "/example/AI-Personal-Assets/.agents/skills/foo/SKILL.md"
+        payload = (
+            '<button data-open-finder-path="{}" title="{}">AI-Personal-Assets skill</button>'
+        ).format(skill_path, skill_path)
+
+        redacted = build_overview.normalize_brand_display_text(payload)
+
+        self.assertIn('data-open-finder-path="{}"'.format(skill_path), redacted)
+        self.assertIn(">OpenRelix skill</button>", redacted)
+        self.assertIn('title="~/OpenRelix', redacted)
+
     def test_build_html_renders_codex_native_memory_panel(self):
         html = build_overview.build_html(
             {
@@ -4717,6 +4730,14 @@ Keep my own note.
         self.assertNotIn("{domain_panel}", main_template)
         self.assertLess(main_template.index("{usage_rows}"), main_template.index("{window_overview_header}"))
 
+    def test_build_html_routes_skill_file_opens_through_finder_endpoint(self):
+        source = (ROOT / "scripts" / "build_overview.py").read_text(encoding="utf-8")
+
+        self.assertIn("data-finder-open-endpoint", source)
+        self.assertIn("data-open-finder-path", source)
+        self.assertIn("function openFinderPath", source)
+        self.assertIn("wireFinderOpenActions", source)
+
     def test_build_html_uses_light_system_dashboard_style(self):
         source = (ROOT / "scripts" / "build_overview.py").read_text(encoding="utf-8")
 
@@ -5724,6 +5745,35 @@ Keep my own note.
         self.assertEqual(result["status"], "starting")
         thread_cls.assert_called_once()
         thread.start.assert_called_once()
+
+    def test_finder_reveal_uses_macos_open_R_for_existing_path(self):
+        with TemporaryDirectory() as tmpdir:
+            target = Path(tmpdir) / "SKILL.md"
+            target.write_text("# skill\n", encoding="utf-8")
+            process = mock.Mock()
+            with mock.patch.object(overview_finder.sys, "platform", "darwin"), mock.patch.object(
+                overview_finder.subprocess,
+                "Popen",
+                return_value=process,
+            ) as popen:
+                result = overview_finder.reveal_path_in_finder(str(target))
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["status"], "opening")
+        command = popen.call_args.args[0]
+        self.assertEqual(command[:2], ["open", "-R"])
+        self.assertEqual(command[2], str(target.resolve()))
+
+    def test_finder_reveal_rejects_missing_or_relative_path(self):
+        with TemporaryDirectory() as tmpdir:
+            missing = Path(tmpdir) / "missing" / "SKILL.md"
+            relative = "skills/foo/SKILL.md"
+
+            self.assertEqual(overview_finder.reveal_path_in_finder(str(missing))["error"], "path_not_found")
+            self.assertEqual(overview_finder.reveal_path_in_finder(relative)["error"], "path_not_found")
+
+    def test_token_live_trusts_finder_reveal_endpoint(self):
+        self.assertIn(overview_finder.FINDER_REVEAL_PATH, token_live_server.TRUSTED_POST_PATHS)
 
     def test_panel_update_starts_detached_worker_and_persists_status(self):
         with TemporaryDirectory() as tmpdir:
@@ -9551,6 +9601,7 @@ Keep my own note.
         old_language = nightly_consolidate.LANGUAGE
         old_memory_mode = nightly_consolidate.MEMORY_MODE
         old_personal_memory_enabled = nightly_consolidate.PERSONAL_MEMORY_ENABLED
+        old_model_cli = nightly_consolidate.MODEL_CLI
         try:
             nightly_consolidate._COMPACT_PAYLOAD_CACHE.clear()
             self.addCleanup(nightly_consolidate._COMPACT_PAYLOAD_CACHE.clear)
@@ -9563,6 +9614,7 @@ Keep my own note.
                 nightly_consolidate.LANGUAGE = "zh"
                 nightly_consolidate.MEMORY_MODE = "integrated"
                 nightly_consolidate.PERSONAL_MEMORY_ENABLED = True
+                nightly_consolidate.MODEL_CLI = "codex"
 
                 raw_daily_dir = nightly_consolidate.RAW_DIR / "daily"
                 summary_dir = nightly_consolidate.CONSOLIDATED_DIR / "2026-04-28"
@@ -9671,6 +9723,7 @@ Keep my own note.
             nightly_consolidate.LANGUAGE = old_language
             nightly_consolidate.MEMORY_MODE = old_memory_mode
             nightly_consolidate.PERSONAL_MEMORY_ENABLED = old_personal_memory_enabled
+            nightly_consolidate.MODEL_CLI = old_model_cli
 
     def test_compact_payload_cache_wrong_shape_is_ignored(self):
         raw_payload = {

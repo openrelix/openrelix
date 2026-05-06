@@ -1043,6 +1043,11 @@ def _best_source(sources):
     return sorted(sources, key=_source_sort_key, reverse=True)[0]
 
 
+def _best_openable_source(sources):
+    openable = [source for source in sources or [] if source.get("manifest_abspath")]
+    return _best_source(openable)
+
+
 def _latest_seen(sources):
     values = [str(source.get("last_seen") or "") for source in sources if source.get("last_seen")]
     return max(values) if values else ""
@@ -1101,6 +1106,7 @@ def aggregate_renderable_assets(assets, frequency_by_key):
 
     for identifier, sources in skill_groups.items():
         best = _best_source(sources)
+        openable = _best_openable_source(sources)
         description_source = best if best.get("description") else next(
             (source for source in sorted(sources, key=_source_sort_key, reverse=True) if source.get("description")),
             best,
@@ -1116,7 +1122,7 @@ def aggregate_renderable_assets(assets, frequency_by_key):
                 "windows_7d": sum(int(source.get("windows_7d") or 0) for source in sources),
                 "windows_30d": sum(int(source.get("windows_30d") or 0) for source in sources),
                 "last_seen": _latest_seen(sources),
-                "click_target": best.get("manifest_abspath", ""),
+                "click_target": openable.get("manifest_abspath", ""),
                 "sources": sources,
                 "source_labels": _merge_source_labels(sources),
                 "is_manual": False,

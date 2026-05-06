@@ -41,6 +41,7 @@ from openrelix_overview import common as overview_common
 from openrelix_overview import contract as overview_contract
 from openrelix_overview import asset_discovery as overview_asset_discovery
 from openrelix_overview import claude_desktop as overview_claude_desktop
+from openrelix_overview import finder as overview_finder
 from openrelix_overview import i18n as overview_i18n
 from openrelix_overview import labels as overview_labels
 from openrelix_overview import local_paths as overview_local_paths
@@ -477,6 +478,10 @@ PANEL_I18N_EN = {
     "已发现资产": "Discovered Assets",
     "已发现的 Codex / Claude 资产": "Discovered Codex / Claude Assets",
     "单次资产统计": "Single Asset Stats",
+    "在 Finder 中显示": "Reveal in Finder",
+    "正在打开": "Opening",
+    "已发送": "Sent",
+    "打开失败": "Open failed",
     "活跃资产": "Active Assets",
     "任务复盘": "Task Reviews",
     "复用记录": "Usage Events",
@@ -9633,18 +9638,13 @@ def wrap_expandable_block(
     )
 
 
-def discovered_file_href(path):
-    path_text = str(path or "").strip()
-    if not path_text:
-        return ""
-    return "file://{}".format(quote(path_text, safe="/"))
-
-
 def make_discovered_asset_name_html(row):
     name = str(row.get("name") or row.get("identifier") or "").strip()
     if row.get("type") == "skill" and row.get("click_target"):
-        return '<a href="{href}" class="discovered-skill-name">{name}</a>'.format(
-            href=escape(discovered_file_href(row.get("click_target")), quote=True),
+        return '<button type="button" class="discovered-skill-name" data-open-finder-path="{path}" data-label="{label}" title="{title}">{name}</button>'.format(
+            path=escape(str(row.get("click_target") or ""), quote=True),
+            label=escape(name, quote=True),
+            title=escape(localized("在 Finder 中显示", "Reveal in Finder", LANGUAGE), quote=True),
             name=escape(name),
         )
     return escape(name)
@@ -13850,7 +13850,7 @@ def build_html(data):
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="openrelix:version" content="{current_version}" data-pkg="{npm_package}" data-update-endpoint="{update_endpoint}" data-update-status-endpoint="{update_status_endpoint}" data-claude-desktop-endpoint="{claude_desktop_endpoint}" data-update-token="{update_token}">
+  <meta name="openrelix:version" content="{current_version}" data-pkg="{npm_package}" data-update-endpoint="{update_endpoint}" data-update-status-endpoint="{update_status_endpoint}" data-claude-desktop-endpoint="{claude_desktop_endpoint}" data-finder-open-endpoint="{finder_open_endpoint}" data-update-token="{update_token}">
   <title>{document_title}</title>
   <script>
     (function () {{
@@ -14648,12 +14648,25 @@ def build_html(data):
     }}
 
     .discovered-skill-name {{
+      display: inline;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      color: var(--accent-strong);
+      cursor: pointer;
+      font: inherit;
       font-weight: 750;
+      text-align: left;
       text-decoration: none;
     }}
 
     .discovered-skill-name:hover {{
       text-decoration: underline;
+    }}
+
+    .discovered-skill-name:disabled {{
+      cursor: wait;
+      opacity: 0.68;
     }}
 
     .asset-source-tags {{
@@ -19570,6 +19583,57 @@ def build_html(data):
           }});
       }}
 
+      function openFinderPath(button) {{
+        const path = (button.getAttribute("data-open-finder-path") || "").trim();
+        const endpoint = openrelixMetaAttr("data-finder-open-endpoint");
+        const token = openrelixMetaAttr("data-update-token");
+        if (!path || !endpoint || !window.fetch) {{
+          flashButtonLabel(button, t("打开失败"));
+          return;
+        }}
+        const headers = {{ "Content-Type": "application/json" }};
+        if (token) {{
+          headers["X-OpenRelix-Token"] = token;
+        }}
+        button.disabled = true;
+        fetch(endpoint, {{
+          method: "POST",
+          headers: headers,
+          body: JSON.stringify({{ path: path }})
+        }})
+          .then(function (response) {{
+            return response.json().catch(function () {{
+              return null;
+            }}).then(function (payload) {{
+              if (!response.ok || !payload || payload.ok === false) {{
+                throw new Error((payload && payload.error) || ("HTTP " + response.status));
+              }}
+              return payload;
+            }});
+          }})
+          .then(function () {{
+            flashButtonLabel(button, t("已发送"));
+          }})
+          .catch(function () {{
+            flashButtonLabel(button, t("打开失败"));
+          }})
+          .finally(function () {{
+            button.disabled = false;
+          }});
+      }}
+
+      function wireFinderOpenActions() {{
+        document.addEventListener("click", function (event) {{
+          const button = event.target.closest("[data-open-finder-path]");
+          if (!button) {{
+            return;
+          }}
+          event.preventDefault();
+          event.stopPropagation();
+          openFinderPath(button);
+        }});
+      }}
+
       function wireExternalPanelLinks() {{
         document.addEventListener("click", function (event) {{
           const target = event.target;
@@ -21288,6 +21352,7 @@ def build_html(data):
       wireNightlyDateInput();
       wireWindowOverviewDateInput();
       wireBackfillCopyButtons();
+      wireFinderOpenActions();
       wireExternalPanelLinks();
       wireWindowResumeActions();
       wireSideNav();
@@ -21600,6 +21665,14 @@ def build_html(data):
                 LIVE_TOKEN_HOST,
                 LIVE_TOKEN_PORT,
                 overview_claude_desktop.CLAUDE_DESKTOP_OPEN_PATH,
+            ),
+            quote=True,
+        ),
+        finder_open_endpoint=escape(
+            "http://{}:{}{}".format(
+                LIVE_TOKEN_HOST,
+                LIVE_TOKEN_PORT,
+                overview_finder.FINDER_REVEAL_PATH,
             ),
             quote=True,
         ),

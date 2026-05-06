@@ -502,6 +502,56 @@ class AssetDiscoveryTests(unittest.TestCase):
 
         self.assertEqual(foo["click_target"], str(paths["codex_skill"]))
 
+    def test_click_target_falls_back_to_openable_source_when_active_source_has_no_path(self):
+        codex_manifest = self.paths.codex_home / "skills" / "foo" / "SKILL.md"
+        assets = [
+            {
+                "asset_key": "codex_skill:foo",
+                "kind": "codex_skill",
+                "identifier": "foo",
+                "name": "foo",
+                "description": "Installed source",
+                "source_root": "~/.codex/skills",
+                "manifest_path": str(codex_manifest),
+                "manifest_abspath": str(codex_manifest),
+            },
+            {
+                "asset_key": "project_skill:foo",
+                "kind": "project_skill",
+                "identifier": "foo",
+                "name": "foo",
+                "description": "Active source",
+                "source_root": ".../skills",
+                "manifest_path": ".../skills/foo/SKILL.md",
+                "manifest_abspath": "",
+            },
+        ]
+        frequency = {
+            "codex_skill:foo": {"windows_7d": 0, "windows_30d": 0, "last_seen": None},
+            "project_skill:foo": {"windows_7d": 4, "windows_30d": 9, "last_seen": "2026-05-05"},
+        }
+
+        rows = asset_discovery.aggregate_renderable_assets(assets, frequency)
+        foo = [row for row in rows if row["identifier"] == "foo"][0]
+
+        self.assertEqual(foo["windows_30d"], 9)
+        self.assertEqual(foo["click_target"], str(codex_manifest))
+
+    def test_discovered_skill_name_uses_finder_button_instead_of_file_href(self):
+        html = build_overview.make_discovered_asset_name_html(
+            {
+                "type": "skill",
+                "name": "foo",
+                "identifier": "foo",
+                "click_target": str(self.paths.codex_home / "skills" / "foo" / "SKILL.md"),
+            }
+        )
+
+        self.assertIn("data-open-finder-path", html)
+        self.assertIn("<button", html)
+        self.assertNotIn("file://", html)
+        self.assertNotIn("<a ", html)
+
     def test_noise_gate_preserves_installed_zero_activation_skill(self):
         self.write_skill(self.paths.codex_home / "skills", "quiet")
         project_manifest = self.write_skill(self.root / "proj" / "skills", "single")

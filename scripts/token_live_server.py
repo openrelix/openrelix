@@ -22,6 +22,7 @@ from openrelix_overview.config import (
     LIVE_TOKEN_HOST,
     LIVE_TOKEN_PORT,
 )
+from openrelix_overview.finder import FINDER_REVEAL_PATH, reveal_path_in_finder
 from openrelix_overview.token_fetcher import (
     fetch_ccusage_daily,
     normalize_token_provider,
@@ -60,6 +61,7 @@ _UPDATE_TOKEN_CACHE = None
 _UPDATE_TOKEN_LOCK = threading.Lock()
 ALLOWED_PANEL_ORIGIN_PREFIXES = ("file://",)
 ALLOWED_PANEL_ORIGIN_EXACT = {"null"}
+TRUSTED_POST_PATHS = {"/run-update", CLAUDE_DESKTOP_OPEN_PATH, FINDER_REVEAL_PATH}
 
 
 def get_update_token():
@@ -365,7 +367,7 @@ class TokenLiveHandler(BaseHTTPRequestHandler):
 
     def do_OPTIONS(self):
         parsed = urlparse(self.path)
-        if parsed.path in {"/run-update", CLAUDE_DESKTOP_OPEN_PATH}:
+        if parsed.path in TRUSTED_POST_PATHS:
             origin = self.headers.get("Origin", "").strip()
             if not is_allowed_panel_origin(origin):
                 self._send_json(403, {"ok": False, "error": "forbidden_origin"}, allow_origin=None)
@@ -419,7 +421,7 @@ class TokenLiveHandler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         parsed = urlparse(self.path)
-        if parsed.path not in {"/run-update", CLAUDE_DESKTOP_OPEN_PATH}:
+        if parsed.path not in TRUSTED_POST_PATHS:
             self._send_json(404, {"ok": False, "error": "not_found"}, allow_origin=None)
             return
         if not self._client_is_local():
@@ -455,6 +457,17 @@ class TokenLiveHandler(BaseHTTPRequestHandler):
             snapshot = start_claude_desktop_resume(payload.get("resume_id", ""), paths=PATHS)
             status_code = 202 if snapshot.get("ok") else 400
             if snapshot.get("error") in {"claude_desktop_app_not_found", "claude_cli_not_found"}:
+                status_code = 503
+            self._send_json(status_code, snapshot, allow_origin=origin or None)
+            return
+        if parsed.path == FINDER_REVEAL_PATH:
+            try:
+                payload = json.loads(body.decode("utf-8")) if body else {}
+            except (UnicodeDecodeError, json.JSONDecodeError):
+                payload = {}
+            snapshot = reveal_path_in_finder(payload.get("path", ""))
+            status_code = 200 if snapshot.get("ok") else 400
+            if snapshot.get("error") in {"finder_unsupported_platform", "finder_open_failed"}:
                 status_code = 503
             self._send_json(status_code, snapshot, allow_origin=origin or None)
             return
