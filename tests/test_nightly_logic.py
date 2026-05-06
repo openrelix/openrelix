@@ -2827,7 +2827,7 @@ Keep my own note.
         self.assertTrue(all(row["source_files"][0]["label"] == "CLAUDE.md" for row in parsed["rows"]))
         self.assertIn("Claude", parsed["rows"][0]["display_bucket"])
         self.assertIn("Claude Code 原生记忆", comparison["note"])
-        self.assertIn("注入的共享个人记忆块已隐藏", comparison["note"])
+        self.assertNotIn("注入", comparison["note"])
         self.assertIn("Claude bridge mode reminder", parsed["topic_rows"][0]["title"])
         self.assertIn("Check the active provider", parsed["tip_rows"][0]["value_note"])
         self.assertNotIn("OpenRelix shared personal memory", json.dumps(parsed, ensure_ascii=False))
@@ -2861,7 +2861,8 @@ Keep my own note.
 
         self.assertEqual(parsed["rows"], [])
         self.assertTrue(parsed["counts"]["managed_block_present"])
-        self.assertIn("注入的共享个人记忆块已在原生记忆视图中隐藏", comparison["note"])
+        self.assertIn("暂未发现可展示的 Claude Code 原生记忆条目", comparison["note"])
+        self.assertNotIn("注入", comparison["note"])
 
     def test_parse_claude_native_memory_summary_reads_project_auto_memory(self):
         sample = """<!-- openrelix:shared-memory:start -->
@@ -3795,9 +3796,9 @@ Keep my own note.
                     "managed_block_present": True,
                 },
                 "claude_native_memory_comparison": {
-                    "note": "已读取 custom-claude/CLAUDE.md + custom-claude/projects/*/memory/*.md；下方展示 3 条 Claude Code 原生记忆；OpenRelix 注入的共享个人记忆块已隐藏。",
-                    "note_zh": "已读取 custom-claude/CLAUDE.md + custom-claude/projects/*/memory/*.md；下方展示 3 条 Claude Code 原生记忆；OpenRelix 注入的共享个人记忆块已隐藏。",
-                    "note_en": "Read custom-claude/CLAUDE.md + custom-claude/projects/*/memory/*.md; showing 3 Claude Code native memory entries below; OpenRelix-injected shared personal-memory block is hidden.",
+                    "note": "已读取 custom-claude/CLAUDE.md + custom-claude/projects/*/memory/*.md；下方展示 3 条 Claude Code 原生记忆。",
+                    "note_zh": "已读取 custom-claude/CLAUDE.md + custom-claude/projects/*/memory/*.md；下方展示 3 条 Claude Code 原生记忆。",
+                    "note_en": "Read custom-claude/CLAUDE.md + custom-claude/projects/*/memory/*.md; showing 3 Claude Code native memory entries below.",
                 },
                 "claude_native_memory": [],
                 "claude_native_topic_rows": [
@@ -3892,12 +3893,27 @@ Keep my own note.
         self.assertIn("Claude Code 原生记忆-记忆条目", html)
         self.assertIn("Claude Code 原生记忆-偏好", html)
         self.assertIn("Claude Code 原生记忆-通用 tips", html)
+        self.assertIn("Claude Code Native Memory - Memory Items", html)
+        self.assertIn("Claude Code Native Memory - Preferences", html)
+        self.assertIn("Claude Code Native Memory - General Tips", html)
+        self.assertIn("From Claude Code CLAUDE.md and projects/*/memory/*.md.", html)
+        self.assertIn("From preferences in CLAUDE.md and auto memory.", html)
+        self.assertIn("From general tips in CLAUDE.md and auto memory.", html)
         self.assertIn("Claude 项目记忆", html)
+        self.assertIn("Claude native project note", html)
         self.assertIn("用户自写 Claude 记忆", html)
+        self.assertIn("User-authored Claude note", html)
         self.assertIn("Claude 偏好", html)
+        self.assertIn("Claude preference", html)
         self.assertIn("Claude 回答保持简洁", html)
+        self.assertIn("Keep Claude answers concise", html)
         self.assertIn("Claude 通用 tip", html)
+        self.assertIn("Claude tip", html)
         self.assertIn("先检查桥接模式再判断登录态", html)
+        self.assertIn("Check bridge mode before assuming login", html)
+        self.assertIn("Claude Native", html)
+        self.assertNotIn("OpenRelix 注入", html)
+        self.assertNotIn("OpenRelix-injected", html)
         self.assertNotIn("claude-native-memory-section", html)
 
     def test_personal_memory_token_widget_shows_bounded_context_budget(self):

@@ -653,9 +653,21 @@ PANEL_I18N_EN = {
     "Codex 原生记忆-偏好": "Codex Native Memory - Preferences",
     "Codex 原生记忆-通用 tips": "Codex Native Memory - General Tips",
     "Codex 原生记忆-历史任务索引": "Codex Native Memory - Historical Task Index",
+    "Claude 原生": "Claude Native",
+    "Claude 原生记忆": "Claude Native Memory",
+    "Claude Code 原生记忆": "Claude Code Native Memory",
     "Claude Code 原生记忆-记忆条目": "Claude Code Native Memory - Memory Items",
     "Claude Code 原生记忆-偏好": "Claude Code Native Memory - Preferences",
     "Claude Code 原生记忆-通用 tips": "Claude Code Native Memory - General Tips",
+    "来自 Claude Code CLAUDE.md 与 projects/*/memory/*.md。": (
+        "From Claude Code CLAUDE.md and projects/*/memory/*.md."
+    ),
+    "来自 CLAUDE.md 和 auto memory 中的偏好条目": (
+        "From preferences in CLAUDE.md and auto memory."
+    ),
+    "来自 CLAUDE.md 和 auto memory 中的通用提示": (
+        "From general tips in CLAUDE.md and auto memory."
+    ),
     "近 30 天高频技能 Top 10": "Top 10 Skills (last 30 days)",
     "近 30 天高频技能热度": "Skill Hotness (last 30 days)",
     "最近复盘": "Recent Reviews",
@@ -5985,18 +5997,11 @@ def build_claude_native_memory_comparison(native_rows, native_counts, summary_pa
             language,
         )
     elif not native_rows:
-        if managed_block_present:
-            note = localized(
-                "已读取 {}；OpenRelix 注入的共享个人记忆块已在原生记忆视图中隐藏，暂未发现用户自写的 Claude 原生条目。".format(summary_path_label),
-                "Read {}; the OpenRelix-injected shared personal-memory block is hidden from the native-memory view, and no user-authored Claude native entries were found.".format(summary_path_label),
-                language,
-            )
-        else:
-            note = localized(
-                "已读取 {}，但暂未发现可展示的 Claude Code 原生记忆条目。".format(summary_path_label),
-                "Read {}, but no displayable Claude Code native memory entries were found yet.".format(summary_path_label),
-                language,
-            )
+        note = localized(
+            "已读取 {}，但暂未发现可展示的 Claude Code 原生记忆条目。".format(summary_path_label),
+            "Read {}, but no displayable Claude Code native memory entries were found yet.".format(summary_path_label),
+            language,
+        )
     else:
         note_parts = [
             localized(
@@ -6037,14 +6042,6 @@ def build_claude_native_memory_comparison(native_rows, native_counts, summary_pa
                 localized(
                     "扫描 auto memory 文件 {} 个".format(auto_memory_file_count),
                     "scanned {} auto memory files".format(auto_memory_file_count),
-                    language,
-                )
-            )
-        if managed_block_present:
-            note_parts.append(
-                localized(
-                    "OpenRelix 注入的共享个人记忆块已隐藏",
-                    "OpenRelix-injected shared personal-memory block is hidden",
                     language,
                 )
             )
@@ -13753,21 +13750,32 @@ def build_html(data):
         [
             {
                 "label": "统计什么",
-                "body": "读取 {} 中用户自己写的 CLAUDE.md 上下文，以及 Claude Code 按项目 / 路径生成的 auto memory；OpenRelix 注入块会被隐藏。".format(
-                    claude_memory_label
-                ),
-            },
-            {
-                "label": "关系",
-                "body": "个人记忆仍可注入 Claude Code context，但不会在本页当作 Claude 原生记忆展示；auto memory 会按来源项目 / 路径保留归属。",
+                "body": {
+                    "zh": "读取 {} 中用户自己写的 CLAUDE.md 上下文，以及 Claude Code 按项目 / 路径生成的 auto memory。".format(
+                        claude_memory_label
+                    ),
+                    "en": "Reads user-authored CLAUDE.md context from {}, plus Claude Code auto memory grouped by project/path.".format(
+                        claude_memory_label
+                    ),
+                },
             },
             {
                 "label": "当前计数",
-                "body": "记忆条目 {} 条；用户偏好 {} 条；通用 tips {} 条。".format(
-                    claude_native_memory_counts.get("topic_items", len(claude_native_topic_rows)),
-                    claude_native_memory_counts.get("user_preferences", 0),
-                    claude_native_memory_counts.get("general_tips", 0),
-                ),
+                "body": {
+                    "zh": "记忆条目 {} 条；用户偏好 {} 条；通用 tips {} 条。".format(
+                        claude_native_memory_counts.get("topic_items", len(claude_native_topic_rows)),
+                        claude_native_memory_counts.get("user_preferences", 0),
+                        claude_native_memory_counts.get("general_tips", 0),
+                    ),
+                    "en": "{}; {}; {}.".format(
+                        plural_en(
+                            claude_native_memory_counts.get("topic_items", len(claude_native_topic_rows)),
+                            "memory item",
+                        ),
+                        plural_en(claude_native_memory_counts.get("user_preferences", 0), "user preference"),
+                        plural_en(claude_native_memory_counts.get("general_tips", 0), "general tip"),
+                    ),
+                },
             },
         ],
     )
@@ -13776,11 +13784,17 @@ def build_html(data):
         [
             {
                 "label": "统计什么",
-                "body": "读取 CLAUDE.md 里用户自写的 User preferences，以及 Claude Code auto memory 中明显属于偏好的条目。",
+                "body": {
+                    "zh": "读取 CLAUDE.md 里用户自写的 User preferences，以及 Claude Code auto memory 中明显属于偏好的条目。",
+                    "en": "Reads user-authored User preferences in CLAUDE.md and preference-like entries in Claude Code auto memory.",
+                },
             },
             {
                 "label": "怎么看",
-                "body": "这类内容更像用户长期偏好；OpenRelix 注入的个人记忆不会混进来，auto memory 的项目来源会显示在卡片来源里。",
+                "body": {
+                    "zh": "这类内容更像用户长期偏好；auto memory 的项目来源会显示在卡片来源里。",
+                    "en": "These are closer to long-term user preferences; auto-memory project sources are shown on each card.",
+                },
             },
         ],
     )
@@ -13789,11 +13803,17 @@ def build_html(data):
         [
             {
                 "label": "统计什么",
-                "body": "读取 CLAUDE.md 里用户自写的 General Tips，以及 Claude Code auto memory 中更像工作方法、排障路径或注意事项的条目。",
+                "body": {
+                    "zh": "读取 CLAUDE.md 里用户自写的 General Tips，以及 Claude Code auto memory 中更像工作方法、排障路径或注意事项的条目。",
+                    "en": "Reads user-authored General Tips in CLAUDE.md and auto-memory entries that look like working methods, troubleshooting paths, or cautions.",
+                },
             },
             {
                 "label": "怎么看",
-                "body": "这类内容更像稳定的工作方法或排障路径。",
+                "body": {
+                    "zh": "这类内容更像稳定的工作方法或排障路径。",
+                    "en": "These are usually stable working methods or troubleshooting paths.",
+                },
             },
         ],
     )
@@ -21900,8 +21920,8 @@ def build_html(data):
         claude_native_memory_family_header=make_memory_family_header(
             "Claude Code 原生记忆",
             "Claude Code Native Memory",
-            "来自 Claude Code CLAUDE.md 与 projects/*/memory/*.md；OpenRelix 注入的个人记忆块不在此处展示。",
-            "From Claude Code CLAUDE.md and projects/*/memory/*.md; OpenRelix-injected personal memory is hidden here.",
+            "来自 Claude Code CLAUDE.md 与 projects/*/memory/*.md。",
+            "From Claude Code CLAUDE.md and projects/*/memory/*.md.",
         ),
         durable_memory_header=make_panel_header(
             "个人资产-长期记忆",
@@ -21992,13 +22012,19 @@ def build_html(data):
         ),
         claude_native_preference_header=make_panel_header(
             "Claude Code 原生记忆-偏好",
-            "来自 CLAUDE.md 和 auto memory 中的偏好条目",
-            claude_native_preference_help,
+            help_html=claude_native_preference_help,
+            note_content_html=panel_language_text_html(
+                "来自 CLAUDE.md 和 auto memory 中的偏好条目",
+                "From preferences in CLAUDE.md and auto memory.",
+            ),
         ),
         claude_native_tip_header=make_panel_header(
             "Claude Code 原生记忆-通用 tips",
-            "来自 CLAUDE.md 和 auto memory 中的通用提示",
-            claude_native_tip_help,
+            help_html=claude_native_tip_help,
+            note_content_html=panel_language_text_html(
+                "来自 CLAUDE.md 和 auto memory 中的通用提示",
+                "From general tips in CLAUDE.md and auto memory.",
+            ),
         ),
         codex_native_topic_cards=make_memory_cards(codex_native_memory),
         codex_native_preference_cards=codex_native_preference_cards,
