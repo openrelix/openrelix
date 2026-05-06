@@ -159,6 +159,25 @@ class AssetDiscoveryTests(unittest.TestCase):
         self.assertEqual(assets["codex_skill:alpha"]["name"], "Alpha")
         self.assertEqual(assets["codex_skill:alpha"]["description"], "Codex helper")
 
+    def test_discovers_codex_memory_skill_as_codex_skill(self):
+        manifest = self.write_skill(
+            self.paths.codex_home / "memories" / "skills",
+            "memory-flow",
+            name="Memory Flow",
+            description="Memory-backed workflow",
+        )
+
+        assets = self.assets_by_key(asset_discovery.discover_installed_assets(self.paths))
+
+        self.assertIn("codex_skill:memory-flow", assets)
+        self.assertEqual(assets["codex_skill:memory-flow"]["name"], "Memory Flow")
+        self.assertEqual(assets["codex_skill:memory-flow"]["description"], "Memory-backed workflow")
+        self.assertEqual(
+            assets["codex_skill:memory-flow"]["manifest_path"],
+            "~/.codex/memories/skills/memory-flow/SKILL.md",
+        )
+        self.assertEqual(assets["codex_skill:memory-flow"]["manifest_abspath"], str(manifest.resolve()))
+
     def test_discovers_claude_skill(self):
         self.write_skill(self.home / ".claude" / "skills", "bravo", description="Claude helper")
 
@@ -956,6 +975,7 @@ class AssetDiscoveryTests(unittest.TestCase):
 
     def test_path_classifier_follows_canonical_roots(self):
         codex_manifest = self.paths.codex_home / "skills" / "foo" / "SKILL.md"
+        codex_memory_manifest = self.paths.codex_home / "memories" / "skills" / "memo" / "SKILL.md"
         claude_manifest = self.home / ".claude" / "skills" / "bar" / "SKILL.md"
         agent_manifest = self.home / ".agents" / "skills" / "agent" / "SKILL.md"
         repo_manifest = self.paths.repo_skill_root / "baz" / "SKILL.md"
@@ -963,6 +983,10 @@ class AssetDiscoveryTests(unittest.TestCase):
         project_manifest = self.root / "project" / "skills" / "local" / "SKILL.md"
 
         self.assertEqual(asset_discovery.classify_skill_manifest_path(str(codex_manifest), self.paths), ("codex_skill", "foo"))
+        self.assertEqual(
+            asset_discovery.classify_skill_manifest_path(str(codex_memory_manifest), self.paths),
+            ("codex_skill", "memo"),
+        )
         self.assertEqual(asset_discovery.classify_skill_manifest_path(str(claude_manifest), self.paths), ("claude_skill", "bar"))
         self.assertEqual(asset_discovery.classify_skill_manifest_path(str(agent_manifest), self.paths), ("agent_skill", "agent"))
         self.assertEqual(asset_discovery.classify_skill_manifest_path(str(repo_manifest), self.paths), ("repo_skill", "baz"))

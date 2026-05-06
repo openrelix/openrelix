@@ -479,6 +479,7 @@ def discover_installed_assets(paths):
     Missing directories and malformed plugin manifests are treated as empty.
     """
     codex_skill_root = paths.codex_home / "skills"
+    codex_memory_skill_root = paths.codex_home / "memories" / "skills"
     claude_skill_root = Path.home() / ".claude" / "skills"
     agent_skill_root = Path.home() / ".agents" / "skills"
     repo_skill_root = paths.repo_skill_root
@@ -488,6 +489,13 @@ def discover_installed_assets(paths):
             codex_skill_root,
             "codex_skill",
             "{}/skills".format(_codex_home_label(paths)),
+        )
+    )
+    discovered.extend(
+        _discover_skill_dir(
+            codex_memory_skill_root,
+            "codex_skill",
+            "{}/memories/skills".format(_codex_home_label(paths)),
         )
     )
     discovered.extend(_discover_skill_dir(claude_skill_root, "claude_skill", "~/.claude/skills"))
@@ -581,10 +589,13 @@ def classify_skill_manifest_path(raw_path, paths):
     absolute_path = _absolute_path_from_raw(path_text)
     if absolute_path is not None:
         codex_skill_root = paths.codex_home / "skills"
+        codex_memory_skill_root = paths.codex_home / "memories" / "skills"
         claude_skill_root = Path.home() / ".claude" / "skills"
         agent_skill_root = Path.home() / ".agents" / "skills"
         repo_skill_root = paths.repo_skill_root
         if _direct_skill_under_root(absolute_path, codex_skill_root, identifier):
+            return ("codex_skill", identifier)
+        if _direct_skill_under_root(absolute_path, codex_memory_skill_root, identifier):
             return ("codex_skill", identifier)
         if _direct_skill_under_root(absolute_path, claude_skill_root, identifier):
             return ("claude_skill", identifier)
