@@ -1509,10 +1509,10 @@ deep_learn_memory_command() {
     return
   fi
   if (( INSTALL_GLOBAL_COMMAND )); then
-    printf 'openrelix backfill --days %s --stage final --learn-window-days %s --jobs %s\n' "$LEARNING_REFRESH_WINDOW_DAYS" "$LEARNING_REFRESH_WINDOW_DAYS" "$INSTALL_DEEP_LEARN_JOBS"
+    printf 'openrelix backfill --days %s --stage final --learn-window-days %s --jobs %s --force\n' "$LEARNING_REFRESH_WINDOW_DAYS" "$LEARNING_REFRESH_WINDOW_DAYS" "$INSTALL_DEEP_LEARN_JOBS"
     return
   fi
-  printf 'AI_ASSET_STATE_DIR=%q CODEX_HOME=%q CLAUDE_HOME=%q CLAUDE_CONFIG_DIR=%q CLAUDE_BIN=%q AI_ASSET_LANGUAGE=%q OPENRELIX_ACTIVITY_SOURCE=%q OPENRELIX_ACTIVITY_HOST=%q OPENRELIX_MODEL_CLI=%q OPENRELIX_CLAUDE_MODEL=%q OPENRELIX_CLAUDE_SETTINGS=%q OPENRELIX_CLAUDE_ENV_FILE=%q %q %q backfill --days %s --stage final --learn-window-days %s --jobs %s\n' \
+  printf 'AI_ASSET_STATE_DIR=%q CODEX_HOME=%q CLAUDE_HOME=%q CLAUDE_CONFIG_DIR=%q CLAUDE_BIN=%q AI_ASSET_LANGUAGE=%q OPENRELIX_ACTIVITY_SOURCE=%q OPENRELIX_ACTIVITY_HOST=%q OPENRELIX_MODEL_CLI=%q OPENRELIX_CLAUDE_MODEL=%q OPENRELIX_CLAUDE_SETTINGS=%q OPENRELIX_CLAUDE_ENV_FILE=%q %q %q backfill --days %s --stage final --learn-window-days %s --jobs %s --force\n' \
     "$STATE_DIR" \
     "$CODEX_HOME" \
     "$CLAUDE_HOME" \
@@ -1996,7 +1996,7 @@ run_post_install_deep_learning() {
     OPENRELIX_CLAUDE_SETTINGS="$CLAUDE_SETTINGS" \
     OPENRELIX_CLAUDE_ENV_FILE="$CLAUDE_ENV_FILE" \
   run_interruptible_child "$PYTHON_BIN" "$REPO_ROOT/scripts/openrelix.py" \
-    backfill --days "$LEARNING_REFRESH_WINDOW_DAYS" --stage final --learn-window-days "$LEARNING_REFRESH_WINDOW_DAYS" --jobs "$INSTALL_DEEP_LEARN_JOBS"
+    backfill --days "$LEARNING_REFRESH_WINDOW_DAYS" --stage final --learn-window-days "$LEARNING_REFRESH_WINDOW_DAYS" --jobs "$INSTALL_DEEP_LEARN_JOBS" --force
   mark_memory_migration_completed_after_learning
   if [[ "$LANGUAGE" == "en" ]]; then
     print -r -- ""
