@@ -4057,6 +4057,34 @@ Keep my own note.
         self.assertEqual(actual_usage["estimated_context_item_count"], 2)
         self.assertIn("8 条留本地，实际 2 条进摘要", actual_usage["mode_note_zh"])
 
+        with TemporaryDirectory() as tmpdir:
+            summary_path = Path(tmpdir) / "memory_summary.md"
+            summary_path.write_text(
+                "## What's in Memory\n\n"
+                "### Local personal memory registry\n\n"
+                "- [durable/semantic/high] Stale - old host context note\n"
+                "\n### Other\n\n- C\n",
+                encoding="utf-8",
+            )
+            stale_actual_usage = build_overview.build_personal_memory_token_usage(
+                [
+                    {
+                        "bucket": "durable",
+                        "memory_type": "semantic",
+                        "priority": "high",
+                        "project_key": "openrelix",
+                        "display_title": "Project only",
+                        "display_value_note": "Do not inject globally.",
+                    }
+                ],
+                "integrated",
+                memory_summary_path=summary_path,
+                memory_summary_budget=test_summary_budget,
+            )
+        self.assertEqual(stale_actual_usage["context_candidate_count"], 0)
+        self.assertEqual(stale_actual_usage["estimated_context_item_count"], 0)
+        self.assertIn("1 条留本地，约 0 条进摘要", stale_actual_usage["mode_note_zh"])
+
         disabled = build_overview.build_personal_memory_token_usage([], "off")
         self.assertFalse(disabled["enabled"])
         self.assertEqual(build_overview.make_personal_memory_token_widget(disabled), "")

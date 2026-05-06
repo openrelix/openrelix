@@ -1941,7 +1941,7 @@ def build_personal_memory_token_usage(
     )
     count_label_zh = "约"
     count_label_en = "about"
-    if actual_summary_usage is not None:
+    if actual_summary_usage is not None and actual_summary_usage["count"] <= context_item_limit:
         count_label_zh = "实际"
         count_label_en = "actual"
         estimated_context_item_count = actual_summary_usage["count"]

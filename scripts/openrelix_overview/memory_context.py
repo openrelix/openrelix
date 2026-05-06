@@ -275,6 +275,7 @@ def build_memory_policy_views(memory_rows, selected_global_rows=None, token_usag
             token_usage.get("estimated_context_item_count"),
             selected_global_count,
         )
+    selected_global_count = min(selected_global_count, len(global_candidate_rows))
     compiler = {
         "total_count": len(rows),
         "global_candidate_count": len(global_candidate_rows),

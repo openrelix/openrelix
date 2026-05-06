@@ -79,6 +79,21 @@ class MemoryContextPolicyTests(unittest.TestCase):
         self.assertEqual([row["title"] for row in views["on_demand"]["rows"]], ["Domain"])
         self.assertEqual([row["title"] for row in views["local_only"]["rows"]], ["Local", "Never"])
 
+    def test_policy_views_caps_selected_count_to_current_global_candidates(self):
+        rows = [
+            {"bucket": "session", "title": "Project", "project_key": "openrelix"},
+            {"bucket": "low_priority", "title": "Local"},
+        ]
+
+        views = memory_context.build_memory_policy_views(
+            rows,
+            selected_global_rows=[],
+            token_usage={"estimated_context_item_count": 28},
+        )
+
+        self.assertEqual(views["compiler"]["global_candidate_count"], 0)
+        self.assertEqual(views["compiler"]["selected_global_count"], 0)
+
 
 if __name__ == "__main__":
     unittest.main()
