@@ -20,7 +20,7 @@ from asset_runtime import atomic_write_json, get_runtime_paths
 
 SCHEMA_VERSION = 1
 STATUS_FILE_NAME = "pipeline-status.json"
-RECENT_LIMIT = 8
+RECENT_LIMIT = 30
 STALE_RUNNING_SECONDS = 12 * 60 * 60
 
 SCHEDULED_JOBS = (

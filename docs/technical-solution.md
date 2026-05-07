@@ -311,7 +311,7 @@ macOS 后台自动化模板。
 
 当前包含：
 
-- `overview-refresh`：`RunAtLoad`，并每 1800 秒刷新一次 overview。
+- `overview-refresh`：`RunAtLoad`，并每 3600 秒刷新一次 overview。
 - `token-live`：`RunAtLoad` + `KeepAlive`，提供本地 token live endpoint。
 - `nightly-organize`：默认每天 23:00 生成当日整理预览，可通过 `--nightly-organize-time HH:MM` 调整。
 - `nightly-finalize-previous-day`：默认每天 00:10 回补前一天终版整理，可通过 `--nightly-finalize-time HH:MM` 调整。
@@ -425,7 +425,7 @@ install/install.sh --profile integrated
   -> install custom prompt fallback
   -> install global openrelix command
   -> optionally render/bootstrap LaunchAgents
-  -> with --enable-learning-refresh, make overview-refresh read the configured activity host and call the configured model_cli every 30 minutes
+  -> with --enable-learning-refresh, make overview-refresh read the configured activity host and call the configured model_cli every hour
 ```
 
 ### 手动整理

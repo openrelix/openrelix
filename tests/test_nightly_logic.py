@@ -8087,6 +8087,7 @@ Keep my own note.
             showcase,
         )
         self.assertNotIn("<h3>开启 30 分钟自动学习（推荐）</h3>", showcase)
+        self.assertIn("开启 1 小时自动学习", showcase)
         self.assertIn("--enable-learning-refresh", installer)
         self.assertIn("backfill --days %s --stage preliminary --learn-window-days 0 --jobs %s", installer)
         self.assertIn('INSTALL_DEEP_LEARN_JOBS=1', installer)
@@ -8128,7 +8129,7 @@ Keep my own note.
 
         self.assertIn('OVERVIEW_RUN_AT_LOAD="<false/>"', installer)
         self.assertIn('"$(( ENABLE_LEARNING_REFRESH ? 0 : 1 ))"', installer)
-        self.assertIn("首次自动学习会在下一个 30 分钟周期运行", installer)
+        self.assertIn("首次自动学习会在下一个 1 小时周期运行", installer)
         self.assertIn("Automatic learning refresh is enabled", installer)
         self.assertIn("__OVERVIEW_RUN_AT_LOAD__", launchd_template)
 
@@ -8208,14 +8209,36 @@ Keep my own note.
 
         self.assertIn("失败", collector.text)
         self.assertIn("日期 2026-05-07", collector.text)
-        self.assertIn("30 分钟快速回溯", collector.text)
+        self.assertIn("快速回溯", collector.text)
         self.assertNotIn("preliminary", collector.text)
         self.assertIn("触发 05-07 19:19:28", collector.text)
         self.assertIn("结束 05-07 19:20:53", collector.text)
         self.assertIn("Date 2026-05-07", collector.text)
-        self.assertIn("30-minute quick backfill", collector.text)
+        self.assertIn("Quick backfill", collector.text)
         self.assertIn("Started 05-07 19:19:28", collector.text)
         self.assertIn("Ended 05-07 19:20:53", collector.text)
+
+    def test_pipeline_recent_runs_offer_expand_to_latest_thirty(self):
+        html = build_overview.make_pipeline_recent_runs(
+            [
+                {
+                    "pipeline": "nightly_pipeline",
+                    "title": "run-{}".format(index),
+                    "title_en": "run-{}".format(index),
+                    "status": "completed",
+                }
+                for index in range(35)
+            ]
+        )
+        collector = TextCollector()
+        collector.feed(html)
+
+        self.assertIn("run-0", collector.text)
+        self.assertIn("run-3", collector.text)
+        self.assertNotIn("run-4", collector.text)
+        self.assertIn("展开更多", collector.text)
+        self.assertIn("查看最近 30 条记录", collector.text)
+        self.assertIn("View latest 30 runs", collector.text)
 
     def test_pipeline_status_panel_localizes_stage_labels(self):
         html = build_overview.make_pipeline_status_panel(
@@ -8241,8 +8264,8 @@ Keep my own note.
         collector = TextCollector()
         collector.feed(html)
 
-        self.assertIn("2026-05-07 · 30 分钟快速回溯", collector.text)
-        self.assertIn("2026-05-07 · 30-minute quick backfill", collector.text)
+        self.assertIn("2026-05-07 · 快速回溯", collector.text)
+        self.assertIn("2026-05-07 · Quick backfill", collector.text)
         self.assertIn("2026-05-08T00:10:00+08:00 · 完整回溯", collector.text)
         self.assertIn("2026-05-08T00:10:00+08:00 · Full backfill", collector.text)
         self.assertNotIn("preliminary", collector.text)
@@ -9568,7 +9591,7 @@ Keep my own note.
         )
 
         self.assertIn("今日仍在进行中", html)
-        self.assertIn("30 分钟快速回溯", html)
+        self.assertIn("快速回溯", html)
         self.assertIn("openrelix review --stage preliminary --learn-window-days 0", html)
         self.assertNotIn("openrelix backfill --from 2026-05-06 --to 2026-05-06 --stage final", html)
 
@@ -9588,7 +9611,7 @@ Keep my own note.
         )
         html = build_overview.make_nightly_summary_panel(
             "每日整理结果",
-            "2026-04-24 · 30 分钟快速回溯",
+            "2026-04-24 · 快速回溯",
             "",
             {},
             {"window_count": 2},
@@ -9605,7 +9628,7 @@ Keep my own note.
         )
 
         self.assertIn("建议深度回溯", html)
-        self.assertIn("当前是 30 分钟快速回溯，只生成窗口摘要和快速索引，不做记忆沉淀", html)
+        self.assertIn("当前是快速回溯，只生成窗口摘要和快速索引，不做记忆沉淀", html)
         self.assertIn("首次安装后，会自动触发完整回溯，请耐心等待。", html)
         self.assertIn("完整回溯", html)
         self.assertIn("openrelix backfill --from 2026-04-24 --to 2026-04-24 --stage final", html)
@@ -9632,7 +9655,7 @@ Keep my own note.
             )
             html = build_overview.make_nightly_summary_panel(
                 "每日整理结果",
-                "2026-05-06 · 30 分钟快速回溯",
+                "2026-05-06 · 快速回溯",
                 "",
                 {},
                 {"window_count": 1},

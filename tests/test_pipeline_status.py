@@ -64,6 +64,22 @@ class PipelineStatusTests(unittest.TestCase):
             self.assertEqual(saved["run_id"], payload["run_id"])
             self.assertEqual(saved["recent_runs"][0]["target_date"], "2026-05-06")
 
+    def test_recent_runs_keep_latest_thirty_entries(self):
+        rows = [
+            {
+                "run_id": "run-{}".format(index),
+                "pipeline": "nightly_pipeline",
+                "status": "completed",
+            }
+            for index in range(35)
+        ]
+
+        sanitized = pipeline_status._sanitize_recent_runs(rows)
+
+        self.assertEqual(len(sanitized), 30)
+        self.assertEqual(sanitized[0]["run_id"], "run-0")
+        self.assertEqual(sanitized[-1]["run_id"], "run-29")
+
     def test_failed_status_includes_safe_failure_hint(self):
         with TemporaryDirectory() as tmpdir:
             paths = runtime_paths_for_state(tmpdir)
@@ -151,7 +167,7 @@ class PipelineStatusTests(unittest.TestCase):
   <key>Label</key>
   <string>io.github.openrelix.overview-refresh</string>
   <key>StartInterval</key>
-  <integer>1800</integer>
+  <integer>3600</integer>
   <key>EnvironmentVariables</key>
   <dict>
     <key>OPENRELIX_REFRESH_LEARN_MEMORY</key>
@@ -185,7 +201,7 @@ class PipelineStatusTests(unittest.TestCase):
                 status_payload=status_payload,
             )
 
-            self.assertEqual(rows[0]["next_at_iso"], "2026-05-07T20:32:05+08:00")
+            self.assertEqual(rows[0]["next_at_iso"], "2026-05-07T21:02:05+08:00")
             self.assertEqual(rows[0]["interval_anchor_at_iso"], "2026-05-07T20:02:05+08:00")
 
     def test_interval_schedule_falls_back_to_now_without_matching_run(self):
@@ -202,7 +218,7 @@ class PipelineStatusTests(unittest.TestCase):
   <key>Label</key>
   <string>io.github.openrelix.overview-refresh</string>
   <key>StartInterval</key>
-  <integer>1800</integer>
+  <integer>3600</integer>
 </dict>
 </plist>
 """,
@@ -215,7 +231,7 @@ class PipelineStatusTests(unittest.TestCase):
                 status_payload={"recent_runs": []},
             )
 
-            self.assertEqual(rows[0]["next_at_iso"], "2026-05-07T20:58:00+08:00")
+            self.assertEqual(rows[0]["next_at_iso"], "2026-05-07T21:28:00+08:00")
 
 
 if __name__ == "__main__":

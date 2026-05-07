@@ -3316,11 +3316,11 @@
             <div class="section-kicker">记忆系统</div>
             <h2>先沉淀成本地账本，再把必要摘要交给 AI host。</h2>
           </div>
-          <p class="lead">OpenRelix 不会把所有聊天都塞回上下文。它先把工作记录留在本机，再按固定节奏整理：平时每 30 分钟做小结，深夜做当天总账；需要时也能手动立刻生成。</p>
+          <p class="lead">OpenRelix 不会把所有聊天都塞回上下文。它先把工作记录留在本机，再按固定节奏整理：平时每 1 小时做小结，深夜做当天总账；需要时也能手动立刻生成。</p>
         </div>
         <div class="workflow memory-flow">
           <div class="stage"><strong>先把这段工作记下来</strong><span>从 AI CLI 已保存的会话记录里读取刚做过的窗口，标清日期、项目和主题；Codex 与 Claude Code 来源会在窗口里分开标记。</span></div>
-          <div class="stage"><strong>每 30 分钟做一次小结</strong><span>开启后台学习刷新后，它会每 30 分钟看一眼最近窗口，把新结论、待跟进事项和可复用做法整理进本地记忆和面板。</span></div>
+          <div class="stage"><strong>每 1 小时做一次小结</strong><span>开启后台学习刷新后，它会每 1 小时看一眼最近窗口，把新结论、待跟进事项和可复用做法整理进本地记忆和面板。</span></div>
           <div class="stage"><strong>深夜把一天收成总账</strong><span>晚上 23:00 先整理当天窗口，00:10 再把前一天结果固定下来，生成长期记忆、工作记忆、报告和面板。</span></div>
           <div class="stage"><strong>着急时手动跑一次</strong><span>不想等后台任务时，直接运行 review 或 refresh，就能马上从当前窗口生成记忆；默认只同步压缩摘要，local-only 时只留本地。</span></div>
         </div>
@@ -3579,13 +3579,13 @@
             <div class="section-kicker">安装</div>
             <h2>安装方式。</h2>
           </div>
-          <p class="lead">推荐命令会安装 `openrelix`、创建本地资产账本，开启每 30 分钟的增量学习，并把 Codex 与 Claude Code 本地窗口纳入整理。</p>
+          <p class="lead">推荐命令会安装 `openrelix`、创建本地资产账本，开启每 1 小时的增量学习，并把 Codex 与 Claude Code 本地窗口纳入整理。</p>
         </div>
         <div class="install-module" aria-label="安装方式">
           <article class="install-path featured">
             <span class="chip">推荐安装</span>
             <h3>一行命令安装。</h3>
-              <p>已经有 Node.js 18+ 和 Python 3.10+ 的 macOS 用户，直接跑这一行。它会安装 `openrelix` 命令、创建本地资产账本、开启每 30 分钟的增量学习，并读取 Codex 与 Claude Code 的本地记录。</p>
+              <p>已经有 Node.js 18+ 和 Python 3.10+ 的 macOS 用户，直接跑这一行。它会安装 `openrelix` 命令、创建本地资产账本、开启每 1 小时的增量学习，并读取 Codex 与 Claude Code 的本地记录。</p>
             <div class="command-row inline-command" aria-label="npx 安装命令">
               <code class="command-code">npx openrelix@latest install --enable-learning-refresh</code>
               <button class="command-copy" type="button" aria-label="复制 npx 安装命令"><span data-copy-label aria-live="polite">复制</span></button>
@@ -4003,11 +4003,11 @@
         "围绕个人记忆系统做正式版收口：更清晰的长期/工作/低优先分层、更强的资产升级规则、更稳定的跨 host 记忆同步和正式发布文档。": "Finalize the official release around the personal memory system: clearer long-term / work / low-priority layers, stronger asset promotion rules, more stable cross-host memory sync, and official release docs.",
         "以上时间是基于 2026/04/28 - 2026/04/29 两次发布节奏的预估，具体范围会随 host 适配验证、隐私边界检查和安装稳定性测试微调。": "These dates are estimates based on the 2026/04/28 - 2026/04/29 release cadence; scope may adjust after host-adapter validation, privacy-boundary checks, and install stability testing.",
         "先沉淀成本地账本，再把必要摘要交给 AI host。": "First capture a local ledger, then hand only the necessary summary to the AI host.",
-        "OpenRelix 不会把所有聊天都塞回上下文。它先把工作记录留在本机，再按固定节奏整理：平时每 30 分钟做小结，深夜做当天总账；需要时也能手动立刻生成。": "OpenRelix does not push every chat back into context. It keeps the work record on your machine first, then organizes it on a steady rhythm: short summaries every 30 minutes, a daily ledger late at night, and manual generation when you need it now.",
+        "OpenRelix 不会把所有聊天都塞回上下文。它先把工作记录留在本机，再按固定节奏整理：平时每 1 小时做小结，深夜做当天总账；需要时也能手动立刻生成。": "OpenRelix does not push every chat back into context. It keeps the work record on your machine first, then organizes it on a steady rhythm: hourly summaries, a daily ledger late at night, and manual generation when you need it now.",
         "先把这段工作记下来": "First, Save This Work Session",
         "从 AI CLI 已保存的会话记录里读取刚做过的窗口，标清日期、项目和主题；Codex 与 Claude Code 来源会在窗口里分开标记。": "It reads recent windows from saved AI CLI session records, labels the date, project, and topic, and marks Codex and Claude Code sources separately.",
-        "每 30 分钟做一次小结": "Summarize Every 30 Minutes",
-        "开启后台学习刷新后，它会每 30 分钟看一眼最近窗口，把新结论、待跟进事项和可复用做法整理进本地记忆和面板。": "After background learning refresh is enabled, it checks recent windows every 30 minutes and organizes new conclusions, follow-ups, and reusable practices into local memory and the panel.",
+        "每 1 小时做一次小结": "Summarize Every Hour",
+        "开启后台学习刷新后，它会每 1 小时看一眼最近窗口，把新结论、待跟进事项和可复用做法整理进本地记忆和面板。": "After background learning refresh is enabled, it checks recent windows every hour and organizes new conclusions, follow-ups, and reusable practices into local memory and the panel.",
         "深夜把一天收成总账": "Turn The Day Into A Ledger Late At Night",
         "晚上 23:00 先整理当天窗口，00:10 再把前一天结果固定下来，生成长期记忆、工作记忆、报告和面板。": "At 23:00 it organizes the current day's windows; at 00:10 it finalizes the previous day into long-term memories, work memories, reports, and panels.",
         "着急时手动跑一次": "Run It Manually When You Need It",
@@ -4196,14 +4196,14 @@
         "装完后怎么用。": "What to do after install.",
         "安装后运行顺序。": "Post-install run order.",
         "安装方式。": "Install Options.",
-        "先安装 OpenRelix。推荐命令会开启 30 分钟自动学习；如果只想手动整理，可以删掉 `--enable-learning-refresh`。默认 all 会读取 Codex 与 Claude Code，Codex 侧 auto 会先尝试 app-server，失败时回退 CLI history/session。": "Install OpenRelix first. The recommended command enables 30-minute automatic learning; if you only want manual organization, remove `--enable-learning-refresh`. By default, all reads Codex and Claude Code, and Codex auto tries app-server before falling back to CLI history/session.",
-        "推荐命令会安装 `openrelix`、创建本地资产账本，并开启每 30 分钟的增量学习；默认 all 会纳入 Codex 和 Claude Code 本地窗口。": "The recommended command installs `openrelix`, creates the local asset ledger, and enables incremental learning every 30 minutes; default all includes Codex and Claude Code local windows.",
-        "推荐命令会安装 `openrelix`、创建本地资产账本，开启每 30 分钟的增量学习，并把 Codex 与 Claude Code 本地窗口纳入整理。": "The recommended command installs `openrelix`, creates the local asset ledger, enables incremental learning every 30 minutes, and includes Codex and Claude Code local windows.",
+        "先安装 OpenRelix。推荐命令会开启 1 小时自动学习；如果只想手动整理，可以删掉 `--enable-learning-refresh`。默认 all 会读取 Codex 与 Claude Code，Codex 侧 auto 会先尝试 app-server，失败时回退 CLI history/session。": "Install OpenRelix first. The recommended command enables hourly automatic learning; if you only want manual organization, remove `--enable-learning-refresh`. By default, all reads Codex and Claude Code, and Codex auto tries app-server before falling back to CLI history/session.",
+        "推荐命令会安装 `openrelix`、创建本地资产账本，并开启每 1 小时的增量学习；默认 all 会纳入 Codex 和 Claude Code 本地窗口。": "The recommended command installs `openrelix`, creates the local asset ledger, and enables hourly incremental learning; default all includes Codex and Claude Code local windows.",
+        "推荐命令会安装 `openrelix`、创建本地资产账本，开启每 1 小时的增量学习，并把 Codex 与 Claude Code 本地窗口纳入整理。": "The recommended command installs `openrelix`, creates the local asset ledger, enables hourly incremental learning, and includes Codex and Claude Code local windows.",
         "推荐安装": "Recommended",
         "一行命令安装。": "Install with one command.",
-        "已经有 Node.js 18+ 和 Python 3.10+ 的 macOS 用户，直接跑这一行。它会安装 `openrelix` 命令、创建本地资产账本，并开启 30 分钟自动学习。这个模式会定时调用 Codex，可能消耗 token 和后台运行时间；不想自动学习时删掉 `--enable-learning-refresh`。": "If you already have Node.js 18+ and Python 3.10+ on macOS, run this line. It installs the `openrelix` command, creates the local asset ledger, and enables 30-minute automatic learning. This mode calls Codex on a schedule and may consume tokens and background runtime; remove `--enable-learning-refresh` if you do not want automatic learning.",
-        "已经有 Node.js 18+ 和 Python 3.10+ 的 macOS 用户，直接跑这一行。它会安装 `openrelix` 命令、创建本地资产账本，并开启每 30 分钟的增量学习；后台运行可能消耗 token，需要纯手动模式时去掉自动学习开关。": "If you already have Node.js 18+ and Python 3.10+ on macOS, run this line. It installs the `openrelix` command, creates the local asset ledger, and enables incremental learning every 30 minutes; background runs may consume tokens, so remove the automatic-learning option for a manual-only setup.",
-        "已经有 Node.js 18+ 和 Python 3.10+ 的 macOS 用户，直接跑这一行。它会安装 `openrelix` 命令、创建本地资产账本、开启每 30 分钟的增量学习，并读取 Codex 与 Claude Code 的本地记录。": "If you already have Node.js 18+ and Python 3.10+ on macOS, run this line. It installs the `openrelix` command, creates the local asset ledger, enables incremental learning every 30 minutes, and reads local records from Codex and Claude Code.",
+        "已经有 Node.js 18+ 和 Python 3.10+ 的 macOS 用户，直接跑这一行。它会安装 `openrelix` 命令、创建本地资产账本，并开启 1 小时自动学习。这个模式会定时调用 Codex，可能消耗 token 和后台运行时间；不想自动学习时删掉 `--enable-learning-refresh`。": "If you already have Node.js 18+ and Python 3.10+ on macOS, run this line. It installs the `openrelix` command, creates the local asset ledger, and enables hourly automatic learning. This mode calls Codex on a schedule and may consume tokens and background runtime; remove `--enable-learning-refresh` if you do not want automatic learning.",
+        "已经有 Node.js 18+ 和 Python 3.10+ 的 macOS 用户，直接跑这一行。它会安装 `openrelix` 命令、创建本地资产账本，并开启每 1 小时的增量学习；后台运行可能消耗 token，需要纯手动模式时去掉自动学习开关。": "If you already have Node.js 18+ and Python 3.10+ on macOS, run this line. It installs the `openrelix` command, creates the local asset ledger, and enables hourly incremental learning; background runs may consume tokens, so remove the automatic-learning option for a manual-only setup.",
+        "已经有 Node.js 18+ 和 Python 3.10+ 的 macOS 用户，直接跑这一行。它会安装 `openrelix` 命令、创建本地资产账本、开启每 1 小时的增量学习，并读取 Codex 与 Claude Code 的本地记录。": "If you already have Node.js 18+ and Python 3.10+ on macOS, run this line. It installs the `openrelix` command, creates the local asset ledger, enables hourly incremental learning, and reads local records from Codex and Claude Code.",
         "# npx 快速安装": "# quick npx install",
         "如果你想强制只读 Codex CLI 本地记录，安装时加 `--activity-source history`。": "Add `--activity-source history` during install when you want to force Codex CLI local records only.",
         "手动下载": "Manual download",
@@ -4215,8 +4215,8 @@
         "执行安装脚本。": "Run the installer script.",
         "源码安装也一样：默认 all 会读取 Codex 与 Claude Code；需要只读 Codex CLI 文件时加 `--activity-source history`。": "Source install works the same way: default all reads Codex and Claude Code; add `--activity-source history` to force Codex CLI files only.",
         "源码安装也一样：执行下面这行，直接启用自动学习并读取 Codex 与 Claude Code 本地记录。": "Source install works the same way: run the line below to enable automatic learning and read Codex and Claude Code local records.",
-        "装好以后按这个顺序来：先把最近 7 天的 Codex / Claude Code 记录整理一次；再确认是否开启 30 分钟自动学习；最后打开面板看结果。自动学习会定时调用当前 model_cli，不想消耗 token 时可以跳过。": "After install, use this order: organize the last 7 days of Codex / Claude Code records once; then confirm whether 30-minute automatic learning is enabled; finally open the panel to inspect the result. Automatic learning calls the current model_cli on a schedule, so skip it if you do not want token usage.",
-        "安装完成后，先执行一次近 7 天整理，把已有 Codex / Claude Code 窗口写入本地账本；如果安装时保留 `--enable-learning-refresh`，后台会每 30 分钟增量刷新；最后打开面板确认结果。": "After install, run one 7-day organization pass to write existing Codex / Claude Code windows into the local ledger. If you kept `--enable-learning-refresh`, the background job refreshes incrementally every 30 minutes. Then open the panel to verify the result.",
+        "装好以后按这个顺序来：先把最近 7 天的 Codex / Claude Code 记录整理一次；再确认是否开启 1 小时自动学习；最后打开面板看结果。自动学习会定时调用当前 model_cli，不想消耗 token 时可以跳过。": "After install, use this order: organize the last 7 days of Codex / Claude Code records once; then confirm whether hourly automatic learning is enabled; finally open the panel to inspect the result. Automatic learning calls the current model_cli on a schedule, so skip it if you do not want token usage.",
+        "安装完成后，先执行一次近 7 天整理，把已有 Codex / Claude Code 窗口写入本地账本；如果安装时保留 `--enable-learning-refresh`，后台会每 1 小时增量刷新；最后打开面板确认结果。": "After install, run one 7-day organization pass to write existing Codex / Claude Code windows into the local ledger. If you kept `--enable-learning-refresh`, the background job refreshes incrementally every hour. Then open the panel to verify the result.",
         "安装完成后，先执行一次近 7 天终版整理，把已有 Codex / Claude Code 窗口写入本地账本；整理完成后打开面板确认结果。": "After install, run one final 7-day organization pass to write existing Codex / Claude Code windows into the local ledger. Then open the panel to verify the result.",
         "第一步": "Step 1",
         "先补齐最近 7 天": "Backfill the last 7 days first",
@@ -4234,9 +4234,9 @@
         "Host context 预算 ≤ 8K": "Host context budget ≤ 8K",
         "受控": "Bounded",
         "第二步": "Step 2",
-        "开启 30 分钟自动学习（推荐）": "Enable 30-minute automatic learning (recommended)",
-        "如果安装命令已经带了 `--enable-learning-refresh`，这一步不用重跑。没带的话，运行下面这行开启后台自动学习；它会每 30 分钟调用 Codex 提炼记忆，可能消耗 token 和后台运行时间，不想后台调模型就跳过。": "If your install command already included `--enable-learning-refresh`, you do not need to rerun this step. If it did not, run the line below to enable background learning; it calls Codex every 30 minutes to synthesize memory, which may consume tokens and background runtime, so skip it if you do not want background model calls.",
-        "30 分钟": "30 minutes",
+        "开启 1 小时自动学习（推荐）": "Enable hourly automatic learning (recommended)",
+        "如果安装命令已经带了 `--enable-learning-refresh`，这一步不用重跑。没带的话，运行下面这行开启后台自动学习；它会每 1 小时调用 Codex 提炼记忆，可能消耗 token 和后台运行时间，不想后台调模型就跳过。": "If your install command already included `--enable-learning-refresh`, you do not need to rerun this step. If it did not, run the line below to enable background learning; it calls Codex every hour to synthesize memory, which may consume tokens and background runtime, so skip it if you do not want background model calls.",
+        "1 小时": "1 hour",
         "Host 学习": "Host learning",
         "第三步": "Step 3",
         "再打开本地面板": "Then open the local panel",
@@ -4297,7 +4297,7 @@
         "# 默认：本地记忆 + host context 轻量摘要": "# default: local memory + lightweight host context summary",
         "# 可选：禁用个人资产本地记录，仅可视化 AI CLI 的记忆": "# optional: disable OpenRelix local memory writes; only visualize AI CLI memory",
         "# 安装后先打开面板": "# after install, open the panel first",
-        "# 推荐：开启 30 分钟自动学习刷新": "# recommended: enable 30-minute automatic learning refresh",
+        "# 推荐：开启 1 小时自动学习刷新": "# recommended: enable hourly automatic learning refresh",
         "# 终端状态速览": "# terminal status",
         "复制": "Copy",
         "已复制": "Copied",

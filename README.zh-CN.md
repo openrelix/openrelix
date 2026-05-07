@@ -62,7 +62,7 @@ OpenRelix™ 和 openrelix™ 是项目维护者的商标。MIT License 授权�
 - Python 3.10+
 - Codex CLI，并且 `CODEX_HOME` 可写，默认是 `~/.codex`
 - 可选 Claude Code CLI，并且 `CLAUDE_HOME` / `CLAUDE_CONFIG_DIR` 可写，默认是 `~/.claude`；当你需要 Claude Code 窗口、Token、原生上下文或用 Claude 做模型回溯时启用。
-- 如果要使用模型学习刷新，需要当前配置的 `model_cli` 可用。默认走 Codex 的 `codex exec --model gpt-5.4-mini`；`--model-cli claude` 会改用 `claude -p --model <claude_model>`。OpenRelix 会为回溯、30 分钟学习刷新和夜间总结显式传模型，不修改用户全局 Codex 或 Claude Code 默认模型。若 Codex 报 `401`、`Unauthorized` 或 `invalid_issuer`，先确认普通终端里 `codex exec` 可用；使用集体/代理配置时，`CODEX_HOME/auth.json` 和 `CODEX_HOME/config.toml` 需要一起保留，因为 `model_provider/base_url` 不在 `auth.json` 里；使用官方 OpenAI API key 时，再检查或清理错误的 `OPENAI_API_KEY`。
+- 如果要使用模型学习刷新，需要当前配置的 `model_cli` 可用。默认走 Codex 的 `codex exec --model gpt-5.4-mini`；`--model-cli claude` 会改用 `claude -p --model <claude_model>`。OpenRelix 会为回溯、1 小时学习刷新和夜间总结显式传模型，不修改用户全局 Codex 或 Claude Code 默认模型。若 Codex 报 `401`、`Unauthorized` 或 `invalid_issuer`，先确认普通终端里 `codex exec` 可用；使用集体/代理配置时，`CODEX_HOME/auth.json` 和 `CODEX_HOME/config.toml` 需要一起保留，因为 `model_provider/base_url` 不在 `auth.json` 里；使用官方 OpenAI API key 时，再检查或清理错误的 `OPENAI_API_KEY`。
 
 Linux 和 Windows 是后续工作。部分底层 Python 脚本已经把路径做成可配置，但当前公开 installer 和后台自动化应按 macOS-only 理解。
 
@@ -208,7 +208,7 @@ context sync 会做压缩：重复个人记忆按签名合并，优先 durable /
 ./install/install.sh --disable-personal-memory
 ```
 
-默认的 integrated profile 会安装全局 skill symlink、bounded history config、`openrelix` shell command、轻量 macOS 客户端和夜间整理；加上下面这些显式选项后，还会开启 30 分钟自动学习刷新、每日更新检查和任务执行期间防睡眠：
+默认的 integrated profile 会安装全局 skill symlink、bounded history config、`openrelix` shell command、轻量 macOS 客户端和夜间整理；加上下面这些显式选项后，还会开启 1 小时自动学习刷新、每日更新检查和任务执行期间防睡眠：
 
 ```bash
 ./install/install.sh --enable-learning-refresh --keep-awake=during-job --enable-update-check
@@ -223,7 +223,7 @@ context sync 会做压缩：重复个人记忆按签名合并，优先 durable /
 5. 安装全局 `openrelix` shell command，并确保用户选择的 bin 目录在 `PATH` 中。
 6. 如果本机有 `swiftc`，先在 state root 构建轻量 macOS 客户端，再把真实 app bundle 安装到 `~/Applications/OpenRelix.app`。
 7. 渲染并 bootstrap macOS LaunchAgents：
-   - 每 30 分钟刷新 overview；如果开启 `--enable-learning-refresh`，会读取配置的 activity host，并通过配置的 `model_cli` 做模型回溯
+   - 每 1 小时刷新 overview；如果开启 `--enable-learning-refresh`，会读取配置的 activity host，并通过配置的 `model_cli` 做模型回溯
    - token live server
    - 每天 `23:00` 生成当日预览
    - 每天 `00:10` 生成前一日终版

@@ -65,7 +65,7 @@ The current preview is macOS-only. The supported install path assumes:
 - Python 3.10+
 - Codex CLI with a writable `CODEX_HOME`, defaulting to `~/.codex`
 - Optional Claude Code CLI with a writable `CLAUDE_HOME` / `CLAUDE_CONFIG_DIR`, defaulting to `~/.claude`, when you want Claude Code windows, Token usage, native context, or model-backed consolidation.
-- For model-backed learning refresh, a working `model_cli`. The default is Codex through `codex exec --model gpt-5.4-mini`; `--model-cli claude` uses `claude -p --model <claude_model>` instead. OpenRelix passes the model explicitly for review, backfill, 30-minute learning refresh, and nightly summaries without changing either host's global default. If Codex reports `401`, `Unauthorized`, or `invalid_issuer`, first confirm `codex exec` works in a normal terminal. Shared/proxy Codex providers must keep `CODEX_HOME/auth.json` and `CODEX_HOME/config.toml` together because `model_provider/base_url` is not stored in `auth.json`; official OpenAI API key setups should also check or clear an invalid `OPENAI_API_KEY`.
+- For model-backed learning refresh, a working `model_cli`. The default is Codex through `codex exec --model gpt-5.4-mini`; `--model-cli claude` uses `claude -p --model <claude_model>` instead. OpenRelix passes the model explicitly for review, backfill, hourly learning refresh, and nightly summaries without changing either host's global default. If Codex reports `401`, `Unauthorized`, or `invalid_issuer`, first confirm `codex exec` works in a normal terminal. Shared/proxy Codex providers must keep `CODEX_HOME/auth.json` and `CODEX_HOME/config.toml` together because `model_provider/base_url` is not stored in `auth.json`; official OpenAI API key setups should also check or clear an invalid `OPENAI_API_KEY`.
 
 Linux and Windows support are future work. Some lower-level Python scripts are written to keep paths configurable, but the public installer and background automation should be treated as macOS-only for this release.
 
@@ -212,7 +212,7 @@ The context sync is intentionally compressed: duplicate personal memories are me
 
 `--record-memory-only` keeps the personal memory system on, enables enough host history for local collection, disables host-native memory context, and keeps bounded memory-summary sync off. `--disable-personal-memory` records the mode as `off` and skips local memory-registry writes. `--use-integrated` is the explicit alias for the default mode.
 
-Recommended integrated install with global skill symlinks, bounded history config, the `openrelix` shell command, the lightweight macOS client, default nightly organization, 30-minute automatic learning refresh, a daily update check, and sleep protection while nightly jobs are running:
+Recommended integrated install with global skill symlinks, bounded history config, the `openrelix` shell command, the lightweight macOS client, default nightly organization, hourly automatic learning refresh, a daily update check, and sleep protection while nightly jobs are running:
 
 ```bash
 ./install/install.sh --enable-learning-refresh --keep-awake=during-job --enable-update-check
@@ -227,7 +227,7 @@ The integrated profile does this:
 5. Installs the global `openrelix` shell command and ensures the chosen user bin directory is on `PATH`.
 6. Builds the lightweight macOS client in the state root, then installs a real app bundle at `~/Applications/OpenRelix.app` when `swiftc` is available.
 7. Renders and bootstraps macOS LaunchAgents for:
-   - overview refresh every 30 minutes; with `--enable-learning-refresh`, this reads the configured activity host and runs model-backed consolidation through the configured `model_cli`
+   - overview refresh every hour; with `--enable-learning-refresh`, this reads the configured activity host and runs model-backed consolidation through the configured `model_cli`
    - token live server
    - nightly preview at `23:00`
    - nightly finalize for the previous day at `00:10`
@@ -253,13 +253,13 @@ After the installer finishes, it prints recommended next steps. The first action
 openrelix app
 ```
 
-Recommended after install: the installer can enable automatic learning refresh every 30 minutes:
+Recommended after install: the installer can enable automatic learning refresh every hour:
 
 ```bash
 npx openrelix install --enable-learning-refresh
 ```
 
-This option is intentionally explicit: the default background `overview-refresh` does not learn memory from recent windows, while `--enable-learning-refresh` makes that 30-minute LaunchAgent read the configured activity host, learn from recent AI host windows, update this system's local memory and overview, and keep host-context injection bounded. Chinese runtime language may still maintain the small Codex-native display cache described above. If the global `openrelix` command was not installed, the installer prints a direct `python3 scripts/openrelix.py ...` fallback command with the selected state root and host homes.
+This option is intentionally explicit: the default background `overview-refresh` does not learn memory from recent windows, while `--enable-learning-refresh` makes that hourly LaunchAgent read the configured activity host, learn from recent AI host windows, update this system's local memory and overview, and keep host-context injection bounded. Chinese runtime language may still maintain the small Codex-native display cache described above. If the global `openrelix` command was not installed, the installer prints a direct `python3 scripts/openrelix.py ...` fallback command with the selected state root and host homes.
 
 The integrated installer also provides a shell entrypoint:
 

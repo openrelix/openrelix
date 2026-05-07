@@ -259,7 +259,7 @@ bounded summary 的压缩策略保持轻量：同签名记忆跨天归并，dura
 2. 把 repo 内的 skills 软链接到用户级 `~/.codex/skills/`，包括 `memory-review`
 3. 把 repo 提供的 custom prompt 安装到用户级 `~/.codex/prompts/`，作为兼容 fallback
 4. 安装全局 `openrelix` 命令，并在需要时把对应用户 bin 目录写入 shell `PATH`
-5. 安装 macOS 后台 refresh 服务；加 `--enable-learning-refresh` 时，每 30 分钟自动读取当前 activity host，并通过当前 `model_cli` 学习最近 7 天窗口
+5. 安装 macOS 后台 refresh 服务；加 `--enable-learning-refresh` 时，每 1 小时自动读取当前 activity host，并通过当前 `model_cli` 学习最近 7 天窗口
 
 完整集成默认会把同一份 bounded summary 写入启用的 host context，让 Codex 和 Claude Code 能读取压缩后的个人记忆。完整的结构化资产记忆仍写入 state root；面板继续把 host native memory 和本项目本地 memory registry 分层展示，并且不会把 OpenRelix 注入的个人记忆块当作 host 原生记忆卡片展示。需要严格隔离时，使用 `--record-memory-only` 或 `--no-memory-summary`。
 
@@ -439,13 +439,13 @@ openrelix review
 openrelix open panel
 ```
 
-推荐安装时打开 30 分钟自动学习刷新，让 OpenRelix 持续用今日窗口和最近 7 天上下文提炼本地记忆：
+推荐安装时打开 1 小时自动学习刷新，让 OpenRelix 持续用今日窗口和最近 7 天上下文提炼本地记忆：
 
 ```bash
 npx openrelix install --profile integrated --enable-learning-refresh
 ```
 
-这个选项是显式指令：默认后台 `overview-refresh` 不会从最近窗口学习；加 `--enable-learning-refresh` 后，30 分钟 LaunchAgent 会读取当前 activity host，通过当前 `model_cli` 更新本系统本地 memory 和 overview。中文运行语言下，默认刷新仍会按需维护 Codex 原生记忆展示缓存。默认 `integrated` 会同步 bounded summary 到 host native context，但不会写入原始窗口或完整 registry；如果使用 `--record-memory-only`，则只更新本地 state root。如果没有安装全局 `openrelix` 命令，installer 会打印一条带 `AI_ASSET_STATE_DIR` / host home 的 `python3 scripts/openrelix.py ...` fallback 命令。
+这个选项是显式指令：默认后台 `overview-refresh` 不会从最近窗口学习；加 `--enable-learning-refresh` 后，1 小时 LaunchAgent 会读取当前 activity host，通过当前 `model_cli` 更新本系统本地 memory 和 overview。中文运行语言下，默认刷新仍会按需维护 Codex 原生记忆展示缓存。默认 `integrated` 会同步 bounded summary 到 host native context，但不会写入原始窗口或完整 registry；如果使用 `--record-memory-only`，则只更新本地 state root。如果没有安装全局 `openrelix` 命令，installer 会打印一条带 `AI_ASSET_STATE_DIR` / host home 的 `python3 scripts/openrelix.py ...` fallback 命令。
 
 其中：
 
@@ -482,7 +482,7 @@ npx openrelix uninstall --delete-local-memory
 ### 默认后台能力
 
 - `overview refresh`
-  默认每 30 分钟刷新一次 overview / panel 快照；安装时加 `--enable-learning-refresh` 后，每 30 分钟会读取当前 activity host，并通过当前 `model_cli` 学习最近 7 天窗口
+  默认每 1 小时刷新一次 overview / panel 快照；安装时加 `--enable-learning-refresh` 后，每 1 小时会读取当前 activity host，并通过当前 `model_cli` 学习最近 7 天窗口
 - `token live server`
   提供本地 token 实时接口，给 panel 页面做即时刷新
 

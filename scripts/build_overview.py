@@ -78,7 +78,9 @@ RAW_DAILY_DIR = PATHS.raw_daily_dir
 TOKEN_CACHE_PATH = REPORTS_DIR / "token-usage-cache.json"
 ASSET_STATS_LATEST_PATH = REPORTS_DIR / "asset-stats-latest.json"
 CODEX_NATIVE_DISPLAY_CACHE_PATH = PATHS.runtime_dir / "codex-native-display-cache.json"
-AUTO_REFRESH_SECONDS = 1800
+AUTO_REFRESH_SECONDS = 3600
+PIPELINE_HISTORY_COLLAPSED_LIMIT = 4
+PIPELINE_HISTORY_EXPANDED_LIMIT = 30
 BACKFILL_LOOKBACK_DAYS = 14
 BACKFILL_LEARN_WINDOW_DAYS = 7
 PROJECT_GITHUB_URL = "https://github.com/openrelix/openrelix"
@@ -603,6 +605,8 @@ PANEL_I18N_EN = {
     "工作": "Work",
     "低优先": "Low-priority",
     "工作窗口": "Work Windows",
+    "后台运行监控": "Background Monitor",
+    "展示 OpenRelix 后台 pipeline 的实时阶段和最近结果": "Shows live stages and recent results for OpenRelix background pipelines",
     "工作跟进": "Work Memory",
     "低优先级": "Low-priority",
     "暂无夜间整理结果": "No nightly synthesis yet",
@@ -617,19 +621,19 @@ PANEL_I18N_EN = {
     "该日期还没有整理结果。可以复制命令在终端手动回溯。": (
         "This date has no synthesis yet. Copy the command and run it in a terminal to backfill it."
     ),
-    "今天还没结束，当前还没有 30 分钟快速回溯；可先运行今日快速回溯刷新面板，次日会自动生成完整回溯。": (
-        "Today is not over yet and no 30-minute quick backfill exists. Run today's quick backfill to refresh the panel; the full backfill will run tomorrow."
+    "今天还没结束，当前还没有快速回溯；可先运行今日快速回溯刷新面板，次日会自动生成完整回溯。": (
+        "Today is not over yet and no quick backfill exists. Run today's quick backfill to refresh the panel; the full backfill will run tomorrow."
     ),
-    "今天还没结束，当前保留 30 分钟快速回溯；次日会自动生成完整回溯。": (
-        "Today is not over yet, so the 30-minute quick backfill remains active. The full backfill will run tomorrow."
+    "今天还没结束，当前保留快速回溯；次日会自动生成完整回溯。": (
+        "Today is not over yet, so the quick backfill remains active. The full backfill will run tomorrow."
     ),
-    "当前是 30 分钟快速回溯，只生成窗口摘要和快速索引，不做记忆沉淀。可以复制命令在终端补跑完整回溯。首次安装后，会自动触发完整回溯，请耐心等待。": (
-        "This is the 30-minute quick backfill, so it only generates window summaries and a fast index; memory synthesis is deferred. "
+    "当前是快速回溯，只生成窗口摘要和快速索引，不做记忆沉淀。可以复制命令在终端补跑完整回溯。首次安装后，会自动触发完整回溯，请耐心等待。": (
+        "This is the quick backfill, so it only generates window summaries and a fast index; memory synthesis is deferred. "
         "Copy the command and run the full backfill in a terminal. After first install, "
         "OpenRelix starts the full backfill automatically; please wait."
     ),
     "单日回溯": "Single-date backfill",
-    "30 分钟快速回溯": "30-minute quick backfill",
+    "快速回溯": "Quick backfill",
     "当日预览": "Daily preview",
     "深度回溯": "Deep backfill",
     "多日回溯": "Multi-day backfill",
@@ -10995,7 +10999,7 @@ def make_side_nav():
         ("link", "overview-top", "总览", "Overview", "总览", "Overview"),
         ("link", "nightly-summary", "整理摘要", "Synthesis", "整理摘要", "Synthesis"),
         ("link", "token-section", "Token", "Token", "Token", "Token"),
-        ("link", "pipeline-section", "运行中", "Pipeline", "当前运行内容", "Current Pipeline"),
+        ("link", "pipeline-section", "后台运行监控", "Background Monitor", "后台运行监控", "Background Monitor"),
         ("link", "project-context-section", "项目上下文", "Context", "项目上下文", "Context"),
         ("group", "记忆层", "Memory Layer"),
         ("link", "memory-section", "个人资产记忆", "Personal Asset Memory", "个人资产记忆", "Personal Asset Memory"),
@@ -12414,8 +12418,8 @@ def build_daily_summary_english_parts(nightly, summary_text, window_count, conte
 
 def stage_display_label(stage, language=None):
     if is_english(language):
-        return {"final": "Full backfill", "preliminary": "30-minute quick backfill", "manual": "Manual run"}.get(stage, stage)
-    return {"final": "完整回溯", "preliminary": "30 分钟快速回溯", "manual": "手动整理"}.get(stage, stage)
+        return {"final": "Full backfill", "preliminary": "Quick backfill", "manual": "Manual run"}.get(stage, stage)
+    return {"final": "完整回溯", "preliminary": "快速回溯", "manual": "手动整理"}.get(stage, stage)
 
 
 def build_daily_summary_view(nightly, window_overview=None, project_contexts=None, language=None):
@@ -12493,11 +12497,11 @@ def build_daily_summary_view(nightly, window_overview=None, project_contexts=Non
     note_text_en = "These numbers come from the selected synthesis and help estimate how much was captured that day."
     if stage == "preliminary":
         if is_current_local_date(nightly.get("date", "")):
-            note_text_zh = "今天仍在进行中，当前是 30 分钟快速回溯结果；只保留窗口摘要和快速索引，次日完整回溯会再生成记忆。"
-            note_text_en = "Today is still in progress, so this is only a 30-minute quick backfill; it keeps window summaries and a fast index, and the full backfill will generate memories tomorrow."
+            note_text_zh = "今天仍在进行中，当前是快速回溯结果；只保留窗口摘要和快速索引，次日完整回溯会再生成记忆。"
+            note_text_en = "Today is still in progress, so this is only a quick backfill; it keeps window summaries and a fast index, and the full backfill will generate memories tomorrow."
         else:
-            note_text_zh = "当前是 30 分钟快速回溯结果，只保留窗口摘要和快速索引；可运行完整回溯生成可用记忆和完整总结。"
-            note_text_en = "This is the 30-minute quick backfill, so it keeps only window summaries and a fast index; run the full backfill for usable memories and a complete summary."
+            note_text_zh = "当前是快速回溯结果，只保留窗口摘要和快速索引；可运行完整回溯生成可用记忆和完整总结。"
+            note_text_en = "This is the quick backfill, so it keeps only window summaries and a fast index; run the full backfill for usable memories and a complete summary."
     elif not nightly:
         note_text_zh = "当前还没有最近一次整理；生成后这里会自动切成摘要卡。"
         note_text_en = "No recent synthesis yet; this area will switch to a summary card after generation."
@@ -12774,15 +12778,15 @@ def make_nightly_summary_panel(
     )
     if selected_current_missing:
         backfill_title = "今日仍在进行中"
-        backfill_note = "今天还没结束，当前还没有 30 分钟快速回溯；可先运行今日快速回溯刷新面板，次日会自动生成完整回溯。"
-        backfill_single_label = "30 分钟快速回溯"
+        backfill_note = "今天还没结束，当前还没有快速回溯；可先运行今日快速回溯刷新面板，次日会自动生成完整回溯。"
+        backfill_single_label = "快速回溯"
     elif selected_current_preliminary:
         backfill_title = "今日仍在进行中"
-        backfill_note = "今天还没结束，当前保留 30 分钟快速回溯；次日会自动生成完整回溯。"
-        backfill_single_label = "30 分钟快速回溯"
+        backfill_note = "今天还没结束，当前保留快速回溯；次日会自动生成完整回溯。"
+        backfill_single_label = "快速回溯"
     elif selected_preliminary:
         backfill_title = "建议深度回溯"
-        backfill_note = "当前是 30 分钟快速回溯，只生成窗口摘要和快速索引，不做记忆沉淀。可以复制命令在终端补跑完整回溯。首次安装后，会自动触发完整回溯，请耐心等待。"
+        backfill_note = "当前是快速回溯，只生成窗口摘要和快速索引，不做记忆沉淀。可以复制命令在终端补跑完整回溯。首次安装后，会自动触发完整回溯，请耐心等待。"
         backfill_single_label = "完整回溯"
     else:
         backfill_title = "缺少整理结果"
@@ -13695,7 +13699,8 @@ def make_pipeline_recent_runs(rows):
             panel_language_text_html("暂无近期运行记录。", "No recent runs yet.")
         )
     rendered = []
-    for row in rows[:4]:
+    limited_rows = list(rows[:PIPELINE_HISTORY_EXPANDED_LIMIT])
+    for row in limited_rows[:PIPELINE_HISTORY_COLLAPSED_LIMIT]:
         title = row.get("title") or row.get("pipeline") or ""
         title_en = row.get("title_en") or title
         status = row.get("status") or "idle"
@@ -13718,6 +13723,22 @@ def make_pipeline_recent_runs(rows):
                 status=escape(str(status), quote=True),
                 title=panel_language_text_html(title, title_en),
                 meta=meta_html,
+            )
+        )
+    if len(limited_rows) > PIPELINE_HISTORY_COLLAPSED_LIMIT:
+        count = len(limited_rows)
+        rendered.append(
+            """
+            <button class="pipeline-history-toggle" type="button" data-pipeline-history-toggle aria-expanded="false">
+              <span class="pipeline-history-toggle-label">{label}</span>
+              <span class="pipeline-history-toggle-count">{count_label}</span>
+            </button>
+            """.format(
+                label=panel_language_text_html("展开更多", "Show More"),
+                count_label=panel_language_text_html(
+                    "查看最近 {} 条记录".format(count),
+                    "View latest {} runs".format(count),
+                ),
             )
         )
     return "".join(rendered)
@@ -13799,8 +13820,8 @@ def make_pipeline_status_panel(status_payload, help_html=""):
     """.format(
         status=escape(status, quote=True),
         header=make_panel_header(
-            "当前运行内容",
-            "展示最近一次 OpenRelix pipeline 的实时阶段",
+            "后台运行监控",
+            "展示 OpenRelix 后台 pipeline 的实时阶段和最近结果",
             help_html=help_html,
         ),
         title=panel_language_text_html(title, title_en),
@@ -14861,13 +14882,13 @@ def build_html(data):
         backfill=data.get("backfill", {}),
     )
     pipeline_status_help = make_help_popover(
-        "当前运行内容",
+        "后台运行监控",
         [
             {
                 "label": "统计什么",
                 "body": {
-                    "zh": "读取 state root 下的轻量运行状态，只展示 pipeline 名称、阶段、日期和最近结果。",
-                    "en": "Reads the lightweight runtime status from the state root and shows only pipeline name, phase, date, and recent result.",
+                    "zh": "读取 state root 下的轻量运行状态，只展示后台 pipeline 名称、阶段、日期和最近结果。",
+                    "en": "Reads the lightweight runtime status from the state root and shows only background pipeline name, phase, date, and recent result.",
                 },
             },
             {
@@ -16698,6 +16719,36 @@ def build_html(data):
       flex: 0 1 auto;
       white-space: normal;
       text-align: right;
+    }}
+
+    .pipeline-history-toggle {{
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      justify-self: start;
+      min-height: 34px;
+      padding: 7px 12px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: var(--control);
+      color: var(--accent);
+      font: inherit;
+      font-size: 12px;
+      font-weight: 760;
+      line-height: 1.25;
+      cursor: pointer;
+      transition: background 160ms ease, border-color 160ms ease, color 160ms ease;
+    }}
+
+    .pipeline-history-toggle:hover {{
+      background: var(--control-strong);
+      border-color: var(--accent-soft-strong);
+    }}
+
+    .pipeline-history-toggle-count {{
+      color: var(--muted);
+      font-weight: 700;
     }}
 
     .pipeline-empty {{
@@ -20617,6 +20668,8 @@ def build_html(data):
         livePollMs: {live_token_poll_ms},
         requestTimeoutMs: {live_token_timeout_ms},
       }};
+      const pipelineHistoryCollapsedLimit = {pipeline_history_collapsed_limit};
+      const pipelineHistoryExpandedLimit = {pipeline_history_expanded_limit};
       function tokenDateInputValue(date) {{
         const year = date.getFullYear();
         const month = String(date.getMonth() + 1).padStart(2, "0");
@@ -20652,6 +20705,7 @@ def build_html(data):
         selectedNightlyDate: snapshot.daily_summary_default_date || "",
         selectedWindowOverviewDate: snapshot.window_overview_default_date || "",
         pipelineStatus: snapshot.pipeline_status || null,
+        pipelineHistoryExpanded: false,
         refreshStatusKind: "",
         refreshStatusMessageKey: "",
       }};
@@ -20746,7 +20800,7 @@ def build_html(data):
       function pipelineStageLabel(stage) {{
         const labels = {{
           final: ["完整回溯", "Full backfill"],
-          preliminary: ["30 分钟快速回溯", "30-minute quick backfill"],
+          preliminary: ["快速回溯", "Quick backfill"],
           manual: ["手动整理", "Manual run"],
         }};
         const pair = labels[String(stage || "")] || [String(stage || ""), String(stage || "")];
@@ -20860,7 +20914,10 @@ def build_html(data):
             '</div>';
           return;
         }}
-        elements.pipelineHistory.innerHTML = rows.slice(0, 4).map(function (row) {{
+        const limitedRows = rows.slice(0, pipelineHistoryExpandedLimit);
+        const visibleLimit = state.pipelineHistoryExpanded ? pipelineHistoryExpandedLimit : pipelineHistoryCollapsedLimit;
+        const visibleRows = limitedRows.slice(0, visibleLimit);
+        const rowHtml = visibleRows.map(function (row) {{
           const status = String((row && row.status) || "idle");
           const title = localizeValue((row && row.title) || (row && row.pipeline) || "", (row && row.title_en) || (row && row.title) || "");
           const meta = pipelineHistoryMetaLabels(row).map(function (label) {{
@@ -20873,6 +20930,24 @@ def build_html(data):
             '</div>'
           );
         }}).join("");
+        const toggleHtml = limitedRows.length > pipelineHistoryCollapsedLimit
+          ? (
+            '<button class="pipeline-history-toggle" type="button" data-pipeline-history-toggle aria-expanded="' +
+              (state.pipelineHistoryExpanded ? 'true' : 'false') + '">' +
+              '<span class="pipeline-history-toggle-label">' +
+                escapeHtml(state.pipelineHistoryExpanded
+                  ? (currentLanguage === "en" ? "Collapse" : "收起")
+                  : (currentLanguage === "en" ? "Show More" : "展开更多")) +
+              '</span>' +
+              '<span class="pipeline-history-toggle-count">' +
+                escapeHtml(currentLanguage === "en"
+                  ? ("View latest " + limitedRows.length + " runs")
+                  : ("查看最近 " + limitedRows.length + " 条记录")) +
+              '</span>' +
+            '</button>'
+          )
+          : "";
+        elements.pipelineHistory.innerHTML = rowHtml + toggleHtml;
       }}
 
       function updatePipelineStatus(payload) {{
@@ -21400,14 +21475,14 @@ def build_html(data):
         if (elements.backfillNote) {{
           elements.backfillNote.textContent = t(
             isCurrentMissing
-              ? "今天还没结束，当前还没有 30 分钟快速回溯；可先运行今日快速回溯刷新面板，次日会自动生成完整回溯。"
+              ? "今天还没结束，当前还没有快速回溯；可先运行今日快速回溯刷新面板，次日会自动生成完整回溯。"
               : isPreliminary
-              ? "当前是 30 分钟快速回溯，只生成窗口摘要和快速索引，不做记忆沉淀。可以复制命令在终端补跑完整回溯。首次安装后，会自动触发完整回溯，请耐心等待。"
+              ? "当前是快速回溯，只生成窗口摘要和快速索引，不做记忆沉淀。可以复制命令在终端补跑完整回溯。首次安装后，会自动触发完整回溯，请耐心等待。"
               : "该日期还没有整理结果。可以复制命令在终端手动回溯。"
           );
         }}
         if (elements.backfillSingleLabel) {{
-          elements.backfillSingleLabel.textContent = t(isCurrentMissing ? "30 分钟快速回溯" : (isPreliminary ? "完整回溯" : "单日回溯"));
+          elements.backfillSingleLabel.textContent = t(isCurrentMissing ? "快速回溯" : (isPreliminary ? "完整回溯" : "单日回溯"));
         }}
         if (elements.backfillSingleCommand) {{
           elements.backfillSingleCommand.textContent = singleCommand;
@@ -23981,6 +24056,16 @@ def build_html(data):
           runPipelineNow();
         }});
       }}
+      if (elements.pipelineHistory) {{
+        elements.pipelineHistory.addEventListener("click", function (event) {{
+          const toggle = event.target && event.target.closest
+            ? event.target.closest("[data-pipeline-history-toggle]")
+            : null;
+          if (!toggle) return;
+          state.pipelineHistoryExpanded = toggle.getAttribute("aria-expanded") !== "true";
+          renderPipelineHistory((state.pipelineStatus && state.pipelineStatus.recent_runs) || []);
+        }});
+      }}
       window.setInterval(updateSnapshotAge, 60 * 1000);
       window.setInterval(function () {{
         if (state.tokenUsage) {{
@@ -24568,6 +24653,8 @@ def build_html(data):
         snapshot_payload=snapshot_payload,
         panel_i18n_json=panel_i18n_json(),
         auto_refresh_ms=AUTO_REFRESH_SECONDS * 1000,
+        pipeline_history_collapsed_limit=PIPELINE_HISTORY_COLLAPSED_LIMIT,
+        pipeline_history_expanded_limit=PIPELINE_HISTORY_EXPANDED_LIMIT,
         live_token_endpoint=json.dumps(LIVE_TOKEN_ENDPOINT),
         live_token_poll_ms=LIVE_TOKEN_POLL_SECONDS * 1000,
         live_token_timeout_ms=LIVE_TOKEN_TIMEOUT_MS,

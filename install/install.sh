@@ -146,10 +146,10 @@ Options:
                                 Integrated installs enable nightly by default.
   --enable-update-check         Install a daily no-mutation npm update check LaunchAgent.
   --update-check-time HH:MM     Time for the daily update check. Default: 09:30
-  --enable-learning-refresh     Make the 30-minute overview refresh call the
+  --enable-learning-refresh     Make the hourly overview refresh call the
                                 configured activity host adapter and learn memory with a 7-day
                                 window. Implies --enable-background-services.
-  --disable-learning-refresh    Keep the 30-minute overview refresh from learning
+  --disable-learning-refresh    Keep the hourly overview refresh from learning
                                 recent windows. Chinese display polish can still
                                 run unless OPENRELIX_ENABLE_NATIVE_DISPLAY_POLISH=0.
   --learning-refresh-window-days N
@@ -1666,7 +1666,7 @@ EOF
 
   if (( ENABLE_LEARNING_REFRESH )); then
     cat <<EOF
-  2. 已开启 30 分钟自动学习刷新；首次自动学习会在下一个 30 分钟周期运行。
+  2. 已开启 1 小时自动学习刷新；首次自动学习会在下一个 1 小时周期运行。
      当前窗口 host: $ACTIVITY_HOST；模型回溯 CLI: $MODEL_CLI。Codex 窗口默认会先尝试 app-server，失败时回退 CLI history/session；如需只读稳定 CLI 文件，安装时加 --activity-source history。
 EOF
   else
@@ -1721,13 +1721,13 @@ EOF
       cat <<EOF
 
 后台刷新：
-  overview-refresh 已安装为每 30 分钟自动学习刷新一次，会读取当前 activity host，并用 $MODEL_CLI 回溯最近 ${LEARNING_REFRESH_WINDOW_DAYS} 天窗口。
+  overview-refresh 已安装为每 1 小时自动学习刷新一次，会读取当前 activity host，并用 $MODEL_CLI 回溯最近 ${LEARNING_REFRESH_WINDOW_DAYS} 天窗口。
 EOF
     else
       cat <<EOF
 
 后台刷新：
-  overview-refresh 已安装为每 30 分钟刷新一次；当前不会从最近窗口自动学习。中文展示润色仍会按需维护缓存；如需自动学习刷新，重新安装时加 --enable-learning-refresh。
+  overview-refresh 已安装为每 1 小时刷新一次；当前不会从最近窗口自动学习。中文展示润色仍会按需维护缓存；如需自动学习刷新，重新安装时加 --enable-learning-refresh。
 EOF
     fi
   fi
@@ -1774,7 +1774,7 @@ EOF
 
   if (( ENABLE_LEARNING_REFRESH )); then
     cat <<EOF
-  2. Automatic learning refresh is enabled; the first learning run will happen on the next 30-minute interval.
+  2. Automatic learning refresh is enabled; the first learning run will happen on the next hourly interval.
      Current activity host: $ACTIVITY_HOST; model backfill CLI: $MODEL_CLI. Codex windows try app-server first and fall back to CLI history/session; add --activity-source history to force stable CLI files only.
 EOF
   else
@@ -1829,13 +1829,13 @@ EOF
       cat <<EOF
 
 Background refresh:
-  overview-refresh is installed to learn automatically every 30 minutes. It reads the current activity host and uses $MODEL_CLI for the last ${LEARNING_REFRESH_WINDOW_DAYS} days of memory backfill.
+  overview-refresh is installed to learn automatically every hour. It reads the current activity host and uses $MODEL_CLI for the last ${LEARNING_REFRESH_WINDOW_DAYS} days of memory backfill.
 EOF
     else
       cat <<EOF
 
 Background refresh:
-  overview-refresh is installed to refresh every 30 minutes without learning from recent windows. Chinese display polish still maintains its cache as needed. Reinstall with --enable-learning-refresh for automatic learning refresh.
+  overview-refresh is installed to refresh every hour without learning from recent windows. Chinese display polish still maintains its cache as needed. Reinstall with --enable-learning-refresh for automatic learning refresh.
 EOF
     fi
   fi

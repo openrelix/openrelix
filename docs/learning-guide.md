@@ -14,7 +14,7 @@
 
 GitHub 项目页：[openrelix/openrelix](https://github.com/openrelix/openrelix)。如果这套路径有帮助，欢迎点星支持。
 
-## 30 分钟快速路径
+## 小时级快速路径
 
 ### 1. 先读项目边界
 
@@ -230,7 +230,7 @@ open "$AI_ASSET_STATE_DIR/reports/panel.html"
 
 理解目标：
 
-- `overview-refresh` 每 1800 秒刷新一次，并 `RunAtLoad`。
+- `overview-refresh` 每 3600 秒刷新一次，并 `RunAtLoad`。
 - `token-live` 作为本地服务运行，并 `KeepAlive`。
 - `nightly-organize` 默认每天 23:00 运行，可通过 `--nightly-organize-time HH:MM` 调整。
 - `nightly-finalize-previous-day` 默认每天 00:10 运行，可通过 `--nightly-finalize-time HH:MM` 调整。
@@ -335,7 +335,7 @@ openrelix core
 openrelix open panel
 ```
 
-推荐安装时加 `--enable-learning-refresh`，让 30 分钟 overview-refresh 自动调用当前 Codex 适配器，用今日窗口和最近 7 天上下文生成本地记忆与 overview；默认后台 `overview-refresh` 不会从最近窗口学习，中文运行语言下只会按需维护 Codex 原生记忆展示缓存。`openrelix refresh --learn-memory --learn-window-days 7` 仍可用于手动立即跑一次。如果需要完整补齐缺失或非 final 的日报，再使用 `openrelix review --date "$(date +%F)" --learn-window-days 7`。
+推荐安装时加 `--enable-learning-refresh`，让小时级 overview-refresh 自动调用当前 Codex 适配器，用今日窗口和最近 7 天上下文生成本地记忆与 overview；默认后台 `overview-refresh` 不会从最近窗口学习，中文运行语言下只会按需维护 Codex 原生记忆展示缓存。`openrelix refresh --learn-memory --learn-window-days 7` 仍可用于手动立即跑一次。如果需要完整补齐缺失或非 final 的日报，再使用 `openrelix review --date "$(date +%F)" --learn-window-days 7`。
 
 个人记忆算法重写后，先确认迁移状态：
 
