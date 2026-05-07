@@ -1019,8 +1019,8 @@ PANEL_I18N_EN = {
     "cwd 推不出时，才回退到问题摘要、结论摘要和关键词做文本推断。": (
         "Only if cwd is insufficient, fall back to question summaries, conclusion summaries, and keywords."
     ),
-    "同名项目会合并，按最近活动时间排序。": (
-        "Projects with the same name are merged and sorted by latest activity."
+    "同名项目会合并，按讨论数从高到低排序。": (
+        "Projects with the same name are merged and sorted by discussion count descending."
     ),
     "这里数的是窗口上下文；资产层的类型与活动面板数的是资产和 skills 读取。": (
         "This counts window context; the Asset Layer type and activity panels count assets and skill reads."
@@ -4195,6 +4195,31 @@ def build_project_contexts(window_overview, language=None):
     known_project_names = collect_known_project_names(window_overview)
     groups = {}
 
+    def append_source_window_ref(container, source_item):
+        window_id = str(source_item.get("window_id", "") or "").strip()
+        if not window_id:
+            return
+        refs = container.setdefault("source_windows", [])
+        if any(ref.get("window_id") == window_id for ref in refs):
+            return
+        display_label = str(source_item.get("display_index", "") or "").strip() or window_id[:8]
+        title = (
+            source_item.get("window_title", "")
+            or source_item.get("window_summary", "")
+            or source_item.get("thread_title", "")
+            or source_item.get("question_summary", "")
+            or source_item.get("main_takeaway", "")
+        )
+        refs.append(
+            {
+                "window_id": window_id,
+                "anchor_id": "window-{}".format(window_id),
+                "display_label": display_label,
+                "latest_activity_display": source_item.get("latest_activity_display", ""),
+                "title": compact_preview_text(title, limit=80),
+            }
+        )
+
     for item in window_overview.get("windows", []):
         text_sources = [
             item.get("question_summary", ""),
@@ -4225,6 +4250,7 @@ def build_project_contexts(window_overview, language=None):
                 "summary_candidates": [],
                 "question_samples": [],
                 "takeaway_samples": [],
+                "source_windows": [],
                 "topics": {},
             },
         )
@@ -4232,6 +4258,7 @@ def build_project_contexts(window_overview, language=None):
         group["window_count"] += 1
         group["question_count"] += item.get("question_count", 0)
         group["conclusion_count"] += item.get("conclusion_count", 0)
+        append_source_window_ref(group, item)
 
         cwd = item.get("cwd_display", "")
         if cwd and cwd not in group["cwd_samples"]:
@@ -4281,11 +4308,13 @@ def build_project_contexts(window_overview, language=None):
                 "keywords": [],
                 "question_samples": [],
                 "takeaway_samples": [],
+                "source_windows": [],
             },
         )
         topic["window_count"] += 1
         topic["question_count"] += item.get("question_count", 0)
         topic["conclusion_count"] += item.get("conclusion_count", 0)
+        append_source_window_ref(topic, item)
         for keyword in item.get("keywords", []):
             display_keyword = localized_context_keyword(keyword, language=language)
             if display_keyword and display_keyword not in topic["keywords"]:
@@ -4352,15 +4381,16 @@ def build_project_contexts(window_overview, language=None):
                     "question_preview": topic_question,
                     "takeaway_preview": topic_takeaway,
                     "keywords": useful_context_keywords(topic["keywords"])[:4],
+                    "source_windows": topic.get("source_windows", []),
                 }
             )
         topics.sort(
             key=lambda item: (
+                item.get("window_count", 0),
+                item.get("question_count", 0) + item.get("conclusion_count", 0),
                 parse_iso_datetime(item.get("latest_activity_at", "")).timestamp()
                 if item.get("latest_activity_at")
                 else 0,
-                item.get("window_count", 0),
-                item.get("question_count", 0),
                 item.get("label", ""),
             ),
             reverse=True,
@@ -4383,16 +4413,17 @@ def build_project_contexts(window_overview, language=None):
                 "keywords": group["keywords"][:4],
                 "topic_count": len(topics),
                 "topics": topics,
+                "source_windows": group.get("source_windows", []),
             }
         )
 
     rows.sort(
         key=lambda item: (
+            item.get("question_count", 0) + item.get("conclusion_count", 0),
+            item.get("window_count", 0),
             parse_iso_datetime(item.get("latest_activity_at", "")).timestamp()
             if item.get("latest_activity_at")
             else 0,
-            item.get("question_count", 0),
-            item.get("conclusion_count", 0),
             item.get("label", ""),
         ),
         reverse=True,
@@ -10480,135 +10511,198 @@ def make_project_context_cards(items, language=None):
         return '<p class="empty">{}</p>'.format(
             escape(localized("暂无可归纳的项目上下文。", "No project context available.", language))
         )
+    max_window_count = max([safe_int(item.get("window_count", 0)) for item in items] or [0])
 
-    def render_keyword_chips(keywords):
-        if not keywords:
-            return '<span class="context-chip is-muted">{}</span>'.format(
-                escape(localized("暂无关键词", "No keywords", language))
-            )
-        return "".join(
-            '<span class="context-chip">{}</span>'.format(
-                escape(localized_context_keyword(keyword, language=language))
-            )
-            for keyword in keywords[:4]
-        )
+    def project_discussion_count(item):
+        return safe_int(item.get("question_count", 0)) + safe_int(item.get("conclusion_count", 0))
 
-    def render_fact(title, body):
+    def render_context_stat(value, label, extra_class=""):
         return """
-            <div class="context-card-fact">
-              <dt>{title}</dt>
-              <dd>{body}</dd>
+            <div class="context-stat{extra_class}">
+              <strong>{value}</strong>
+              <span>{label}</span>
             </div>
             """.format(
-            title=escape(title),
-            body=escape(body),
+            extra_class=escape(extra_class, quote=True),
+            value=escape(str(value)),
+            label=escape(label),
         )
 
-    def render_topic(topic):
-        keyword_chips = render_keyword_chips(topic.get("keywords", []))
-        return """
-            <article class="context-topic">
-              <div class="context-topic-head">
-                <div>
-                  <div class="context-topic-meta">{recent_activity} {latest_activity}</div>
-                  <h4>{label}</h4>
-                </div>
-                <span class="context-topic-count">{window_count_label}</span>
-              </div>
-              <p>{question}</p>
-              <p class="context-topic-takeaway">{takeaway}</p>
-              <div class="context-chip-row">{keyword_chips}</div>
-            </article>
-            """.format(
-            recent_activity=escape(localized("最近活动", "Recent activity", language)),
-                latest_activity=escape(topic.get("latest_activity_display", localized("时间未知", "Unknown time", language))),
-                label=escape(topic.get("label", "")),
-                window_count_label=escape(
-                    localized(
-                        "{} 窗口".format(topic.get("window_count", 0)),
-                        plural_en(topic.get("window_count", 0), "window"),
-                        language,
-                    )
-                ),
-            question=escape(topic.get("question_preview", localized("暂无代表问题。", "No representative question.", language))),
-            takeaway=escape(topic.get("takeaway_preview", localized("暂无代表结论。", "No representative conclusion.", language))),
-            keyword_chips=keyword_chips,
-        )
-
-    def render_topics(topics):
-        if not topics:
+    def render_source_window_links(source_windows):
+        source_windows = source_windows or []
+        if not source_windows:
             return ""
-        visible_topics = topics[:PROJECT_CONTEXT_TOPIC_VISIBLE_COUNT]
-        hidden_topics = topics[len(visible_topics):]
-        topic_list_html = '<div class="context-topic-list">{}</div>'.format(
-            "".join(render_topic(topic) for topic in visible_topics)
-        )
-        if hidden_topics:
-            topic_list_html = wrap_expandable_block(
-                topic_list_html,
-                "".join(render_topic(topic) for topic in hidden_topics),
-                len(hidden_topics),
-                localized("个主题", "topics", language),
-                "context-topic-list context-topic-more-list content-more-grid",
-                expanded_label=localized("收起更多主题", "Collapse more topics", language),
-                item_label_en="topics",
-                expanded_label_en="Collapse more topics",
+        visible_windows = source_windows
+        links = []
+        for index, ref in enumerate(visible_windows, 1):
+            window_id = str(ref.get("window_id", "") or "").strip()
+            anchor_id = str(ref.get("anchor_id", "") or "").strip()
+            if not anchor_id and window_id:
+                anchor_id = "window-{}".format(window_id)
+            if not anchor_id:
+                continue
+            display_label = str(ref.get("display_label", "") or "").strip() or str(index)
+            link_label = localized(
+                "窗口 {}".format(display_label),
+                "Window {}".format(display_label),
+                language,
             )
+            title_parts = [
+                str(ref.get("latest_activity_display", "") or "").strip(),
+                str(ref.get("title", "") or "").strip(),
+            ]
+            title = " · ".join([part for part in title_parts if part])
+            links.append(
+                '<a class="context-window-link" href="#{anchor_id}" data-window-target="{anchor_id}" title="{title}">{label}</a>'.format(
+                    anchor_id=escape(anchor_id, quote=True),
+                    title=escape(title or link_label, quote=True),
+                    label=escape(link_label),
+                )
+            )
+        if not links:
+            return ""
+        label = localized("追溯", "Trace", language)
         return """
-              <div class="context-topic-block">
-                <div class="context-card-kicker">{topic_label}</div>
-                {topics}
-              </div>
+            <div class="context-window-links">
+              <span>{label}</span>
+              <div>{links}</div>
+            </div>
             """.format(
-            topics=topic_list_html,
-            topic_label=escape(localized("需求 / 主题", "Need / Topic", language)),
+            label=escape(label),
+            links="".join(links),
         )
 
-    def render_card(item):
+    def render_task_chips(topics):
+        topics = sorted(
+            topics or [],
+            key=lambda item: (
+                safe_int(item.get("window_count", 0)),
+                project_discussion_count(item),
+                parse_iso_datetime(item.get("latest_activity_at", "")).timestamp()
+                if item.get("latest_activity_at")
+                else 0,
+                str(item.get("label", "")),
+            ),
+            reverse=True,
+        )
+        visible_topics = topics[:5]
+        hidden_topics = topics[len(visible_topics):]
+
+        def render_task_row(topic):
+            label = compact_preview_text(topic.get("label", ""), limit=24)
+            if not label:
+                label = localized("未命名任务", "Untitled task", language)
+            window_label = localized(
+                "{} 窗口".format(topic.get("window_count", 0)),
+                plural_en(topic.get("window_count", 0), "window"),
+                language,
+            )
+            discussion_label = localized(
+                "{} 讨论".format(project_discussion_count(topic)),
+                plural_en(project_discussion_count(topic), "discussion"),
+                language,
+            )
+            source_links = render_source_window_links(topic.get("source_windows", []))
+            return """
+              <div class="context-task-row">
+                <div class="context-task-main">
+                  <span class="context-task-name">{label}</span>
+                  <span class="context-task-count">{window_label}</span>
+                  <span class="context-task-count is-muted">{discussion_label}</span>
+                </div>
+                {source_links}
+              </div>
+            """.format(
+                label=escape(label),
+                window_label=escape(window_label),
+                discussion_label=escape(discussion_label),
+                source_links=source_links,
+            )
+
+        if not topics:
+            task_rows = '<span class="context-task-empty">{}</span>'.format(
+                escape(localized("暂无并行任务", "No parallel tasks", language))
+            )
+        else:
+            task_rows = "".join(render_task_row(topic) for topic in visible_topics)
+            if hidden_topics:
+                task_rows = wrap_expandable_block(
+                    task_rows,
+                    "".join(render_task_row(topic) for topic in hidden_topics),
+                    len(hidden_topics),
+                    localized("个任务", "tasks", language),
+                    "context-task-list context-task-more-list content-more-grid",
+                    expanded_label=localized("收起更多任务", "Collapse more tasks", language),
+                    item_label_en="tasks",
+                    expanded_label_en="Collapse more tasks",
+                )
         return """
-            <article class="context-card">
-              <div class="context-card-head">
+            <div class="context-task-strip">
+              <span>{label}</span>
+              <div class="context-task-list">{task_rows}</div>
+            </div>
+            """.format(
+            label=escape(localized("并行任务", "Parallel Tasks", language)),
+            task_rows=task_rows,
+        )
+
+    def render_card(item, index):
+        window_count = safe_int(item.get("window_count", 0))
+        topic_count = safe_int(item.get("topic_count", len(item.get("topics", []) or [])))
+        discussion_count = project_discussion_count(item)
+        weight = 0
+        if max_window_count > 0 and window_count > 0:
+            weight = max(12, min(100, round((window_count / max_window_count) * 100)))
+        return """
+            <article class="context-card" style="--context-weight: {weight}%;">
+              <div class="context-card-rail" aria-hidden="true"><span></span></div>
+              <div class="context-project-row">
                 <div class="context-card-copy">
-                  <div class="context-card-meta">{recent_activity} {latest_activity}</div>
+                  <div class="context-card-meta">
+                    <span class="context-rank">#{index}</span>
+                    <span>{recent_activity} {latest_activity}</span>
+                  </div>
                   <h3>{label}</h3>
+                  <p class="context-card-cwd">{cwd}</p>
                 </div>
                 <div class="context-card-stats">
-                  <span class="context-badge">{window_count_label}</span>
-                  <span class="context-badge">{question_count_label}</span>
-                  <span class="context-badge">{conclusion_count_label}</span>
+                  {topic_count_stat}
+                  {window_count_stat}
+                  {discussion_count_stat}
+                  {latest_activity_stat}
                 </div>
               </div>
-              <dl class="context-card-facts">
-                {facts}
-              </dl>
-              <div class="context-card-tags">
-                <span class="context-card-kicker">{keywords_label}</span>
-                <div class="context-chip-row">{keyword_chips}</div>
+              <div class="context-project-subrow">
+                {tasks}
               </div>
-              {topics}
             </article>
             """.format(
+                weight=escape(str(weight)),
+                index=escape(str(index)),
                 recent_activity=escape(localized("最近活动", "Recent activity", language)),
                 latest_activity=escape(item.get("latest_activity_display", localized("时间未知", "Unknown time", language))),
                 label=escape(item.get("label", "")),
-                window_count_label=escape(localized("{} 个窗口".format(item.get("window_count", 0)), plural_en(item.get("window_count", 0), "window"), language)),
-                question_count_label=escape(localized("{} 个问题".format(item.get("question_count", 0)), plural_en(item.get("question_count", 0), "question"), language)),
-                conclusion_count_label=escape(localized("{} 个结论".format(item.get("conclusion_count", 0)), plural_en(item.get("conclusion_count", 0), "conclusion"), language)),
-                facts="".join(
-                    (
-                        render_fact(localized("最近工作区", "Recent Workspace", language), item.get("cwd_preview", localized("暂无工作目录", "No working directory", language))),
-                        render_fact(localized("代表问题", "Representative Question", language), item.get("question_preview", localized("暂无代表问题。", "No representative question.", language))),
-                        render_fact(localized("最近结论", "Recent Takeaway", language), item.get("takeaway_preview", localized("暂无代表结论。", "No representative conclusion.", language))),
-                    )
+                cwd=escape(item.get("cwd_preview", localized("暂无工作目录", "No working directory", language))),
+                topic_count_stat=render_context_stat(topic_count, localized("并行任务", "Tasks", language)),
+                window_count_stat=render_context_stat(item.get("window_count", 0), localized("窗口", "Windows", language)),
+                discussion_count_stat=render_context_stat(discussion_count, localized("讨论", "Discussions", language)),
+                latest_activity_stat=render_context_stat(
+                    item.get("latest_activity_display", localized("未知", "Unknown", language)),
+                    localized("最近", "Latest", language),
+                    " is-time",
                 ),
-                keywords_label=escape(localized("关键词", "Keywords", language)),
-                keyword_chips=render_keyword_chips(item.get("keywords", [])),
-                topics=render_topics(item.get("topics", [])),
+                tasks=render_task_chips(item.get("topics", [])),
             )
 
     visible_count = PROJECT_CONTEXT_VISIBLE_COUNT
-    primary_cards = "".join(render_card(item) for item in items[:visible_count])
-    extra_cards = "".join(render_card(item) for item in items[visible_count:])
+    primary_cards = "".join(
+        render_card(item, index)
+        for index, item in enumerate(items[:visible_count], 1)
+    )
+    extra_cards = "".join(
+        render_card(item, index)
+        for index, item in enumerate(items[visible_count:], visible_count + 1)
+    )
     return wrap_expandable_block(
         primary_cards,
         extra_cards,
@@ -10616,6 +10710,76 @@ def make_project_context_cards(items, language=None):
         localized("组上下文", "contexts", language),
         "project-context-list content-more-grid",
         expanded_label=localized("收起更多上下文", "Collapse more contexts", language),
+    )
+
+
+def make_project_context_overview(view, contexts, days, view_meta, language=None):
+    language = current_language(language)
+    contexts = contexts or []
+    context_count = len(contexts)
+    topic_count = sum(safe_int(item.get("topic_count", len(item.get("topics", []) or []))) for item in contexts)
+    question_count = sum(safe_int(item.get("question_count", 0)) for item in contexts)
+    conclusion_count = sum(safe_int(item.get("conclusion_count", 0)) for item in contexts)
+    discussion_count = question_count + conclusion_count
+    window_count = safe_int(view.get("window_count", 0))
+    headline = localized(
+        "{} 个项目，{} 条任务并行".format(context_count, topic_count),
+        "{} with {} in parallel".format(
+            plural_en(context_count, "context"),
+            plural_en(topic_count, "task"),
+        ),
+        language,
+    )
+
+    stat_rows = [
+        (context_count, localized("项目", "Contexts", language)),
+        (topic_count, localized("并行任务", "Tasks", language)),
+        (window_count, localized("窗口", "Windows", language)),
+        (discussion_count, localized("讨论", "Discussions", language)),
+    ]
+    stats_html = "".join(
+        """
+          <div class="context-map-stat">
+            <strong>{value}</strong>
+            <span>{label}</span>
+          </div>
+        """.format(
+            value=escape(str(value)),
+            label=escape(label),
+        )
+        for value, label in stat_rows
+    )
+    note = localized(
+        "最近 {} 天共 {} 个窗口、{} 次讨论；项目按讨论数排序，可追溯到窗口明细。".format(
+            days,
+            window_count,
+            discussion_count,
+        ),
+        "Last {}: {} and {}; projects sorted by discussion count with links back to window details.".format(
+            plural_en(days, "day"),
+            plural_en(window_count, "window"),
+            plural_en(discussion_count, "discussion"),
+        ),
+        language,
+    )
+    return """
+      <div class="context-map">
+        <div class="context-map-copy">
+          <div class="context-map-kicker">{kicker}</div>
+          <h3>{headline}</h3>
+          <p>{note}</p>
+          <div class="context-map-meta">{view_meta}</div>
+        </div>
+        <div class="context-map-signals">
+          {stats}
+        </div>
+      </div>
+    """.format(
+        kicker=escape(localized("上下文地图", "Context Map", language)),
+        headline=escape(headline),
+        note=escape(note),
+        view_meta=escape(view_meta),
+        stats=stats_html,
     )
 
 
@@ -10678,10 +10842,11 @@ def make_project_context_body(project_context_views, default_days=PROJECT_CONTEX
             ),
             language,
         )
+        project_contexts = view.get("project_contexts", [])
         views.append(
             """
             <div class="project-context-view{active}" data-context-view="{days}"{hidden}>
-              <div class="project-context-view-meta">{view_meta}</div>
+              {overview}
               <div class="project-context-list">
                 {cards}
               </div>
@@ -10690,8 +10855,14 @@ def make_project_context_body(project_context_views, default_days=PROJECT_CONTEX
                 active=" is-active" if days == default_days else "",
                 days=escape(str(days)),
                 hidden="" if days == default_days else " hidden",
-                view_meta=escape(view_meta),
-                cards=make_project_context_cards(view.get("project_contexts", []), language=language),
+                overview=make_project_context_overview(
+                    view,
+                    project_contexts,
+                    days,
+                    view_meta,
+                    language=language,
+                ),
+                cards=make_project_context_cards(project_contexts, language=language),
             )
         )
 
@@ -10996,7 +11167,6 @@ def make_side_nav():
         ("link", "nightly-summary", "整理摘要", "Synthesis", "整理摘要", "Synthesis"),
         ("link", "token-section", "Token", "Token", "Token", "Token"),
         ("link", "pipeline-section", "运行中", "Pipeline", "当前运行内容", "Current Pipeline"),
-        ("link", "project-context-section", "项目上下文", "Context", "项目上下文", "Context"),
         ("group", "记忆层", "Memory Layer"),
         ("link", "memory-section", "个人资产记忆", "Personal Asset Memory", "个人资产记忆", "Personal Asset Memory"),
         ("child", "personal-memory-compiler-section", "总览", "Overview", "个人资产记忆-总览", "Personal Asset Memory - Overview"),
@@ -11010,6 +11180,7 @@ def make_side_nav():
         ("link", "asset-overview-section", "总览", "Overview", "资产层总览", "Asset Layer Overview"),
         ("link", "top-assets-section", "skills 热度", "Skill Hotness", "近 30 天高频 skills 热度", "Skill Hotness"),
         ("link", "reviews-section", "复盘记录", "Reviews", "复盘记录", "Reviews"),
+        ("link", "project-context-section", "项目上下文", "Context", "项目上下文", "Context"),
         ("link", "window-overview-section", "窗口明细", "Windows", "窗口明细", "Windows"),
     ]
     links = []
@@ -14237,7 +14408,10 @@ def build_html(data):
     project_context_views_zh = data.get("project_context_views_zh") or project_context_views
     project_context_views_en = data.get("project_context_views_en") or project_context_views
     project_context_default_days = data.get("project_context_default_days", PROJECT_CONTEXT_DEFAULT_DAYS)
-    project_context_note = "可切换最近 1-{} 天；项目内按需求 / 主题二次归类".format(
+    project_context_note = "项目脉络先于窗口明细展示；可切换最近 1-{} 天".format(
+        PROJECT_CONTEXT_MAX_DAYS
+    )
+    project_context_note_en = "Context map sits before window details; switch last 1-{} days".format(
         PROJECT_CONTEXT_MAX_DAYS
     )
     window_overview_heading, window_overview_note = build_window_overview_heading_note(
@@ -14488,19 +14662,19 @@ def build_html(data):
         [
             {
                 "label": "统计什么",
-                "body": "最近捕获到的窗口，会先按项目 / 上下文聚合，再展示每组的窗口数、问题数和结论数。",
+                "body": "最近捕获到的窗口，会先按项目 / 上下文聚合，只保留项目数、并行任务数、窗口数、讨论数和最近活动。",
             },
             {
                 "label": "怎么算",
                 "body": [
                     "优先从窗口 cwd 推 project_label：先认 Git 根目录，再认常见项目标记。",
                     "cwd 推不出时，才回退到问题摘要、结论摘要和关键词做文本推断。",
-                    "同名项目会合并，按最近活动时间排序。",
+                    "同名项目会合并，按讨论数从高到低排序。",
                 ],
             },
             {
-                "label": "和上面的区别",
-                "body": "这里数的是窗口上下文；资产层的类型与活动面板数的是资产和 skills 读取。",
+                "label": "怎么看",
+                "body": "顶部地图看总量；项目行看每个项目下有几条任务在并行；追溯入口会锚到下方窗口明细。",
             },
         ],
     )
@@ -18522,8 +18696,8 @@ def build_html(data):
 
     .project-context-list {{
       display: grid;
-      gap: 14px;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+      grid-template-columns: 1fr;
       align-items: stretch;
     }}
 
@@ -18552,22 +18726,134 @@ def build_html(data):
       color: var(--teal);
     }}
 
+    .project-context-views {{
+      display: grid;
+      gap: 16px;
+    }}
+
+    .project-context-view {{
+      display: grid;
+      gap: 16px;
+    }}
+
     .project-context-view[hidden] {{
       display: none;
     }}
 
-    .project-context-view-meta {{
-      margin: 0 0 12px;
+    .context-map {{
+      display: grid;
+      grid-template-columns: minmax(0, 1.6fr) minmax(280px, 0.9fr);
+      gap: 16px;
+      align-items: stretch;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: var(--card);
+      padding: 16px;
+      overflow: hidden;
+    }}
+
+    .context-map-copy {{
+      display: grid;
+      align-content: center;
+      gap: 8px;
+      min-width: 0;
+    }}
+
+    .context-map-kicker,
+    .context-card-section-title {{
       color: var(--muted);
-      font-size: 13px;
+      font-size: 12px;
+      font-weight: 750;
+      letter-spacing: 0;
+      line-height: 1.35;
+      text-transform: none;
+    }}
+
+    .context-map h3 {{
+      margin: 0;
+      color: var(--ink);
+      font-size: 24px;
+      line-height: 1.25;
+      overflow-wrap: anywhere;
+    }}
+
+    .context-map p {{
+      margin: 0;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.55;
+      overflow-wrap: anywhere;
+    }}
+
+    .context-map-meta {{
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.5;
+      overflow-wrap: anywhere;
+    }}
+
+    .context-map-signals {{
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+      min-width: 0;
+    }}
+
+    .context-map-stat {{
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--soft);
+      padding: 12px;
+      min-width: 0;
+    }}
+
+    .context-map-stat strong {{
+      display: block;
+      color: var(--ink);
+      font-size: 24px;
+      line-height: 1.05;
+      margin-bottom: 5px;
+      overflow-wrap: anywhere;
+    }}
+
+    .context-map-stat span {{
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.35;
     }}
 
     .context-card {{
       border: 1px solid var(--line);
-      border-radius: 20px;
-      padding: 18px;
+      border-radius: 16px;
+      padding: 16px;
       background: var(--card);
       overflow: hidden;
+      display: grid;
+      gap: 14px;
+      min-width: 0;
+    }}
+
+    .context-card-rail {{
+      height: 6px;
+      border-radius: 999px;
+      background: var(--track);
+      overflow: hidden;
+    }}
+
+    .context-card-rail span {{
+      display: block;
+      width: var(--context-weight, 12%);
+      height: 100%;
+      border-radius: inherit;
+      background: var(--teal);
+    }}
+
+    .context-project-row {{
+      display: grid;
+      grid-template-columns: minmax(220px, 1.2fr) minmax(420px, 1.6fr);
+      gap: 14px;
+      align-items: center;
+      min-width: 0;
     }}
 
     .context-card-head {{
@@ -18583,6 +18869,10 @@ def build_html(data):
     }}
 
     .context-card-meta {{
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
       color: var(--muted);
       font-size: 12px;
       text-transform: none;
@@ -18590,45 +18880,174 @@ def build_html(data):
       margin-bottom: 8px;
     }}
 
+    .context-rank {{
+      color: var(--teal);
+      font-weight: 800;
+    }}
+
     .context-card h3 {{
       margin: 0;
       font-size: 22px;
+      line-height: 1.25;
+      overflow-wrap: anywhere;
+    }}
+
+    .context-card-cwd {{
+      margin: 7px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+      overflow-wrap: anywhere;
     }}
 
     .context-card-stats {{
-      display: flex;
-      flex-wrap: wrap;
+      display: grid;
+      grid-template-columns: repeat(4, minmax(76px, 1fr));
       gap: 8px;
       justify-content: flex-end;
+      min-width: 0;
     }}
 
-    .context-badge {{
-      padding: 8px 10px;
-      border-radius: 999px;
+    .context-stat {{
       border: 1px solid var(--line);
+      border-radius: 12px;
       background: var(--soft);
+      padding: 10px;
+      text-align: center;
+      min-width: 0;
+    }}
+
+    .context-stat strong {{
+      display: block;
+      color: var(--ink);
+      font-size: 20px;
+      line-height: 1;
+      margin-bottom: 5px;
+      overflow-wrap: anywhere;
+    }}
+
+    .context-stat span {{
       color: var(--muted);
       font-size: 12px;
+      line-height: 1.35;
+    }}
+
+    .context-stat.is-time strong {{
+      font-size: 14px;
+      line-height: 1.25;
       white-space: nowrap;
     }}
 
-    .context-card-facts {{
-      display: grid;
+    .context-project-subrow {{
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
       gap: 12px;
-      margin: 16px 0 0;
+      min-width: 0;
+      flex-wrap: wrap;
     }}
 
-    .context-card-fact {{
-      padding-top: 12px;
-      border-top: 1px solid var(--line);
+    .context-task-strip {{
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr);
+      align-items: start;
+      gap: 10px;
+      min-width: 0;
+      width: 100%;
     }}
 
-    .context-card-fact:first-child {{
-      padding-top: 0;
-      border-top: 0;
+    .context-task-strip > span {{
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+      line-height: 1.35;
+      padding-top: 8px;
+      white-space: nowrap;
     }}
 
-    .context-card-fact dt {{
+    .context-task-list {{
+      display: grid;
+      gap: 8px;
+      min-width: 0;
+    }}
+
+    .context-task-row {{
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(240px, 0.9fr);
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--soft);
+      padding: 9px 10px;
+    }}
+
+    .context-task-main {{
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+      flex-wrap: wrap;
+    }}
+
+    .context-task-name {{
+      color: var(--ink);
+      font-size: 13px;
+      font-weight: 650;
+      line-height: 1.35;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }}
+
+    .context-task-count {{
+      display: inline-flex;
+      align-items: center;
+      border-radius: 999px;
+      background: var(--card);
+      border: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.2;
+      padding: 5px 8px;
+      white-space: nowrap;
+    }}
+
+    .context-task-count.is-muted,
+    .context-task-empty {{
+      color: var(--muted);
+    }}
+
+    .context-task-list > .content-more {{
+      margin-top: 0;
+    }}
+
+    .context-task-list .content-more-trigger {{
+      padding-top: 2px;
+    }}
+
+    .context-task-list .content-more-grid {{
+      margin-top: 8px;
+    }}
+
+    .context-focus-grid {{
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }}
+
+    .context-focus-item {{
+      display: grid;
+      gap: 7px;
+      min-width: 0;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--soft);
+      padding: 12px;
+    }}
+
+    .context-focus-item span {{
       color: var(--muted);
       font-size: 12px;
       font-weight: 700;
@@ -18636,35 +19055,21 @@ def build_html(data):
       text-transform: none;
     }}
 
-    .context-card-fact dd {{
-      margin: 6px 0 0;
+    .context-focus-item p {{
+      margin: 0;
       color: var(--ink);
       font-size: 14px;
-      line-height: 1.65;
+      line-height: 1.58;
       overflow-wrap: anywhere;
       word-break: break-word;
     }}
 
-    .context-card-tags {{
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      margin-top: 16px;
-      padding-top: 14px;
-      border-top: 1px solid var(--line);
-      flex-wrap: wrap;
-    }}
-
-    .context-card-tags .context-card-kicker {{
-      line-height: 1;
-    }}
-
-    .context-card-kicker {{
+    .context-focus-item.is-muted p {{
       color: var(--muted);
-      font-size: 12px;
-      font-weight: 700;
-      letter-spacing: 0;
-      text-transform: none;
+    }}
+
+    .context-card-tags {{
+      min-width: 0;
     }}
 
     .context-chip-row {{
@@ -18693,23 +19098,77 @@ def build_html(data):
       color: var(--muted);
     }}
 
+    .context-window-links {{
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px 10px;
+      min-width: 0;
+    }}
+
+    .context-window-links > span {{
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+      line-height: 1.35;
+    }}
+
+    .context-window-links > div {{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      min-width: 0;
+    }}
+
+    .context-window-link,
+    .context-window-more {{
+      display: inline-flex;
+      align-items: center;
+      max-width: 100%;
+      border: 1px solid rgba(0, 113, 227, 0.22);
+      border-radius: 999px;
+      background: var(--accent-soft);
+      color: var(--teal);
+      font-size: 12px;
+      line-height: 1.2;
+      padding: 7px 10px;
+      text-decoration: none;
+      white-space: nowrap;
+    }}
+
+    .context-window-link:hover,
+    .context-window-link:focus-visible {{
+      border-color: rgba(0, 113, 227, 0.48);
+      background: var(--accent-soft-strong);
+      outline: none;
+    }}
+
+    .context-window-more {{
+      color: var(--muted);
+      background: var(--soft);
+      border-color: var(--line);
+    }}
+
     .context-topic-block {{
-      margin-top: 16px;
-      padding-top: 14px;
       border-top: 1px solid var(--line);
+      padding-top: 14px;
+      display: grid;
+      gap: 10px;
     }}
 
     .context-topic-list {{
       display: grid;
       gap: 10px;
-      margin-top: 10px;
     }}
 
     .context-topic {{
       border: 1px solid var(--line);
-      border-radius: 14px;
+      border-radius: 12px;
       background: var(--soft);
       padding: 12px;
+      display: grid;
+      gap: 10px;
+      min-width: 0;
     }}
 
     .context-topic-head {{
@@ -18717,7 +19176,6 @@ def build_html(data):
       align-items: flex-start;
       justify-content: space-between;
       gap: 10px;
-      margin-bottom: 8px;
     }}
 
     .context-topic-meta {{
@@ -18725,7 +19183,7 @@ def build_html(data):
       font-size: 11px;
       letter-spacing: 0;
       text-transform: none;
-      margin-bottom: 4px;
+      margin-top: 4px;
     }}
 
     .context-topic h4 {{
@@ -18745,22 +19203,42 @@ def build_html(data):
       white-space: nowrap;
     }}
 
-    .context-topic p {{
-      margin: 0 0 8px;
-      color: var(--ink);
+    .context-topic-signals {{
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }}
+
+    .context-topic .context-focus-item {{
+      padding: 10px;
+      background: var(--card);
+    }}
+
+    .context-topic .context-focus-item p {{
       font-size: 13px;
-      line-height: 1.55;
-      overflow-wrap: anywhere;
+      line-height: 1.5;
     }}
 
-    .context-topic-takeaway {{
-      color: var(--muted) !important;
+    .context-topic-footer {{
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      min-width: 0;
+      flex-wrap: wrap;
     }}
 
-    .context-topic-more {{
-      color: var(--muted);
-      font-size: 12px;
-      margin-top: 10px;
+    .context-window-links.is-compact {{
+      margin-left: auto;
+    }}
+
+    .window-card {{
+      scroll-margin-top: 24px;
+    }}
+
+    .window-card.is-context-highlight {{
+      border-color: rgba(0, 113, 227, 0.48);
+      box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.12);
     }}
 
     .window-summary-list {{
@@ -20264,12 +20742,59 @@ def build_html(data):
         grid-template-columns: 1fr;
       }}
 
+      .context-map {{
+        grid-template-columns: 1fr;
+      }}
+
+      .context-map-signals {{
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }}
+
+      .context-project-row {{
+        grid-template-columns: 1fr;
+      }}
+
       .context-card-head {{
         flex-direction: column;
       }}
 
       .context-card-stats {{
+        width: 100%;
+        min-width: 0;
         justify-content: flex-start;
+        flex-basis: auto;
+      }}
+
+      .context-project-subrow {{
+        align-items: flex-start;
+        flex-direction: column;
+      }}
+
+      .context-task-strip {{
+        grid-template-columns: 1fr;
+      }}
+
+      .context-task-strip > span {{
+        padding-top: 0;
+      }}
+
+      .context-task-row {{
+        grid-template-columns: 1fr;
+        align-items: start;
+      }}
+
+      .context-focus-grid,
+      .context-topic-signals {{
+        grid-template-columns: 1fr;
+      }}
+
+      .context-topic-footer {{
+        align-items: flex-start;
+        flex-direction: column;
+      }}
+
+      .context-window-links.is-compact {{
+        margin-left: 0;
       }}
 
       .window-card-head {{
@@ -20356,6 +20881,15 @@ def build_html(data):
       .update-primary-button {{
         width: 100%;
       }}
+
+      .context-map-signals,
+      .context-card-stats {{
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }}
+
+      .context-stat.is-time strong {{
+        white-space: normal;
+      }}
     }}
   </style>
 </head>
@@ -20407,11 +20941,6 @@ def build_html(data):
     {insight_section_html}
 
     {pipeline_status_panel}
-
-    <section class="panel" id="project-context-section">
-      {project_context_header}
-      {project_context_body}
-    </section>
 
     <section class="memory-family" id="memory-section" data-openrelix-section="memory_registry">
       {personal_asset_memory_family_header}
@@ -20583,6 +21112,11 @@ def build_html(data):
           </tbody>
         </table>
       </div>
+    </section>
+
+    <section class="panel" id="project-context-section">
+      {project_context_header}
+      {project_context_body}
     </section>
 
     <section class="grid" id="window-overview-section">
@@ -22289,6 +22823,63 @@ def build_html(data):
         }});
       }}
 
+      function decodedHashTargetId() {{
+        const rawHash = window.location.hash || "";
+        if (!rawHash || rawHash.length < 2) {{
+          return "";
+        }}
+        try {{
+          return decodeURIComponent(rawHash.slice(1));
+        }} catch (error) {{
+          return rawHash.slice(1);
+        }}
+      }}
+
+      function revealWindowCardById(targetId, shouldScroll) {{
+        if (!targetId) {{
+          return false;
+        }}
+        const target = document.getElementById(targetId);
+        if (!target || !target.classList || !target.classList.contains("window-card")) {{
+          return false;
+        }}
+        target.open = true;
+        target.classList.remove("is-context-highlight");
+        void target.offsetWidth;
+        target.classList.add("is-context-highlight");
+        if (shouldScroll) {{
+          target.scrollIntoView({{ behavior: "smooth", block: "start" }});
+        }}
+        window.setTimeout(function () {{
+          target.classList.remove("is-context-highlight");
+        }}, 2200);
+        return true;
+      }}
+
+      function wireProjectContextWindowLinks() {{
+        document.addEventListener("click", function (event) {{
+          const link = event.target.closest("[data-window-target]");
+          if (!link) {{
+            return;
+          }}
+          const targetId = link.getAttribute("data-window-target") || "";
+          if (!targetId || !document.getElementById(targetId)) {{
+            return;
+          }}
+          event.preventDefault();
+          revealWindowCardById(targetId, true);
+          try {{
+            window.history.replaceState(null, "", "#" + targetId);
+          }} catch (error) {{
+            window.location.hash = targetId;
+          }}
+        }});
+        window.addEventListener("hashchange", function () {{
+          revealWindowCardById(decodedHashTargetId(), false);
+        }});
+        revealWindowCardById(decodedHashTargetId(), false);
+      }}
+
       function describeRelativeTime(isoValue, actionText) {{
         const normalizedAction = String(actionText || "");
         const isGeneratedAction = normalizedAction === "生成" || normalizedAction === "generated";
@@ -23952,6 +24543,7 @@ def build_html(data):
       }}
       wireContentMoreButtons();
       wireProjectContextRangeButtons();
+      wireProjectContextWindowLinks();
       wireThemeButtons();
       wireLanguageButtons();
       wireNightlyDateInput();
@@ -24643,7 +25235,7 @@ def build_html(data):
             help_html=project_context_help,
             note_content_html=panel_language_text_html(
                 project_context_note,
-                panel_english_text(project_context_note),
+                project_context_note_en,
             ),
         ),
         project_context_body=panel_language_block_html(
