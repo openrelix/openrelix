@@ -12896,15 +12896,31 @@ def make_window_summary_cards(window_overview, language=None):
     def render_resume_actions(
         resume_command,
         resume_url,
+        review_prompt_target,
         resume_app_action="",
         resume_app_session_id="",
         codex_home="",
         codex_electron_user_data_path="",
     ):
-        if not resume_command:
-            return ""
+        copy_button = ""
+        if resume_command:
+            copy_button = """
+          <button
+            type="button"
+            class="window-resume-button"
+            data-window-resume-copy
+            data-resume-command="{resume_command}"
+            data-label="{copy_label}"
+            data-copied-label="{copied_label}"
+            data-error-label="{copy_error_label}"
+          >{copy_label}</button>""".format(
+                resume_command=escape(resume_command, quote=True),
+                copy_label=escape(localized("复制 resume 命令", "Copy resume command", language), quote=True),
+                copied_label=escape(localized("已复制", "Copied", language), quote=True),
+                copy_error_label=escape(localized("复制失败", "Copy failed", language), quote=True),
+            )
         open_button = ""
-        if resume_url:
+        if resume_command and resume_url:
             open_button = """
           <button
             type="button"
@@ -12928,7 +12944,7 @@ def make_window_summary_cards(window_overview, language=None):
                 opened_label=escape(localized("已发送", "Sent", language), quote=True),
                 error_label=escape(localized("打开失败", "Open failed", language), quote=True),
             )
-        elif resume_app_action == "claude_desktop" and resume_app_session_id:
+        elif resume_command and resume_app_action == "claude_desktop" and resume_app_session_id:
             open_button = """
           <button
             type="button"
@@ -12946,26 +12962,108 @@ def make_window_summary_cards(window_overview, language=None):
                 opened_label=escape(localized("已发送", "Sent", language), quote=True),
                 error_label=escape(localized("打开失败", "Open failed", language), quote=True),
             )
-        return """
-        <div class="window-resume-actions">
+        review_button = ""
+        if review_prompt_target:
+            review_button = """
           <button
             type="button"
-            class="window-resume-button"
-            data-window-resume-copy
-            data-resume-command="{resume_command}"
-            data-label="{copy_label}"
-            data-copied-label="{copied_label}"
-            data-error-label="{copy_error_label}"
-          >{copy_label}</button>
+            class="window-resume-button is-review"
+            data-window-review-copy
+            data-review-prompt-target="{review_prompt_target}"
+            data-label="{review_label}"
+            data-copied-label="{review_copied_label}"
+            data-error-label="{review_error_label}"
+          >{review_label}</button>""".format(
+                review_prompt_target=escape(review_prompt_target, quote=True),
+                review_label=escape(localized("发起复盘", "Start review", language), quote=True),
+                review_copied_label=escape(localized("复盘指令已复制", "Review prompt copied", language), quote=True),
+                review_error_label=escape(localized("复制失败", "Copy failed", language), quote=True),
+            )
+        if not copy_button and not open_button and not review_button:
+            return ""
+        return """
+        <div class="window-resume-actions">
+          {copy_button}
           {open_button}
+          {review_button}
         </div>
         """.format(
-            resume_command=escape(resume_command, quote=True),
-            copy_label=escape(localized("复制 resume 命令", "Copy resume command", language), quote=True),
-            copied_label=escape(localized("已复制", "Copied", language), quote=True),
-            copy_error_label=escape(localized("复制失败", "Copy failed", language), quote=True),
+            copy_button=copy_button,
             open_button=open_button,
+            review_button=review_button,
         )
+
+    def review_prompt_context_text(text, limit):
+        value = compact_preview_text(text, limit=limit, strip_markdown=False)
+        return re.sub(
+            r"(问题|结论)([0-9一二三四五六七八九十]+)\s*[:：]\s*",
+            r"\1 \2 - ",
+            value,
+        )
+
+    def build_window_review_prompt(
+        project_label,
+        ai_host_label,
+        window_date,
+        window_id,
+        cwd_raw,
+        cwd_display,
+        question_summary_display,
+        conclusion_summary_display,
+        resume_command,
+    ):
+        question_text = review_prompt_context_text(question_summary_display, limit=420)
+        conclusion_text = review_prompt_context_text(conclusion_summary_display, limit=520)
+        cwd_text = cwd_raw or cwd_display
+        if is_english(language):
+            lines = [
+                "/memory-review",
+                "",
+                "Review this source window and prioritize turning it into a reusable asset, not just a log entry.",
+                "Decide whether it should become a playbook, skill, template, automation, or no asset.",
+                "- Date: {}".format(window_date or "unknown"),
+                "- Source: {} / {}".format(project_label or "unknown project", ai_host_label or "unknown host"),
+                "- Window ID: {}".format(window_id or "unknown"),
+            ]
+            if cwd_text:
+                lines.append("- CWD: {}".format(cwd_text))
+            if resume_command:
+                lines.append("- Resume command: {}".format(resume_command))
+            if question_text:
+                lines.append("- Representative question: {}".format(question_text))
+            if conclusion_text:
+                lines.append("- Representative conclusion: {}".format(conclusion_text))
+            lines.extend(
+                [
+                    "",
+                    "Output the review path, asset decision, and any asset registry or skill draft changes.",
+                ]
+            )
+        else:
+            lines = [
+                "/memory-review",
+                "",
+                "请基于这个来源窗口发起人工复盘，重点判断能否沉淀为可复用资产，而不是只记录日志。",
+                "请明确它应该成为 playbook、skill、template、automation，还是不沉淀资产。",
+                "- 日期：{}".format(window_date or "未知"),
+                "- 来源：{} / {}".format(project_label or "未知项目", ai_host_label or "未知 host"),
+                "- 原始窗口 ID：{}".format(window_id or "未知"),
+            ]
+            if cwd_text:
+                lines.append("- 当前目录：{}".format(cwd_text))
+            if resume_command:
+                lines.append("- resume 命令：{}".format(resume_command))
+            if question_text:
+                lines.append("- 代表问题 - {}".format(question_text))
+            if conclusion_text:
+                lines.append("- 代表结论 - {}".format(conclusion_text))
+            lines.extend(
+                [
+                    "",
+                    "请输出复盘文件路径、资产化结论，以及新增/更新的 asset registry 或 skill 草稿。",
+                ]
+            )
+        return "\n".join(lines)
 
     def strip_preview_prefix(text):
         return re.sub(
@@ -13174,7 +13272,7 @@ def make_window_summary_cards(window_overview, language=None):
         )
 
     cards = []
-    for item in window_overview.get("windows", []):
+    for card_index, item in enumerate(window_overview.get("windows", []), 1):
         cwd_raw = item.get("cwd", "")
         window_id = item.get("window_id", "")
         ai_host = str(item.get("ai_host") or "codex").strip().lower()
@@ -13183,6 +13281,8 @@ def make_window_summary_cards(window_overview, language=None):
         ai_host_label = item.get("ai_host_label") or window_host_label(ai_host, language=language)
         window_id_display = window_id or localized("暂无", "None", language)
         anchor_id = build_window_anchor_id(window_id)
+        card_dom_id = anchor_id or "window-card-{}".format(card_index)
+        review_prompt_id = "{}-review-prompt".format(card_dom_id)
         cwd_display = item.get("cwd_display", cwd_raw)
         activity_source_label = window_activity_source_label(
             item.get("activity_source", "history"),
@@ -13276,14 +13376,34 @@ def make_window_summary_cards(window_overview, language=None):
         resume_url = item.get("resume_url", "") or (codex_resume_url(resume_id) if ai_host == "codex" else "")
         resume_app_action = item.get("resume_app_action", "") or claude_desktop_resume_action(ai_host, resume_id)
         resume_app_session_id = item.get("resume_app_session_id", "") or (resume_id if (resume_app_action or ai_host == "codex") else "")
+        review_prompt = build_window_review_prompt(
+            project_label,
+            ai_host_label,
+            window_date,
+            window_id,
+            cwd_raw,
+            cwd_display,
+            question_summary_display,
+            conclusion_summary_display,
+            resume_command,
+        )
         resume_actions = render_resume_actions(
             resume_command,
             resume_url,
+            review_prompt_id if review_prompt else "",
             resume_app_action=resume_app_action,
             resume_app_session_id=resume_app_session_id,
             codex_home=item.get("codex_home", ""),
             codex_electron_user_data_path=item.get("codex_electron_user_data_path", ""),
         )
+        review_prompt_template = ""
+        if review_prompt:
+            review_prompt_template = """
+              <template id="{review_prompt_id}" data-window-review-prompt>{review_prompt}</template>
+            """.format(
+                review_prompt_id=escape(review_prompt_id, quote=True),
+                review_prompt=escape(review_prompt),
+            )
         question_count = safe_int(item.get("question_count", len(summary_pairs)))
         if question_count <= 0:
             question_count = len([pair for pair in summary_pairs if str(pair.get("question", "") or "").strip()])
@@ -13371,6 +13491,7 @@ def make_window_summary_cards(window_overview, language=None):
                   </div>
                 </div>
               </summary>
+              {review_prompt_template}
               <div class="window-card-detail">
                 <div class="window-summary-mode-root" data-summary-mode="{summary_mode}">
                   <div class="window-summary-mode-head">
@@ -13383,7 +13504,7 @@ def make_window_summary_cards(window_overview, language=None):
               </div>
             </details>
             """.format(
-                anchor_id=escape(anchor_id, quote=True),
+                anchor_id=escape(card_dom_id, quote=True),
                 window_summary=escape(window_summary),
                 window_label=escape(localized("原始窗口 ID", "Raw Window ID", language)),
                 window_id_separator=escape(localized("：", ": ", language)),
@@ -13402,6 +13523,7 @@ def make_window_summary_cards(window_overview, language=None):
                 started_at=escape(item.get("started_at_display", localized("时间未知", "Unknown time", language))),
                 raw_window_html=raw_window_html,
                 resume_actions=resume_actions,
+                review_prompt_template=review_prompt_template,
                 main_takeaway_preview=main_takeaway_preview_html,
                 keyword_chips=render_keyword_chips(item.get("keywords", [])),
                 summary_mode=initial_summary_mode,
@@ -18626,6 +18748,12 @@ def build_html(data):
       color: var(--ink);
     }}
 
+    .window-resume-button.is-review {{
+      border-color: rgba(20, 184, 166, 0.34);
+      background: rgba(20, 184, 166, 0.12);
+      color: #087c70;
+    }}
+
     .window-resume-button:hover {{
       transform: translateY(-1px);
     }}
@@ -21454,6 +21582,28 @@ def build_html(data):
               flashButtonLabel(
                 copyButton,
                 copyButton.getAttribute("data-error-label") || t("复制失败")
+              );
+            }});
+            return;
+          }}
+          const reviewButton = event.target.closest("[data-window-review-copy]");
+          if (reviewButton) {{
+            event.preventDefault();
+            event.stopPropagation();
+            const promptTarget = reviewButton.getAttribute("data-review-prompt-target") || "";
+            const promptNode = promptTarget ? document.getElementById(promptTarget) : null;
+            const prompt = promptNode
+              ? promptNode.textContent
+              : (reviewButton.getAttribute("data-review-prompt") || "");
+            copyText(prompt).then(function () {{
+              flashButtonLabel(
+                reviewButton,
+                reviewButton.getAttribute("data-copied-label") || t("已复制")
+              );
+            }}).catch(function () {{
+              flashButtonLabel(
+                reviewButton,
+                reviewButton.getAttribute("data-error-label") || t("复制失败")
               );
             }});
             return;
