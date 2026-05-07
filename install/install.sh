@@ -1671,12 +1671,12 @@ EOF
 EOF
   else
     cat <<EOF
-  2. 推荐：安装后先浅度回溯最近 ${LEARNING_REFRESH_WINDOW_DAYS} 天窗口，刷新本地记忆：
+  2. 推荐：安装后先浅度回溯最近 ${LEARNING_REFRESH_WINDOW_DAYS} 天窗口，生成快速摘要和索引：
      $LEARN_MEMORY_COMMAND
 EOF
     if [[ -n "$DEEP_LEARN_MEMORY_COMMAND" ]]; then
       cat <<EOF
-     深度回溯近 ${LEARNING_REFRESH_WINDOW_DAYS} 天可随后运行：
+     记忆沉淀会在 deep/final 回溯中完成，可随后运行：
      $DEEP_LEARN_MEMORY_COMMAND
 EOF
     fi

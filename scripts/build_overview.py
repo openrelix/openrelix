@@ -295,7 +295,7 @@ CONTEXT_KEYWORD_EN = {
     "上线梳理": "Release prep",
     "发布": "Release",
     "开源": "Open source",
-    "短期记忆": "Short-term memory",
+    "短期记忆": "Work memory",
     "长期记忆": "Long-term memory",
     "记忆机制": "Memory mechanism",
     "注入预算": "Injection budget",
@@ -548,8 +548,8 @@ PANEL_I18N_EN = {
     "无缓存输入 Token": "Uncached input tokens",
     "暂无可比较日期": "No comparable day yet",
     "长期记忆": "Long-term Memory",
-    "短期记忆": "Short-term Memory",
-    "短期工作记忆": "Short-term Work Memory",
+    "短期记忆": "Work Memory",
+    "短期工作记忆": "Work Memory",
     "低优先记忆": "Low-priority Memory",
     "低优先级记忆": "Low-priority Memory",
     "个人资产记忆": "Personal Asset Memory",
@@ -570,8 +570,8 @@ PANEL_I18N_EN = {
     "低优先或禁止注入的本地证据": "Local evidence with low priority or disabled injection",
     "总数": "Total",
     "个人资产-长期记忆": "Personal Asset - Long-term Memory",
-    "个人资产-短期记忆": "Personal Asset - Short-term Memory",
-    "个人资产-短期工作记忆": "Personal Asset - Short-term Work Memory",
+    "个人资产-短期记忆": "Personal Asset - Work Memory",
+    "个人资产-短期工作记忆": "Personal Asset - Work Memory",
     "个人资产-低优先记忆": "Personal Asset - Low-priority Memory",
     "个人资产-低优先级记忆": "Personal Asset - Low-priority Memory",
     "每日窗口数": "Daily Windows",
@@ -601,10 +601,10 @@ PANEL_I18N_EN = {
     "受控": "Bounded",
     "本地": "Local",
     "长期": "Long-term",
-    "短期": "Short-term",
+    "短期": "Work",
     "低优先": "Low-priority",
     "工作窗口": "Work Windows",
-    "短期跟进": "Short-term Follow-ups",
+    "短期跟进": "Work Memory",
     "低优先级": "Low-priority",
     "暂无夜间整理结果": "No nightly synthesis yet",
     "选择日期": "Select date",
@@ -624,8 +624,8 @@ PANEL_I18N_EN = {
     "今天还没结束，当前保留 30 分钟快速回溯；次日会自动生成完整回溯。": (
         "Today is not over yet, so the 30-minute quick backfill remains active. The full backfill will run tomorrow."
     ),
-    "当前是 30 分钟快速回溯，日报和记忆可能不完整。可以复制命令在终端补跑完整回溯。首次安装后，会自动触发完整回溯，请耐心等待。": (
-        "This is the 30-minute quick backfill, so the daily summary and memories may be incomplete. "
+    "当前是 30 分钟快速回溯，只生成窗口摘要和快速索引，不做记忆沉淀。可以复制命令在终端补跑完整回溯。首次安装后，会自动触发完整回溯，请耐心等待。": (
+        "This is the 30-minute quick backfill, so it only generates window summaries and a fast index; memory synthesis is deferred. "
         "Copy the command and run the full backfill in a terminal. After first install, "
         "OpenRelix starts the full backfill automatically; please wait."
     ),
@@ -648,7 +648,7 @@ PANEL_I18N_EN = {
     "低优先级": "Low Priority",
     "整理窗口数": "Synthesized Windows",
     "整理长期记忆": "Long-term Memories",
-    "整理短期记忆": "Short-term Memories",
+    "整理短期记忆": "Work Memories",
     "整理低优先": "Low-priority Memories",
     "今日摘要": "Today Summary",
     "相关上下文": "Related Contexts",
@@ -1030,8 +1030,8 @@ PANEL_I18N_EN = {
         "A daily synthesis card switchable by date, defaulting to today."
     ),
     "日期选择器和摘要主结论。": "Date selector and main summary takeaway.",
-    "窗口数、个人资产-长期记忆、个人资产-短期记忆、个人资产-低优先级记忆。": (
-        "Window count, personal asset long-term memories, personal asset short-term memories, and personal asset low-priority memories."
+    "窗口数、个人资产-长期记忆、个人资产-工作记忆、个人资产-低优先级记忆。": (
+        "Window count, personal asset long-term memories, personal asset work memories, and personal asset low-priority memories."
     ),
     "最近相关的上下文标签。": "Recently related context labels.",
     "这些数字来自当前整理结果，用来快速判断今天沉淀了多少内容。": (
@@ -1049,8 +1049,8 @@ PANEL_I18N_EN = {
     "7 日热度来自可追溯信号：近 7 日直接来源窗口和同一记忆的近期整理日期；不会再用标题、关键词或说明去模糊匹配历史窗口。": (
         "7-day heat uses traceable signals: direct source windows in the last 7 days and recent synthesis dates for the same memory. Titles, keywords, and notes no longer fuzzy-match historical windows."
     ),
-    "当前登记册中 bucket = session 的短期工作记忆，按近 7 日热度排序。": (
-        "Short-term work memories where bucket = session in the current registry, sorted by 7-day heat."
+    "当前登记册中 bucket = session 的工作记忆，按近 7 日热度排序。": (
+        "Work memories where bucket = session in the current registry, sorted by 7-day heat."
     ),
     "更偏当前需求推进，未必适合长期沉淀。": (
         "More relevant to the current task and not always worth long-term capture."
@@ -1076,8 +1076,8 @@ PANEL_I18N_EN = {
     "按记忆签名归并后，bucket = durable 的个人资产-长期记忆数量。": (
         "Count of Personal Asset - Long-term Memory items after grouping by memory signature where bucket = durable."
     ),
-    "按记忆签名归并后，bucket = session 的个人资产-短期工作记忆数量。": (
-        "Count of Personal Asset - Short-term Work Memory items after grouping by memory signature where bucket = session."
+    "按记忆签名归并后，bucket = session 的个人资产-工作记忆数量。": (
+        "Count of Personal Asset - Work Memory items after grouping by memory signature where bucket = session."
     ),
     "按记忆签名归并后，bucket = low_priority 的个人资产-低优先记忆数量。": (
         "Count of Personal Asset - Low-priority Memory items after grouping by memory signature where bucket = low_priority."
@@ -1148,8 +1148,8 @@ PANEL_I18N_EN = {
     "最近一次窗口整理里的窗口级明细。每张卡对应一个窗口，而不是一个资产。": (
         "Window-level details from the latest window synthesis. Each card represents one window, not one asset."
     ),
-    "工作窗口、长期记忆、短期跟进、低优先级记忆。": (
-        "Work windows, long-term memory, short-term follow-ups, and low-priority memory."
+    "工作窗口、长期记忆、工作记忆、低优先级记忆。": (
+        "Work windows, long-term memory, work memory, and low-priority memory."
     ),
     "原生记忆偏长期规则、稳定 workflow、历史 rollout 结论。": (
         "Native memory leans toward long-term rules, stable workflows, and historical rollout conclusions."
@@ -8449,8 +8449,8 @@ def build_data(assets, usage_events, reviews, language=None):
         {
             "key": "session_memories",
             "label": localized(
-                "个人资产-短期记忆",
-                "Personal Asset - Short-term Memory",
+                "个人资产-工作记忆",
+                "Personal Asset - Work Memory",
                 language,
             ),
             "value": memory_registry["counts"].get("session", 0),
@@ -11123,7 +11123,7 @@ def make_personal_memory_count_widget(memory_registry):
     items = [
         ("总数", "Total", total_memories),
         ("长期", "Long-term", counts.get("durable", 0)),
-        ("短期", "Short-term", counts.get("session", 0)),
+        ("工作", "Work", counts.get("session", 0)),
         ("低优先", "Low-priority", counts.get("low_priority", 0)),
     ]
     cards = []
@@ -11757,7 +11757,7 @@ def context_memory_bucket_label(item, language=None):
     bucket = str(item.get("bucket") or "").strip()
     labels = {
         "durable": ("长期记忆", "Long-term Memory"),
-        "session": ("短期记忆", "Short-term Memory"),
+        "session": ("工作记忆", "Work Memory"),
         "low_priority": ("低优先级记忆", "Low-priority Memory"),
     }
     if bucket in labels:
@@ -12386,7 +12386,7 @@ def build_daily_summary_english_parts(nightly, summary_text, window_count, conte
     memory_phrase = ", ".join(
         [
             english_count_phrase(durable_count, "long-term memory", "long-term memories"),
-            english_count_phrase(session_count, "short-term follow-up", "short-term follow-ups"),
+            english_count_phrase(session_count, "work memory", "work memories"),
             english_count_phrase(low_priority_count, "low-priority item", "low-priority items"),
         ]
     )
@@ -12471,8 +12471,8 @@ def build_daily_summary_view(nightly, window_overview=None, project_contexts=Non
         },
         {
             "label": localized(
-                "短期跟进",
-                "Short-term Follow-ups",
+                "工作记忆",
+                "Work Memory",
                 language,
             ),
             "value": len(nightly.get("session_memories", [])),
@@ -12491,11 +12491,11 @@ def build_daily_summary_view(nightly, window_overview=None, project_contexts=Non
     note_text_en = "These numbers come from the selected synthesis and help estimate how much was captured that day."
     if stage == "preliminary":
         if is_current_local_date(nightly.get("date", "")):
-            note_text_zh = "今天仍在进行中，当前是 30 分钟快速回溯结果；日报和记忆是截至当前的快照，次日完整回溯会补齐。"
-            note_text_en = "Today is still in progress, so this is only a 30-minute quick backfill; the daily summary and memories are a snapshot so far, and the full backfill will fill them in tomorrow."
+            note_text_zh = "今天仍在进行中，当前是 30 分钟快速回溯结果；只保留窗口摘要和快速索引，次日完整回溯会再生成记忆。"
+            note_text_en = "Today is still in progress, so this is only a 30-minute quick backfill; it keeps window summaries and a fast index, and the full backfill will generate memories tomorrow."
         else:
-            note_text_zh = "当前是 30 分钟快速回溯结果，日报和记忆可能不完整；可运行完整回溯查看全部可用的记忆和总结。"
-            note_text_en = "This is the 30-minute quick backfill, so the daily summary and memories may be incomplete; run the full backfill for all available memories and summaries."
+            note_text_zh = "当前是 30 分钟快速回溯结果，只保留窗口摘要和快速索引；可运行完整回溯生成可用记忆和完整总结。"
+            note_text_en = "This is the 30-minute quick backfill, so it keeps only window summaries and a fast index; run the full backfill for usable memories and a complete summary."
     elif not nightly:
         note_text_zh = "当前还没有最近一次整理；生成后这里会自动切成摘要卡。"
         note_text_en = "No recent synthesis yet; this area will switch to a summary card after generation."
@@ -12780,7 +12780,7 @@ def make_nightly_summary_panel(
         backfill_single_label = "30 分钟快速回溯"
     elif selected_preliminary:
         backfill_title = "建议深度回溯"
-        backfill_note = "当前是 30 分钟快速回溯，日报和记忆可能不完整。可以复制命令在终端补跑完整回溯。首次安装后，会自动触发完整回溯，请耐心等待。"
+        backfill_note = "当前是 30 分钟快速回溯，只生成窗口摘要和快速索引，不做记忆沉淀。可以复制命令在终端补跑完整回溯。首次安装后，会自动触发完整回溯，请耐心等待。"
         backfill_single_label = "完整回溯"
     else:
         backfill_title = "缺少整理结果"
@@ -14023,7 +14023,7 @@ def build_metric_help_sections(metric):
         "session_memories": [
             {
                 "label": "统计什么",
-                "body": "按记忆签名归并后，bucket = session 的个人资产-短期工作记忆数量。",
+                "body": "按记忆签名归并后，bucket = session 的个人资产-工作记忆数量。",
             },
             {
                 "label": "含义",
@@ -14461,7 +14461,7 @@ def build_html(data):
                 "label": "包含什么",
                 "body": [
                     "日期选择器和摘要主结论。",
-                    "工作窗口、长期记忆、短期跟进、低优先级记忆。",
+                    "工作窗口、长期记忆、工作记忆、低优先级记忆。",
                     "最近相关的上下文标签。",
                 ],
             },
@@ -21097,7 +21097,7 @@ def build_html(data):
             isCurrentMissing
               ? "今天还没结束，当前还没有 30 分钟快速回溯；可先运行今日快速回溯刷新面板，次日会自动生成完整回溯。"
               : isPreliminary
-              ? "当前是 30 分钟快速回溯，日报和记忆可能不完整。可以复制命令在终端补跑完整回溯。首次安装后，会自动触发完整回溯，请耐心等待。"
+              ? "当前是 30 分钟快速回溯，只生成窗口摘要和快速索引，不做记忆沉淀。可以复制命令在终端补跑完整回溯。首次安装后，会自动触发完整回溯，请耐心等待。"
               : "该日期还没有整理结果。可以复制命令在终端手动回溯。"
           );
         }}

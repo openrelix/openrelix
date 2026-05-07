@@ -75,11 +75,7 @@ DEFAULT_CODEX_EXEC_TIMEOUT_SECONDS = 30 * 60
 CODEX_EXEC_TIMEOUT_RETURN_CODE = 124
 COMPACT_PAYLOAD_CACHE_VERSION = 1
 DAILY_COMPACT_ARTIFACT_VERSION = 1
-LIGHTWEIGHT_SUMMARY_VERSION = 7
-LIGHTWEIGHT_SESSION_MEMORY_MIN = 3
-LIGHTWEIGHT_SESSION_MEMORY_MAX = 12
-LIGHTWEIGHT_DURABLE_MEMORY_MAX = 4
-LIGHTWEIGHT_LOW_PRIORITY_MEMORY_MAX = 3
+LIGHTWEIGHT_SUMMARY_VERSION = 8
 MAX_DAILY_DURABLE_MEMORY_ITEMS = 4
 MAX_DAILY_SESSION_MEMORY_ITEMS = 6
 MAX_DAILY_LOW_PRIORITY_MEMORY_ITEMS = 3
@@ -721,15 +717,15 @@ def build_prompt_with_learning(raw_payload, learning_context, language=None, com
 
 Organization principles:
 1. Optimize for high-signal personal memory, not maximum item count. A good memory should help a future agent make a better decision.
-2. Classify results into long-term reusable memories, short-term work memories, and low-priority memories.
+2. Classify results into long-term reusable memories, work memories, and low-priority memories.
 3. Long-term reusable memories must be useful across days. They are usually methods, rules, module mappings, debugging paths, stable preferences, privacy boundaries, or workflow defaults.
-4. Short-term work memories should still carry a concrete next-step, decision, or local project state. Do not store mere greetings, login failures, repeated windows without conclusions, one-off artifacts, or vague "looked at X" notes.
+4. Work memories should still carry a concrete next-step, decision, or local project state. Do not store mere greetings, login failures, repeated windows without conclusions, one-off artifacts, or vague "looked at X" notes.
 5. Low-priority memories are only for weak but potentially searchable facts. If an item has no future reuse value, omit it instead of padding the list.
 6. Write every generated summary, memory title, value_note, keyword, and next action in English. Preserve source identifiers, file paths, code symbols, command names, and user-provided proper nouns exactly.
 7. Do not invent facts. Only organize information from the input prompt and conclusion fields.
 8. source_window_ids must only use window_id values that appear in the input.
 9. learning_context is only for learning granularity, stability judgement, and avoiding regressions. Do not copy facts from learning_context back into today's result unless they also appear in today's input.
-10. Prefer fewer, denser memories over many low-value cards. If today's input signal is rich but you produce too few long-term or short-term memories, first reconsider whether reusable rules, preferences, or debugging paths are being missed.
+10. Prefer fewer, denser memories over many low-value cards. If today's input signal is rich but you produce too few long-term or work memories, first reconsider whether reusable rules, preferences, or debugging paths are being missed.
 11. If learning_context contains recent_window_learning, it represents recent batch summaries and patterns. Use it only to learn which window types deserve durable or session memories; do not import that historical content into today's output.
 12. recent_window_learning.coverage / batch_summaries represent full historical-window coverage; window_samples are only representative samples, not the complete historical set.
 13. For each window summary, write window_title as a plain-language title under 100 characters. Do not reuse raw window IDs, paths, Markdown, or numbered question labels as the title. Then populate summary_pairs with 1 to many readable question/conclusion pairs. If a window contains multiple distinct questions and conclusions, aggregate related turns but keep each pair one-to-one and ordered from oldest to newest.
@@ -753,15 +749,15 @@ Strictly base your output on these clusters. You may learn abstraction granulari
 
 整理原则：
 1. 目标是高含金量个人记忆，不是凑条数。好的记忆应能让未来 agent 更快做对决策。
-2. 但要分类：长期可复用、短期工作记忆、低优先级记忆。
+2. 但要分类：长期可复用、工作记忆、低优先级记忆。
 3. 长期可复用记忆必须能跨天复用，通常是方法、规则、模块映射、排障路径、稳定偏好、隐私边界或 workflow 默认动作。
-4. 短期工作记忆也必须带明确的下一步、决策或本地项目状态。不要记录问候、登录失败、无结论重复窗口、一次性测试工件，或“看了 X”这类空泛笔记。
+4. 工作记忆也必须带明确的下一步、决策或本地项目状态。不要记录问候、登录失败、无结论重复窗口、一次性测试工件，或“看了 X”这类空泛笔记。
 5. 低优先级记忆只保留弱但未来可能检索的事实；完全没有复用价值的内容应省略，不要为了填满列表而输出。
 6. 所有输出都使用中文。
 7. 不要编造信息；仅根据输入里的 prompt 和 conclusion 整理。
 8. source_window_ids 必须只使用输入中出现过的 window_id。
 9. learning_context 只用于学习粒度、稳定性判断和避免回归，不能把其中未在当日输入里出现的事实抄回今天的结果。
-10. 宁可少而密，不要多而散。如果当日输入信号已经很丰富，但你给出的长期 / 短期记忆过少，要先反思是否漏掉了可复用规则、偏好或排障路径。
+10. 宁可少而密，不要多而散。如果当日输入信号已经很丰富，但你给出的长期 / 工作记忆过少，要先反思是否漏掉了可复用规则、偏好或排障路径。
 11. 如果 learning_context 里出现 recent_window_learning，它代表近几天窗口的批次摘要与模式，仅用于学习哪些窗口类型更适合抽象成 durable / session 记忆，不代表这些窗口内容应该直接进入今天的输出。
 12. recent_window_learning.coverage / batch_summaries 代表历史窗口的全量覆盖；window_samples 只是少量代表样本，不是历史窗口全集。
 13. 每个 window_summaries 项都要填写 window_title 和 summary_pairs。window_title 要用通俗易懂的话概括窗口主题，最好不超过 100 字；不要直接复用原始窗口 ID、路径、Markdown 或“问题1/问题2”这类编号标签当标题。summary_pairs 要聚合成 1 到多个可读的问题/结论对，同一组问题和结论必须一一对应，并按从旧到新的顺序排列。
@@ -2587,63 +2583,6 @@ def build_fallback_summary(raw_payload, language=None, model_error=None, model_e
     return summary
 
 
-def compact_window_signal_score(window):
-    return window.get("prompt_count", 0) * 2 + window.get("conclusion_count", 0) * 3
-
-
-def lightweight_session_memory_limit(raw_payload, candidate_count):
-    if candidate_count <= 0:
-        return 0
-    try:
-        window_count = int(raw_payload.get("window_count", candidate_count))
-    except (TypeError, ValueError):
-        window_count = candidate_count
-    target = max(LIGHTWEIGHT_SESSION_MEMORY_MIN, window_count)
-    return min(candidate_count, target, LIGHTWEIGHT_SESSION_MEMORY_MAX)
-
-
-def lightweight_durable_memory_limit(memory_limit):
-    if memory_limit <= 0:
-        return 0
-    return min(LIGHTWEIGHT_DURABLE_MEMORY_MAX, max(1, memory_limit // 3))
-
-
-def lightweight_low_priority_memory_limit(memory_limit):
-    if memory_limit < 4:
-        return 0
-    return min(LIGHTWEIGHT_LOW_PRIORITY_MEMORY_MAX, max(1, memory_limit // 5))
-
-
-def lightweight_takeaway_is_reusable(text):
-    compact = str(text or "").strip()
-    if not compact:
-        return False
-    lowered = compact.lower()
-    fallback_markers = (
-        "当日没有保留到可复用结论",
-        "该窗口的问题已记录",
-        "没有可整理",
-        "暂无结论",
-        "no reusable conclusions",
-        "no conclusion",
-        "excluded by the review-like",
-    )
-    if any(marker in lowered for marker in fallback_markers):
-        return False
-    return True
-
-
-def lightweight_memory_item(title_prefix, item, memory_type="task", priority="medium"):
-    return {
-        "title": clip_text("{}: {}".format(title_prefix, item["window_title"]), 120),
-        "memory_type": memory_type,
-        "priority": priority,
-        "value_note": clip_text(item["main_takeaway"] or item["question_summary"], 220),
-        "source_window_ids": [item["window_id"]],
-        "keywords": item.get("keywords", [])[:4],
-    }
-
-
 def format_lightweight_list(items, limit=3, separator="、"):
     values = []
     for item in items or []:
@@ -2670,6 +2609,7 @@ def build_lightweight_day_summary(
     final_backfill_command,
     language=None,
     memory_counts=None,
+    memory_deferred=False,
 ):
     if raw_payload.get("window_count", 0) == 0:
         return localized(
@@ -2769,13 +2709,18 @@ def build_lightweight_day_summary(
             details.append("Representative windows: {}.".format(window_text))
         if pair_text:
             details.append("Representative Q/A: {}.".format(pair_text))
-        details.append(
-            "Memory output: {} long-term, {} short-term, {} low-priority.".format(
-                memory_counts.get("durable", 0),
-                memory_counts.get("session", 0),
-                memory_counts.get("low_priority", 0),
+        if memory_deferred:
+            details.append(
+                "Memory synthesis: skipped in the lightweight stage; final backfill will decide reusable memories."
             )
-        )
+        else:
+            details.append(
+                "Memory output: {} long-term, {} work, {} low-priority.".format(
+                    memory_counts.get("durable", 0),
+                    memory_counts.get("session", 0),
+                    memory_counts.get("low_priority", 0),
+                )
+            )
         details.append("{}.".format(counts_en))
         return " ".join([lead] + details)
 
@@ -2791,13 +2736,16 @@ def build_lightweight_day_summary(
     )
     details = []
     details.append("{}。".format(counts_zh))
-    details.append(
-        "记忆沉淀：长期 {} 条、短期 {} 条、低优先级 {} 条。".format(
-            memory_counts.get("durable", 0),
-            memory_counts.get("session", 0),
-            memory_counts.get("low_priority", 0),
+    if memory_deferred:
+        details.append("记忆整理：浅度阶段跳过，等待 final 深度回溯后再沉淀。")
+    else:
+        details.append(
+            "记忆沉淀：长期 {} 条、短期 {} 条、低优先级 {} 条。".format(
+                memory_counts.get("durable", 0),
+                memory_counts.get("session", 0),
+                memory_counts.get("low_priority", 0),
+            )
         )
-    )
     if window_text:
         details.append("重点窗口：{}。".format(window_text))
     if pair_text:
@@ -2810,7 +2758,7 @@ def build_lightweight_summary(raw_payload, compact_payload, language=None):
     window_summaries = []
     context_counter = Counter()
     keyword_counter = Counter()
-    memory_candidates = []
+    memory_candidate_count = 0
 
     for window in compact_payload.get("windows", []):
         summary_pairs = build_lightweight_summary_pairs(window, language=language)
@@ -2855,57 +2803,13 @@ def build_lightweight_summary(raw_payload, compact_payload, language=None):
         window_summaries.append(window_summary)
         keyword_counter.update(window_keywords)
         if window.get("prompt_count", 0) or window.get("conclusion_count", 0):
-            memory_candidates.append((compact_window_signal_score(window), window_summary, context_label))
-
-    memory_candidates.sort(
-        key=lambda item: (
-            item[0],
-            item[1].get("conclusion_count", 0),
-            item[1].get("question_count", 0),
-            item[1].get("window_id", ""),
-        ),
-        reverse=True,
-    )
-    memory_limit = lightweight_session_memory_limit(raw_payload, len(memory_candidates))
-    durable_limit = lightweight_durable_memory_limit(memory_limit)
-    low_priority_limit = lightweight_low_priority_memory_limit(memory_limit)
-    low_priority_start = max(0, min(len(memory_candidates), memory_limit) - low_priority_limit)
+            memory_candidate_count += 1
+    memory_limit = 0
+    durable_limit = 0
+    low_priority_limit = 0
     durable_memories = []
     session_memories = []
     low_priority_memories = []
-    for index, (_, item, _context_label) in enumerate(memory_candidates[:memory_limit]):
-        if low_priority_limit and index >= low_priority_start:
-            low_priority_memories.append(
-                lightweight_memory_item(
-                    localized("轻量待查", "Lightweight later review", language),
-                    item,
-                    memory_type="task",
-                    priority="low",
-                )
-            )
-            continue
-        if (
-            len(durable_memories) < durable_limit
-            and item.get("conclusion_count", 0) > 0
-            and lightweight_takeaway_is_reusable(item.get("main_takeaway", ""))
-        ):
-            durable_memories.append(
-                lightweight_memory_item(
-                    localized("轻量日报", "Lightweight daily", language),
-                    item,
-                    memory_type="semantic",
-                    priority="medium",
-                )
-            )
-            continue
-        session_memories.append(
-            lightweight_memory_item(
-                localized("轻量跟进", "Lightweight follow-up", language),
-                item,
-                memory_type="task",
-                priority="medium",
-            )
-        )
 
     top_keywords = [
         keyword
@@ -2929,6 +2833,7 @@ def build_lightweight_summary(raw_payload, compact_payload, language=None):
             "session": len(session_memories),
             "low_priority": len(low_priority_memories),
         },
+        memory_deferred=True,
     )
 
     return {
@@ -2955,10 +2860,12 @@ def build_lightweight_summary(raw_payload, compact_payload, language=None):
         "model_status": "skipped_lightweight",
         "summary_generation": "lightweight",
         "lightweight_summary_version": LIGHTWEIGHT_SUMMARY_VERSION,
-        "lightweight_memory_candidate_count": len(memory_candidates),
+        "lightweight_memory_candidate_count": memory_candidate_count,
         "lightweight_memory_limit": memory_limit,
         "lightweight_durable_memory_limit": durable_limit,
         "lightweight_low_priority_memory_limit": low_priority_limit,
+        "lightweight_memory_deferred": True,
+        "lightweight_memory_deferred_reason": "preliminary_defers_memory_to_final",
     }
 
 
@@ -3034,7 +2941,7 @@ def render_markdown(summary, language=None):
                 )
 
         extend_memory_section("Long-term Reusable Memories", summary["durable_memories"])
-        extend_memory_section("Short-term Work Memories", summary["session_memories"])
+        extend_memory_section("Work Memories", summary["session_memories"])
         extend_memory_section("Low-priority Memories", summary["low_priority_memories"])
 
         lines.extend(["", "## Keywords", "", ", ".join(summary["keywords"]) if summary["keywords"] else "None"])
@@ -3110,7 +3017,7 @@ def render_markdown(summary, language=None):
             )
 
     extend_memory_section("长期可复用记忆", summary["durable_memories"])
-    extend_memory_section("短期工作记忆", summary["session_memories"])
+    extend_memory_section("工作记忆", summary["session_memories"])
     extend_memory_section("低优先级记忆", summary["low_priority_memories"])
 
     lines.extend(["", "## 关键词", "", "、".join(summary["keywords"]) if summary["keywords"] else "暂无"])
