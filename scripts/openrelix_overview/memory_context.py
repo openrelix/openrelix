@@ -78,7 +78,7 @@ INJECTION_POLICY_ORDER = (
 
 POLICY_LABELS = {
     INJECTION_GLOBAL_CONTEXT: ("全局上下文", "Global Context"),
-    INJECTION_PROJECT_CONTEXT: ("项目上下文", "Project Context"),
+    INJECTION_PROJECT_CONTEXT: ("通用上下文", "General Context"),
     INJECTION_ON_DEMAND: ("按需召回", "On-demand Recall"),
     INJECTION_LOCAL_ONLY: ("本地保留", "Local Only"),
     INJECTION_NEVER: ("禁止注入", "Never Inject"),
@@ -254,6 +254,8 @@ def record_truthy(item, keys):
 def memory_record_has_global_context_approval(item):
     if not isinstance(item, dict):
         return False
+    if str(item.get("user_feedback") or "").strip() in {"pinned", "liked"}:
+        return True
     if record_truthy(item, GLOBAL_CONTEXT_APPROVAL_KEYS):
         return True
     try:
@@ -287,6 +289,8 @@ def memory_record_needs_global_context_approval(item):
 def memory_record_is_low_priority(item):
     if not isinstance(item, dict):
         return False
+    if str(item.get("user_feedback") or "").strip() == "downvoted":
+        return True
     return str(item.get("bucket") or "").strip() == "low_priority" or str(
         item.get("priority") or ""
     ).strip().lower() == "low"
@@ -330,6 +334,11 @@ def memory_storage_quality(item, bucket=""):
         return {"disposition": "drop", "score": 0, "reason": "invalid"}
 
     bucket = str(bucket or item.get("bucket") or "").strip()
+    user_feedback = str(item.get("user_feedback") or "").strip()
+    if user_feedback == "downvoted":
+        return {"disposition": "keep", "score": 0, "reason": "user_downvoted"}
+    if user_feedback in {"pinned", "liked"}:
+        return {"disposition": "keep", "score": 999, "reason": "user_feedback"}
     title = collapse_whitespace(item.get("title") or item.get("display_title") or "")
     note = collapse_whitespace(item.get("value_note") or item.get("display_value_note") or "")
     blob = memory_record_text_blob(item)

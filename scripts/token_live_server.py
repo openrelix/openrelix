@@ -24,6 +24,7 @@ from openrelix_overview.config import (
     LIVE_TOKEN_PORT,
 )
 from openrelix_overview.finder import FINDER_REVEAL_PATH, reveal_path_in_finder
+from openrelix_overview.memory_feedback import append_memory_feedback
 from openrelix_overview.pipeline_status import load_status as load_pipeline_status
 from openrelix_overview.token_fetcher import (
     fetch_ccusage_daily,
@@ -51,6 +52,8 @@ UPDATE_LOG_TAIL_LINES = 12
 PANEL_REFRESH_PATH = "/run-refresh"
 PANEL_REFRESH_TIMEOUT_SECONDS = 180
 PANEL_REFRESH_LOG_TAIL_LINES = 20
+MEMORY_FEEDBACK_PATH = "/memory-feedback"
+MEMORY_FEEDBACK_REFRESH_TIMEOUT_SECONDS = 120
 UPDATE_LOCK = threading.RLock()
 UPDATE_STATE = {
     "status": "idle",
@@ -70,6 +73,7 @@ ALLOWED_PANEL_ORIGIN_EXACT = {"null"}
 TRUSTED_POST_PATHS = {
     "/run-update",
     PANEL_REFRESH_PATH,
+    MEMORY_FEEDBACK_PATH,
     CLAUDE_DESKTOP_OPEN_PATH,
     FINDER_REVEAL_PATH,
 }
@@ -273,6 +277,75 @@ def run_panel_refresh(target_date=None):
         "asset_stats_path": str(PATHS.reports_dir / "asset-stats-latest.json"),
         "stdout_tail": tail_text(completed.stdout),
         "stderr_tail": tail_text(completed.stderr),
+    }
+
+
+def run_memory_feedback_refresh():
+    started_at = time.time()
+    env = os.environ.copy()
+    env["AI_ASSET_STATE_DIR"] = str(PATHS.state_root)
+    env["CODEX_HOME"] = str(PATHS.codex_home)
+    commands = [
+        [sys.executable, str(PATHS.repo_root / "scripts" / "sync_host_memory_summary.py")],
+        [sys.executable, str(PATHS.repo_root / "scripts" / "build_overview.py")],
+    ]
+    stdout_parts = []
+    stderr_parts = []
+    for command in commands:
+        try:
+            completed = subprocess.run(
+                command,
+                cwd=str(PATHS.repo_root),
+                env=env,
+                capture_output=True,
+                text=True,
+                timeout=MEMORY_FEEDBACK_REFRESH_TIMEOUT_SECONDS,
+                check=False,
+            )
+        except subprocess.TimeoutExpired as exc:
+            return {
+                "ok": False,
+                "status": "failed",
+                "started_at": started_at,
+                "ended_at": time.time(),
+                "exit_code": None,
+                "error": "memory_feedback_refresh_timeout",
+                "stdout_tail": tail_text(getattr(exc, "stdout", "")),
+                "stderr_tail": tail_text(getattr(exc, "stderr", "")),
+            }
+        except Exception as exc:
+            return {
+                "ok": False,
+                "status": "failed",
+                "started_at": started_at,
+                "ended_at": time.time(),
+                "exit_code": None,
+                "error": str(exc),
+            }
+        stdout_parts.append(completed.stdout)
+        stderr_parts.append(completed.stderr)
+        if completed.returncode != 0:
+            return {
+                "ok": False,
+                "status": "failed",
+                "started_at": started_at,
+                "ended_at": time.time(),
+                "exit_code": completed.returncode,
+                "error": "memory_feedback_refresh_failed",
+                "command": command[-1],
+                "stdout_tail": tail_text("\n".join(stdout_parts)),
+                "stderr_tail": tail_text("\n".join(stderr_parts)),
+            }
+    return {
+        "ok": True,
+        "status": "completed",
+        "started_at": started_at,
+        "ended_at": time.time(),
+        "exit_code": 0,
+        "panel_path": str(PATHS.reports_dir / "panel.html"),
+        "memory_summary_path": str(PATHS.codex_home / "memories" / "memory_summary.md"),
+        "stdout_tail": tail_text("\n".join(stdout_parts)),
+        "stderr_tail": tail_text("\n".join(stderr_parts)),
     }
 
 
@@ -644,6 +717,39 @@ class TokenLiveHandler(BaseHTTPRequestHandler):
             if snapshot.get("error") in {"finder_unsupported_platform", "finder_open_failed"}:
                 status_code = 503
             self._send_json(status_code, snapshot, allow_origin=origin or None)
+            return
+        if parsed.path == MEMORY_FEEDBACK_PATH:
+            try:
+                payload = json.loads(body.decode("utf-8")) if body else {}
+            except (UnicodeDecodeError, json.JSONDecodeError):
+                payload = {}
+            try:
+                feedback = append_memory_feedback(
+                    PATHS,
+                    payload.get("memory_key", ""),
+                    payload.get("feedback", ""),
+                    title=payload.get("title", ""),
+                    source=payload.get("source", "panel"),
+                )
+            except ValueError as exc:
+                self._send_json(
+                    400,
+                    {"ok": False, "status": "failed", "error": str(exc)},
+                    allow_origin=origin or None,
+                )
+                return
+            refresh_snapshot = run_memory_feedback_refresh()
+            self._send_json(
+                200,
+                {
+                    "ok": True,
+                    "status": "completed",
+                    "feedback": feedback,
+                    "refresh": refresh_snapshot,
+                    "refresh_ok": bool(refresh_snapshot.get("ok")),
+                },
+                allow_origin=origin or None,
+            )
             return
         if parsed.path == PANEL_REFRESH_PATH:
             try:
