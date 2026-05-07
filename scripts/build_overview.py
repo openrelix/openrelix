@@ -22600,6 +22600,39 @@ def build_html(data):
         return "";
       }}
 
+      function tokenShortDateIsoKey(text, context) {{
+        const match = String(text || "").trim().match(/^(\\d{{2}})-(\\d{{2}})$/);
+        if (!match) {{
+          return "";
+        }}
+        const month = Number(match[1]);
+        const day = Number(match[2]);
+        if (month < 1 || month > 12 || day < 1 || day > 31) {{
+          return "";
+        }}
+        const rangeStart = parseTokenMonthContextDate(context && context.range_start);
+        const rangeEnd = parseTokenMonthContextDate(context && context.range_end);
+        const startYear = rangeStart ? rangeStart.getUTCFullYear() : (rangeEnd ? rangeEnd.getUTCFullYear() : null);
+        const endYear = rangeEnd ? rangeEnd.getUTCFullYear() : startYear;
+        if (!startYear || !endYear) {{
+          return "";
+        }}
+        for (let year = startYear; year <= endYear; year += 1) {{
+          const candidate = new Date(Date.UTC(year, month - 1, day));
+          if (
+            candidate.getUTCFullYear() !== year ||
+            candidate.getUTCMonth() !== month - 1 ||
+            candidate.getUTCDate() !== day
+          ) {{
+            continue;
+          }}
+          if ((!rangeStart || candidate >= rangeStart) && (!rangeEnd || candidate <= rangeEnd)) {{
+            return String(year) + "-" + String(month).padStart(2, "0") + "-" + String(day).padStart(2, "0");
+          }}
+        }}
+        return "";
+      }}
+
       function tokenRowMonthKey(row, context) {{
         const candidates = [
           row && row.date,
@@ -22616,6 +22649,27 @@ def build_html(data):
           const shortMonth = tokenShortDateMonthKey(text, context);
           if (shortMonth) {{
             return shortMonth;
+          }}
+        }}
+        return "";
+      }}
+
+      function tokenRowDayKey(row, context) {{
+        const candidates = [
+          row && row.date,
+          row && row.raw_date,
+          row && row.sort_key,
+          row && row.label,
+        ];
+        for (const candidate of candidates) {{
+          const text = String(candidate || "").trim();
+          const match = text.match(/^(\\d{{4}})-(\\d{{2}})-(\\d{{2}})/);
+          if (match) {{
+            return match[1] + "-" + match[2] + "-" + match[3];
+          }}
+          const shortDay = tokenShortDateIsoKey(text, context);
+          if (shortDay) {{
+            return shortDay;
           }}
         }}
         return "";
@@ -22900,8 +22954,7 @@ def build_html(data):
           }}
         }} else {{
           const hasDay = nextRows.some(function (row) {{
-            const rowDate = String(row.date || row.raw_date || row.sort_key || "");
-            return rowDate.slice(0, 10) === endIso;
+            return tokenRowDayKey(row, context) === endIso;
           }});
           if (hasDay) {{
             return nextRows;
