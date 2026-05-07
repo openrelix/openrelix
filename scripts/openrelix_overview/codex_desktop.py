@@ -37,6 +37,60 @@ def build_codex_desktop_resume_command(thread_id, codex_home="", electron_user_d
     return [str(binary), url]
 
 
+def build_codex_existing_profile_open_command(thread_id):
+    url = codex_thread_url(thread_id)
+    if not url:
+        return []
+    return ["open", url]
+
+
+def should_reuse_running_codex_profile():
+    return os.environ.get("OPENRELIX_REUSE_RUNNING_CODEX_APP", "1").strip().lower() not in {"0", "false", "no", "off"}
+
+
+def focus_codex_process(process_id, timeout=0.5):
+    if not process_id or os.environ.get("OPENRELIX_DISABLE_CODEX_PROCESS_FOCUS", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }:
+        return False
+    script = (
+        'tell application "System Events" to set frontmost of '
+        '(first process whose unix id is {}) to true'
+    ).format(int(process_id))
+    try:
+        result = subprocess.run(
+            ["osascript", "-e", script],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=timeout,
+        )
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return False
+    return result.returncode == 0
+
+
+def open_existing_codex_profile(thread_id, process_id=0):
+    command = build_codex_existing_profile_open_command(thread_id)
+    if not command:
+        return {"ok": False, "error": "invalid_codex_thread_id"}
+    focus_codex_process(process_id)
+    try:
+        proc = subprocess.Popen(
+            command,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            close_fds=True,
+            start_new_session=True,
+        )
+    except OSError as exc:
+        return {"ok": False, "error": "codex_desktop_open_failed", "detail": str(exc)}
+    return {"ok": True, "pid": proc.pid, "status": "reused"}
+
+
 def start_codex_desktop_resume(
     thread_id,
     codex_home="",
@@ -53,6 +107,18 @@ def start_codex_desktop_resume(
         resolved_profile = codex_profiles.find_profile_for_home(codex_home, paths)
     if resolved_profile:
         electron_user_data_path = electron_user_data_path or resolved_profile.electron_user_data_path
+        if resolved_profile.process_id and should_reuse_running_codex_profile():
+            snapshot = open_existing_codex_profile(thread_id, process_id=resolved_profile.process_id)
+            if snapshot.get("ok"):
+                snapshot.update(
+                    {
+                        "resume_id": thread_id,
+                        "used_profile": True,
+                        "reused_running_profile": True,
+                        "target_process_id": resolved_profile.process_id,
+                    }
+                )
+                return snapshot
     if codex_home and paths is not None and not electron_user_data_path:
         requested = codex_profiles.resolved_path_key(codex_home)
         primary = codex_profiles.resolved_path_key(paths.codex_home)
@@ -88,6 +154,8 @@ def start_codex_desktop_resume(
     return {
         "ok": True,
         "pid": proc.pid,
+        "status": "launched",
         "resume_id": thread_id,
         "used_profile": bool(codex_home or electron_user_data_path),
+        "reused_running_profile": False,
     }

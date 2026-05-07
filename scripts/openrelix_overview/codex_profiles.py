@@ -13,6 +13,7 @@ class CodexProfile:
     codex_home: Path
     electron_user_data_path: str = ""
     source: str = "configured"
+    process_id: int = 0
 
 
 def expand_path(value):
@@ -40,13 +41,25 @@ def read_arg_value(text, key):
     return match.group(1).strip() if match else ""
 
 
+def split_process_line(raw_line):
+    line = str(raw_line or "").strip()
+    match = re.match(r"^(\d+)\s+(.+)$", line)
+    if not match:
+        return 0, line
+    try:
+        process_id = int(match.group(1))
+    except ValueError:
+        process_id = 0
+    return process_id, match.group(2).strip()
+
+
 def parse_codex_profiles_from_process_text(text):
     profiles = []
     for raw_line in str(text or "").splitlines():
-        line = raw_line.strip()
+        process_id, line = split_process_line(raw_line)
         if not line or "CODEX_HOME=" not in line:
             continue
-        if "Codex.app" not in line and "codex app-server" not in line and "CODEX_ELECTRON_USER_DATA_PATH=" not in line:
+        if "/Contents/MacOS/Codex" not in line or "CODEX_ELECTRON_USER_DATA_PATH=" not in line:
             continue
         codex_home = read_env_value(line, "CODEX_HOME")
         if not codex_home:
@@ -59,6 +72,7 @@ def parse_codex_profiles_from_process_text(text):
                 codex_home=expand_path(codex_home),
                 electron_user_data_path=electron_user_data,
                 source="running",
+                process_id=process_id,
             )
         )
     return profiles
@@ -71,7 +85,7 @@ def discover_running_codex_profiles(timeout=0.75):
         return []
     try:
         result = subprocess.run(
-            ["ps", "axeww", "-o", "command="],
+            ["ps", "axeww", "-o", "pid=", "-o", "command="],
             text=True,
             capture_output=True,
             timeout=timeout,
@@ -131,6 +145,7 @@ def merge_codex_profiles(profiles: Iterable[CodexProfile]):
             codex_home=existing.codex_home,
             electron_user_data_path=existing.electron_user_data_path or profile.electron_user_data_path,
             source=existing.source if existing.source == "primary" else profile.source or existing.source,
+            process_id=existing.process_id or profile.process_id,
         )
     return [by_home[key] for key in order]
 

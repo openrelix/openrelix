@@ -15,7 +15,7 @@ from openrelix_overview import codex_profiles  # noqa: E402
 class CollectCodexActivityTests(unittest.TestCase):
     def test_running_codex_process_text_extracts_home_and_electron_profile(self):
         ps_text = (
-            "/Applications/Codex.app/Contents/MacOS/Codex /repo "
+            "12345 /Applications/Codex.app/Contents/MacOS/Codex /repo "
             "CODEX_HOME=/tmp/.codex-openrelix-pro "
             "CODEX_ELECTRON_USER_DATA_PATH=/tmp/Application Support/Codex-OpenRelix-Pro "
             "XPC_FLAGS=1\n"
@@ -27,6 +27,7 @@ class CollectCodexActivityTests(unittest.TestCase):
         self.assertEqual(str(profiles[0].codex_home), "/tmp/.codex-openrelix-pro")
         self.assertEqual(profiles[0].electron_user_data_path, "/tmp/Application Support/Codex-OpenRelix-Pro")
         self.assertEqual(profiles[0].source, "running")
+        self.assertEqual(profiles[0].process_id, 12345)
 
     def test_history_collection_reads_requested_codex_home(self):
         from tempfile import TemporaryDirectory

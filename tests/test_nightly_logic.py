@@ -6294,6 +6294,44 @@ Keep my own note.
         self.assertEqual(env["CODEX_HOME"], "/tmp/other-codex-home")
         self.assertEqual(env["CODEX_ELECTRON_USER_DATA_PATH"], "/tmp/Codex Profile")
 
+    def test_codex_desktop_resume_reuses_running_profile_before_launching_new_app(self):
+        thread_id = "019dcefe-37f1-7a83-a8a6-720bd6b79d7f"
+        paths = argparse.Namespace(codex_home="/tmp/primary-codex-home")
+        profile = overview_codex_desktop.codex_profiles.CodexProfile(
+            codex_home=Path("/tmp/other-codex-home"),
+            electron_user_data_path="/tmp/Codex Profile",
+            source="running",
+            process_id=2468,
+        )
+        process = mock.Mock(pid=4321)
+
+        with mock.patch.object(
+            overview_codex_desktop.codex_profiles,
+            "find_profile_for_home",
+            return_value=profile,
+        ), mock.patch.object(
+            overview_codex_desktop,
+            "focus_codex_process",
+            return_value=True,
+        ) as focus, mock.patch.object(
+            overview_codex_desktop.subprocess,
+            "Popen",
+            return_value=process,
+        ) as popen:
+            result = overview_codex_desktop.start_codex_desktop_resume(
+                thread_id,
+                codex_home="/tmp/other-codex-home",
+                paths=paths,
+            )
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["status"], "reused")
+        self.assertTrue(result["reused_running_profile"])
+        self.assertEqual(result["target_process_id"], 2468)
+        focus.assert_called_once_with(2468)
+        self.assertEqual(popen.call_args.args[0], ["open", "codex://threads/{}".format(thread_id)])
+        self.assertNotIn("env", popen.call_args.kwargs)
+
     def test_finder_reveal_uses_macos_open_R_for_existing_path(self):
         with TemporaryDirectory() as tmpdir:
             target = Path(tmpdir) / "SKILL.md"
