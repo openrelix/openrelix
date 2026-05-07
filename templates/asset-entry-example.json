@@ -8,6 +8,7 @@
   "created_at": "2026-04-26",
   "updated_at": "2026-04-26",
   "source_task": "example_task",
+  "source_review_path": "/abs/path/to/reviews/YYYY/example.md",
   "reuse_count": 0,
   "minutes_saved_total": 0,
   "value_note": "Explain in one sentence why this asset matters.",

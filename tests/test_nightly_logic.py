@@ -9906,10 +9906,23 @@ Keep my own note.
         prompt_text = (ROOT / "install" / "templates" / "codex-prompts" / "memory-review.md.tmpl").read_text(
             encoding="utf-8"
         )
+        asset_template = (ROOT / "templates" / "asset-generation-template.md").read_text(encoding="utf-8")
+        skill_template = (ROOT / "templates" / "skill-draft-template.md").read_text(encoding="utf-8")
 
         self.assertIn("Resolve runtime language", skill_text)
         self.assertIn("asset `title` / `source_task` / `value_note` / `notes`", skill_text)
+        self.assertIn("Assetization gate", skill_text)
+        self.assertIn("templates/asset-generation-template.md", skill_text)
+        self.assertIn("registry/memory_items.jsonl", skill_text)
+        self.assertIn("project scope", skill_text)
+        self.assertIn("Asset generation template", prompt_text)
+        self.assertIn("Skill draft template", prompt_text)
+        self.assertIn("classify the reusable value", prompt_text)
         self.assertIn("usage-event `task` / `note`", prompt_text)
+        self.assertIn("Memory item row shape", asset_template)
+        self.assertIn("source_review_path", asset_template)
+        self.assertIn("Scope decision guide", skill_template)
+        self.assertIn("CODEX_HOME/skills", skill_template)
 
     def test_codex_plugin_packaging_includes_memory_review_skill(self):
         canonical_skill = (ROOT / ".agents" / "skills" / "memory-review" / "SKILL.md").read_text(encoding="utf-8")

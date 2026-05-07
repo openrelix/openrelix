@@ -21,7 +21,7 @@ GitHub 项目页：[openrelix/openrelix](https://github.com/openrelix/openrelix)
 - `ops/launchd/`：macOS LaunchAgent 模板。
 - `plugins/`：随包发布共享 skills 的 Codex plugin bundle。
 - `scripts/`：采集、夜间整理、overview 生成、token live server 和 `openrelix` CLI。
-- `templates/`：任务复盘 schema 和资产条目模板。
+- `templates/`：任务复盘 schema、资产条目模板，以及资产 / skill 生成模板。
 - `docs/`：运行模型、技术方案、学习指南、隐私边界和指标说明。
 
 ## 文档

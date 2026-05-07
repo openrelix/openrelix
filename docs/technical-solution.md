@@ -295,12 +295,13 @@ openrelix paths
 
 立即复盘 skill。
 
-触发后做四件事：
+触发后做五件事：
 
 1. 在 state root 的 `reviews/YYYY/` 下写入脱敏任务复盘。
-2. 如有长期复用价值，更新 `registry/assets.jsonl`。
-3. 如有资产实际帮上忙，追加 `registry/usage_events.jsonl`。
-4. 运行 `scripts/build_overview.py` 刷新 overview 和 panel。
+2. 基于复盘结果运行资产化判断，决定是否建议生成 reusable memory、playbook、template、automation 或 skill。
+3. 用户确认后，用 `templates/asset-generation-template.md` 和 `templates/skill-draft-template.md` 生成对应资产；skill 需要判断 repo-local 还是 user-global。
+4. 如有长期复用价值，更新 `registry/assets.jsonl`；如有 reusable memory，写入 `registry/memory_items.jsonl`。
+5. 如有资产实际帮上忙，追加 `registry/usage_events.jsonl`，并运行 `scripts/build_overview.py` 刷新 overview 和 panel。
 
 custom prompt 是兼容层，canonical workflow 仍以 skill 为主。
 
@@ -341,7 +342,7 @@ macOS 后台自动化模板。
 - `tags`
 - `notes`
 
-示例见 `templates/asset-entry-example.json`。
+示例见 `templates/asset-entry-example.json`；复盘后资产化判断见 `templates/asset-generation-template.md`。
 
 ### Usage Event
 

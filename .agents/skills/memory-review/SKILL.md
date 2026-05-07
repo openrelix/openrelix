@@ -30,10 +30,46 @@ Use this skill as the stable immediate-entry workflow for task review inside an 
 2. Resolve runtime language from `scripts/asset_runtime.py` / `runtime/config.json` before writing files.
 3. Infer the task name from the recent conversation unless the user already provided one.
 4. Write or update a sanitized task review under `reviews/YYYY/` in the active state root.
-5. If the work produced durable reusable value, add or update the matching asset row in `registry/assets.jsonl`.
-6. If an existing asset materially helped, append a row to `registry/usage_events.jsonl`.
+5. Run the assetization gate below. Do this after the review markdown exists so the judgment has a durable source path.
+6. If the work reused an existing asset, append a row to `registry/usage_events.jsonl`.
 7. Rebuild the overview with `python3 scripts/build_overview.py` from the repo root.
-8. Summarize the review file path, asset changes, usage-event changes, and overview rebuild status.
+8. Summarize the review file path, assetization decision, generated artifact paths, registry changes, usage-event changes, and overview rebuild status.
+
+## Assetization gate
+
+Use the active model's judgment to decide whether the completed work contains reusable value. Do not treat every review as an asset.
+
+1. Classify the reusable value:
+   - `none`: one-off task, weak signal, stale context, too project-private, or not reusable enough.
+   - `memory`: durable preference, stable decision, project rule, troubleshooting conclusion, or bounded context that should be remembered.
+   - `playbook`: repeatable multi-step workflow or checklist.
+   - `template`: reusable output shape, prompt, report, or schema.
+   - `automation`: repeatable command or scheduled/background workflow.
+   - `skill`: stable agent workflow with clear trigger conditions and enough steps to be useful later.
+2. For every non-`none` candidate, fill the decision shape from `templates/asset-generation-template.md`.
+3. Ask the user to confirm before creating new reusable memory rows, skills, templates, playbooks, or automation artifacts, unless the user already explicitly asked for automatic generation.
+4. If the user declines, keep the review and record `Asset actions: not generated` with the reason.
+5. If the user confirms, create or update the artifact, then add or update the matching row in `registry/assets.jsonl`.
+
+## Skill generation
+
+Generate a skill only when the workflow has stable triggers, repeatable steps, clear privacy boundaries, and enough value that a future agent should call it directly.
+
+- Use `templates/skill-draft-template.md` as the starting shape for new `SKILL.md` files.
+- Choose `project` scope when the workflow depends on a specific repository, project layout, internal command surface, domain vocabulary, or repo-local privacy boundary. Write it under the target repo's `.agents/skills/<skill-name>/SKILL.md` when that repo is the correct owner.
+- Choose `global` scope only when the workflow is generic, sanitized, and useful across repositories. Write it under the active host's user-level skill root, for example the resolved Codex `CODEX_HOME/skills/<skill-name>/SKILL.md`; do not hard-code user paths.
+- If a proposed global skill contains private paths, internal project details, customer data, tokens, raw logs, or proprietary snippets, downgrade it to project scope, sanitize it, or do not generate it.
+- After generating a skill, register it in `registry/assets.jsonl` with `type: "skill"`, `scope: "repo"` for project skills or `scope: "personal"` for global user skills, and `artifact_paths` pointing at the created `SKILL.md`.
+
+## Memory generation
+
+Generate reusable memory only for concise, durable facts that should influence future agent behavior.
+
+- Prefer `durable` bucket for long-lived preferences, rules, stable project decisions, and reusable troubleshooting conclusions.
+- Prefer `session` bucket for near-term follow-ups that should not become permanent guidance.
+- Prefer `low_priority` for weak or emerging signals that should stay local until repeated.
+- When confirmed, append or update a sanitized row in `registry/memory_items.jsonl` with `source: "memory_review"`, the review path in `source_review_path`, and any available source window IDs. Keep raw conversation text out of the memory row.
+- Rebuild the overview after writing memory rows so the memory appears in the panel.
 
 ## Language rule
 

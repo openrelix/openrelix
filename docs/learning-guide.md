@@ -151,13 +151,17 @@ open "$AI_ASSET_STATE_DIR/reports/panel.html"
 - `install/templates/codex-prompts/memory-review.md.tmpl`
 - `templates/task-review-template.md`
 - `templates/asset-entry-example.json`
+- `templates/asset-generation-template.md`
+- `templates/skill-draft-template.md`
 
 理解目标：
 
 - `/memory-review` 的主入口是 skill。
 - custom prompt 是兼容 fallback。
 - 复盘写入 `reviews/YYYY/`。
+- 复盘后先由模型判断是否值得资产化；确认后再生成 memory、skill、playbook、template 或 automation。
 - 稳定资产写入 `registry/assets.jsonl`。
+- reusable memory 可写入 `registry/memory_items.jsonl`。
 - 真实复用证据写入 `registry/usage_events.jsonl`。
 
 练习：

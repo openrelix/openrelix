@@ -1,5 +1,5 @@
 ---
-description: Immediately capture the current task into a sanitized task review, refresh the local asset state, and summarize what was recorded.
+description: Immediately capture the current task into a sanitized task review, judge reusable asset value, optionally generate assets or skills, refresh local state, and summarize what changed.
 argument-hint: [TASK="<task-name>"] [FOCUS="<what to emphasize>"]
 ---
 
@@ -11,13 +11,15 @@ Run an immediate task review for the work in the current Codex thread.
 
 ## Goal
 
-Create or update a sanitized task review in the installed OpenRelix system, then refresh the overview so the result is visible right away.
+Create or update a sanitized task review in the installed OpenRelix system, then judge whether the work should become reusable memory, a skill, a playbook, a template, or automation. Generate reusable artifacts only after user confirmation unless the user already asked for automatic generation, then refresh the overview so the result is visible right away.
 
 ## Runtime references
 
 - Repo root: `__REPO_ROOT__`
 - Installed state root: `__STATE_ROOT__`
 - Review template: `__REPO_ROOT__/templates/task-review-template.md`
+- Asset generation template: `__REPO_ROOT__/templates/asset-generation-template.md`
+- Skill draft template: `__REPO_ROOT__/templates/skill-draft-template.md`
 - Overview builder: `python3 __REPO_ROOT__/scripts/build_overview.py`
 
 ## Workflow
@@ -26,9 +28,17 @@ Create or update a sanitized task review in the installed OpenRelix system, then
 2. If `FOCUS="..."` is present, emphasize that angle in the review.
 3. Resolve the runtime language from `__STATE_ROOT__/runtime/config.json` or `__REPO_ROOT__/scripts/asset_runtime.py`.
 4. Write or update a sanitized task review under the active state root in `reviews/YYYY/`.
-5. If the work created or updated durable reusable knowledge, update `registry/assets.jsonl`.
-6. If an existing asset clearly helped on this task, append a row to `registry/usage_events.jsonl`.
-7. Rebuild the overview and panel with `python3 __REPO_ROOT__/scripts/build_overview.py`.
+5. Run the assetization gate using the active model's judgment:
+   - classify the reusable value as `none`, `memory`, `playbook`, `template`, `automation`, or `skill`
+   - fill the decision shape from `templates/asset-generation-template.md`
+   - ask the user to confirm before creating reusable memory rows or artifact files, unless auto-generation was explicitly requested
+6. If the user confirms generation, create or update the relevant artifact:
+   - reusable memory: append or update a sanitized `registry/memory_items.jsonl` row with `source: "memory_review"`
+   - skill: use `templates/skill-draft-template.md`, decide project vs global scope, then write `SKILL.md` to the correct repo-local or user-level skill root
+   - playbook/template/automation: create a sanitized artifact in the appropriate user state or repo-owned location
+   - asset registry: add or update `registry/assets.jsonl` with the generated artifact paths
+7. If an existing asset clearly helped on this task, append a row to `registry/usage_events.jsonl`.
+8. Rebuild the overview and panel with `python3 __REPO_ROOT__/scripts/build_overview.py`.
 
 ## Language rule
 
@@ -42,12 +52,15 @@ Create or update a sanitized task review in the installed OpenRelix system, then
 - Do not store secrets, tokens, cookies, raw internal logs, or large proprietary code dumps.
 - Prefer concrete outcome, reusable value, evidence, and follow-up risk over a chat transcript.
 - Keep the review specific enough to be reused later by another Codex session.
+- Do not create a reusable asset when the work is one-off, low-signal, too private to sanitize, or missing a clear future trigger.
+- For skills, choose project scope when the workflow depends on a specific repo, domain, internal command surface, or privacy boundary. Choose global scope only for generic sanitized workflows, and never hard-code user paths.
 
 ## Final response
 
 When the review is done, summarize:
 
 - the review file path
-- any asset ids created or updated
+- the model's assetization decision
+- any memory rows, skill files, or asset ids created or updated
 - whether a usage event was appended
 - whether the overview and panel were rebuilt

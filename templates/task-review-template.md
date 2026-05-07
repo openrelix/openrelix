@@ -21,6 +21,15 @@ Use the configured runtime language for human-facing text. In `zh` mode, write t
 - Reusable verification path:
 - Reusable checklist or prompt:
 
+## Assetization decision
+
+- Model judgment:
+- Candidate type: none | memory | playbook | template | automation | skill
+- Confidence:
+- User confirmation:
+- Scope decision:
+- No-asset reason:
+
 ## Evidence
 
 - Changed files:
@@ -29,6 +38,9 @@ Use the configured runtime language for human-facing text. In `zh` mode, write t
 
 ## Asset actions
 
+- Memory row created or updated:
+- Skill created or updated:
 - New asset created:
 - Existing asset updated:
 - Usage event appended:
+- Generated artifact paths:

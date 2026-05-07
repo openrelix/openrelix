@@ -21,7 +21,7 @@ GitHub project page: [openrelix/openrelix](https://github.com/openrelix/openreli
 - `ops/launchd/`: macOS LaunchAgent templates.
 - `plugins/`: packaged Codex plugin bundles for shared skills.
 - `scripts/`: collectors, nightly consolidation, overview generation, and token live server.
-- `templates/`: review schema and asset entry templates.
+- `templates/`: review schema, asset entry templates, and asset / skill generation templates.
 - `docs/`: operating model, technical design, learning guide, privacy boundary, and reporting notes.
 
 ## Documentation
