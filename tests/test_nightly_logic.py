@@ -4605,10 +4605,22 @@ Keep my own note.
             html,
         )
         package_json = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))
+        self.assertNotIn("hero-version-line", html)
         self.assertIn(
-            '<span class="hero-version-line">v{}</span>'.format(package_json["version"]),
+            'data-current-version="{}"'.format(package_json["version"]),
             html,
         )
+        self.assertIn('id="openrelix-update-panel"', html)
+        self.assertIn('data-update-layout="compact"', html)
+        self.assertIn('data-update-command="openrelix update --yes --force"', html)
+        self.assertIn("版本与更新", html)
+        self.assertIn("Version &amp; Updates", html)
+        self.assertIn('data-update-last-check', html)
+        self.assertIn('data-update-compact-current', html)
+        self.assertIn('data-update-primary', html)
+        self.assertIn('data-update-command-row hidden', html)
+        self.assertIn("openrelix-update-demo", html)
+        self.assertIn("runScheduledCheck", html)
         self.assertIn("applyLanguage(defaultLanguage);", html)
         self.assertIn("refreshStatusLanguage();", html)
         self.assertIn('setStatus("live", "", "live_refreshed");', html)

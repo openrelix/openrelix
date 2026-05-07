@@ -94,6 +94,7 @@ PROJECT_CONTEXT_MAX_DAYS = 7
 SUMMARY_TERM_DEFAULT_DAYS = 1
 SUMMARY_TERM_RANGE_DAYS = (1, 7)
 MEMORY_USAGE_WINDOW_DAYS = 7
+UPDATE_COMMAND_TEXT = "openrelix update --yes --force"
 PROJECT_CONTEXT_TOPIC_VISIBLE_COUNT = 4
 TOKEN_METRIC_KEYS = {"today_token", "seven_day_token"}
 DISCOVERED_KIND_ORDER = overview_asset_discovery.DISCOVERED_KIND_ORDER
@@ -14062,11 +14063,63 @@ def read_panel_package_version():
     return get_project_version(PATHS.repo_root, fallback="")
 
 
-def make_project_version_badge():
+def make_update_panel_html():
     version = read_panel_package_version()
-    if not version:
-        return ""
-    return '<span class="hero-version-line">v{}</span>'.format(escape(version))
+    version_display = "v{}".format(version) if version else "—"
+    return """
+          <section
+            class="hero-update-card"
+            id="openrelix-update-panel"
+            aria-labelledby="openrelix-update-title"
+            data-update-state="idle"
+            data-update-layout="compact"
+            data-update-command="{update_command}"
+            data-current-version="{current_version}"
+          >
+            <div class="hero-update-head">
+              <div class="hero-update-title-block">
+                <p class="hero-update-kicker">{kicker}</p>
+                <h2 class="hero-update-title" id="openrelix-update-title">
+                  <span class="hero-update-title-full">{title}</span>
+                  <span class="hero-update-status-badge" data-update-status-badge>{status_idle}</span>
+                </h2>
+              </div>
+              <span class="hero-update-dot" aria-hidden="true"></span>
+            </div>
+            <div class="hero-update-compact-line" data-update-compact-line>
+              <span data-update-compact-current>{current_version_label}</span>
+              <span data-update-compact-last>{last_check_empty}</span>
+            </div>
+            <div class="hero-update-meta">
+              <span>{current_label} <strong data-update-current-label>{current_version_label}</strong></span>
+              <span>{last_check_label} <strong data-update-last-check>{last_check_empty}</strong></span>
+            </div>
+            <p class="hero-update-message" data-update-message>{idle_message}</p>
+            <div class="hero-update-command" data-update-command-row hidden>
+              <code data-update-command-text>{update_command_text}</code>
+            </div>
+            <button class="action-button update-primary-button" type="button" data-update-primary>
+              <span data-update-primary-label>{check_label}</span>
+              <span class="button-spinner" aria-hidden="true"></span>
+            </button>
+          </section>
+    """.format(
+        update_command=escape(UPDATE_COMMAND_TEXT, quote=True),
+        current_version=escape(version, quote=True),
+        current_version_label=escape(version_display),
+        update_command_text=escape(UPDATE_COMMAND_TEXT),
+        kicker=panel_language_text_html("OpenRelix"),
+        title=panel_language_text_html("版本与更新", "Version & Updates"),
+        status_idle=panel_language_text_html("未检查", "Not Checked"),
+        current_label=panel_language_text_html("当前版本", "Current"),
+        last_check_label=panel_language_text_html("上次检查", "Last Check"),
+        last_check_empty=panel_language_text_html("未检查", "Not Checked"),
+        idle_message=panel_language_text_html(
+            "当前版本 {}".format(version_display),
+            "Current version {}".format(version_display),
+        ),
+        check_label=panel_language_text_html("检查更新", "Check Updates"),
+    )
 
 
 def update_token_path():
@@ -15253,9 +15306,14 @@ def build_html(data):
       min-width: 0;
     }}
 
+    .hero-side {{
+      flex: 0 1 420px;
+      min-width: min(360px, 100%);
+    }}
+
     .hero-actions {{
       display: flex;
-      align-items: flex-start;
+      align-items: center;
       justify-content: flex-end;
       gap: 10px;
       flex: 0 0 auto;
@@ -15387,23 +15445,6 @@ def build_html(data):
       overflow-wrap: anywhere;
     }}
 
-    .hero-version-line {{
-      display: inline-flex;
-      align-items: center;
-      width: fit-content;
-      max-width: 100%;
-      margin: 0;
-      padding: 6px 10px;
-      border: 1px solid rgba(52, 199, 89, 0.24);
-      border-radius: 999px;
-      background: rgba(52, 199, 89, 0.08);
-      color: var(--green);
-      font-size: 12px;
-      font-weight: 700;
-      line-height: 1.2;
-      white-space: nowrap;
-    }}
-
     .hero-copy {{
       max-width: 760px;
       color: var(--muted);
@@ -15477,6 +15518,264 @@ def build_html(data):
 
     .action-button.is-loading .button-spinner {{
       display: inline-flex;
+    }}
+
+    .hero-update-card {{
+      width: min(420px, 100%);
+      flex: 0 0 100%;
+      margin-left: auto;
+      min-width: 0;
+      display: grid;
+      gap: 12px;
+      padding: 14px;
+      border: 1px solid var(--line-strong);
+      border-radius: 18px;
+      background: var(--control);
+      box-shadow: var(--shadow-soft);
+    }}
+
+    .hero-update-card[data-update-layout="compact"] {{
+      width: auto;
+      max-width: 160px;
+      flex: 0 1 auto;
+      margin-left: 0;
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      min-height: 36px;
+      padding: 0 12px;
+      border-radius: 999px;
+      cursor: pointer;
+    }}
+
+    .hero-update-card[data-update-layout="compact"]:hover {{
+      background: var(--control-strong);
+    }}
+
+    .hero-update-head {{
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 14px;
+      min-width: 0;
+    }}
+
+    .hero-update-card[data-update-layout="compact"] .hero-update-head {{
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }}
+
+    .hero-update-title-block {{
+      min-width: 0;
+    }}
+
+    .hero-update-kicker {{
+      margin: 0 0 5px;
+      color: var(--teal);
+      font-size: 12px;
+      font-weight: 800;
+      line-height: 1.2;
+    }}
+
+    .hero-update-card[data-update-layout="compact"] .hero-update-kicker {{
+      display: none;
+    }}
+
+    .hero-update-title {{
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+      color: var(--ink);
+      font-size: 18px;
+      line-height: 1.25;
+    }}
+
+    .hero-update-card[data-update-layout="compact"] .hero-update-title {{
+      flex-wrap: nowrap;
+      gap: 0;
+      font-size: 12px;
+      line-height: 1;
+      white-space: nowrap;
+    }}
+
+    .hero-update-card[data-update-layout="compact"] .hero-update-title-full {{
+      display: none;
+    }}
+
+    .hero-update-status-badge {{
+      display: inline-flex;
+      align-items: center;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: var(--soft);
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 760;
+      line-height: 1;
+      padding: 6px 9px;
+      white-space: nowrap;
+    }}
+
+    .hero-update-card[data-update-layout="compact"] .hero-update-status-badge {{
+      border: 0;
+      background: transparent;
+      color: var(--muted);
+      padding: 0;
+      font-size: 12px;
+      font-weight: 760;
+    }}
+
+    .hero-update-dot {{
+      width: 10px;
+      height: 10px;
+      flex: 0 0 auto;
+      margin-top: 5px;
+      border-radius: 999px;
+      background: var(--slate);
+      box-shadow: 0 0 0 4px rgba(86, 96, 106, 0.12);
+    }}
+
+    .hero-update-card[data-update-layout="compact"] .hero-update-dot {{
+      width: 7px;
+      height: 7px;
+      margin-top: 0;
+      box-shadow: 0 0 0 3px rgba(86, 96, 106, 0.12);
+    }}
+
+    .hero-update-card[data-update-state="checking"] .hero-update-dot,
+    .hero-update-card[data-update-state="running"] .hero-update-dot {{
+      background: var(--amber);
+      box-shadow: 0 0 0 4px rgba(191, 107, 0, 0.16);
+    }}
+
+    .hero-update-card[data-update-state="latest"] .hero-update-dot,
+    .hero-update-card[data-update-state="completed"] .hero-update-dot {{
+      background: var(--green);
+      box-shadow: 0 0 0 4px rgba(36, 138, 61, 0.16);
+    }}
+
+    .hero-update-card[data-update-state="available"] .hero-update-dot {{
+      background: var(--teal);
+      box-shadow: 0 0 0 4px rgba(0, 113, 227, 0.15);
+    }}
+
+    .hero-update-card[data-update-state="failed"] .hero-update-dot {{
+      background: var(--rose);
+      box-shadow: 0 0 0 4px rgba(215, 0, 21, 0.14);
+    }}
+
+    .hero-update-meta {{
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.35;
+    }}
+
+    .hero-update-meta span {{
+      min-width: 0;
+      overflow-wrap: anywhere;
+    }}
+
+    .hero-update-card[data-update-layout="compact"] .hero-update-meta {{
+      display: none;
+    }}
+
+    .hero-update-compact-line {{
+      display: none;
+    }}
+
+    .hero-update-card[data-update-layout="compact"] .hero-update-compact-line {{
+      display: inline-flex;
+      justify-content: flex-end;
+      align-items: center;
+      gap: 0;
+      min-width: 0;
+      color: var(--ink);
+      font-size: 13px;
+      font-weight: 780;
+      line-height: 1;
+      overflow: hidden;
+      white-space: nowrap;
+    }}
+
+    .hero-update-card[data-update-layout="compact"] .hero-update-compact-line::before {{
+      content: "";
+      width: 1px;
+      height: 14px;
+      flex: 0 0 auto;
+      margin: 0 3px 0 1px;
+      border-radius: 999px;
+      background: var(--line-strong);
+    }}
+
+    .hero-update-card[data-update-layout="compact"] [data-update-compact-last] {{
+      display: none;
+    }}
+
+    .hero-update-card[data-update-layout="compact"] .hero-update-compact-line span {{
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }}
+
+    .hero-update-meta strong {{
+      color: var(--ink);
+      font-weight: 760;
+    }}
+
+    .hero-update-message {{
+      margin: 0;
+      color: var(--ink);
+      font-size: 13px;
+      line-height: 1.5;
+      overflow-wrap: anywhere;
+    }}
+
+    .hero-update-card[data-update-layout="compact"] .hero-update-message {{
+      display: none;
+    }}
+
+    .hero-update-command {{
+      min-width: 0;
+      padding: 9px 10px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--soft);
+      color: var(--ink);
+      font-size: 12px;
+      line-height: 1.4;
+      overflow-x: auto;
+    }}
+
+    .hero-update-card[data-update-layout="compact"] .hero-update-command {{
+      display: none;
+    }}
+
+    .hero-update-command code {{
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+      white-space: nowrap;
+    }}
+
+    .update-primary-button {{
+      justify-content: center;
+      min-height: 40px;
+      width: fit-content;
+      max-width: 100%;
+      white-space: nowrap;
+    }}
+
+    .hero-update-card[data-update-layout="compact"] .update-primary-button {{
+      display: none;
+    }}
+
+    .update-primary-button[disabled] {{
+      cursor: progress;
+      opacity: 0.78;
     }}
     #token-refresh-status-text {{
       min-width: 0;
@@ -19579,9 +19878,24 @@ def build_html(data):
         flex-direction: column;
       }}
 
+      .hero-side {{
+        flex: none;
+        width: 100%;
+        min-width: 0;
+        justify-items: stretch;
+      }}
+
       .hero-actions {{
         width: 100%;
         justify-content: flex-start;
+      }}
+
+      .hero-update-card {{
+        width: 100%;
+      }}
+
+      .hero-update-card[data-update-layout="compact"] {{
+        width: auto;
       }}
     }}
 
@@ -19987,70 +20301,58 @@ def build_html(data):
 
     }}
 
-    .openrelix-update-pill {{
-      position: fixed;
-      right: 16px;
-      bottom: 16px;
-      z-index: 9999;
-      display: inline-flex;
-      align-items: center;
-      gap: 10px;
-      padding: 7px 8px 7px 14px;
-      border-radius: 999px;
-      max-width: calc(100vw - 32px);
-      background: var(--elevated, #ffffff);
-      color: var(--ink, #1d1d1f);
-      border: 1px solid var(--line-strong, rgba(0, 0, 0, 0.16));
-      box-shadow: var(--shadow, 0 12px 28px rgba(0, 0, 0, 0.14));
-      font: 13px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "PingFang SC", "Microsoft YaHei", sans-serif;
-      transform: translateY(8px);
-      opacity: 0;
-      transition: opacity .25s ease, transform .25s ease;
-      backdrop-filter: blur(18px) saturate(140%);
-      -webkit-backdrop-filter: blur(18px) saturate(140%);
-    }}
-    .openrelix-update-pill.is-visible {{ transform: none; opacity: 1; }}
-    .openrelix-update-pill__dot {{
-      display: inline-block;
-      width: 8px;
-      height: 8px;
-      border-radius: 999px;
-      background: var(--green, #34c759);
-      flex-shrink: 0;
-      box-shadow: 0 0 0 3px rgba(52, 199, 89, 0.18);
-    }}
-    .openrelix-update-pill__label {{ white-space: nowrap; font-weight: 500; }}
-    .openrelix-update-pill__hint {{ color: var(--muted, rgba(29, 29, 31, 0.6)); margin-left: 4px; font-weight: 400; }}
-    .openrelix-update-pill__button {{
-      appearance: none;
-      border: 0;
-      background: var(--teal, #0071e3);
-      color: #ffffff;
-      font: inherit;
-      font-weight: 500;
-      padding: 6px 14px;
-      border-radius: 999px;
-      cursor: pointer;
-      white-space: nowrap;
-    }}
-    .openrelix-update-pill__button[disabled] {{ opacity: 0.65; cursor: default; }}
-    .openrelix-update-pill__button:hover:not([disabled]) {{ filter: brightness(1.08); }}
-    .openrelix-update-pill__close {{
-      appearance: none;
-      border: 0;
-      background: transparent;
-      color: var(--muted, rgba(29, 29, 31, 0.55));
-      font-size: 16px;
-      line-height: 1;
-      cursor: pointer;
-      padding: 4px 6px;
-      margin-right: 2px;
-    }}
-    .openrelix-update-pill__close:hover {{ color: var(--ink, #1d1d1f); }}
     @media (max-width: 520px) {{
-      .openrelix-update-pill {{ left: 12px; right: 12px; bottom: 12px; max-width: none; flex-wrap: wrap; }}
-      .openrelix-update-pill__label {{ white-space: normal; flex: 1 1 auto; }}
-      .openrelix-update-pill__button {{ flex: 1 1 100%; text-align: center; }}
+      .app-shell {{
+        width: min(362px, calc(100vw - 28px));
+        max-width: min(362px, calc(100vw - 28px));
+      }}
+
+      .hero-update-meta {{
+        grid-template-columns: 1fr;
+      }}
+
+      .hero-update-card[data-update-layout="compact"] {{
+        width: 100%;
+        max-width: none;
+        grid-template-columns: minmax(0, auto) minmax(0, auto);
+        justify-content: center;
+        border-radius: 999px;
+      }}
+
+      .hero-update-card[data-update-layout="compact"] .hero-update-compact-line {{
+        justify-content: flex-start;
+      }}
+
+      .hero-actions {{
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        align-items: stretch;
+      }}
+
+      .language-switch,
+      .theme-switch,
+      .hero-github-link {{
+        width: 100%;
+        min-width: 0;
+        justify-content: center;
+      }}
+
+      .language-option,
+      .theme-option {{
+        flex: 1 1 auto;
+        min-width: 0;
+        text-align: center;
+      }}
+
+      .hero-github-link {{
+        line-height: 1.25;
+        text-align: center;
+        white-space: normal;
+      }}
+
+      .update-primary-button {{
+        width: 100%;
+      }}
     }}
   </style>
 </head>
@@ -20066,16 +20368,18 @@ def build_html(data):
             {hero_mark}
             <h1>{hero_title}</h1>
             <span class="hero-brand-line">{hero_brand_line}</span>
-            {hero_version_badge}
           </div>
           <p class="hero-copy">
             {hero_copy}
           </p>
         </div>
-        <div class="hero-actions">
-          {theme_switch}
-          {language_switch}
-          {github_button}
+        <div class="hero-side">
+          <div class="hero-actions">
+            {theme_switch}
+            {language_switch}
+            {github_button}
+            {hero_update_panel}
+          </div>
         </div>
       </div>
       <div class="hero-meta">
@@ -23695,18 +23999,17 @@ def build_html(data):
   <script>
     (function () {{
       try {{
+        var panel = document.getElementById("openrelix-update-panel");
         var meta = document.querySelector('meta[name="openrelix:version"]');
-        if (!meta) return;
-        var current = String(meta.content || "").trim();
-        if (!current) return;
+        if (!panel || !meta) return;
+        var current = String(meta.content || panel.getAttribute("data-current-version") || "").trim();
         var pkg = (meta.getAttribute("data-pkg") || "openrelix").trim() || "openrelix";
         var updateEndpoint = (meta.getAttribute("data-update-endpoint") || "").trim();
         var statusEndpoint = (meta.getAttribute("data-update-status-endpoint") || "").trim();
         var updateToken = (meta.getAttribute("data-update-token") || "").trim();
-        var DISMISS_KEY = "openrelix-update-dismissed";
+        var commandText = (panel.getAttribute("data-update-command") || "openrelix update --yes --force").trim();
         var LAST_CHECK_KEY = "openrelix-update-last-check";
         var CHECK_INTERVAL = 6 * 60 * 60 * 1000;
-        var COOLDOWN = 30 * 60 * 1000;
         var searchParams = new URLSearchParams(window.location.search || "");
         var hashParams = new URLSearchParams(String(window.location.hash || "").replace(/^#/, ""));
         var demoLatest = String(
@@ -23717,6 +24020,25 @@ def build_html(data):
         var demoMode = !!demoLatest;
         if (demoLatest === "1" || demoLatest.toLowerCase() === "true") {{
           demoLatest = "9.9.9";
+        }}
+        var latestVersion = "";
+        var mode = "idle";
+        var pollTimer = null;
+        var lastCheckEpoch = Number(ls(LAST_CHECK_KEY) || 0);
+        var els = {{
+          badge: panel.querySelector("[data-update-status-badge]"),
+          lastCheck: panel.querySelector("[data-update-last-check]"),
+          currentLabel: panel.querySelector("[data-update-current-label]"),
+          message: panel.querySelector("[data-update-message]"),
+          commandRow: panel.querySelector("[data-update-command-row]"),
+          commandText: panel.querySelector("[data-update-command-text]"),
+          compactCurrent: panel.querySelector("[data-update-compact-current]"),
+          compactLast: panel.querySelector("[data-update-compact-last]"),
+          primary: panel.querySelector("[data-update-primary]"),
+          primaryLabel: panel.querySelector("[data-update-primary-label]")
+        }};
+        if (els.commandText) {{
+          els.commandText.textContent = commandText;
         }}
 
         function semverKey(v) {{
@@ -23762,195 +24084,407 @@ def build_html(data):
             return true;
           }} catch (_) {{ return false; }}
         }}
+
+        function versionLabel(version) {{
+          version = String(version || "").trim();
+          return version ? "v" + version.replace(/^v/i, "") : "—";
+        }}
+
+        function langPack() {{
+          return STR[detectLanguage()] || STR.zh;
+        }}
+
+        function formatLastCheck(epoch) {{
+          var s = langPack();
+          var numericEpoch = Number(epoch || 0);
+          if (!numericEpoch) {{
+            return s.notChecked;
+          }}
+          var date = new Date(numericEpoch);
+          if (Number.isNaN(date.getTime())) {{
+            return s.notChecked;
+          }}
+          try {{
+            return date.toLocaleString(detectLanguage() === "en" ? "en-US" : "zh-CN", {{
+              month: "2-digit",
+              day: "2-digit",
+              hour: "2-digit",
+              minute: "2-digit"
+            }});
+          }} catch (_) {{
+            return date.toISOString().slice(0, 16).replace("T", " ");
+          }}
+        }}
+
+        function setLastCheck(epoch) {{
+          lastCheckEpoch = Number(epoch || Date.now());
+          ls(LAST_CHECK_KEY, String(lastCheckEpoch));
+          if (els.lastCheck) {{
+            els.lastCheck.textContent = formatLastCheck(lastCheckEpoch);
+          }}
+        }}
+
+        function renderLastCheck() {{
+          if (els.lastCheck) {{
+            els.lastCheck.textContent = formatLastCheck(lastCheckEpoch);
+          }}
+        }}
+
+        function setPrimaryLabel(text) {{
+          if (els.primaryLabel) {{
+            els.primaryLabel.textContent = text;
+          }} else if (els.primary) {{
+            els.primary.textContent = text;
+          }}
+        }}
+
+        function setPrimaryLoading(isLoading) {{
+          if (!els.primary) {{
+            return;
+          }}
+          els.primary.disabled = !!isLoading;
+          els.primary.classList.toggle("is-loading", !!isLoading);
+        }}
+
         var STR = {{
           zh: {{
-            label: function (latest) {{ return "OpenRelix " + latest; }},
-            hint: "可更新 · 当前 " + current,
+            notChecked: "未检查",
+            idleStatus: "未检查",
+            checkingStatus: "检查中",
+            latestStatus: "已是最新",
+            availableStatus: "有新版本",
+            runningStatus: "更新中",
+            completedStatus: "已更新",
+            failedStatus: "更新失败",
+            checkFailedStatus: "检查失败",
+            idleMessage: function () {{ return "当前版本 " + versionLabel(current); }},
+            checkingMessage: "正在检查最新版本...",
+            latestMessage: "当前已是最新版本",
+            availableMessage: function (latest) {{ return "发现 OpenRelix " + versionLabel(latest); }},
+            runningMessage: "正在安装并重启...",
+            completedMessage: "已更新，正在重载",
+            failedMessage: "更新未完成，请手动处理",
+            checkFailedMessage: "检查失败，请手动处理",
+            serverUnavailableMessage: "本地更新服务不可用，请手动处理",
+            check: "检查更新",
+            checking: "检查中",
+            recheck: "重新检查",
             update: "立即更新",
-            running: "正在安装并重启…",
-            done: "已更新 · 正在重载",
-            copy: "复制修复命令",
+            running: "更新中",
+            done: "已更新",
+            copy: "复制命令",
             copied: "已复制到剪贴板",
-            close: "关闭"
+            current: "当前版本",
+            lastCheckCompact: function (value) {{ return "检查 " + value; }}
           }},
           en: {{
-            label: function (latest) {{ return "OpenRelix " + latest; }},
-            hint: "available · on " + current,
+            notChecked: "Not Checked",
+            idleStatus: "Not Checked",
+            checkingStatus: "Checking",
+            latestStatus: "Up to Date",
+            availableStatus: "Update Available",
+            runningStatus: "Updating",
+            completedStatus: "Updated",
+            failedStatus: "Update Failed",
+            checkFailedStatus: "Check Failed",
+            idleMessage: function () {{ return "Current version " + versionLabel(current); }},
+            checkingMessage: "Checking the latest version...",
+            latestMessage: "OpenRelix is up to date",
+            availableMessage: function (latest) {{ return "OpenRelix " + versionLabel(latest) + " is available"; }},
+            runningMessage: "Installing and restarting...",
+            completedMessage: "Updated, reloading",
+            failedMessage: "Update did not finish. Handle it manually.",
+            checkFailedMessage: "Update check failed. Handle it manually.",
+            serverUnavailableMessage: "Local update service is unavailable. Handle it manually.",
+            check: "Check Updates",
+            checking: "Checking",
+            recheck: "Check Again",
             update: "Update now",
-            running: "Installing and restarting…",
-            done: "Updated · Reloading",
-            copy: "Copy repair command",
+            running: "Updating",
+            done: "Updated",
+            copy: "Copy Command",
             copied: "Copied",
-            close: "Dismiss"
+            current: "Current",
+            lastCheckCompact: function (value) {{ return "Checked " + value; }}
           }}
         }};
 
-        function buildPill(latest) {{
-          var lang = detectLanguage();
-          var s = STR[lang];
-          var cmd = "openrelix update --yes --force";
-          var pill = document.createElement("div");
-          pill.id = "openrelix-update-pill";
-          pill.className = "openrelix-update-pill";
-          pill.setAttribute("role", "status");
-          pill.setAttribute("aria-live", "polite");
-          pill.dataset.latest = latest;
-
-          var dot = document.createElement("span");
-          dot.className = "openrelix-update-pill__dot";
-          pill.appendChild(dot);
-
-          var label = document.createElement("span");
-          label.className = "openrelix-update-pill__label";
-          var ver = document.createElement("span");
-          ver.textContent = s.label(latest);
-          label.appendChild(ver);
-          var hint = document.createElement("span");
-          hint.className = "openrelix-update-pill__hint";
-          hint.textContent = " " + s.hint;
-          label.appendChild(hint);
-          pill.appendChild(label);
-
-          var btn = document.createElement("button");
-          btn.type = "button";
-          btn.className = "openrelix-update-pill__button";
-          btn.textContent = s.update;
-          pill.appendChild(btn);
-
-          var close = document.createElement("button");
-          close.type = "button";
-          close.className = "openrelix-update-pill__close";
-          close.setAttribute("aria-label", s.close);
-          close.textContent = "×";
-          close.addEventListener("click", function () {{ dismiss(); }});
-          pill.appendChild(close);
-
-          var mode = "idle";
-          var pollTimer = null;
-
-          function setBtn(text, disabled) {{
-            btn.textContent = text;
-            btn.disabled = !!disabled;
+        function stateCopy(nextMode, extra) {{
+          var s = langPack();
+          var latest = (extra && extra.latest) || latestVersion;
+          if (latest) {{
+            latestVersion = latest;
           }}
-
-          function scheduleReload(delayMs) {{
-            if (pill.dataset.reloadScheduled === "1") return;
-            pill.dataset.reloadScheduled = "1";
-            window.setTimeout(function () {{
-              window.location.reload();
-            }}, Math.max(Number(delayMs) || 1500, 500));
+          if (nextMode === "checking") {{
+            return {{ status: s.checkingStatus, message: s.checkingMessage, button: s.checking, loading: true, showCommand: false, layout: "compact" }};
           }}
-
-          function flashCopied() {{
-            var prev = btn.textContent;
-            btn.textContent = s.copied;
-            setTimeout(function () {{ if (mode !== "running") btn.textContent = prev; }}, 1600);
+          if (nextMode === "latest") {{
+            return {{ status: s.latestStatus, message: s.latestMessage, button: s.recheck, loading: false, showCommand: false, layout: "compact" }};
           }}
-
-          function poll() {{
-            if (!statusEndpoint) return;
-            pollTimer = setInterval(function () {{
-              fetch(statusEndpoint, {{ cache: "no-cache" }})
-                .then(function (r) {{ return r && r.ok ? r.json() : null; }})
-                .then(function (data) {{
-                  if (!data) return;
-                  if (data.status === "completed") {{
-                    clearInterval(pollTimer); pollTimer = null;
-                    mode = "done"; setBtn(s.done, true);
-                    scheduleReload(data.reload_after_ms);
-                  }} else if (data.status === "failed") {{
-                    clearInterval(pollTimer); pollTimer = null;
-                    mode = "copy_fallback"; setBtn(s.copy, false);
-                  }}
-                }})
-                .catch(function () {{}});
-            }}, 2500);
+          if (nextMode === "available") {{
+            return {{ status: s.availableStatus, message: s.availableMessage(latestVersion), button: s.update, loading: false, showCommand: false, layout: "expanded" }};
           }}
+          if (nextMode === "running") {{
+            return {{ status: s.runningStatus, message: s.runningMessage, button: s.running, loading: true, showCommand: false, layout: "expanded" }};
+          }}
+          if (nextMode === "completed") {{
+            return {{ status: s.completedStatus, message: s.completedMessage, button: s.done, loading: false, showCommand: false, layout: "compact" }};
+          }}
+          if (nextMode === "check_failed") {{
+            return {{
+              status: s.checkFailedStatus,
+              message: (extra && extra.message) || s.checkFailedMessage,
+              button: s.recheck,
+              loading: false,
+              showCommand: false,
+              layout: "compact"
+            }};
+          }}
+          if (nextMode === "failed") {{
+            return {{
+              status: s.failedStatus,
+              message: (extra && extra.message) || s.failedMessage,
+              button: s.copy,
+              loading: false,
+              showCommand: true,
+              layout: "expanded"
+            }};
+          }}
+          return {{ status: s.idleStatus, message: s.idleMessage(), button: s.check, loading: false, showCommand: false, layout: "compact" }};
+        }}
 
-          function startServerUpdate() {{
-            mode = "running"; setBtn(s.running, true);
-            var headers = {{ "Content-Type": "application/json" }};
-            if (updateToken) {{ headers["X-OpenRelix-Token"] = updateToken; }}
-            fetch(updateEndpoint, {{
-              method: "POST",
-              headers: headers,
-              body: JSON.stringify({{ source: "panel" }})
+        function updateCompactLine() {{
+          var s = langPack();
+          if (els.compactCurrent) {{
+            els.compactCurrent.textContent = versionLabel(current);
+          }}
+          if (els.compactLast) {{
+            els.compactLast.textContent = s.lastCheckCompact(formatLastCheck(lastCheckEpoch));
+          }}
+        }}
+
+        function setState(nextMode, extra) {{
+          mode = nextMode || "idle";
+          extra = extra || {{}};
+          panel.setAttribute("data-update-state", mode);
+          var copy = stateCopy(mode, extra);
+          panel.setAttribute("data-update-layout", copy.layout || "compact");
+          if (els.badge) {{
+            els.badge.textContent = copy.status;
+          }}
+          if (els.currentLabel) {{
+            els.currentLabel.textContent = versionLabel(current);
+          }}
+          if (els.message) {{
+            els.message.textContent = copy.message;
+          }}
+          if (els.commandRow) {{
+            els.commandRow.hidden = !copy.showCommand;
+          }}
+          setPrimaryLabel(copy.button);
+          setPrimaryLoading(copy.loading);
+          renderLastCheck();
+          updateCompactLine();
+        }}
+
+        function scheduleReload(delayMs) {{
+          if (panel.dataset.reloadScheduled === "1") return;
+          panel.dataset.reloadScheduled = "1";
+          window.setTimeout(function () {{
+            window.location.reload();
+          }}, Math.max(Number(delayMs) || 1500, 500));
+        }}
+
+        function flashCopied() {{
+          var previousMode = mode;
+          setPrimaryLabel(langPack().copied);
+          window.setTimeout(function () {{
+            if (mode === previousMode) {{
+              setState(mode);
+            }}
+          }}, 1600);
+        }}
+
+        function applyWorkerStatus(data) {{
+          if (!data) {{
+            return;
+          }}
+          if (data.status === "completed") {{
+            clearUpdatePoll();
+            setState("completed");
+            scheduleReload(data.reload_after_ms);
+            return;
+          }}
+          if (data.status === "failed") {{
+            clearUpdatePoll();
+            setState("failed");
+            return;
+          }}
+          if (data.status === "running") {{
+            setState("running");
+            startUpdatePoll();
+          }}
+        }}
+
+        function clearUpdatePoll() {{
+          if (pollTimer) {{
+            window.clearInterval(pollTimer);
+            pollTimer = null;
+          }}
+        }}
+
+        function startUpdatePoll() {{
+          if (!statusEndpoint || pollTimer) return;
+          pollTimer = window.setInterval(function () {{
+            fetch(statusEndpoint, {{ cache: "no-cache" }})
+              .then(function (response) {{ return response && response.ok ? response.json() : null; }})
+              .then(applyWorkerStatus)
+              .catch(function () {{}});
+          }}, 2500);
+        }}
+
+        function startServerUpdate() {{
+          if (!updateEndpoint || !updateToken || !window.fetch) {{
+            setState("failed", {{ message: langPack().serverUnavailableMessage }});
+            return;
+          }}
+          setState("running");
+          var headers = {{ "Content-Type": "application/json" }};
+          headers["X-OpenRelix-Token"] = updateToken;
+          fetch(updateEndpoint, {{
+            method: "POST",
+            headers: headers,
+            body: JSON.stringify({{ source: "panel" }})
+          }})
+            .then(function (response) {{
+              return response.json().catch(function () {{ return null; }}).then(function (payload) {{
+                if (!response.ok || !payload) {{
+                  throw new Error((payload && payload.error) || ("HTTP " + response.status));
+                }}
+                return payload;
+              }});
             }})
-              .then(function (r) {{ if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); }})
-              .then(function (data) {{
-                if (!data) {{ throw new Error("empty"); }}
-                if (data.status === "completed") {{ mode = "done"; setBtn(s.done, true); scheduleReload(data.reload_after_ms); return; }}
-                if (data.status === "failed") {{ mode = "copy_fallback"; setBtn(s.copy, false); return; }}
-                poll();
-              }})
-              .catch(function () {{ mode = "copy_fallback"; setBtn(s.copy, false); }});
-          }}
-
-          btn.addEventListener("click", function () {{
-            if (mode === "running") return;
-            if (mode === "done") {{ scheduleReload(0); return; }}
-            if (mode === "copy_fallback") {{
-              copyText(cmd);
-              flashCopied();
-              return;
-            }}
-            if (updateEndpoint) {{
-              startServerUpdate();
-            }} else {{
-              copyText(cmd);
-              flashCopied();
-            }}
-          }});
-
-          function dismiss() {{
-            if (pollTimer) {{ clearInterval(pollTimer); pollTimer = null; }}
-            ls(DISMISS_KEY, latest);
-            pill.classList.remove("is-visible");
-            setTimeout(function () {{ if (pill.parentNode) pill.parentNode.removeChild(pill); }}, 240);
-          }}
-
-          return pill;
+            .then(function (payload) {{
+              applyWorkerStatus(payload);
+              if (payload && payload.status !== "completed" && payload.status !== "failed") {{
+                startUpdatePoll();
+              }}
+            }})
+            .catch(function () {{
+              clearUpdatePoll();
+              setState("failed", {{ message: langPack().serverUnavailableMessage }});
+            }});
         }}
 
-        function show(latest, options) {{
-          var force = options && options.force;
-          if (!force && ls(DISMISS_KEY) === latest) return;
-          var existing = document.getElementById("openrelix-update-pill");
-          if (existing) {{
-            if (existing.dataset.latest === latest) return;
-            if (existing.parentNode) existing.parentNode.removeChild(existing);
+        function checkLatest() {{
+          if (!window.fetch) {{
+            setLastCheck(Date.now());
+            setState("check_failed", {{ message: langPack().checkFailedMessage }});
+            return;
           }}
-          var pill = buildPill(latest);
-          document.body.appendChild(pill);
-          requestAnimationFrame(function () {{ pill.classList.add("is-visible"); }});
-        }}
-
-        function check() {{
-          var now = Date.now();
-          var last = Number(ls(LAST_CHECK_KEY) || 0);
-          if (now - last < COOLDOWN) return;
-          ls(LAST_CHECK_KEY, now);
+          setState("checking");
           var url = "https://registry.npmjs.org/" + encodeURIComponent(pkg) + "/latest";
           fetch(url, {{ headers: {{ Accept: "application/json" }}, cache: "no-cache" }})
-            .then(function (r) {{ return r && r.ok ? r.json() : null; }})
-            .then(function (data) {{
-              if (!data) return;
-              var latest = String(data.version || "").trim();
-              if (!latest) return;
-              if (isNewer(latest, current)) show(latest);
+            .then(function (r) {{
+              if (!r || !r.ok) {{
+                throw new Error("HTTP " + (r ? r.status : "0"));
+              }}
+              return r.json();
             }})
-            .catch(function () {{ /* offline / blocked / silent */ }});
+            .then(function (data) {{
+              setLastCheck(Date.now());
+              var latest = String(data.version || "").trim();
+              if (!latest) {{
+                setState("check_failed", {{ message: langPack().checkFailedMessage }});
+                return;
+              }}
+              if (isNewer(latest, current)) {{
+                setState("available", {{ latest: latest }});
+              }} else {{
+                setState("latest");
+              }}
+            }})
+            .catch(function () {{
+              setLastCheck(Date.now());
+              setState("check_failed", {{ message: langPack().checkFailedMessage }});
+            }});
+        }}
+
+        function runScheduledCheck() {{
+          var last = Number(ls(LAST_CHECK_KEY) || 0);
+          if (Date.now() - last < CHECK_INTERVAL || mode === "checking" || mode === "running") {{
+            return;
+          }}
+          checkLatest();
+        }}
+
+        function refreshRunningUpdateStatus() {{
+          if (!statusEndpoint || !window.fetch) return;
+          fetch(statusEndpoint, {{ cache: "no-cache" }})
+            .then(function (response) {{ return response && response.ok ? response.json() : null; }})
+            .then(function (data) {{
+              if (data && data.status === "running") {{
+                applyWorkerStatus(data);
+              }}
+            }})
+            .catch(function () {{}});
+        }}
+
+        function wireLanguageObserver() {{
+          if (!window.MutationObserver) return;
+          var observer = new MutationObserver(function () {{
+            setState(mode);
+          }});
+          if (document.body) {{
+            observer.observe(document.body, {{ attributes: true, attributeFilter: ["data-language"] }});
+          }}
+          observer.observe(document.documentElement, {{ attributes: true, attributeFilter: ["lang", "data-default-language"] }});
         }}
 
         function start() {{
+          wireLanguageObserver();
+          if (els.primary) {{
+            els.primary.addEventListener("click", function () {{
+              if (mode === "checking" || mode === "running") return;
+              if (mode === "available") {{
+                startServerUpdate();
+                return;
+              }}
+              if (mode === "failed") {{
+                copyText(commandText);
+                flashCopied();
+                return;
+              }}
+              if (mode === "completed") {{
+                scheduleReload(0);
+                return;
+              }}
+              checkLatest();
+            }});
+          }}
+          panel.addEventListener("click", function (event) {{
+            if (event.target && event.target.closest && event.target.closest("[data-update-primary]")) {{
+              return;
+            }}
+            if (panel.getAttribute("data-update-layout") !== "compact") {{
+              return;
+            }}
+            if (mode === "checking" || mode === "running") {{
+              return;
+            }}
+            checkLatest();
+          }});
           if (demoMode && demoLatest) {{
-            show(demoLatest, {{ force: true }});
+            setLastCheck(Date.now());
+            setState("available", {{ latest: demoLatest }});
             return;
           }}
-          check();
-          setInterval(check, CHECK_INTERVAL);
+          setState("idle");
+          refreshRunningUpdateStatus();
+          checkLatest();
+          window.setInterval(runScheduledCheck, CHECK_INTERVAL);
           document.addEventListener("visibilitychange", function () {{
-            if (document.visibilityState === "visible") check();
+            if (document.visibilityState === "visible") runScheduledCheck();
           }});
         }}
 
@@ -24016,7 +24550,7 @@ def build_html(data):
             escape("你的专属AI记忆珍藏"),
             escape("Your personal AI memory relics"),
         ),
-        hero_version_badge=make_project_version_badge(),
+        hero_update_panel=make_update_panel_html(),
         hero_copy=panel_language_text_html(
             "只保留当前有效的复用信号：最近整理、核心指标，以及可继续下钻的窗口、记忆和资产明细。"
         ),
