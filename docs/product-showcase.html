@@ -3289,7 +3289,7 @@
                 <div class="hero-dashboard-metric-grid">
                   <div class="hero-dashboard-metric"><span>窗口</span><b>12</b></div>
                   <div class="hero-dashboard-metric"><span>长期记忆</span><b>8</b></div>
-                  <div class="hero-dashboard-metric"><span>短期记忆</span><b>6</b></div>
+                  <div class="hero-dashboard-metric"><span>工作记忆</span><b>6</b></div>
                   <div class="hero-dashboard-metric"><span>待升级资产</span><b>4</b></div>
                 </div>
               </section>
@@ -3404,7 +3404,7 @@
         <div class="workflow memory-flow">
           <div class="stage"><strong>先把这段工作记下来</strong><span>从 AI CLI 已保存的会话记录里读取刚做过的窗口，标清日期、项目和主题；Codex 与 Claude Code 来源会在窗口里分开标记。</span></div>
           <div class="stage"><strong>每 30 分钟做一次小结</strong><span>开启后台学习刷新后，它会每 30 分钟看一眼最近窗口，把新结论、待跟进事项和可复用做法整理进本地记忆和面板。</span></div>
-          <div class="stage"><strong>深夜把一天收成总账</strong><span>晚上 23:00 先整理当天窗口，00:10 再把前一天结果固定下来，生成长期记忆、短期跟进、报告和面板。</span></div>
+          <div class="stage"><strong>深夜把一天收成总账</strong><span>晚上 23:00 先整理当天窗口，00:10 再把前一天结果固定下来，生成长期记忆、工作记忆、报告和面板。</span></div>
           <div class="stage"><strong>着急时手动跑一次</strong><span>不想等后台任务时，直接运行 review 或 refresh，就能马上从当前窗口生成记忆；默认只同步压缩摘要，local-only 时只留本地。</span></div>
         </div>
         <div class="grid cols-3">
@@ -3457,9 +3457,9 @@
                   <h4>今天哪些工作能复用？</h4>
                   <span class="daily-date-pill">日期&nbsp;&nbsp;2026/04/27</span>
                 </div>
-                <p class="daily-lead">12 个 agent 窗口已归档：8 条长期记忆、6 条短期跟进、4 个资产升级候选。</p>
+                <p class="daily-lead">12 个 agent 窗口已归档：8 条长期记忆、6 条工作记忆、4 个资产升级候选。</p>
                 <ul class="daily-bullets">
-                  <li>长期规则进 OpenRelix 登记册；临时上下文进短期工作记忆，避免混成一锅。</li>
+                  <li>长期规则进 OpenRelix 登记册；临时上下文进工作记忆，避免混成一锅。</li>
                   <li>每条结论保留来源窗口和隐私边界，只沉淀方法，不保存原始日志。</li>
                   <li>同一结果可导出 HTML / Markdown / JSONL，后续迁移到其他 CLI 不重做。</li>
                 </ul>
@@ -3475,7 +3475,7 @@
                 <div class="daily-metric-grid">
                   <div class="daily-metric"><span>工作窗口</span><b>12</b></div>
                   <div class="daily-metric"><span>长期记忆</span><b>8</b></div>
-                  <div class="daily-metric"><span>短期跟进</span><b>6</b></div>
+                  <div class="daily-metric"><span>工作记忆</span><b>6</b></div>
                   <div class="daily-metric"><span>可升级资产</span><b>4</b></div>
                 </div>
                 <p class="daily-note">看板回答三个问题：今天做了什么、哪些能复用、哪些还要补。</p>
@@ -3540,10 +3540,10 @@
                   <article class="memory-entry">
                     <strong>长期资产</strong>
                     <p>稳定规则、脚本入口、LaunchAgent 等沉淀为可复用方法手册或自动化。</p>
-                    <div class="memory-entry-meta"><span>来源：registry/memory_items.jsonl</span><span>分桶：长期</span></div>
+                    <div class="memory-entry-meta"><span>来源：registry/memory_entries.jsonl</span><span>分桶：长期</span></div>
                   </article>
                   <article class="memory-entry">
-                    <strong>短期跟进</strong>
+                    <strong>工作记忆</strong>
                     <p>近 7 天窗口按项目归类，高价值摘要带项目边界进入 bounded 上下文。</p>
                     <div class="memory-entry-meta"><span>来源：夜间整理</span><span>分桶：任务</span></div>
                   </article>
@@ -3729,7 +3729,7 @@
             <article class="mode-card">
               <span class="mode-kicker">第二步</span>
               <h3>再打开本地面板</h3>
-              <p>整理完成后打开面板，看最近几天整理了什么、长期和短期记忆有哪些、同步是否正常。如果整理期间面板或 app 已经打开，手动刷新一下即可看到终版结果。</p>
+              <p>整理完成后打开面板，看最近几天整理了什么、长期记忆和工作记忆有哪些、同步是否正常。如果整理期间面板或 app 已经打开，手动刷新一下即可看到终版结果。</p>
               <div class="command-row inline-command">
                 <code class="command-code">openrelix open panel</code>
                 <button class="command-copy" type="button" aria-label="复制打开网页端命令"><span data-copy-label aria-live="polite">复制</span></button>
@@ -3743,7 +3743,7 @@
                   <div class="visual-local-nav">
                     <span>概览</span>
                     <span>长期</span>
-                    <span>短期</span>
+                    <span>工作</span>
                     <span>低优先</span>
                   </div>
                   <div class="visual-local-main">
@@ -3758,7 +3758,7 @@
                     <div class="visual-local-metrics">
                       <div class="visual-local-metric"><span>窗口</span><b>43</b></div>
                       <div class="visual-local-metric"><span>长期</span><b>36</b></div>
-                      <div class="visual-local-metric"><span>短期</span><b>40</b></div>
+                      <div class="visual-local-metric"><span>工作</span><b>40</b></div>
                       <div class="visual-local-metric"><span>低优先</span><b>18</b></div>
                     </div>
                     <div class="visual-local-sync">
@@ -3835,13 +3835,13 @@
                   <div class="visual-terminal-data-row"><b>仓库场景资产</b><strong>1</strong><span>绑定某个仓库或场景的条目</span></div>
                   <div class="visual-terminal-data-row"><b>今日 Token</b><strong>17.7 亿</strong><span>04-27 总消耗</span></div>
                   <div class="visual-terminal-data-row"><b>近 7 日 Token</b><strong>38.2 亿</strong><span>最近 7 天累计消耗</span></div>
-                  <div class="visual-terminal-data-row"><b>个人资产记忆</b><strong>36 / 38 / 17</strong><span>长期 / 短期 / 低优先</span></div>
+                  <div class="visual-terminal-data-row"><b>个人资产记忆</b><strong>36 / 38 / 17</strong><span>长期 / 工作 / 低优先</span></div>
                   <div class="visual-terminal-data-row"><b>每日窗口数</b><strong>43</strong><span>2026-04-27 捕获的窗口数</span></div>
                 </div>
                 <div class="visual-terminal-review">
                   <div class="visual-terminal-review-title"><strong>今日 Review</strong><span>2026-04-27</span></div>
                   <p>今日复盘：开源发布、面板可视化、host 记忆分层；示例工作区完成发布检查、模板整理与稳定性分析。</p>
-                  <span class="visual-terminal-review-meta">窗口 41 | 长期记忆 12 | 短期记忆 15 | 低优先记忆 5</span>
+                  <span class="visual-terminal-review-meta">窗口 41 | 长期记忆 12 | 工作记忆 15 | 低优先记忆 5</span>
                 </div>
               </div>
             </article>
@@ -3889,7 +3889,7 @@
               <span class="chip">v0.2.0 已发布</span>
               <span class="roadmap-status">已发布 · 2026/04/29</span>
               <h3>深度适配 Codex 软件</h3>
-              <p>把 Codex CLI 与 Codex 软件的活动来源、线程读取、上下文同步和异常回退做得更稳定，同时优化记忆去重、压缩预算、短期/长期分层和面板呈现。</p>
+              <p>把 Codex CLI 与 Codex 软件的活动来源、线程读取、上下文同步和异常回退做得更稳定，同时优化记忆去重、压缩预算、工作/长期分层和面板呈现。</p>
             </div>
           </article>
           <article class="roadmap-item is-released">
@@ -3907,7 +3907,7 @@
               <span class="chip rose">v1.0.0</span>
               <span class="roadmap-status">预计 1-2 周 · 约 2026/05/05 - 2026/05/12</span>
               <h3>正式版：深度改造个人记忆系统</h3>
-              <p>围绕个人记忆系统做正式版收口：更清晰的长期/短期/低优先分层、更强的资产升级规则、更稳定的跨 host 记忆同步和正式发布文档。</p>
+              <p>围绕个人记忆系统做正式版收口：更清晰的长期/工作/低优先分层、更强的资产升级规则、更稳定的跨 host 记忆同步和正式发布文档。</p>
             </div>
           </article>
         </div>
@@ -4071,14 +4071,14 @@
         "预览版闭环发布": "Preview Loop Released",
         "跑通本地优先个人 AI 资产系统的最小完整闭环：一键安装、Codex CLI 工作窗口采集、任务复盘、资产登记、记忆分层、面板可视化和 macOS 后台自动化。": "Delivered the smallest complete loop for a local-first personal AI asset system: one-command install, Codex CLI work-window collection, task reviews, asset registry, memory layering, dashboard visualization, and macOS background automation.",
         "深度适配 Codex 软件": "Deep Codex App Adaptation",
-        "把 Codex CLI 与 Codex 软件的活动来源、线程读取、上下文同步和异常回退做得更稳定，同时优化记忆去重、压缩预算、短期/长期分层和面板呈现。": "Make Codex CLI and the Codex app more stable across activity sources, thread reading, context sync, and fallback behavior, while improving memory deduplication, compression budgets, short/long-term layering, and panel presentation.",
+        "把 Codex CLI 与 Codex 软件的活动来源、线程读取、上下文同步和异常回退做得更稳定，同时优化记忆去重、压缩预算、工作/长期分层和面板呈现。": "Make Codex CLI and the Codex app more stable across activity sources, thread reading, context sync, and fallback behavior, while improving memory deduplication, compression budgets, work/long-term layering, and panel presentation.",
         "已发布 · 2026/05/04": "Released · 2026/05/04",
         "v0.3.0 已发布": "v0.3.0 Released",
         "适配 Claude Code CLI + Claude 软件": "Adapt Claude Code CLI + Claude App",
         "新增 Claude Code CLI adapter，把 transcript、Token、`CLAUDE.md` 原生上下文和模型回溯映射到同一套本地资产模型，并与 Codex 共用一份个人记忆摘要。": "Add the Claude Code CLI adapter, mapping transcripts, Token usage, `CLAUDE.md` native context, and model backfill into the same local asset model while sharing one personal-memory summary with Codex.",
         "预计 1-2 周 · 约 2026/05/05 - 2026/05/12": "Expected in 1-2 weeks · around 2026/05/05 - 2026/05/12",
         "正式版：深度改造个人记忆系统": "Official Release: Deep Personal Memory System Upgrade",
-        "围绕个人记忆系统做正式版收口：更清晰的长期/短期/低优先分层、更强的资产升级规则、更稳定的跨 host 记忆同步和正式发布文档。": "Finalize the official release around the personal memory system: clearer long-term / short-term / low-priority layers, stronger asset promotion rules, more stable cross-host memory sync, and official release docs.",
+        "围绕个人记忆系统做正式版收口：更清晰的长期/工作/低优先分层、更强的资产升级规则、更稳定的跨 host 记忆同步和正式发布文档。": "Finalize the official release around the personal memory system: clearer long-term / work / low-priority layers, stronger asset promotion rules, more stable cross-host memory sync, and official release docs.",
         "以上时间是基于 2026/04/28 - 2026/04/29 两次发布节奏的预估，具体范围会随 host 适配验证、隐私边界检查和安装稳定性测试微调。": "These dates are estimates based on the 2026/04/28 - 2026/04/29 release cadence; scope may adjust after host-adapter validation, privacy-boundary checks, and install stability testing.",
         "先沉淀成本地账本，再把必要摘要交给 AI host。": "First capture a local ledger, then hand only the necessary summary to the AI host.",
         "OpenRelix 不会把所有聊天都塞回上下文。它先把工作记录留在本机，再按固定节奏整理：平时每 30 分钟做小结，深夜做当天总账；需要时也能手动立刻生成。": "OpenRelix does not push every chat back into context. It keeps the work record on your machine first, then organizes it on a steady rhythm: short summaries every 30 minutes, a daily ledger late at night, and manual generation when you need it now.",
@@ -4087,7 +4087,7 @@
         "每 30 分钟做一次小结": "Summarize Every 30 Minutes",
         "开启后台学习刷新后，它会每 30 分钟看一眼最近窗口，把新结论、待跟进事项和可复用做法整理进本地记忆和面板。": "After background learning refresh is enabled, it checks recent windows every 30 minutes and organizes new conclusions, follow-ups, and reusable practices into local memory and the panel.",
         "深夜把一天收成总账": "Turn The Day Into A Ledger Late At Night",
-        "晚上 23:00 先整理当天窗口，00:10 再把前一天结果固定下来，生成长期记忆、短期跟进、报告和面板。": "At 23:00 it organizes the current day's windows; at 00:10 it finalizes the previous day into long-term memories, short-term follow-ups, reports, and panels.",
+        "晚上 23:00 先整理当天窗口，00:10 再把前一天结果固定下来，生成长期记忆、工作记忆、报告和面板。": "At 23:00 it organizes the current day's windows; at 00:10 it finalizes the previous day into long-term memories, work memories, reports, and panels.",
         "着急时手动跑一次": "Run It Manually When You Need It",
         "不想等后台任务时，直接运行 review 或 refresh，就能马上从当前窗口生成记忆；默认只同步压缩摘要，local-only 时只留本地。": "When you do not want to wait for the background job, run review or refresh to generate memory from the current windows right away; by default only the compressed summary syncs, and local-only keeps it on the machine.",
         "默认模式": "Default Mode",
@@ -4112,7 +4112,7 @@
         "相关上下文": "Related Context",
         "本地隐私边界": "Local Privacy Boundary",
         "OpenRelix 长期记忆": "OpenRelix Long-term Memory",
-        "OpenRelix 短期记忆": "OpenRelix Short-term Memory",
+        "OpenRelix 工作记忆": "OpenRelix Work Memory",
         "这些数字是脱敏示例，用来展示面板如何可视化个人 AI 资产。": "These numbers are sanitized samples showing how the panel visualizes personal AI assets.",
         "今天整理了 12 个窗口": "Organized 12 windows today",
         "发布检查、模板整理、本地自动化脚本与记忆候选已归类。": "Release checks, template cleanup, local automation scripts, and memory candidates are grouped.",
@@ -4136,12 +4136,12 @@
         "每日资产账本": "Daily Asset Ledger",
         "今天哪些工作能复用？": "Which work can be reused today?",
         "日期 2026/04/27": "Date 2026/04/27",
-        "12 个 agent 窗口已归档：8 条长期记忆、6 条短期跟进、4 个资产升级候选。": "12 agent windows archived: 8 long-term memories, 6 short-term follow-ups, and 4 asset upgrade candidates.",
-        "长期规则进 OpenRelix 登记册；临时上下文进短期工作记忆，避免混成一锅。": "Long-term rules go into the OpenRelix registry; temporary context stays in short-term work memory.",
+        "12 个 agent 窗口已归档：8 条长期记忆、6 条工作记忆、4 个资产升级候选。": "12 agent windows archived: 8 long-term memories, 6 work memories, and 4 asset upgrade candidates.",
+        "长期规则进 OpenRelix 登记册；临时上下文进工作记忆，避免混成一锅。": "Long-term rules go into the OpenRelix registry; temporary context stays in work memory.",
         "每条结论保留来源窗口和隐私边界，只沉淀方法，不保存原始日志。": "Each conclusion keeps its source window and privacy boundary; methods are captured, raw logs are not.",
         "同一结果可导出 HTML / Markdown / JSONL，后续迁移到其他 CLI 不重做。": "The same result exports to HTML, Markdown, and JSONL, so later CLI migration does not start from scratch.",
         "工作窗口": "Work Windows",
-        "短期跟进": "Short-term Follow-ups",
+        "工作跟进": "Work Follow-ups",
         "可升级资产": "Upgradable Assets",
         "看板回答三个问题：今天做了什么、哪些能复用、哪些还要补。": "The board answers three questions: what happened today, what can be reused, and what still needs work.",
         "一眼看清资产健康度": "See asset health at a glance",
@@ -4154,12 +4154,12 @@
         "最近整理、核心指标、窗口和记忆明细在本地聚合。": "Recent synthesis, core metrics, windows, and memory details are aggregated locally.",
         "窗口": "Windows",
         "长期记忆": "Long-term Memory",
-        "短期记忆": "Short-term Memory",
+        "工作记忆": "Work Memory",
         "待升级资产": "Asset Candidates",
         "发布检查、模板整理、本地自动化": "Release checks, template cleanup, local automation",
         "按项目和上下文归类": "Grouped by project and context",
         "同时看见 host 记忆和 OpenRelix 个人记忆": "See host memory and OpenRelix memory together",
-        "`/memory-review` 和 `openrelix review` 会从本地 AI agent 窗口整理当天工作，输出脱敏复盘、长期记忆、短期任务记忆和下一步动作。": "`/memory-review` and `openrelix review` organize the day's local AI agent windows into sanitized reviews, long-term memory, short-term task memory, and next actions.",
+        "`/memory-review` 和 `openrelix review` 会从本地 AI agent 窗口整理当天工作，输出脱敏复盘、长期记忆、工作记忆和下一步动作。": "`/memory-review` and `openrelix review` organize the day's local AI agent windows into sanitized reviews, long-term memory, work memory, and next actions.",
         "保留结论、方法和决策，不保留原始私有日志。": "Keep conclusions, methods, and decisions, not raw private logs.",
         "面板把 host native memory 与 OpenRelix 本地记忆登记册分层展示。": "The panel separates host-native memory from the OpenRelix local memory registry.",
         "适合把重复操作升级成 skill 或 automation。": "Repeated operations can be promoted into skills or automations.",
@@ -4174,7 +4174,7 @@
         "记忆分层展示": "Layered memory display",
         "Host native memory 与本地个人记忆分开显示，来源和优先级可追溯。": "Host-native memory and local personal memory are displayed separately with traceable sources and priorities.",
         "真实记忆视图": "Real memory view",
-        "按真实来源拆开：当前 host 读 memory_summary 与 MEMORY.md，OpenRelix 读 registry/memory_items.jsonl。": "Split by real sources: the current host reads memory_summary and MEMORY.md, while OpenRelix reads registry/memory_items.jsonl.",
+        "按真实来源拆开：当前 host 读 memory_summary 与 MEMORY.md，OpenRelix 读 registry/memory_entries.jsonl。": "Split by real sources: the current host reads memory_summary and MEMORY.md, while OpenRelix reads registry/memory_entries.jsonl.",
         "两套记忆，各管一件事": "Two memory layers, each with one job",
         "Host 原生记忆影响模型回答；OpenRelix 本地记忆保留来源、状态和升级动作。": "Host-native memory shapes model answers; OpenRelix local memory keeps sources, status, and upgrade actions.",
         "Host 原生记忆": "Host Native Memory",
@@ -4203,9 +4203,9 @@
         "本地优先、state root、LaunchAgent 等稳定规则沉淀为可复用资产。": "Local-first, state root, LaunchAgent, and other stable rules captured as reusable assets.",
         "长期资产": "Long-term Assets",
         "稳定规则、脚本入口、LaunchAgent 等沉淀为可复用方法手册或自动化。": "Stable rules, script entrypoints, and LaunchAgents become reusable playbooks or automations.",
-        "来源：registry/memory_items.jsonl": "source: registry/memory_items.jsonl",
+        "来源：registry/memory_entries.jsonl": "source: registry/memory_entries.jsonl",
         "分桶：长期": "bucket: durable",
-        "短期工作记忆": "Short-term Work Memory",
+        "工作记忆": "Work Memory",
         "近 7 天窗口按项目和上下文二次归类，支持只看最近 1 天或最多 7 天。": "Recent 7-day windows are grouped by project and context, with filters for the latest 1 day up to 7 days.",
         "近 7 天窗口按项目归类，高价值摘要带项目边界进入 bounded 上下文。": "Recent 7-day windows are grouped by project; high-value summaries enter bounded context with project boundaries.",
         "来源：夜间整理": "source: nightly synthesis",
@@ -4236,7 +4236,7 @@
         "`--use-integrated`：显式选择 host 上下文注入模式。": "`--use-integrated`: explicitly select host-context injection mode.",
         "`--disable-personal-memory`：关闭本系统本地 memory registry 写入。": "`--disable-personal-memory`: disable this system's local memory-registry writes.",
         "压缩策略：同签名记忆跨天归并，优先长期和任务记忆，低优先级只留本地；摘要目标 6.7K、上限 8K token。": "Compression strategy: merge same-signature memories across days, prioritize durable / session, keep low-priority local only, and cap the summary at a 6.7K target / 8K max token budget.",
-        "低优先级内容只留本地；长期规则和短期跟进分开归档，避免上下文噪声。": "Low-priority content stays local; long-term rules and short-term follow-ups are archived separately to reduce context noise.",
+        "低优先级内容只留本地；长期规则和工作记忆分开归档，避免上下文噪声。": "Low-priority content stays local; long-term rules and work memories are archived separately to reduce context noise.",
         "窗口二次归类": "Second-level window grouping",
         "多窗口先按项目归并，再按上下文主题展示，避免把历史窗口一次性铺满。": "Many windows are first grouped by project, then by context topic, so history does not flood the page at once.",
         "项目 / 上下文分布": "Project / Context Distribution",
@@ -4307,7 +4307,7 @@
         "今日 Review": "Today Review",
         "开源发布、面板可视化、host 记忆分层。": "Open-source release, panel visualization, host memory layering.",
         "长期": "Long",
-        "短期": "Short",
+        "工作": "Work",
         "低优先": "Low",
         "Host context 预算 ≤ 8K": "Host context budget ≤ 8K",
         "受控": "Bounded",
@@ -4318,7 +4318,7 @@
         "Host 学习": "Host learning",
         "第三步": "Step 3",
         "再打开本地面板": "Then open the local panel",
-        "整理完成后打开面板，看今天整理了什么、长期和短期记忆有哪些、同步是否正常。运行命令打开网页端或桌面端，也可以在 macOS 中搜索 OpenRelix 直接启动。": "After organizing, open the panel to see what was captured today, which long-term and short-term memories exist, and whether sync is healthy. Run a command to open the web or desktop client, or search for OpenRelix on macOS to launch it directly.",
+        "整理完成后打开面板，看今天整理了什么、长期记忆和工作记忆有哪些、同步是否正常。运行命令打开网页端或桌面端，也可以在 macOS 中搜索 OpenRelix 直接启动。": "After organizing, open the panel to see what was captured today, which long-term and work memories exist, and whether sync is healthy. Run a command to open the web or desktop client, or search for OpenRelix on macOS to launch it directly.",
         "7 天窗口": "7-day windows",
         "OpenRelix 本地记忆": "OpenRelix local memory",
         "本地面板": "Local panel",
@@ -4363,13 +4363,13 @@
         "38.2 亿": "3.82B",
         "最近 7 天累计消耗": "Total usage over the last 7 days",
         "个人资产记忆": "Personal asset memories",
-        "长期 / 短期 / 低优先": "Long / Short / Low",
+        "长期 / 工作 / 低优先": "Long / Work / Low",
         "每日窗口数": "Daily windows",
         "2026-04-27 捕获的窗口数": "Windows captured on 2026-04-27",
         "今日 Review": "Today Review",
         "今日复盘：开源发布、面板可视化、host 记忆分层。": "Today review: open-source release, panel visualization, host memory layering.",
         "今日复盘：开源发布、面板可视化、host 记忆分层；示例工作区完成发布检查、模板整理与稳定性分析。": "Today review: open-source release, panel visualization, and host memory layering; the sample workspace covered release checks, template cleanup, and stability analysis.",
-        "窗口 41 | 长期记忆 12 | 短期记忆 15 | 低优先记忆 5": "Windows 41 | Long-term memories 12 | Short-term memories 15 | Low-priority memories 5",
+        "窗口 41 | 长期记忆 12 | 工作记忆 15 | 低优先记忆 5": "Windows 41 | Long-term memories 12 | Work memories 15 | Low-priority memories 5",
         "# GitHub 手动下载后安装": "# install after manual GitHub download",
         "# 严格本地记录：仅可视化和本地存储，不注入 host context": "# strict local record: visualize and store locally only, without injecting host context",
         "# 默认：本地记忆 + host context 轻量摘要": "# default: local memory + lightweight host context summary",

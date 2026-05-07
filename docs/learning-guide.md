@@ -72,7 +72,7 @@ find "$AI_ASSET_STATE_DIR" -maxdepth 2 -type f | sort
 ```text
 registry/assets.jsonl
 registry/usage_events.jsonl
-registry/memory_items.jsonl
+registry/memory_entries.jsonl
 reports/overview-data.json
 reports/overview.md
 reports/overview.csv
@@ -161,7 +161,7 @@ open "$AI_ASSET_STATE_DIR/reports/panel.html"
 - 复盘写入 `reviews/YYYY/`。
 - 复盘后先由模型判断是否值得资产化；确认后再生成 memory、skill、playbook、template 或 automation。
 - 稳定资产写入 `registry/assets.jsonl`。
-- reusable memory 可写入 `registry/memory_items.jsonl`。
+- reusable memory 可写入 `registry/memory_entries.jsonl`。
 - 真实复用证据写入 `registry/usage_events.jsonl`。
 
 练习：

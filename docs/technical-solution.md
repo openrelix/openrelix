@@ -67,7 +67,7 @@ collect_codex_activity.py
 nightly_consolidate.py
   -> consolidated/daily/<date>/summary.json
   -> consolidated/daily/<date>/summary.md
-  -> registry/memory_items.jsonl
+  -> registry/memory_entries.jsonl
 
 openrelix_index.py
   -> runtime/openrelix-index.sqlite3
@@ -215,7 +215,7 @@ state root 的主要目录：
 输入：
 
 - `raw/daily/<date>.json`
-- 近期 `registry/memory_items.jsonl`
+- 近期 `registry/memory_entries.jsonl`
 - 近期 `consolidated/daily/*/summary.json`
 - 可选的 `--learn-window-days`
 
@@ -232,7 +232,7 @@ state root 的主要目录：
 - `consolidated/daily/<date>/summary.json`
 - `consolidated/daily/<date>/summary.md`
 - `consolidated/daily/<date>/runs/*`
-- `registry/memory_items.jsonl`
+- `registry/memory_entries.jsonl`
 - `registry/nightly_learning_journal.jsonl`
 
 当模型整理失败时，会生成 fallback summary；当新结果质量不如已有结果时，会保留已有 summary，并记录 selection decision。
@@ -247,7 +247,7 @@ state root 的主要目录：
 
 - `registry/assets.jsonl`
 - `registry/usage_events.jsonl`
-- `registry/memory_items.jsonl`
+- `registry/memory_entries.jsonl`
 - `reviews/`
 - `raw/daily/`
 - `consolidated/daily/`
@@ -300,7 +300,7 @@ openrelix paths
 1. 在 state root 的 `reviews/YYYY/` 下写入脱敏任务复盘。
 2. 基于复盘结果运行资产化判断，决定是否建议生成 reusable memory、playbook、template、automation 或 skill。
 3. 用户确认后，用 `templates/asset-generation-template.md` 和 `templates/skill-draft-template.md` 生成对应资产；skill 需要判断 repo-local 还是 user-global。
-4. 如有长期复用价值，更新 `registry/assets.jsonl`；如有 reusable memory，写入 `registry/memory_items.jsonl`。
+4. 如有长期复用价值，更新 `registry/assets.jsonl`；如有 reusable memory，写入 `registry/memory_entries.jsonl`。
 5. 如有资产实际帮上忙，追加 `registry/usage_events.jsonl`，并运行 `scripts/build_overview.py` 刷新 overview 和 panel。
 
 custom prompt 是兼容层，canonical workflow 仍以 skill 为主。
@@ -375,7 +375,7 @@ macOS 后台自动化模板。
 
 ### Nightly Memory Item
 
-夜间整理记忆兼容落在 `registry/memory_items.jsonl`。Memory System v2 的 canonical 记忆可以落在 `registry/memory_entries.jsonl`，上下文编译会优先读取 canonical registry，再兼容 legacy registry。新写入的 nightly 记忆会根据来源窗口补 `scope` 和 `injection_policy`：带 cwd / 项目来源的记忆默认是 `project_context`；无项目来源的 legacy 通用记忆只作为 `global_context` 原始意图保存，注入时仍需 canonical / manual / approved 门禁，否则按 `on_demand` 处理。
+夜间整理记忆写入 canonical `registry/memory_entries.jsonl`。旧版 `registry/memory_items.jsonl` 只作为迁移和兼容 fallback；一旦 canonical 文件已有内容，上下文编译、面板和 SQLite 索引都优先读取 canonical registry。新写入的 nightly 记忆会根据来源窗口补 `scope` 和 `injection_policy`：带 cwd / 项目来源的记忆默认是 `project_context`；无项目来源的 legacy 通用记忆只作为 `global_context` 原始意图保存，注入时仍需 canonical / manual / approved 门禁，否则按 `on_demand` 处理。
 
 核心字段：
 

@@ -1511,11 +1511,9 @@ def load_text_if_exists(path):
 
 def load_memory_registry_text(canonical_path, legacy_path):
     canonical_text = load_text_if_exists(canonical_path).strip()
-    legacy_text = load_text_if_exists(legacy_path).strip()
-    if canonical_text and legacy_text:
-        return "{}\n{}\n".format(canonical_text, legacy_text)
     if canonical_text:
         return canonical_text + "\n"
+    legacy_text = load_text_if_exists(legacy_path).strip()
     if legacy_text:
         return legacy_text + "\n"
     return ""

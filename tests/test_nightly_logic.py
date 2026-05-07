@@ -3723,7 +3723,7 @@ Keep my own note.
                 nightly_consolidate.upsert_memory_items("2026-05-06", summary)
                 rows = [
                     json.loads(line)
-                    for line in (nightly_consolidate.REGISTRY_DIR / "memory_items.jsonl")
+                    for line in (nightly_consolidate.REGISTRY_DIR / "memory_entries.jsonl")
                     .read_text(encoding="utf-8")
                     .splitlines()
                     if line.strip()
@@ -6116,6 +6116,127 @@ Keep my own note.
                 openrelix_memory_migration.PERSONAL_MEMORY_ALGORITHM_VERSION,
             )
 
+    def test_memory_migration_moves_legacy_rows_and_drops_lightweight_rows(self):
+        with TemporaryDirectory() as tmpdir:
+            paths = make_runtime_paths_for_test(Path(tmpdir) / "state")
+            paths.registry_dir.mkdir(parents=True)
+            legacy_path = paths.registry_dir / "memory_items.jsonl"
+            legacy_path.write_text(
+                "\n".join(
+                    json.dumps(row)
+                    for row in [
+                        {
+                            "date": "2026-05-05",
+                            "source": "nightly_codex",
+                            "bucket": "durable",
+                            "title": "Useful final rule",
+                            "memory_type": "procedural",
+                            "priority": "high",
+                            "value_note": "Keep this final reusable rule.",
+                        },
+                        {
+                            "date": "2026-05-05",
+                            "source": "nightly_codex",
+                            "bucket": "session",
+                            "title": "Lightweight later review placeholder",
+                            "stage": "preliminary",
+                            "summary_generation": "lightweight",
+                            "value_note": "Old quick-pass memory should be dropped.",
+                        },
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            stats = openrelix_memory_migration.migrate_personal_memory_registry(paths)
+            canonical_rows = [
+                json.loads(line)
+                for line in (paths.registry_dir / "memory_entries.jsonl").read_text(encoding="utf-8").splitlines()
+                if line.strip()
+            ]
+
+            self.assertEqual(stats["migrated_rows"], 1)
+            self.assertEqual(stats["dropped_lightweight_rows"], 1)
+            self.assertEqual([row["title"] for row in canonical_rows], ["Useful final rule"])
+            self.assertEqual(canonical_rows[0]["memory_algorithm_version"], openrelix_memory_migration.PERSONAL_MEMORY_ALGORITHM_VERSION)
+
+    def test_learning_context_includes_memory_feedback_examples(self):
+        old_paths = nightly_consolidate.PATHS
+        old_registry_dir = nightly_consolidate.REGISTRY_DIR
+        try:
+            with TemporaryDirectory() as tmpdir:
+                paths = make_runtime_paths_for_test(Path(tmpdir) / "state")
+                asset_runtime.ensure_state_layout(paths)
+                nightly_consolidate.PATHS = paths
+                nightly_consolidate.REGISTRY_DIR = paths.registry_dir
+                liked_row = {
+                    "date": "2026-05-05",
+                    "source": "canonical",
+                    "bucket": "durable",
+                    "title": "Preferred reusable workflow",
+                    "memory_type": "procedural",
+                    "priority": "high",
+                    "value_note": "This is the level of reusable workflow memory the user liked.",
+                    "keywords": ["workflow"],
+                }
+                downvoted_row = {
+                    "date": "2026-05-05",
+                    "source": "canonical",
+                    "bucket": "session",
+                    "title": "One-off noisy note",
+                    "memory_type": "task",
+                    "priority": "medium",
+                    "value_note": "This is too one-off and should guide future filtering.",
+                    "keywords": ["noise"],
+                }
+                (paths.registry_dir / "memory_entries.jsonl").write_text(
+                    json.dumps(liked_row, ensure_ascii=False)
+                    + "\n"
+                    + json.dumps(downvoted_row, ensure_ascii=False)
+                    + "\n",
+                    encoding="utf-8",
+                )
+                overview_memory_feedback.append_memory_feedback(
+                    paths,
+                    overview_memory_feedback.memory_key_for_record(liked_row),
+                    "liked",
+                    title=liked_row["title"],
+                )
+                overview_memory_feedback.append_memory_feedback(
+                    paths,
+                    overview_memory_feedback.memory_key_for_record(downvoted_row),
+                    "downvoted",
+                    title=downvoted_row["title"],
+                )
+
+                context = nightly_consolidate.build_learning_context(
+                    "2026-05-06",
+                    existing_summary={},
+                    learn_window_days=0,
+                )
+                prompt = nightly_consolidate.build_prompt_with_learning(
+                    {
+                        "date": "2026-05-06",
+                        "window_count": 0,
+                        "prompt_count": 0,
+                        "conclusion_count": 0,
+                        "windows": [],
+                    },
+                    context,
+                    language="zh",
+                )
+
+            examples = context["memory_feedback_examples"]
+            self.assertEqual(examples["liked_examples"][0]["title"], "Preferred reusable workflow")
+            self.assertEqual(examples["downvoted_examples"][0]["title"], "One-off noisy note")
+            self.assertIn("memory_feedback_examples", prompt)
+            self.assertIn("有用", prompt)
+            self.assertIn("无用", prompt)
+        finally:
+            nightly_consolidate.PATHS = old_paths
+            nightly_consolidate.REGISTRY_DIR = old_registry_dir
+
     def test_openrelix_config_updates_memory_summary_max_tokens(self):
         with TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -8212,6 +8333,11 @@ Keep my own note.
         self.assertIn('command === "index"', npm_bin)
         self.assertIn('runPythonCli(["index", ...args.slice(1)])', npm_bin)
         self.assertIn("npx openrelix index status", npm_bin)
+        self.assertIn('"recall"', openrelix_cli)
+        self.assertIn("command_recall(args)", openrelix_cli)
+        self.assertIn('command === "recall"', npm_bin)
+        self.assertIn('runPythonCli(["recall", ...args.slice(1)])', npm_bin)
+        self.assertIn("npx openrelix recall", npm_bin)
         self.assertIn("scripts/openrelix_index.py", package_json["files"])
         self.assertIn('command === "models"', npm_bin)
         self.assertIn('runPythonCli(["models", ...args.slice(1)])', npm_bin)
@@ -10134,7 +10260,7 @@ Keep my own note.
         self.assertIn("asset `title` / `source_task` / `value_note` / `notes`", skill_text)
         self.assertIn("Assetization gate", skill_text)
         self.assertIn("templates/asset-generation-template.md", skill_text)
-        self.assertIn("registry/memory_items.jsonl", skill_text)
+        self.assertIn("registry/memory_entries.jsonl", skill_text)
         self.assertIn("project scope", skill_text)
         self.assertIn("Asset generation template", prompt_text)
         self.assertIn("Skill draft template", prompt_text)
@@ -10521,7 +10647,7 @@ Keep my own note.
                 summary = json.loads(summary_path.read_text(encoding="utf-8"))
                 registry_rows = [
                     json.loads(line)
-                    for line in (nightly_consolidate.REGISTRY_DIR / "memory_items.jsonl")
+                    for line in (nightly_consolidate.REGISTRY_DIR / "memory_entries.jsonl")
                     .read_text(encoding="utf-8")
                     .splitlines()
                     if line.strip()

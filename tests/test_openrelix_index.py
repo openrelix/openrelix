@@ -257,10 +257,59 @@ class OpenRelixIndexTests(unittest.TestCase):
             stats = openrelix_index.rebuild_index(paths, db_path)
             results = openrelix_index.search_memories("canonical", paths=paths, db_path=db_path)
 
-            self.assertEqual(stats["memory_rows"], 3)
+            self.assertEqual(stats["memory_rows"], 1)
             self.assertEqual(results[0]["title"], "Canonical global memory")
             self.assertEqual(results[0]["scope"], "global")
             self.assertEqual(results[0]["injection_policy"], "global_context")
+
+    def test_search_memories_filters_on_demand_policy(self):
+        with TemporaryDirectory() as tmpdir:
+            paths = runtime_paths_for_state(tmpdir)
+            asset_runtime.ensure_state_layout(paths)
+            canonical_path = paths.registry_dir / "memory_entries.jsonl"
+            canonical_path.write_text(
+                "\n".join(
+                    json.dumps(row)
+                    for row in [
+                        {
+                            "date": "2026-05-06",
+                            "source": "canonical",
+                            "bucket": "session",
+                            "title": "Bridge diagnosis recall",
+                            "memory_type": "semantic",
+                            "priority": "medium",
+                            "scope": "domain",
+                            "injection_policy": "on_demand",
+                            "value_note": "Retrieve this bridge diagnosis only when explicitly searched.",
+                            "keywords": ["bridge", "recall"],
+                        },
+                        {
+                            "date": "2026-05-06",
+                            "source": "canonical",
+                            "bucket": "durable",
+                            "title": "Bridge global rule",
+                            "memory_type": "procedural",
+                            "priority": "high",
+                            "scope": "global",
+                            "injection_policy": "global_context",
+                            "value_note": "This should not appear in on-demand-only search.",
+                            "keywords": ["bridge"],
+                        },
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            db_path = Path(tmpdir) / "runtime" / "test-index.sqlite3"
+
+            results = openrelix_index.search_memories(
+                "bridge",
+                injection_policy="on_demand",
+                paths=paths,
+                db_path=db_path,
+            )
+
+            self.assertEqual([row["title"] for row in results], ["Bridge diagnosis recall"])
 
     def test_failed_model_summary_keeps_window_raw_fallback_in_index(self):
         with TemporaryDirectory() as tmpdir:

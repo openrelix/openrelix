@@ -68,6 +68,7 @@ from openrelix_memory_migration import (
     mark_memory_migration_completed,
     mark_memory_migration_failed,
     mark_memory_migration_running,
+    migrate_personal_memory_registry,
 )
 
 
@@ -859,11 +860,32 @@ def build_parser():
     )
     index.add_argument("--bucket", help=localized("按 memory bucket 过滤。", "Filter by memory bucket."))
     index.add_argument("--priority", help=localized("按 memory priority 过滤。", "Filter by memory priority."))
+    index.add_argument("--scope", help=localized("按 memory scope 过滤。", "Filter by memory scope."))
+    index.add_argument(
+        "--injection-policy",
+        help=localized("按 memory injection_policy 过滤。", "Filter by memory injection_policy."),
+    )
     index.add_argument("--project", help=localized("按窗口项目名或 cwd 过滤。", "Filter windows by project label or cwd."))
     index.add_argument("--date-from", help=localized("起始日期 YYYY-MM-DD。", "Start date YYYY-MM-DD."))
     index.add_argument("--date-to", help=localized("结束日期 YYYY-MM-DD。", "End date YYYY-MM-DD."))
     index.add_argument("--limit", type=int, default=20, help=localized("最多返回条数。", "Maximum result count."))
     index.add_argument(
+        "--json",
+        action="store_true",
+        help=localized("以 JSON 打印结果。", "Print results as JSON."),
+    )
+
+    recall = subparsers.add_parser(
+        "recall",
+        help=localized(
+            "显式检索按需召回记忆。",
+            "Explicitly search on-demand recall memories.",
+        ),
+    )
+    recall.add_argument("query", nargs="?", default="", help=localized("召回查询文本。", "Recall query text."))
+    recall.add_argument("--scope", help=localized("按 memory scope 过滤。", "Filter by memory scope."))
+    recall.add_argument("--limit", type=int, default=8, help=localized("最多返回条数。", "Maximum result count."))
+    recall.add_argument(
         "--json",
         action="store_true",
         help=localized("以 JSON 打印结果。", "Print results as JSON."),
@@ -3383,6 +3405,10 @@ def print_memory_migration_state(state):
         print("- previous_algorithm_version: {}".format(state.get("previous_algorithm_version")))
     if state.get("dates"):
         print("- dates: {}".format(", ".join(state.get("dates") or [])))
+    registry_migration = state.get("registry_migration") or {}
+    if isinstance(registry_migration, dict) and registry_migration:
+        print("- registry_migrated_rows: {}".format(registry_migration.get("migrated_rows", 0)))
+        print("- registry_dropped_lightweight_rows: {}".format(registry_migration.get("dropped_lightweight_rows", 0)))
     print("- state_file: {}".format(PATHS.runtime_dir / "memory-migration.json"))
 
 
@@ -3409,7 +3435,13 @@ def command_memory_migration(args):
 
     if args.action == "complete":
         dates = resolve_memory_migration_dates(window_days)
-        state = mark_memory_migration_completed(PATHS, dates, window_days=window_days)
+        registry_migration = migrate_personal_memory_registry(PATHS)
+        state = mark_memory_migration_completed(
+            PATHS,
+            dates,
+            window_days=window_days,
+            registry_migration=registry_migration,
+        )
         if args.json:
             print_json(state)
         elif not args.quiet:
@@ -3431,13 +3463,21 @@ def command_memory_migration(args):
         return
 
     dates = resolve_memory_migration_dates(window_days)
-    mark_memory_migration_running(PATHS, dates, window_days=window_days)
+    registry_migration = migrate_personal_memory_registry(PATHS)
+    mark_memory_migration_running(
+        PATHS,
+        dates,
+        window_days=window_days,
+        registry_migration=registry_migration,
+    )
     if not args.quiet:
         print(localized("个人记忆迁移开始", "Personal memory migration started"))
         print("- algorithm_version: {}".format(PERSONAL_MEMORY_ALGORITHM_VERSION))
         print("- stage: {}".format(PERSONAL_MEMORY_MIGRATION_STAGE))
         print("- dates: {}".format(", ".join(dates)))
         print("- skip_if_unchanged: false")
+        print("- registry_migrated_rows: {}".format(registry_migration.get("migrated_rows", 0)))
+        print("- registry_dropped_lightweight_rows: {}".format(registry_migration.get("dropped_lightweight_rows", 0)))
     try:
         results = run_backfill_dates(
             dates,
@@ -3461,7 +3501,12 @@ def command_memory_migration(args):
             print_memory_migration_state(failed_state)
         raise SystemExit(getattr(exc, "returncode", 1) or 1) from exc
 
-    completed_state = mark_memory_migration_completed(PATHS, dates, window_days=window_days)
+    completed_state = mark_memory_migration_completed(
+        PATHS,
+        dates,
+        window_days=window_days,
+        registry_migration=registry_migration,
+    )
     if args.json:
         print_json(completed_state)
     elif not args.quiet:
@@ -4033,6 +4078,8 @@ def command_index(args):
             args.query,
             bucket=args.bucket,
             priority=args.priority,
+            scope=getattr(args, "scope", None),
+            injection_policy=getattr(args, "injection_policy", None),
             date_from=args.date_from,
             date_to=args.date_to,
             limit=args.limit,
@@ -4063,6 +4110,25 @@ def command_index(args):
         "不支持的索引操作: {}".format(args.action),
         "unsupported index action: {}".format(args.action),
     ))
+
+
+def command_recall(args):
+    import openrelix_index
+
+    if args.limit <= 0:
+        raise SystemExit(localized("--limit 必须大于 0。", "--limit must be greater than 0."))
+    rows = openrelix_index.search_memories(
+        args.query,
+        scope=args.scope,
+        injection_policy="on_demand",
+        limit=args.limit,
+        paths=PATHS,
+    )
+    if args.json:
+        print_json({"results": rows})
+        return
+    print(localized("按需召回记忆", "On-demand recall memories"))
+    print_index_results("memory", rows)
 
 
 def resolve_open_target(target, date_str):
@@ -4705,6 +4771,9 @@ def main():
         return
     if args.command == "index":
         command_index(args)
+        return
+    if args.command == "recall":
+        command_recall(args)
         return
     if args.command == "open":
         command_open(args)

@@ -295,7 +295,7 @@ CONTEXT_KEYWORD_EN = {
     "上线梳理": "Release prep",
     "发布": "Release",
     "开源": "Open source",
-    "短期记忆": "Work memory",
+    "工作记忆": "Work memory",
     "长期记忆": "Long-term memory",
     "记忆机制": "Memory mechanism",
     "注入预算": "Injection budget",
@@ -548,8 +548,7 @@ PANEL_I18N_EN = {
     "无缓存输入 Token": "Uncached input tokens",
     "暂无可比较日期": "No comparable day yet",
     "长期记忆": "Long-term Memory",
-    "短期记忆": "Work Memory",
-    "短期工作记忆": "Work Memory",
+    "工作记忆": "Work Memory",
     "低优先记忆": "Low-priority Memory",
     "低优先级记忆": "Low-priority Memory",
     "个人资产记忆": "Personal Asset Memory",
@@ -570,8 +569,7 @@ PANEL_I18N_EN = {
     "低优先或禁止注入的本地证据": "Local evidence with low priority or disabled injection",
     "总数": "Total",
     "个人资产-长期记忆": "Personal Asset - Long-term Memory",
-    "个人资产-短期记忆": "Personal Asset - Work Memory",
-    "个人资产-短期工作记忆": "Personal Asset - Work Memory",
+    "个人资产-工作记忆": "Personal Asset - Work Memory",
     "个人资产-低优先记忆": "Personal Asset - Low-priority Memory",
     "个人资产-低优先级记忆": "Personal Asset - Low-priority Memory",
     "每日窗口数": "Daily Windows",
@@ -601,10 +599,10 @@ PANEL_I18N_EN = {
     "受控": "Bounded",
     "本地": "Local",
     "长期": "Long-term",
-    "短期": "Work",
+    "工作": "Work",
     "低优先": "Low-priority",
     "工作窗口": "Work Windows",
-    "短期跟进": "Work Memory",
+    "工作跟进": "Work Memory",
     "低优先级": "Low-priority",
     "暂无夜间整理结果": "No nightly synthesis yet",
     "选择日期": "Select date",
@@ -648,7 +646,7 @@ PANEL_I18N_EN = {
     "低优先级": "Low Priority",
     "整理窗口数": "Synthesized Windows",
     "整理长期记忆": "Long-term Memories",
-    "整理短期记忆": "Work Memories",
+    "整理工作记忆": "Work Memories",
     "整理低优先": "Low-priority Memories",
     "今日摘要": "Today Summary",
     "相关上下文": "Related Contexts",
@@ -1040,11 +1038,11 @@ PANEL_I18N_EN = {
     "当前登记册中 bucket = durable 的长期记忆，按近 7 日热度排序。": (
         "Long-term memories where bucket = durable in the current registry, sorted by 7-day heat."
     ),
-    "state root 下的 registry/memory_items.jsonl；同一条记忆跨天重复出现时会合并计算。": (
-        "registry/memory_items.jsonl under the state root; repeated memories across days are merged."
+    "state root 下的 registry/memory_entries.jsonl；同一条记忆跨天重复出现时会合并计算。": (
+        "registry/memory_entries.jsonl under the state root; repeated memories across days are merged."
     ),
-    "这里展示的是当前主视图对应的整理结果；顶部指标卡统计的是 registry/memory_items.jsonl 的当前数量。": (
-        "This shows the synthesis behind the current main view; top metric cards count the current registry/memory_items.jsonl state."
+    "这里展示的是当前主视图对应的整理结果；顶部指标卡统计的是 registry/memory_entries.jsonl 的当前数量。": (
+        "This shows the synthesis behind the current main view; top metric cards count the current registry/memory_entries.jsonl state."
     ),
     "7 日热度来自可追溯信号：近 7 日直接来源窗口和同一记忆的近期整理日期；不会再用标题、关键词或说明去模糊匹配历史窗口。": (
         "7-day heat uses traceable signals: direct source windows in the last 7 days and recent synthesis dates for the same memory. Titles, keywords, and notes no longer fuzzy-match historical windows."
@@ -1070,8 +1068,8 @@ PANEL_I18N_EN = {
     "按近 7 日热度排序；同一条记忆跨天重复出现时，会归并展示首次添加和最近更新。": (
         "Sorted by 7-day heat. Repeated memories across days are merged with first-added and latest-updated dates."
     ),
-    "基于 registry/memory_items.jsonl 的整理日志，按记忆签名归并出的当前记忆视图。": (
-        "Current memory view grouped by memory signature from registry/memory_items.jsonl synthesis logs."
+    "基于 registry/memory_entries.jsonl 的整理日志，按记忆签名归并出的当前记忆视图。": (
+        "Current memory view grouped by memory signature from registry/memory_entries.jsonl synthesis logs."
     ),
     "按记忆签名归并后，bucket = durable 的个人资产-长期记忆数量。": (
         "Count of Personal Asset - Long-term Memory items after grouping by memory signature where bucket = durable."
@@ -1473,7 +1471,7 @@ CONTEXT_TOPIC_RULES = [
             "memory",
             "记忆",
             "长期",
-            "短期",
+            "工作",
             "低优",
             "注入",
             "预算",
@@ -1720,6 +1718,10 @@ def load_jsonl(path: Path):
 
 
 def normalize_loaded_memory_item_quality(item):
+    stage = str(item.get("stage") or item.get("summary_stage") or "").strip().lower()
+    generation = str(item.get("summary_generation") or item.get("model_status") or "").strip().lower()
+    if stage == "preliminary" or generation in {"lightweight", "skipped_lightweight"}:
+        return None
     if item.get("user_feedback") == overview_memory_feedback.FEEDBACK_DOWNVOTED:
         row = dict(item)
         row["bucket"] = "low_priority"
@@ -1749,7 +1751,8 @@ def load_memory_registry_items():
     rows = []
     if canonical_path.exists() and canonical_path.stat().st_size > 0:
         rows.extend(load_jsonl(canonical_path))
-    rows.extend(load_jsonl(legacy_path))
+    else:
+        rows.extend(load_jsonl(legacy_path))
     feedback_by_key = overview_memory_feedback.load_memory_feedback_map(PATHS)
     return [
         row
@@ -14015,7 +14018,7 @@ def build_metric_help_sections(metric):
             },
             {
                 "label": "数据来源",
-                "body": "state root 下的 registry/memory_items.jsonl；同一条记忆跨天重复出现时会合并计算。",
+                "body": "state root 下的 registry/memory_entries.jsonl；同一条记忆跨天重复出现时会合并计算。",
             },
         ],
         "session_memories": [

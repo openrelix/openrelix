@@ -30,8 +30,9 @@ from asset_runtime import (
     personal_memory_enabled,
     sync_codex_exec_home,
 )
-from openrelix_memory_migration import PERSONAL_MEMORY_ALGORITHM_VERSION
+from openrelix_memory_migration import PERSONAL_MEMORY_ALGORITHM_VERSION, is_lightweight_or_preliminary_memory_row
 from openrelix_overview import memory_context as overview_memory_context
+from openrelix_overview import memory_feedback as overview_memory_feedback
 
 PATHS = get_runtime_paths()
 LANGUAGE = get_runtime_language(PATHS)
@@ -59,6 +60,7 @@ CLUSTER_LONG_TEXT_LENGTH = 80
 CLUSTER_MEDIUM_SIMILARITY_THRESHOLD = 0.91
 CLUSTER_LONG_SIMILARITY_THRESHOLD = 0.86
 LEARNING_MEMORY_SAMPLE_LIMIT = 10
+LEARNING_FEEDBACK_SAMPLE_LIMIT = 6
 LEARNING_SUMMARY_SAMPLE_LIMIT = 3
 LEARNING_JOURNAL_SAMPLE_LIMIT = 4
 LEARNING_WINDOW_SAMPLE_LIMIT = 12
@@ -729,6 +731,7 @@ Organization principles:
 11. If learning_context contains recent_window_learning, it represents recent batch summaries and patterns. Use it only to learn which window types deserve durable or session memories; do not import that historical content into today's output.
 12. recent_window_learning.coverage / batch_summaries represent full historical-window coverage; window_samples are only representative samples, not the complete historical set.
 13. For each window summary, write window_title as a plain-language title under 100 characters. Do not reuse raw window IDs, paths, Markdown, or numbered question labels as the title. Then populate summary_pairs with 1 to many readable question/conclusion pairs. If a window contains multiple distinct questions and conclusions, aggregate related turns but keep each pair one-to-one and ordered from oldest to newest.
+14. If learning_context contains memory_feedback_examples, treat liked examples as the user's preferred memory granularity and downvoted examples as noise patterns to avoid. Do not copy their historical facts unless they also appear in today's input.
 
 Input data follows. This is a compact same-day view: each window conservatively clusters near-duplicate or variant prompt / conclusion text before it is shown to you.
 - In prompt_samples / conclusion_samples, a `[merged N similar items]` prefix means the sample represents N similar items.
@@ -761,6 +764,7 @@ Strictly base your output on these clusters. You may learn abstraction granulari
 11. 如果 learning_context 里出现 recent_window_learning，它代表近几天窗口的批次摘要与模式，仅用于学习哪些窗口类型更适合抽象成 durable / session 记忆，不代表这些窗口内容应该直接进入今天的输出。
 12. recent_window_learning.coverage / batch_summaries 代表历史窗口的全量覆盖；window_samples 只是少量代表样本，不是历史窗口全集。
 13. 每个 window_summaries 项都要填写 window_title 和 summary_pairs。window_title 要用通俗易懂的话概括窗口主题，最好不超过 100 字；不要直接复用原始窗口 ID、路径、Markdown 或“问题1/问题2”这类编号标签当标题。summary_pairs 要聚合成 1 到多个可读的问题/结论对，同一组问题和结论必须一一对应，并按从旧到新的顺序排列。
+14. 如果 learning_context 里出现 memory_feedback_examples，把“有用”样例当作用户偏好的记忆粒度和风格，把“无用”样例当作噪声模式规避；不能把这些历史事实抄进今天的结果，除非当日输入也明确出现。
 
 输入数据如下。注意：这是已经压缩过的当日视图；每个窗口会先把近重复、同类变体的 prompt / conclusion 做保守聚类，再提供给你。
 - prompt_samples / conclusion_samples 里，如果样本带有 `[合并N条同类项]` 前缀，表示这一条代表了 N 条相近内容。
@@ -1288,6 +1292,28 @@ def load_jsonl(path):
     return rows
 
 
+def canonical_memory_registry_path():
+    return REGISTRY_DIR / "memory_entries.jsonl"
+
+
+def legacy_memory_registry_path():
+    return REGISTRY_DIR / "memory_items.jsonl"
+
+
+def active_memory_registry_path():
+    canonical = canonical_memory_registry_path()
+    try:
+        if canonical.exists() and canonical.stat().st_size > 0:
+            return canonical
+    except OSError:
+        pass
+    return legacy_memory_registry_path()
+
+
+def load_active_memory_registry_rows():
+    return load_jsonl(active_memory_registry_path())
+
+
 def summary_memory_counts(summary):
     return {
         "durable": len(summary.get("durable_memories", [])),
@@ -1464,11 +1490,10 @@ def summarize_learning_reference(summary):
 
 
 def load_recent_memory_samples(target_date):
-    path = REGISTRY_DIR / "memory_items.jsonl"
     target_date_obj = parse_summary_date(target_date)
     samples = []
     seen = set()
-    for item in reversed(load_jsonl(path)):
+    for item in reversed(load_active_memory_registry_rows()):
         if item.get("source") != "nightly_codex":
             continue
         if item.get("bucket") not in {"durable", "session"}:
@@ -1492,6 +1517,64 @@ def load_recent_memory_samples(target_date):
         if len(samples) >= LEARNING_MEMORY_SAMPLE_LIMIT:
             break
     return samples
+
+
+def load_memory_feedback_learning_examples(target_date):
+    target_date_obj = parse_summary_date(target_date)
+    feedback_by_key = overview_memory_feedback.load_memory_feedback_map(PATHS)
+    if not feedback_by_key:
+        return {"liked_examples": [], "downvoted_examples": []}
+
+    liked_examples = []
+    downvoted_examples = []
+    seen = set()
+    for item in reversed(load_active_memory_registry_rows()):
+        key = overview_memory_feedback.memory_key_for_record(item)
+        feedback = feedback_by_key.get(key)
+        if not feedback:
+            continue
+        item_date = parse_summary_date(item.get("date"))
+        if target_date_obj and item_date and item_date >= target_date_obj:
+            continue
+        feedback_state = overview_memory_feedback.normalize_feedback(feedback.get("feedback"))
+        if feedback_state not in {
+            overview_memory_feedback.FEEDBACK_LIKED,
+            overview_memory_feedback.FEEDBACK_DOWNVOTED,
+        }:
+            continue
+        dedupe_key = (feedback_state, key)
+        if dedupe_key in seen:
+            continue
+        seen.add(dedupe_key)
+        sample = {
+            "feedback": feedback_state,
+            "bucket": item.get("bucket", ""),
+            "memory_type": item.get("memory_type", ""),
+            "priority": item.get("priority", ""),
+            "title": str(item.get("title") or item.get("title_zh") or item.get("title_en") or "")[:160],
+            "value_note": str(
+                item.get("value_note") or item.get("value_note_zh") or item.get("value_note_en") or ""
+            )[:220],
+            "keywords": item.get("keywords", [])[:6] if isinstance(item.get("keywords"), list) else [],
+        }
+        if feedback_state == overview_memory_feedback.FEEDBACK_LIKED:
+            liked_examples.append(sample)
+        else:
+            downvoted_examples.append(sample)
+        if (
+            len(liked_examples) >= LEARNING_FEEDBACK_SAMPLE_LIMIT
+            and len(downvoted_examples) >= LEARNING_FEEDBACK_SAMPLE_LIMIT
+        ):
+            break
+
+    return {
+        "liked_examples": liked_examples[:LEARNING_FEEDBACK_SAMPLE_LIMIT],
+        "downvoted_examples": downvoted_examples[:LEARNING_FEEDBACK_SAMPLE_LIMIT],
+        "guidance": (
+            "Use liked examples as positive granularity/style signals and downvoted examples as noise patterns. "
+            "Do not copy historical facts unless they also appear in today's input."
+        ),
+    }
 
 
 def load_recent_summary_samples(target_date):
@@ -1541,6 +1624,7 @@ def build_learning_context(date_str, existing_summary, learn_window_days=0, cach
             "recent_memory_samples": [],
             "recent_summary_samples": [],
             "recent_quality_lessons": [],
+            "memory_feedback_examples": {"liked_examples": [], "downvoted_examples": []},
             "memory_mode": MEMORY_MODE,
         }
         if learn_window_days > 0:
@@ -1556,6 +1640,7 @@ def build_learning_context(date_str, existing_summary, learn_window_days=0, cach
         "recent_memory_samples": load_recent_memory_samples(date_str),
         "recent_summary_samples": load_recent_summary_samples(date_str),
         "recent_quality_lessons": load_recent_quality_lessons(date_str),
+        "memory_feedback_examples": load_memory_feedback_learning_examples(date_str),
         "memory_mode": MEMORY_MODE,
     }
     if learn_window_days > 0:
@@ -1579,6 +1664,12 @@ def build_learning_context_digest(learning_context, learn_window_days):
         "recent_memory_samples": len(learning_context.get("recent_memory_samples", [])),
         "recent_summary_samples": len(learning_context.get("recent_summary_samples", [])),
         "recent_quality_lessons": len(learning_context.get("recent_quality_lessons", [])),
+        "memory_feedback_liked": len(
+            (learning_context.get("memory_feedback_examples") or {}).get("liked_examples", [])
+        ),
+        "memory_feedback_downvoted": len(
+            (learning_context.get("memory_feedback_examples") or {}).get("downvoted_examples", [])
+        ),
         "recent_window_learning_days": learn_window_days,
         "recent_window_learning_scanned_days": coverage.get(
             "scanned_date_count",
@@ -3123,18 +3214,15 @@ def upsert_memory_items(date_str, summary):
     if not PERSONAL_MEMORY_ENABLED:
         return
 
-    memory_path = REGISTRY_DIR / "memory_items.jsonl"
+    memory_path = canonical_memory_registry_path()
     with registry_file_lock():
         existing = []
-        if memory_path.exists():
-            for raw_line in memory_path.read_text(encoding="utf-8").splitlines():
-                line = raw_line.strip()
-                if not line:
-                    continue
-                item = json.loads(line)
-                if item.get("date") == date_str and item.get("source") == "nightly_codex":
-                    continue
-                existing.append(item)
+        for item in load_active_memory_registry_rows():
+            if is_lightweight_or_preliminary_memory_row(item):
+                continue
+            if item.get("date") == date_str and item.get("source") == "nightly_codex":
+                continue
+            existing.append(item)
 
         def rows_for(bucket_name, items):
             rows = []
@@ -3163,6 +3251,7 @@ def upsert_memory_items(date_str, summary):
                         "keywords": item.get("keywords", []),
                         "storage_quality_score": quality["score"],
                         "storage_quality_reason": quality["reason"],
+                        "memory_algorithm_version": PERSONAL_MEMORY_ALGORITHM_VERSION,
                     }
                 )
             return rows
@@ -3174,10 +3263,13 @@ def upsert_memory_items(date_str, summary):
         )
         all_rows = existing + select_daily_memory_rows_for_storage(generated_rows)
         memory_path.parent.mkdir(parents=True, exist_ok=True)
-        atomic_write_text(
-            memory_path,
-            "\n".join(json.dumps(item, ensure_ascii=False) for item in all_rows) + "\n",
-        )
+        if all_rows:
+            atomic_write_text(
+                memory_path,
+                "\n".join(json.dumps(item, ensure_ascii=False) for item in all_rows) + "\n",
+            )
+        else:
+            memory_path.touch(exist_ok=True)
 
 
 def apply_memory_mode(summary):

@@ -7,9 +7,9 @@
 - `task_reviews`: count of review markdown files under the active state's `reviews/`
 - `tracked_usage_events`: count of rows in the active state's `registry/usage_events.jsonl`
 - `tracked_minutes_saved`: estimated minutes saved, inferred from explicit usage events, missing-minute usage events, and recent work-window matches. Raw `minutes_saved` in usage events is treated as strong evidence, but it is no longer the only source.
-- `durable_memories`: count of current durable memories after grouping repeated rows from `registry/memory_items.jsonl`
-- `session_memories`: count of current session memories after grouping repeated rows from `registry/memory_items.jsonl`
-- `low_priority_memories`: count of current low-priority memories after grouping repeated rows from `registry/memory_items.jsonl`
+- `durable_memories`: count of current durable memories after grouping repeated rows from `registry/memory_entries.jsonl`
+- `session_memories`: count of current work memories after grouping repeated rows from `registry/memory_entries.jsonl`
+- `low_priority_memories`: count of current low-priority memories after grouping repeated rows from `registry/memory_entries.jsonl`
 
 ## Asset fields
 
@@ -40,7 +40,7 @@
 
 ## Memory registry view
 
-- The dashboard treats `registry/memory_items.jsonl` as a nightly log, then groups rows into a current memory view.
+- The dashboard treats `registry/memory_entries.jsonl` as the canonical memory log, then groups rows into a current memory view.
 - Grouping key: `bucket + memory_type + normalized title` with `value_note` as fallback when title is empty.
 - `created_at` in the dashboard memory view means the first date that grouped memory appeared in the log.
 - `updated_at` in the dashboard memory view means the most recent date that grouped memory appeared in the log.

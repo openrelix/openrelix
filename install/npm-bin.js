@@ -27,6 +27,7 @@ function printHelp() {
   npx openrelix memory-migration status|ensure|run|complete
   npx openrelix context sync [--cwd <project>]
   npx openrelix index status|rebuild|search-memory|search-window
+  npx openrelix recall <query>
   openrelix install [install-options]
   openrelix uninstall [--delete-local-memory | --keep-local-memory]
   openrelix --version
@@ -52,6 +53,7 @@ Examples:
   npx openrelix context sync --cwd "$PWD"
   npx openrelix index status
   npx openrelix index search-memory sqlite
+  npx openrelix recall worktree
   npx openrelix install --nightly-organize-time 22:30 --nightly-finalize-time 01:00
 
 This npm command is a thin wrapper around install/install.sh.
@@ -268,6 +270,11 @@ function main() {
 
   if (command === "index") {
     runPythonCli(["index", ...args.slice(1)]);
+    return;
+  }
+
+  if (command === "recall") {
+    runPythonCli(["recall", ...args.slice(1)]);
     return;
   }
 

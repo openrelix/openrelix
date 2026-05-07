@@ -68,7 +68,7 @@ Generate reusable memory only for concise, durable facts that should influence f
 - Prefer `durable` bucket for long-lived preferences, rules, stable project decisions, and reusable troubleshooting conclusions.
 - Prefer `session` bucket for near-term follow-ups that should not become permanent guidance.
 - Prefer `low_priority` for weak or emerging signals that should stay local until repeated.
-- When confirmed, append or update a sanitized row in `registry/memory_items.jsonl` with `source: "memory_review"`, the review path in `source_review_path`, and any available source window IDs. Keep raw conversation text out of the memory row.
+- When confirmed, append or update a sanitized row in `registry/memory_entries.jsonl` with `source: "memory_review"`, the review path in `source_review_path`, and any available source window IDs. Keep raw conversation text out of the memory row.
 - Rebuild the overview after writing memory rows so the memory appears in the panel.
 
 ## Language rule

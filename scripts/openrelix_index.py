@@ -290,7 +290,8 @@ def collect_source_files(paths):
     canonical_memory_path = paths.registry_dir / "memory_entries.jsonl"
     if canonical_memory_path.exists() and canonical_memory_path.stat().st_size > 0:
         candidates.append(canonical_memory_path)
-    candidates.append(paths.registry_dir / "memory_items.jsonl")
+    else:
+        candidates.append(paths.registry_dir / "memory_items.jsonl")
     if paths.raw_daily_dir.exists():
         candidates.extend(sorted(paths.raw_daily_dir.glob("*.json")))
     if paths.raw_windows_dir.exists():
@@ -589,6 +590,22 @@ def normalize_memory_item(item, source_file, source_line):
         "search_text": search_text,
         "_source_window_ids": [compact_text(window_id) for window_id in source_window_ids if compact_text(window_id)],
     }
+
+
+def memory_item_is_obsolete_lightweight(item):
+    stage = compact_text(item.get("stage", "") or item.get("summary_stage", "")).lower()
+    generation = compact_text(
+        item.get("summary_generation", "")
+        or item.get("generation", "")
+        or item.get("model_status", "")
+    ).lower()
+    if stage == "preliminary" or generation in {"lightweight", "skipped_lightweight"}:
+        return True
+    title = " ".join(
+        compact_text(item.get(key, ""))
+        for key in ("title", "title_zh", "title_en", "value_note", "value_note_zh", "value_note_en")
+    )
+    return bool(re.search(r"^\s*(?:轻量待查|lightweight later review)", title, flags=re.IGNORECASE))
 
 
 def connect(db_path):
@@ -1068,10 +1085,14 @@ def rebuild_index(paths=None, db_path=None):
             canonical_memory_path = paths.registry_dir / "memory_entries.jsonl"
             if canonical_memory_path.exists() and canonical_memory_path.stat().st_size > 0:
                 memory_paths.append(canonical_memory_path)
-            memory_paths.append(paths.registry_dir / "memory_items.jsonl")
+            else:
+                memory_paths.append(paths.registry_dir / "memory_items.jsonl")
             for memory_path in memory_paths:
                 for line_no, item in iter_jsonl(memory_path) or []:
                     if not isinstance(item, dict):
+                        skipped_memory_rows += 1
+                        continue
+                    if memory_item_is_obsolete_lightweight(item):
                         skipped_memory_rows += 1
                         continue
                     row = normalize_memory_item(item, memory_path, line_no)
@@ -1294,7 +1315,19 @@ def execute_window_like(conn, query, clauses, params, limit):
     return conn.execute(sql, like_params).fetchall()
 
 
-def search_memories(query="", *, bucket=None, priority=None, date_from=None, date_to=None, limit=DEFAULT_LIMIT, paths=None, db_path=None):
+def search_memories(
+    query="",
+    *,
+    bucket=None,
+    priority=None,
+    scope=None,
+    injection_policy=None,
+    date_from=None,
+    date_to=None,
+    limit=DEFAULT_LIMIT,
+    paths=None,
+    db_path=None,
+):
     paths = paths or get_runtime_paths()
     ensure_index(paths, db_path)
     db_path = Path(db_path or default_db_path(paths)).expanduser()
@@ -1302,7 +1335,15 @@ def search_memories(query="", *, bucket=None, priority=None, date_from=None, dat
     with connect(db_path) as conn:
         metadata = load_metadata(conn)
         params = []
-        clauses = build_filter_clause((("m.bucket", bucket), ("m.priority", priority)), params)
+        clauses = build_filter_clause(
+            (
+                ("m.bucket", bucket),
+                ("m.priority", priority),
+                ("m.scope", scope),
+                ("m.injection_policy", injection_policy),
+            ),
+            params,
+        )
         if date_from:
             clauses.append("m.date >= ?")
             params.append(date_from)
@@ -1394,6 +1435,8 @@ def parse_args():
     memory.add_argument("query", nargs="?", default="")
     memory.add_argument("--bucket")
     memory.add_argument("--priority")
+    memory.add_argument("--scope")
+    memory.add_argument("--injection-policy")
     memory.add_argument("--date-from")
     memory.add_argument("--date-to")
     memory.add_argument("--limit", type=int, default=DEFAULT_LIMIT)
@@ -1421,6 +1464,8 @@ def main():
                     args.query,
                     bucket=args.bucket,
                     priority=args.priority,
+                    scope=args.scope,
+                    injection_policy=args.injection_policy,
                     date_from=args.date_from,
                     date_to=args.date_to,
                     limit=args.limit,

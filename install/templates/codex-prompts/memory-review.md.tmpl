@@ -33,7 +33,7 @@ Create or update a sanitized task review in the installed OpenRelix system, then
    - fill the decision shape from `templates/asset-generation-template.md`
    - ask the user to confirm before creating reusable memory rows or artifact files, unless auto-generation was explicitly requested
 6. If the user confirms generation, create or update the relevant artifact:
-   - reusable memory: append or update a sanitized `registry/memory_items.jsonl` row with `source: "memory_review"`
+   - reusable memory: append or update a sanitized `registry/memory_entries.jsonl` row with `source: "memory_review"`
    - skill: use `templates/skill-draft-template.md`, decide project vs global scope, then write `SKILL.md` to the correct repo-local or user-level skill root
    - playbook/template/automation: create a sanitized artifact in the appropriate user state or repo-owned location
    - asset registry: add or update `registry/assets.jsonl` with the generated artifact paths

@@ -228,7 +228,7 @@ scripts/cleanup_smoke_temp.sh --yes
 ./install/install.sh --language en
 ```
 
-当前支持 `zh` / `en`。交互式安装如果没有传 `--language`，会提示选择中文或英文；非交互安装默认 `zh`，也可以显式传 `--language` 固定自动化行为。选择结果会写入 state root 的 `runtime/config.json`，并影响终端输出、overview 本地转化、夜间整理 prompt、fallback summary、即时任务复盘、资产 / 复用记录的人读字段，以及写入本地 `memory_items.jsonl` 的结构化记忆语言。`type`、`scope`、`status`、`memory_type` 这类枚举键保持稳定，展示层再按语言转成中文或英文。
+当前支持 `zh` / `en`。交互式安装如果没有传 `--language`，会提示选择中文或英文；非交互安装默认 `zh`，也可以显式传 `--language` 固定自动化行为。选择结果会写入 state root 的 `runtime/config.json`，并影响终端输出、overview 本地转化、夜间整理 prompt、fallback summary、即时任务复盘、资产 / 复用记录的人读字段，以及写入本地 `memory_entries.jsonl` 的结构化记忆语言。`type`、`scope`、`status`、`memory_type` 这类枚举键保持稳定，展示层再按语言转成中文或英文。
 
 个人记忆系统默认开启，并且默认模式是 `integrated`：一份完整的本地资产记忆记录到本项目的 state root，同时把压缩后的 bounded summary 同步进当前 host native context。用户可以按需要显式选择只本地记录，或关闭本系统本地记忆写入。
 
