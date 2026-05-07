@@ -360,8 +360,8 @@ def build_parser():
         "--learn-memory",
         action="store_true",
         help=localized(
-            "刷新前调用轻量 review 流水线，立即提炼目标日期记忆并入库。",
-            "Run a lightweight review pipeline before refresh to synthesize and store target-date memories immediately.",
+            "刷新前调用轻量 review 流水线，生成目标日期窗口摘要；记忆沉淀留给 final 回溯。",
+            "Run a lightweight review pipeline before refresh to build target-date window summaries; memory synthesis is deferred to final backfill.",
         ),
     )
     refresh.add_argument(
@@ -1993,13 +1993,13 @@ def print_core_summary(data):
         print("{}: {}".format(localized("摘要", "Summary"), nightly.get("day_summary", "—")))
         print(
             localized(
-                "窗口: {} | 长期记忆: {} | 短期记忆: {} | 低优先记忆: {}".format(
+                "窗口: {} | 长期记忆: {} | 工作记忆: {} | 低优先记忆: {}".format(
                     nightly.get("raw_window_count", len(nightly.get("window_summaries", []))),
                     len(nightly.get("durable_memories", [])),
                     len(nightly.get("session_memories", [])),
                     len(nightly.get("low_priority_memories", [])),
                 ),
-                "Windows: {} | Long-term: {} | Short-term: {} | Low-priority: {}".format(
+                "Windows: {} | Long-term: {} | Work: {} | Low-priority: {}".format(
                     nightly.get("raw_window_count", len(nightly.get("window_summaries", []))),
                     len(nightly.get("durable_memories", [])),
                     len(nightly.get("session_memories", [])),
@@ -2916,13 +2916,13 @@ def command_review(args):
         print("{}: {}".format(localized("摘要", "Summary"), summary.get("day_summary", "—")))
         print(
             localized(
-                "窗口: {} | 长期记忆: {} | 短期记忆: {} | 低优先记忆: {}".format(
+                "窗口: {} | 长期记忆: {} | 工作记忆: {} | 低优先记忆: {}".format(
                     summary.get("raw_window_count", len(summary.get("window_summaries", []))),
                     len(summary.get("durable_memories", [])),
                     len(summary.get("session_memories", [])),
                     len(summary.get("low_priority_memories", [])),
                 ),
-                "Windows: {} | Long-term: {} | Short-term: {} | Low-priority: {}".format(
+                "Windows: {} | Long-term: {} | Work: {} | Low-priority: {}".format(
                     summary.get("raw_window_count", len(summary.get("window_summaries", []))),
                     len(summary.get("durable_memories", [])),
                     len(summary.get("session_memories", [])),

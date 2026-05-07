@@ -397,7 +397,7 @@ macOS 后台自动化模板。
 `bucket` 分为：
 
 - `durable`：长期可复用记忆
-- `session`：短期工作记忆
+- `session`：工作记忆
 - `low_priority`：保留但低优先级记忆
 
 ## 运行链路

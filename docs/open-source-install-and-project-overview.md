@@ -534,7 +534,7 @@ npx openrelix uninstall --delete-local-memory
 openrelix refresh
 ```
 
-### 立即学习并刷新本地记忆
+### 立即生成窗口摘要并刷新面板
 
 ```bash
 openrelix refresh --learn-memory --learn-window-days 7

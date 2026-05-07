@@ -4179,7 +4179,7 @@ Keep my own note.
         self.assertIn("总数", widget)
         self.assertIn("长期", widget)
         self.assertIn(">2</b>", widget)
-        self.assertIn("短期", widget)
+        self.assertIn("工作", widget)
         self.assertIn("低优先", widget)
 
     def test_memory_card_generated_fallback_context_chip_is_bilingual(self):
@@ -4335,7 +4335,7 @@ Keep my own note.
         self.assertLess(cards_html.index(">流程<"), cards_html.index(">语义<"))
         self.assertIn("长期记忆 · 高优先 · 直接证据", cards_html)
         self.assertIn("Long-term Memory · High Priority · Direct Evidence", cards_html)
-        self.assertIn("短期记忆 · 中优先 · 待验证", cards_html)
+        self.assertIn("工作记忆 · 中优先 · 待验证", cards_html)
         self.assertIn("低优先级记忆 · 中优先 · 待验证", cards_html)
         self.assertNotIn(" · 低优先 · ", cards_html)
         self.assertIn("查看来源与上下文", cards_html)
@@ -5135,7 +5135,7 @@ Keep my own note.
                     "stats": [
                         {"label": "窗口", "value": 15},
                         {"label": "长期记忆", "value": 1},
-                        {"label": "短期记忆", "value": 1},
+                        {"label": "工作记忆", "value": 1},
                         {"label": "低优先级", "value": 1},
                     ],
                     "note_text": "这些数字来自当前整理结果，用来快速判断今天沉淀了多少内容。",
@@ -9364,7 +9364,7 @@ Keep my own note.
         )
 
         self.assertIn("建议深度回溯", html)
-        self.assertIn("当前是轻量整理，日报和记忆可能不准确", html)
+        self.assertIn("当前是轻量整理，只生成窗口摘要和快速索引，不做记忆沉淀", html)
         self.assertIn("首次安装后，会自动触发深度回溯，请耐心等待。", html)
         self.assertIn("深度回溯", html)
         self.assertIn("openrelix backfill --from 2026-04-24 --to 2026-04-24 --stage final", html)
@@ -9408,7 +9408,7 @@ Keep my own note.
             )
 
         self.assertIn("今天仍在进行中", html)
-        self.assertIn("次日 final 深度整理会补齐", html)
+        self.assertIn("次日 final 深度整理会再生成记忆", html)
         self.assertIn('id="nightly-backfill-panel" hidden', html)
         self.assertNotIn("建议深度回溯", html)
         self.assertNotIn("openrelix backfill --from 2026-05-06 --to 2026-05-06 --stage final", html)
@@ -9613,7 +9613,7 @@ Keep my own note.
             [],
         )
 
-        self.assertIn("日报和记忆可能不准确", view["note_text"])
+        self.assertIn("只保留窗口摘要和快速索引", view["note_text"])
         self.assertFalse(
             any(
                 "openrelix backfill --from 2026-04-27 --to 2026-04-27 --stage final" in item
@@ -10431,15 +10431,17 @@ Keep my own note.
                 self.assertEqual(summary["summary_generation"], "lightweight")
                 self.assertEqual(summary["compact_payload_source"], "fresh")
                 self.assertIn("轻量日报", summary["day_summary"])
+                self.assertIn("记忆整理：浅度阶段跳过", summary["day_summary"])
                 self.assertNotIn("可能不准确", summary["day_summary"])
                 self.assertIn("openrelix backfill --from 2026-04-28 --to 2026-04-28", summary["next_actions"][0])
                 self.assertEqual(summary["window_summaries"][0]["main_takeaway"], "轻量层要给 final 复用")
                 self.assertGreater(len(summary["window_summaries"][0]["keywords"]), 1)
-                self.assertEqual(summary["durable_memories"][0]["source_window_ids"], ["w1"])
-                self.assertEqual(registry_rows[0]["bucket"], "durable")
-                self.assertEqual(registry_rows[0]["scope"], "project")
-                self.assertEqual(registry_rows[0]["injection_policy"], "project_context")
-                self.assertEqual(registry_rows[0]["project_label"], "openrelix")
+                self.assertEqual(summary["durable_memories"], [])
+                self.assertEqual(summary["session_memories"], [])
+                self.assertEqual(summary["low_priority_memories"], [])
+                self.assertTrue(summary["lightweight_memory_deferred"])
+                self.assertEqual(summary["lightweight_memory_limit"], 0)
+                self.assertEqual(registry_rows, [])
         finally:
             nightly_consolidate.RAW_DIR = old_raw_dir
             nightly_consolidate.CONSOLIDATED_DIR = old_consolidated_dir
@@ -10449,7 +10451,7 @@ Keep my own note.
             nightly_consolidate.MEMORY_MODE = old_memory_mode
             nightly_consolidate.PERSONAL_MEMORY_ENABLED = old_personal_memory_enabled
 
-    def test_lightweight_summary_memory_limit_scales_with_window_count(self):
+    def test_lightweight_summary_defers_memory_outputs(self):
         windows = []
         for index in range(30):
             windows.append(
@@ -10481,25 +10483,15 @@ Keep my own note.
             language="zh",
         )
 
-        self.assertEqual(
-            len(summary["durable_memories"]) + len(summary["session_memories"]) + len(summary["low_priority_memories"]),
-            nightly_consolidate.LIGHTWEIGHT_SESSION_MEMORY_MAX,
-        )
-        self.assertEqual(len(summary["durable_memories"]), nightly_consolidate.LIGHTWEIGHT_DURABLE_MEMORY_MAX)
-        self.assertEqual(
-            len(summary["low_priority_memories"]),
-            summary["lightweight_low_priority_memory_limit"],
-        )
+        self.assertEqual(summary["durable_memories"], [])
+        self.assertEqual(summary["session_memories"], [])
+        self.assertEqual(summary["low_priority_memories"], [])
         self.assertEqual(summary["lightweight_memory_candidate_count"], 30)
-        self.assertEqual(summary["lightweight_memory_limit"], nightly_consolidate.LIGHTWEIGHT_SESSION_MEMORY_MAX)
-        self.assertEqual(summary["lightweight_durable_memory_limit"], nightly_consolidate.LIGHTWEIGHT_DURABLE_MEMORY_MAX)
-        self.assertEqual(
-            summary["lightweight_low_priority_memory_limit"],
-            min(
-                nightly_consolidate.LIGHTWEIGHT_LOW_PRIORITY_MEMORY_MAX,
-                max(1, summary["lightweight_memory_limit"] // 5),
-            ),
-        )
+        self.assertEqual(summary["lightweight_memory_limit"], 0)
+        self.assertEqual(summary["lightweight_durable_memory_limit"], 0)
+        self.assertEqual(summary["lightweight_low_priority_memory_limit"], 0)
+        self.assertTrue(summary["lightweight_memory_deferred"])
+        self.assertEqual(summary["lightweight_memory_deferred_reason"], "preliminary_defers_memory_to_final")
         self.assertEqual(summary["lightweight_summary_version"], nightly_consolidate.LIGHTWEIGHT_SUMMARY_VERSION)
 
     def test_daily_memory_storage_rows_are_capped_by_bucket_quality(self):
@@ -10601,12 +10593,12 @@ Keep my own note.
         )
         self.assertIn("问题1：轻度回溯后的每日总结要和深度回溯一样", window["question_summary"])
         self.assertIn("结论2：每日摘要要拆出范围、记忆和代表问答", window["main_takeaway"])
-        self.assertIn("记忆沉淀", summary["day_summary"])
+        self.assertIn("记忆整理：浅度阶段跳过", summary["day_summary"])
         self.assertIn("重点窗口", summary["day_summary"])
         self.assertIn("代表问答", summary["day_summary"])
         self.assertGreaterEqual(len(build_overview.split_nightly_summary(summary["day_summary"])), 4)
 
-    def test_lightweight_summary_keeps_tail_candidates_as_low_priority(self):
+    def test_lightweight_summary_does_not_keep_tail_candidates_as_low_priority(self):
         windows = []
         for index in range(6):
             windows.append(
@@ -10635,9 +10627,11 @@ Keep my own note.
             language="zh",
         )
 
-        self.assertGreater(len(summary["low_priority_memories"]), 0)
-        self.assertEqual(summary["low_priority_memories"][0]["priority"], "low")
-        self.assertTrue(summary["low_priority_memories"][0]["title"].startswith("轻量待查"))
+        self.assertEqual(summary["durable_memories"], [])
+        self.assertEqual(summary["session_memories"], [])
+        self.assertEqual(summary["low_priority_memories"], [])
+        self.assertEqual(summary["lightweight_memory_candidate_count"], 6)
+        self.assertTrue(summary["lightweight_memory_deferred"])
 
     def test_lightweight_summary_keywords_keep_window_terms(self):
         raw_payload = {
@@ -10676,7 +10670,8 @@ Keep my own note.
             ["Douyin", "长按相机拍摄按钮", "按钮上方提示区", "全部UI", "实时tag", "tab栏", "工具区", "关闭按钮"],
         )
         self.assertIn("全部UI", summary["keywords"])
-        self.assertEqual(summary["durable_memories"][0]["keywords"][:4], keywords[:4])
+        self.assertEqual(summary["durable_memories"], [])
+        self.assertEqual(summary["lightweight_memory_candidate_count"], 1)
 
     def test_lightweight_summary_filters_sentence_like_keywords(self):
         raw_payload = {

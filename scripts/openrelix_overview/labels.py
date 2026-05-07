@@ -49,7 +49,7 @@ DISPLAY_STATUS = {
 
 DISPLAY_MEMORY_BUCKET = {
     "durable": "个人资产-长期记忆",
-    "session": "个人资产-短期工作记忆",
+    "session": "个人资产-工作记忆",
     "low_priority": "个人资产-低优先记忆",
 }
 
@@ -121,7 +121,7 @@ DISPLAY_STATUS_EN = {
 
 DISPLAY_MEMORY_BUCKET_EN = {
     "durable": "Personal Asset - Long-term Memory",
-    "session": "Personal Asset - Short-term Work Memory",
+    "session": "Personal Asset - Work Memory",
     "low_priority": "Personal Asset - Low-priority Memory",
 }
 
