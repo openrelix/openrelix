@@ -7984,6 +7984,33 @@ Keep my own note.
             self.assertNotIn("local status=", script)
             self.assertNotIn('--status "$status"', script)
 
+    def test_pipeline_recent_runs_show_target_and_actual_run_times(self):
+        html = build_overview.make_pipeline_recent_runs(
+            [
+                {
+                    "pipeline": "nightly_pipeline",
+                    "title": "记忆整理流水线",
+                    "title_en": "Memory Synthesis Pipeline",
+                    "status": "failed",
+                    "target_date": "2026-05-07",
+                    "stage": "preliminary",
+                    "started_at_iso": "2026-05-07T19:19:28+0800",
+                    "ended_at_iso": "2026-05-07T19:20:53+0800",
+                }
+            ]
+        )
+        collector = TextCollector()
+        collector.feed(html)
+
+        self.assertIn("失败", collector.text)
+        self.assertIn("日期 2026-05-07", collector.text)
+        self.assertIn("preliminary", collector.text)
+        self.assertIn("触发 05-07 19:19:28", collector.text)
+        self.assertIn("结束 05-07 19:20:53", collector.text)
+        self.assertIn("Date 2026-05-07", collector.text)
+        self.assertIn("Started 05-07 19:19:28", collector.text)
+        self.assertIn("Ended 05-07 19:20:53", collector.text)
+
     def test_installer_chinese_language_uses_chinese_guidance_for_install_steps(self):
         installer = (ROOT / "install" / "install.sh").read_text(encoding="utf-8")
         openrelix_cli = (ROOT / "scripts" / "openrelix.py").read_text(encoding="utf-8")

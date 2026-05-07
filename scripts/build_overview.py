@@ -13604,6 +13604,41 @@ def pipeline_status_time_label(payload, language=None):
     return localized("等待运行", "Waiting", language)
 
 
+def pipeline_history_time_display(value):
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    normalized = re.sub(r"([+-]\d{2})(\d{2})$", r"\1:\2", text)
+    display = display_local_datetime(normalized)
+    if not display:
+        return text
+    return display[5:]
+
+
+def pipeline_history_target_label(row, language=None):
+    target_date = str((row or {}).get("target_date") or "").strip()
+    stage = str((row or {}).get("stage") or "").strip()
+    parts = []
+    if target_date:
+        parts.append(localized("日期 {}".format(target_date), "Date {}".format(target_date), language))
+    if stage:
+        parts.append(stage)
+    return " · ".join(parts)
+
+
+def pipeline_history_meta_labels(row, language=None):
+    row = row or {}
+    status = row.get("status") or "idle"
+    target_label = pipeline_history_target_label(row, language=language)
+    started = pipeline_history_time_display(row.get("started_at_iso"))
+    ended = pipeline_history_time_display(row.get("ended_at_iso"))
+    labels = [pipeline_status_label(status, language=language)]
+    labels.append(target_label or localized("日期 —", "Date —", language))
+    labels.append(localized("触发 {}".format(started or "—"), "Started {}".format(started or "—"), language))
+    labels.append(localized("结束 {}".format(ended or "—"), "Ended {}".format(ended or "—"), language))
+    return labels
+
+
 def make_pipeline_step_track(steps):
     if not steps:
         return '<div class="pipeline-empty">{}</div>'.format(
@@ -13638,24 +13673,25 @@ def make_pipeline_recent_runs(rows):
         title = row.get("title") or row.get("pipeline") or ""
         title_en = row.get("title_en") or title
         status = row.get("status") or "idle"
-        date_stage = " · ".join(
-            item for item in [row.get("target_date", ""), row.get("stage", "")] if item
+        meta_html = "".join(
+            '<span class="pipeline-history-meta">{}</span>'.format(
+                panel_language_text_html(zh_label, en_label)
+            )
+            for zh_label, en_label in zip(
+                pipeline_history_meta_labels(row, language="zh"),
+                pipeline_history_meta_labels(row, language="en"),
+            )
         )
-        if not date_stage:
-            date_stage = row.get("ended_at_iso") or row.get("started_at_iso") or "—"
         rendered.append(
             """
             <div class="pipeline-history-row" data-status="{status}">
               <span class="pipeline-history-title">{title}</span>
-              <span class="pipeline-history-meta">{meta}</span>
+              <span class="pipeline-history-meta-list">{meta}</span>
             </div>
             """.format(
                 status=escape(str(status), quote=True),
                 title=panel_language_text_html(title, title_en),
-                meta=panel_language_text_html(
-                    "{} · {}".format(pipeline_status_label(status, language="zh"), date_stage),
-                    "{} · {}".format(pipeline_status_label(status, language="en"), date_stage),
-                ),
+                meta=meta_html,
             )
         )
     return "".join(rendered)
@@ -16184,6 +16220,14 @@ def build_html(data):
       font-size: 12px;
       font-weight: 700;
       line-height: 1.25;
+    }}
+
+    .pipeline-history-meta-list {{
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: 6px;
+      min-width: min(620px, 100%);
     }}
 
     .pipeline-next-row {{
@@ -19631,6 +19675,11 @@ def build_html(data):
         min-width: 0;
       }}
 
+      .pipeline-history-meta-list {{
+        justify-content: flex-start;
+        min-width: 0;
+      }}
+
       .pipeline-actions {{
         justify-content: flex-start;
         min-width: 0;
@@ -20377,6 +20426,35 @@ def build_html(data):
         return currentLanguage === "en" ? "Waiting" : "等待运行";
       }}
 
+      function compactPipelineTime(value) {{
+        const text = String(value || "").trim();
+        const match = text.match(/^(\\d{{4}})-(\\d{{2}})-(\\d{{2}})[T\\s](\\d{{2}}):(\\d{{2}})(?::(\\d{{2}}))?/);
+        if (!match) return text;
+        return match[2] + "-" + match[3] + " " + match[4] + ":" + match[5] + (match[6] ? ":" + match[6] : "");
+      }}
+
+      function pipelineHistoryTargetLabel(row) {{
+        const parts = [];
+        if (row && row.target_date) {{
+          parts.push((currentLanguage === "en" ? "Date " : "日期 ") + row.target_date);
+        }}
+        if (row && row.stage) parts.push(row.stage);
+        return parts.join(" · ");
+      }}
+
+      function pipelineHistoryMetaLabels(row) {{
+        const status = String((row && row.status) || "idle");
+        const target = pipelineHistoryTargetLabel(row);
+        const started = compactPipelineTime(row && row.started_at_iso);
+        const ended = compactPipelineTime(row && row.ended_at_iso);
+        return [
+          pipelineStatusLabel(status),
+          target || (currentLanguage === "en" ? "Date —" : "日期 —"),
+          (currentLanguage === "en" ? "Started " : "触发 ") + (started || "—"),
+          (currentLanguage === "en" ? "Ended " : "结束 ") + (ended || "—"),
+        ];
+      }}
+
       function pipelineNextMeta(nextRun) {{
         if (!nextRun || !nextRun.next_at_iso) {{
           return currentLanguage === "en" ? "No schedule detected" : "未检测到计划任务";
@@ -20444,14 +20522,13 @@ def build_html(data):
         elements.pipelineHistory.innerHTML = rows.slice(0, 4).map(function (row) {{
           const status = String((row && row.status) || "idle");
           const title = localizeValue((row && row.title) || (row && row.pipeline) || "", (row && row.title_en) || (row && row.title) || "");
-          const parts = [];
-          if (row && row.target_date) parts.push(row.target_date);
-          if (row && row.stage) parts.push(row.stage);
-          const meta = pipelineStatusLabel(status) + " · " + (parts.join(" · ") || (row && (row.ended_at_iso || row.started_at_iso)) || "—");
+          const meta = pipelineHistoryMetaLabels(row).map(function (label) {{
+            return '<span class="pipeline-history-meta">' + escapeHtml(label) + '</span>';
+          }}).join("");
           return (
             '<div class="pipeline-history-row" data-status="' + escapeHtml(status) + '">' +
               '<span class="pipeline-history-title">' + escapeHtml(title) + '</span>' +
-              '<span class="pipeline-history-meta">' + escapeHtml(meta) + '</span>' +
+              '<span class="pipeline-history-meta-list">' + meta + '</span>' +
             '</div>'
           );
         }}).join("");
