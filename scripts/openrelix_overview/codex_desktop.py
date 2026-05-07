@@ -9,6 +9,8 @@ from openrelix_overview import codex_profiles
 
 CODEX_DESKTOP_OPEN_PATH = "/open-codex-thread"
 DEFAULT_CODEX_APP_BINARY = Path("/Applications/Codex.app/Contents/MacOS/Codex")
+DEFAULT_CODEX_HOME = Path.home() / ".codex"
+DEFAULT_CODEX_ELECTRON_USER_DATA_PATH = Path.home() / "Library" / "Application Support" / "Codex"
 
 
 def is_valid_codex_thread_id(value):
@@ -42,6 +44,32 @@ def build_codex_existing_profile_open_command(thread_id):
     if not url:
         return []
     return ["open", url]
+
+
+def build_codex_profile_launch_command(app_binary=None):
+    binary = Path(app_binary or os.environ.get("OPENRELIX_CODEX_APP_BINARY") or DEFAULT_CODEX_APP_BINARY)
+    if not binary.exists():
+        return []
+    return [str(binary)]
+
+
+def same_resolved_path(left, right):
+    if not left or not right:
+        return False
+    return codex_profiles.resolved_path_key(left) == codex_profiles.resolved_path_key(right)
+
+
+def is_system_codex_profile(codex_home="", electron_user_data_path=""):
+    codex_home = str(codex_home or "").strip()
+    electron_user_data_path = str(electron_user_data_path or "").strip()
+    if codex_home and not same_resolved_path(codex_home, DEFAULT_CODEX_HOME):
+        return False
+    if electron_user_data_path and not same_resolved_path(
+        electron_user_data_path,
+        DEFAULT_CODEX_ELECTRON_USER_DATA_PATH,
+    ):
+        return False
+    return True
 
 
 def should_reuse_running_codex_profile():
@@ -86,6 +114,33 @@ def open_existing_codex_profile(thread_id, process_id=0):
     }
 
 
+def open_system_codex_thread(thread_id):
+    command = build_codex_existing_profile_open_command(thread_id)
+    if not command:
+        return {"ok": False, "error": "invalid_codex_thread_id"}
+    try:
+        proc = subprocess.Popen(
+            command,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            close_fds=True,
+            start_new_session=True,
+        )
+    except OSError as exc:
+        return {"ok": False, "error": "codex_desktop_open_failed", "detail": str(exc)}
+    return {
+        "ok": True,
+        "pid": proc.pid,
+        "status": "opened",
+        "resume_id": thread_id,
+        "used_profile": False,
+        "reused_running_profile": False,
+        "thread_navigation": "deeplink_open",
+        "exact_thread_navigation": True,
+    }
+
+
 def start_codex_desktop_resume(
     thread_id,
     codex_home="",
@@ -96,6 +151,9 @@ def start_codex_desktop_resume(
     thread_id = str(thread_id or "").strip()
     if not is_valid_codex_thread_id(thread_id):
         return {"ok": False, "error": "invalid_codex_thread_id"}
+
+    if is_system_codex_profile(codex_home, electron_user_data_path):
+        return open_system_codex_thread(thread_id)
 
     resolved_profile = None
     if codex_home and paths is not None:
@@ -120,12 +178,7 @@ def start_codex_desktop_resume(
         if requested != primary:
             return {"ok": False, "error": "codex_desktop_profile_unknown"}
 
-    command = build_codex_desktop_resume_command(
-        thread_id,
-        codex_home=codex_home,
-        electron_user_data_path=electron_user_data_path,
-        app_binary=app_binary,
-    )
+    command = build_codex_profile_launch_command(app_binary=app_binary)
     if not command:
         return {"ok": False, "error": "codex_desktop_app_not_found"}
 
@@ -153,6 +206,6 @@ def start_codex_desktop_resume(
         "resume_id": thread_id,
         "used_profile": bool(codex_home or electron_user_data_path),
         "reused_running_profile": False,
-        "thread_navigation": "deeplink_launch",
-        "exact_thread_navigation": True,
+        "thread_navigation": "profile_launch_only",
+        "exact_thread_navigation": False,
     }

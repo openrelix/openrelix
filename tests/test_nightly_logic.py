@@ -5603,14 +5603,49 @@ Keep my own note.
         self.assertIn("data-window-resume-open", html)
         self.assertIn('data-codex-home="/tmp/openrelix-codex-home"', html)
         self.assertIn('data-codex-electron-user-data-path="/tmp/OpenRelix Codex Profile"', html)
+        self.assertIn('data-codex-system-profile=""', html)
         self.assertIn('data-copy-resume-on-switch="1"', html)
         self.assertIn(
             'data-resume-command="CODEX_HOME=/tmp/openrelix-codex-home codex resume {}'.format(thread_id),
             html,
         )
-        self.assertIn("切到 Codex App", html)
-        self.assertIn("已切换，命令已复制", html)
+        self.assertIn("打开 Codex App", html)
+        self.assertIn("已打开，命令已复制", html)
         self.assertIn('CODEX_HOME=/tmp/openrelix-codex-home codex resume {}'.format(thread_id), html)
+
+    def test_window_cards_use_deeplink_for_system_codex_resume(self):
+        thread_id = "019dcefe-37f1-7a83-a8a6-720bd6b79d7f"
+        html = build_overview.make_window_summary_cards(
+            {
+                "date": "2026-04-28",
+                "windows": [
+                    {
+                        "window_id": thread_id,
+                        "display_index": 1,
+                        "project_label": "OpenRelix",
+                        "resume_id": thread_id,
+                        "resume_command": build_overview.window_resume_command("codex", thread_id),
+                        "resume_url": build_overview.codex_resume_url(thread_id),
+                        "question_count": 1,
+                        "conclusion_count": 1,
+                        "question_summary": "问题",
+                        "main_takeaway": "结论",
+                        "keywords": [],
+                        "latest_activity_display": "刚刚",
+                        "started_at_display": "刚刚",
+                        "recent_prompts": [],
+                        "recent_conclusions": [],
+                    }
+                ],
+            }
+        )
+
+        self.assertIn("data-window-resume-open", html)
+        self.assertIn('data-codex-url="codex://threads/{}"'.format(thread_id), html)
+        self.assertIn('data-codex-system-profile="1"', html)
+        self.assertIn('data-copy-resume-on-switch=""', html)
+        self.assertIn("在 Codex App 打开", html)
+        self.assertNotIn("命令已复制", html)
 
     def test_window_cards_show_claude_app_button_when_desktop_resume_supported(self):
         session_id = "c5ffea1c-8cf8-4dd2-a7ac-bf11f4dfa12b"
@@ -6335,7 +6370,7 @@ Keep my own note.
         self.assertFalse(result["ok"])
         self.assertEqual(result["error"], "codex_desktop_profile_unknown")
 
-    def test_codex_desktop_resume_launches_with_profile_env(self):
+    def test_codex_desktop_resume_launches_isolated_profile_without_thread_url(self):
         thread_id = "019dcefe-37f1-7a83-a8a6-720bd6b79d7f"
         with TemporaryDirectory() as tmpdir:
             app_binary = Path(tmpdir) / "Codex"
@@ -6351,13 +6386,26 @@ Keep my own note.
 
         self.assertTrue(result["ok"])
         self.assertEqual(result["pid"], 4321)
-        self.assertEqual(result["thread_navigation"], "deeplink_launch")
-        self.assertTrue(result["exact_thread_navigation"])
+        self.assertEqual(result["thread_navigation"], "profile_launch_only")
+        self.assertFalse(result["exact_thread_navigation"])
         command = popen.call_args.args[0]
         env = popen.call_args.kwargs["env"]
-        self.assertEqual(command, [str(app_binary), "codex://threads/{}".format(thread_id)])
+        self.assertEqual(command, [str(app_binary)])
         self.assertEqual(env["CODEX_HOME"], "/tmp/other-codex-home")
         self.assertEqual(env["CODEX_ELECTRON_USER_DATA_PATH"], "/tmp/Codex Profile")
+
+    def test_codex_desktop_resume_opens_system_profile_deeplink(self):
+        thread_id = "019dcefe-37f1-7a83-a8a6-720bd6b79d7f"
+        process = mock.Mock(pid=9876)
+        with mock.patch.object(overview_codex_desktop.subprocess, "Popen", return_value=process) as popen:
+            result = overview_codex_desktop.start_codex_desktop_resume(thread_id)
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["pid"], 9876)
+        self.assertEqual(result["thread_navigation"], "deeplink_open")
+        self.assertTrue(result["exact_thread_navigation"])
+        self.assertFalse(result["used_profile"])
+        self.assertEqual(popen.call_args.args[0], ["open", "codex://threads/{}".format(thread_id)])
 
     def test_codex_desktop_resume_focuses_running_profile_without_opening_url(self):
         thread_id = "019dcefe-37f1-7a83-a8a6-720bd6b79d7f"
@@ -8004,12 +8052,44 @@ Keep my own note.
 
         self.assertIn("失败", collector.text)
         self.assertIn("日期 2026-05-07", collector.text)
-        self.assertIn("preliminary", collector.text)
+        self.assertIn("30 分钟快速回溯", collector.text)
+        self.assertNotIn("preliminary", collector.text)
         self.assertIn("触发 05-07 19:19:28", collector.text)
         self.assertIn("结束 05-07 19:20:53", collector.text)
         self.assertIn("Date 2026-05-07", collector.text)
+        self.assertIn("30-minute quick backfill", collector.text)
         self.assertIn("Started 05-07 19:19:28", collector.text)
         self.assertIn("Ended 05-07 19:20:53", collector.text)
+
+    def test_pipeline_status_panel_localizes_stage_labels(self):
+        html = build_overview.make_pipeline_status_panel(
+            {
+                "pipeline": "nightly_pipeline",
+                "title": "记忆整理流水线",
+                "title_en": "Memory Synthesis Pipeline",
+                "status": "running",
+                "target_date": "2026-05-07",
+                "stage": "preliminary",
+                "current_step_index": 3,
+                "step_count": 8,
+                "next_run": {
+                    "title": "前一日终版整理",
+                    "title_en": "Previous-day Finalize",
+                    "next_at_iso": "2026-05-08T00:10:00+08:00",
+                    "stage": "final",
+                },
+                "steps": [],
+                "recent_runs": [],
+            }
+        )
+        collector = TextCollector()
+        collector.feed(html)
+
+        self.assertIn("2026-05-07 · 30 分钟快速回溯", collector.text)
+        self.assertIn("2026-05-07 · 30-minute quick backfill", collector.text)
+        self.assertIn("2026-05-08T00:10:00+08:00 · 完整回溯", collector.text)
+        self.assertIn("2026-05-08T00:10:00+08:00 · Full backfill", collector.text)
+        self.assertNotIn("preliminary", collector.text)
 
     def test_installer_chinese_language_uses_chinese_guidance_for_install_steps(self):
         installer = (ROOT / "install" / "install.sh").read_text(encoding="utf-8")
@@ -9324,10 +9404,10 @@ Keep my own note.
                         "2026-05-06": "openrelix backfill --from 2026-05-06 --to 2026-05-06 --stage final --learn-window-days 7",
                     },
                 },
-            )
+        )
 
         self.assertIn("今日仍在进行中", html)
-        self.assertIn("轻量整理", html)
+        self.assertIn("30 分钟快速回溯", html)
         self.assertIn("openrelix review --stage preliminary --learn-window-days 0", html)
         self.assertNotIn("openrelix backfill --from 2026-05-06 --to 2026-05-06 --stage final", html)
 
@@ -9347,7 +9427,7 @@ Keep my own note.
         )
         html = build_overview.make_nightly_summary_panel(
             "每日整理结果",
-            "2026-04-24 · 预览",
+            "2026-04-24 · 30 分钟快速回溯",
             "",
             {},
             {"window_count": 2},
@@ -9364,9 +9444,9 @@ Keep my own note.
         )
 
         self.assertIn("建议深度回溯", html)
-        self.assertIn("当前是轻量整理，日报和记忆可能不准确", html)
-        self.assertIn("首次安装后，会自动触发深度回溯，请耐心等待。", html)
-        self.assertIn("深度回溯", html)
+        self.assertIn("当前是 30 分钟快速回溯，日报和记忆可能不完整", html)
+        self.assertIn("首次安装后，会自动触发完整回溯，请耐心等待。", html)
+        self.assertIn("完整回溯", html)
         self.assertIn("openrelix backfill --from 2026-04-24 --to 2026-04-24 --stage final", html)
         self.assertIn('id="nightly-backfill-range" hidden', html)
 
@@ -9391,7 +9471,7 @@ Keep my own note.
             )
             html = build_overview.make_nightly_summary_panel(
                 "每日整理结果",
-                "2026-05-06 · 预览",
+                "2026-05-06 · 30 分钟快速回溯",
                 "",
                 {},
                 {"window_count": 1},
@@ -9408,7 +9488,7 @@ Keep my own note.
             )
 
         self.assertIn("今天仍在进行中", html)
-        self.assertIn("次日 final 深度整理会补齐", html)
+        self.assertIn("次日完整回溯会补齐", html)
         self.assertIn('id="nightly-backfill-panel" hidden', html)
         self.assertNotIn("建议深度回溯", html)
         self.assertNotIn("openrelix backfill --from 2026-05-06 --to 2026-05-06 --stage final", html)

@@ -618,19 +618,19 @@ PANEL_I18N_EN = {
     "该日期还没有整理结果。可以复制命令在终端手动回溯。": (
         "This date has no synthesis yet. Copy the command and run it in a terminal to backfill it."
     ),
-    "今天还没结束，当前还没有轻量预览；可先运行今日轻量整理刷新面板，次日会自动生成 final 深度整理。": (
-        "Today is not over yet and no lightweight preview exists. Run today's lightweight synthesis to refresh the panel; final deep synthesis will run tomorrow."
+    "今天还没结束，当前还没有 30 分钟快速回溯；可先运行今日快速回溯刷新面板，次日会自动生成完整回溯。": (
+        "Today is not over yet and no 30-minute quick backfill exists. Run today's quick backfill to refresh the panel; the full backfill will run tomorrow."
     ),
-    "今天还没结束，当前保留轻量预览；次日会自动生成 final 深度整理。": (
-        "Today is not over yet, so the lightweight preview remains active. Final deep synthesis will run tomorrow."
+    "今天还没结束，当前保留 30 分钟快速回溯；次日会自动生成完整回溯。": (
+        "Today is not over yet, so the 30-minute quick backfill remains active. The full backfill will run tomorrow."
     ),
-    "当前是轻量整理，日报和记忆可能不准确。可以复制命令在终端补跑 final 深度回溯。首次安装后，会自动触发深度回溯，请耐心等待。": (
-        "This is the lightweight pass, so the daily summary and memories may be inaccurate. "
-        "Copy the command and run final deep backfill in a terminal. After first install, "
-        "OpenRelix starts deep backfill automatically; please wait."
+    "当前是 30 分钟快速回溯，日报和记忆可能不完整。可以复制命令在终端补跑完整回溯。首次安装后，会自动触发完整回溯，请耐心等待。": (
+        "This is the 30-minute quick backfill, so the daily summary and memories may be incomplete. "
+        "Copy the command and run the full backfill in a terminal. After first install, "
+        "OpenRelix starts the full backfill automatically; please wait."
     ),
     "单日回溯": "Single-date backfill",
-    "轻量整理": "Lightweight synthesis",
+    "30 分钟快速回溯": "30-minute quick backfill",
     "当日预览": "Daily preview",
     "深度回溯": "Deep backfill",
     "多日回溯": "Multi-day backfill",
@@ -638,8 +638,7 @@ PANEL_I18N_EN = {
     "已复制回溯命令": "Backfill command copied",
     "复制失败，请手动选择命令。": "Copy failed. Select the command manually.",
     "该日期暂无窗口整理结果。": "No window synthesis for this date.",
-    "终版": "Final",
-    "预览": "Preview",
+    "完整回溯": "Full backfill",
     "手动": "Manual",
     "待生成": "Pending",
     "已生成": "Generated",
@@ -6797,6 +6796,13 @@ def is_primary_codex_home(codex_home):
     return resolved_path_text(codex_home) == resolved_path_text(PATHS.codex_home)
 
 
+def is_system_codex_profile(codex_home="", codex_electron_user_data_path=""):
+    return overview_codex_desktop.is_system_codex_profile(
+        codex_home,
+        codex_electron_user_data_path,
+    )
+
+
 def codex_resume_command(resume_id, codex_home=""):
     resume_id = str(resume_id or "").strip()
     if not resume_id:
@@ -8492,11 +8498,7 @@ def build_data(assets, usage_events, reviews, language=None):
         nightly_note = "{} · {}".format(display_nightly["date"], stage_label)
     if active_nightly and display_nightly is not active_nightly:
         active_stage = active_nightly.get("stage", "manual")
-        active_stage_label = (
-            {"final": "Final", "preliminary": "Preview", "manual": "Manual"}.get(active_stage, active_stage)
-            if is_english(language)
-            else {"final": "终版", "preliminary": "预览", "manual": "手动"}.get(active_stage, active_stage)
-        )
+        active_stage_label = stage_display_label(active_stage, language=language)
         active_nightly_note = localized(
             "今日另有活跃整理：{} · {}".format(active_nightly.get("date", ""), active_stage_label),
             "Another active synthesis exists today: {} · {}".format(active_nightly.get("date", ""), active_stage_label),
@@ -12410,8 +12412,8 @@ def build_daily_summary_english_parts(nightly, summary_text, window_count, conte
 
 def stage_display_label(stage, language=None):
     if is_english(language):
-        return {"final": "Final", "preliminary": "Preview", "manual": "Manual"}.get(stage, stage)
-    return {"final": "终版", "preliminary": "预览", "manual": "手动"}.get(stage, stage)
+        return {"final": "Full backfill", "preliminary": "30-minute quick backfill", "manual": "Manual run"}.get(stage, stage)
+    return {"final": "完整回溯", "preliminary": "30 分钟快速回溯", "manual": "手动整理"}.get(stage, stage)
 
 
 def build_daily_summary_view(nightly, window_overview=None, project_contexts=None, language=None):
@@ -12489,11 +12491,11 @@ def build_daily_summary_view(nightly, window_overview=None, project_contexts=Non
     note_text_en = "These numbers come from the selected synthesis and help estimate how much was captured that day."
     if stage == "preliminary":
         if is_current_local_date(nightly.get("date", "")):
-            note_text_zh = "今天仍在进行中，当前只是轻量预览；日报和记忆是截至当前的快照，次日 final 深度整理会补齐。"
-            note_text_en = "Today is still in progress, so this is only a lightweight preview; the daily summary and memories are a snapshot so far, and final deep synthesis will fill them in tomorrow."
+            note_text_zh = "今天仍在进行中，当前是 30 分钟快速回溯结果；日报和记忆是截至当前的快照，次日完整回溯会补齐。"
+            note_text_en = "Today is still in progress, so this is only a 30-minute quick backfill; the daily summary and memories are a snapshot so far, and the full backfill will fill them in tomorrow."
         else:
-            note_text_zh = "当前是轻量整理，日报和记忆可能不准确；可运行 final 深度回溯查看全部可用的记忆和总结。"
-            note_text_en = "This is the lightweight pass, so the daily summary and memories may be inaccurate; run final deep backfill for all available memories and summaries."
+            note_text_zh = "当前是 30 分钟快速回溯结果，日报和记忆可能不完整；可运行完整回溯查看全部可用的记忆和总结。"
+            note_text_en = "This is the 30-minute quick backfill, so the daily summary and memories may be incomplete; run the full backfill for all available memories and summaries."
     elif not nightly:
         note_text_zh = "当前还没有最近一次整理；生成后这里会自动切成摘要卡。"
         note_text_en = "No recent synthesis yet; this area will switch to a summary card after generation."
@@ -12504,7 +12506,7 @@ def build_daily_summary_view(nightly, window_overview=None, project_contexts=Non
 
     badges = []
     if stage == "preliminary":
-        badges.append({"label": localized("预览", "Preview", language), "tone": "amber"})
+        badges.append({"label": stage_display_label(stage, language=language), "tone": "amber"})
     elif not nightly:
         badges.append({"label": localized("待生成", "Pending", language), "tone": "slate"})
     if "失败" in summary_text_zh or "保底" in summary_text_zh:
@@ -12770,16 +12772,16 @@ def make_nightly_summary_panel(
     )
     if selected_current_missing:
         backfill_title = "今日仍在进行中"
-        backfill_note = "今天还没结束，当前还没有轻量预览；可先运行今日轻量整理刷新面板，次日会自动生成 final 深度整理。"
-        backfill_single_label = "轻量整理"
+        backfill_note = "今天还没结束，当前还没有 30 分钟快速回溯；可先运行今日快速回溯刷新面板，次日会自动生成完整回溯。"
+        backfill_single_label = "30 分钟快速回溯"
     elif selected_current_preliminary:
         backfill_title = "今日仍在进行中"
-        backfill_note = "今天还没结束，当前保留轻量预览；次日会自动生成 final 深度整理。"
-        backfill_single_label = "当日预览"
+        backfill_note = "今天还没结束，当前保留 30 分钟快速回溯；次日会自动生成完整回溯。"
+        backfill_single_label = "30 分钟快速回溯"
     elif selected_preliminary:
         backfill_title = "建议深度回溯"
-        backfill_note = "当前是轻量整理，日报和记忆可能不准确。可以复制命令在终端补跑 final 深度回溯。首次安装后，会自动触发深度回溯，请耐心等待。"
-        backfill_single_label = "深度回溯"
+        backfill_note = "当前是 30 分钟快速回溯，日报和记忆可能不完整。可以复制命令在终端补跑完整回溯。首次安装后，会自动触发完整回溯，请耐心等待。"
+        backfill_single_label = "完整回溯"
     else:
         backfill_title = "缺少整理结果"
         backfill_note = "该日期还没有整理结果。可以复制命令在终端手动回溯。"
@@ -12939,16 +12941,30 @@ def make_window_summary_cards(window_overview, language=None):
                 str(codex_home or "").strip()
                 or str(codex_electron_user_data_path or "").strip()
             )
+            codex_system_profile = is_system_codex_profile(
+                codex_home,
+                codex_electron_user_data_path,
+            )
             open_label = localized("在 Codex App 打开", "Open in Codex App", language)
             opened_label = localized("已发送", "Sent", language)
-            title_label = open_label
+            title_label = localized(
+                "用系统 Codex deeplink 打开对应线程",
+                "Open the matching thread through the system Codex deeplink",
+                language,
+            )
             copy_resume_on_switch = ""
-            if codex_profile_scoped:
-                open_label = localized("切到 Codex App", "Switch to Codex App", language)
-                opened_label = localized("已切换", "Switched", language)
+            focused_copied_label = opened_label
+            if codex_profile_scoped and not codex_system_profile:
+                open_label = localized("打开 Codex App", "Open Codex App", language)
+                opened_label = localized("已打开", "Opened", language)
+                focused_copied_label = localized(
+                    "已打开，命令已复制",
+                    "Opened, command copied",
+                    language,
+                )
                 title_label = localized(
-                    "切到对应 Codex profile，并复制 resume 命令用于精确恢复",
-                    "Switch to the matching Codex profile and copy the resume command for exact restore",
+                    "打开或切到对应 Codex profile，并复制 resume 命令用于精确恢复",
+                    "Open or switch to the matching Codex profile and copy the resume command for exact restore",
                     language,
                 )
                 copy_resume_on_switch = "1"
@@ -12961,6 +12977,7 @@ def make_window_summary_cards(window_overview, language=None):
             data-codex-resume-id="{resume_app_session_id}"
             data-codex-home="{codex_home}"
             data-codex-electron-user-data-path="{codex_electron_user_data_path}"
+            data-codex-system-profile="{codex_system_profile}"
             data-resume-command="{resume_command}"
             data-copy-resume-on-switch="{copy_resume_on_switch}"
             data-label="{open_label}"
@@ -12974,15 +12991,13 @@ def make_window_summary_cards(window_overview, language=None):
                 resume_app_session_id=escape(resume_app_session_id, quote=True),
                 codex_home=escape(codex_home, quote=True),
                 codex_electron_user_data_path=escape(codex_electron_user_data_path, quote=True),
+                codex_system_profile="1" if codex_system_profile else "",
                 resume_command=escape(resume_command, quote=True),
                 copy_resume_on_switch=escape(copy_resume_on_switch, quote=True),
                 open_label=escape(open_label, quote=True),
                 opening_label=escape(localized("正在打开", "Opening", language), quote=True),
                 opened_label=escape(opened_label, quote=True),
-                focused_copied_label=escape(
-                    localized("已切换，命令已复制", "Switched, command copied", language),
-                    quote=True,
-                ),
+                focused_copied_label=escape(focused_copied_label, quote=True),
                 error_label=escape(localized("打开失败", "Open failed", language), quote=True),
                 title_label=escape(title_label, quote=True),
             )
@@ -13622,7 +13637,7 @@ def pipeline_history_target_label(row, language=None):
     if target_date:
         parts.append(localized("日期 {}".format(target_date), "Date {}".format(target_date), language))
     if stage:
-        parts.append(stage)
+        parts.append(stage_display_label(stage, language=language))
     return " · ".join(parts)
 
 
@@ -13637,6 +13652,15 @@ def pipeline_history_meta_labels(row, language=None):
     labels.append(localized("触发 {}".format(started or "—"), "Started {}".format(started or "—"), language))
     labels.append(localized("结束 {}".format(ended or "—"), "Ended {}".format(ended or "—"), language))
     return labels
+
+
+def pipeline_target_label(payload, language=None):
+    payload = payload or {}
+    target_bits = [
+        payload.get("target_date", ""),
+        stage_display_label(payload.get("stage", ""), language=language) if payload.get("stage") else "",
+    ]
+    return " · ".join(item for item in target_bits if item) or pipeline_status_time_label(payload, language=language)
 
 
 def make_pipeline_step_track(steps):
@@ -13706,8 +13730,8 @@ def make_pipeline_status_panel(status_payload, help_html=""):
     message_en = payload.get("message_en") or "No active task."
     failure_hint = payload.get("failure_hint") or ""
     failure_hint_en = payload.get("failure_hint_en") or failure_hint
-    target_bits = [payload.get("target_date", ""), payload.get("stage", "")]
-    target_label = " · ".join(item for item in target_bits if item) or pipeline_status_time_label(payload)
+    target_label = pipeline_target_label(payload, language="zh")
+    target_label_en = pipeline_target_label(payload, language="en")
     step_index = safe_int(payload.get("current_step_index", 0))
     step_count = safe_int(payload.get("step_count", 0))
     progress_label = "—"
@@ -13718,8 +13742,10 @@ def make_pipeline_status_panel(status_payload, help_html=""):
     next_title_en = next_run.get("title_en") or "No scheduled task"
     next_time = next_run.get("next_at_iso") or ""
     next_stage = next_run.get("stage") or ""
-    next_meta_parts_zh = [next_time, next_stage]
-    next_meta_parts_en = [next_time, next_stage]
+    next_stage_label = stage_display_label(next_stage, language="zh") if next_stage else ""
+    next_stage_label_en = stage_display_label(next_stage, language="en") if next_stage else ""
+    next_meta_parts_zh = [next_time, next_stage_label]
+    next_meta_parts_en = [next_time, next_stage_label_en]
     if next_run.get("learn_memory"):
         next_meta_parts_zh.append("含学习刷新")
         next_meta_parts_en.append("includes learning refresh")
@@ -13782,7 +13808,7 @@ def make_pipeline_status_panel(status_payload, help_html=""):
             pipeline_status_label(status, language="zh"),
             pipeline_status_label(status, language="en"),
         ),
-        target=escape(target_label),
+        target=panel_language_text_html(target_label, target_label_en),
         progress=escape(progress_label),
         next_label=panel_language_text_html("下一次运行", "Next Run"),
         next_title=panel_language_text_html(next_title, next_title_en),
@@ -20412,10 +20438,20 @@ def build_html(data):
         return localizeValue(pair[0], pair[1]);
       }}
 
+      function pipelineStageLabel(stage) {{
+        const labels = {{
+          final: ["完整回溯", "Full backfill"],
+          preliminary: ["30 分钟快速回溯", "30-minute quick backfill"],
+          manual: ["手动整理", "Manual run"],
+        }};
+        const pair = labels[String(stage || "")] || [String(stage || ""), String(stage || "")];
+        return localizeValue(pair[0], pair[1]);
+      }}
+
       function pipelineTargetLabel(payload) {{
         const parts = [];
         if (payload && payload.target_date) parts.push(payload.target_date);
-        if (payload && payload.stage) parts.push(payload.stage);
+        if (payload && payload.stage) parts.push(pipelineStageLabel(payload.stage));
         if (parts.length) return parts.join(" · ");
         if (payload && payload.status === "running" && payload.started_at_iso) {{
           return (currentLanguage === "en" ? "Started " : "开始于 ") + payload.started_at_iso;
@@ -20438,7 +20474,7 @@ def build_html(data):
         if (row && row.target_date) {{
           parts.push((currentLanguage === "en" ? "Date " : "日期 ") + row.target_date);
         }}
-        if (row && row.stage) parts.push(row.stage);
+        if (row && row.stage) parts.push(pipelineStageLabel(row.stage));
         return parts.join(" · ");
       }}
 
@@ -20460,7 +20496,7 @@ def build_html(data):
           return currentLanguage === "en" ? "No schedule detected" : "未检测到计划任务";
         }}
         const parts = [nextRun.next_at_iso];
-        if (nextRun.stage) parts.push(nextRun.stage);
+        if (nextRun.stage) parts.push(pipelineStageLabel(nextRun.stage));
         if (nextRun.learn_memory) {{
           parts.push(currentLanguage === "en" ? "includes learning refresh" : "含学习刷新");
           const learnWindowDays = Number(nextRun.learn_window_days || 0);
@@ -21059,14 +21095,14 @@ def build_html(data):
         if (elements.backfillNote) {{
           elements.backfillNote.textContent = t(
             isCurrentMissing
-              ? "今天还没结束，当前还没有轻量预览；可先运行今日轻量整理刷新面板，次日会自动生成 final 深度整理。"
+              ? "今天还没结束，当前还没有 30 分钟快速回溯；可先运行今日快速回溯刷新面板，次日会自动生成完整回溯。"
               : isPreliminary
-              ? "当前是轻量整理，日报和记忆可能不准确。可以复制命令在终端补跑 final 深度回溯。首次安装后，会自动触发深度回溯，请耐心等待。"
+              ? "当前是 30 分钟快速回溯，日报和记忆可能不完整。可以复制命令在终端补跑完整回溯。首次安装后，会自动触发完整回溯，请耐心等待。"
               : "该日期还没有整理结果。可以复制命令在终端手动回溯。"
           );
         }}
         if (elements.backfillSingleLabel) {{
-          elements.backfillSingleLabel.textContent = t(isCurrentMissing ? "轻量整理" : (isPreliminary ? "深度回溯" : "单日回溯"));
+          elements.backfillSingleLabel.textContent = t(isCurrentMissing ? "30 分钟快速回溯" : (isPreliminary ? "完整回溯" : "单日回溯"));
         }}
         if (elements.backfillSingleCommand) {{
           elements.backfillSingleCommand.textContent = singleCommand;
@@ -21391,6 +21427,7 @@ def build_html(data):
         const codexUrl = (button.getAttribute("data-codex-url") || "").trim();
         const codexHome = (button.getAttribute("data-codex-home") || "").trim();
         const codexElectronUserDataPath = (button.getAttribute("data-codex-electron-user-data-path") || "").trim();
+        const isSystemCodexProfile = button.getAttribute("data-codex-system-profile") === "1";
         const resumeCommand = button.getAttribute("data-resume-command") || "";
         const shouldCopyResumeOnSwitch = button.getAttribute("data-copy-resume-on-switch") === "1" && !!resumeCommand;
         const endpoint = openrelixMetaAttr("data-codex-desktop-endpoint");
@@ -21403,7 +21440,7 @@ def build_html(data):
         let resumeCopyPromise = null;
 
         function fallbackOpen() {{
-          if (codexUrl && !codexHome && !codexElectronUserDataPath) {{
+          if (codexUrl && (isSystemCodexProfile || (!codexHome && !codexElectronUserDataPath))) {{
             window.location.href = codexUrl;
             return true;
           }}
