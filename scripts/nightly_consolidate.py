@@ -77,9 +77,17 @@ COMPACT_PAYLOAD_CACHE_VERSION = 1
 DAILY_COMPACT_ARTIFACT_VERSION = 1
 LIGHTWEIGHT_SUMMARY_VERSION = 7
 LIGHTWEIGHT_SESSION_MEMORY_MIN = 3
-LIGHTWEIGHT_SESSION_MEMORY_MAX = 24
-LIGHTWEIGHT_DURABLE_MEMORY_MAX = 8
-LIGHTWEIGHT_LOW_PRIORITY_MEMORY_MAX = 8
+LIGHTWEIGHT_SESSION_MEMORY_MAX = 12
+LIGHTWEIGHT_DURABLE_MEMORY_MAX = 4
+LIGHTWEIGHT_LOW_PRIORITY_MEMORY_MAX = 3
+MAX_DAILY_DURABLE_MEMORY_ITEMS = 4
+MAX_DAILY_SESSION_MEMORY_ITEMS = 6
+MAX_DAILY_LOW_PRIORITY_MEMORY_ITEMS = 3
+DAILY_MEMORY_STORAGE_LIMITS = {
+    "durable": MAX_DAILY_DURABLE_MEMORY_ITEMS,
+    "session": MAX_DAILY_SESSION_MEMORY_ITEMS,
+    "low_priority": MAX_DAILY_LOW_PRIORITY_MEMORY_ITEMS,
+}
 LIGHTWEIGHT_WINDOW_KEYWORD_LIMIT = 8
 LIGHTWEIGHT_DAILY_KEYWORD_LIMIT = 16
 RECENT_WINDOW_LEARNING_CACHE_VERSION = 1
@@ -3154,6 +3162,56 @@ def memory_scope_metadata(summary, item, bucket_name):
     }
 
 
+def safe_int(value, default=0):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def memory_storage_sort_key(row):
+    priority_rank = {"high": 3, "medium": 2, "low": 1}
+    type_rank = {
+        "preference": 5,
+        "procedural": 4,
+        "procedure": 4,
+        "rule": 4,
+        "workflow": 4,
+        "mapping": 3,
+        "semantic": 2,
+        "task": 1,
+    }
+    source_count = 0
+    source_window_ids = row.get("source_window_ids") or []
+    if isinstance(source_window_ids, (list, tuple, set)):
+        source_count = len([window_id for window_id in source_window_ids if str(window_id or "").strip()])
+    elif str(source_window_ids or "").strip():
+        source_count = 1
+    return (
+        safe_int(row.get("storage_quality_score"), 0),
+        priority_rank.get(str(row.get("priority") or "medium").lower(), 2),
+        type_rank.get(str(row.get("memory_type") or "semantic").lower(), 2),
+        source_count,
+        str(row.get("title") or ""),
+    )
+
+
+def select_daily_memory_rows_for_storage(rows):
+    selected = []
+    for bucket_name, limit in DAILY_MEMORY_STORAGE_LIMITS.items():
+        bucket_rows = [row for row in rows if row.get("bucket") == bucket_name]
+        bucket_rows.sort(key=memory_storage_sort_key, reverse=True)
+        selected.extend(bucket_rows[:limit])
+    selected.sort(
+        key=lambda row: (
+            {"durable": 0, "session": 1, "low_priority": 2}.get(row.get("bucket"), 3),
+            -memory_storage_sort_key(row)[0],
+            str(row.get("title") or ""),
+        )
+    )
+    return selected
+
+
 def upsert_memory_items(date_str, summary):
     if not PERSONAL_MEMORY_ENABLED:
         return
@@ -3202,12 +3260,12 @@ def upsert_memory_items(date_str, summary):
                 )
             return rows
 
-        all_rows = (
-            existing
-            + rows_for("durable", summary["durable_memories"])
+        generated_rows = (
+            rows_for("durable", summary["durable_memories"])
             + rows_for("session", summary["session_memories"])
             + rows_for("low_priority", summary["low_priority_memories"])
         )
+        all_rows = existing + select_daily_memory_rows_for_storage(generated_rows)
         memory_path.parent.mkdir(parents=True, exist_ok=True)
         atomic_write_text(
             memory_path,

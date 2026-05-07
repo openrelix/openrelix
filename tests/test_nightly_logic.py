@@ -32,6 +32,8 @@ import token_live_server  # noqa: E402
 from openrelix_overview import contract as overview_contract  # noqa: E402
 from openrelix_overview import claude_desktop  # noqa: E402
 from openrelix_overview import finder as overview_finder  # noqa: E402
+from openrelix_overview import memory_context as overview_memory_context  # noqa: E402
+from openrelix_overview import memory_feedback as overview_memory_feedback  # noqa: E402
 from openrelix_overview import token_fetcher  # noqa: E402
 
 
@@ -4338,6 +4340,60 @@ Keep my own note.
         self.assertIn("查看来源与上下文", cards_html)
         self.assertIn("查看更多 1 条", cards_html)
 
+    def test_context_memory_cards_render_feedback_controls(self):
+        cards_html = build_overview.make_context_memory_type_grouped_cards(
+            [
+                {
+                    "memory_key": "memory-feedback-demo",
+                    "title": "Useful memory",
+                    "display_title": "有用记忆",
+                    "value_note": "Useful note.",
+                    "display_value_note": "有用摘要。",
+                    "bucket": "durable",
+                    "memory_type": "procedural",
+                    "priority": "high",
+                    "user_feedback": "liked",
+                }
+            ]
+        )
+
+        self.assertIn('data-memory-feedback="pinned"', cards_html)
+        self.assertIn('data-memory-feedback="liked"', cards_html)
+        self.assertIn('data-memory-feedback="downvoted"', cards_html)
+        self.assertIn('data-memory-key="memory-feedback-demo"', cards_html)
+        self.assertIn('data-memory-feedback-state="liked"', cards_html)
+        self.assertIn('data-memory-feedback="liked" data-memory-key="memory-feedback-demo"', cards_html)
+        self.assertIn('aria-pressed="true"', cards_html)
+
+    def test_memory_feedback_adjusts_host_context_policy(self):
+        base = {
+            "memory_key": "feedback-policy-demo",
+            "bucket": "session",
+            "priority": "medium",
+            "scope": "global",
+            "injection_policy": "on_demand",
+            "title": "默认用 apply_patch 修改文件",
+            "value_note": "当用户要求修改文件时，应优先使用 apply_patch，保持局部改动。",
+        }
+
+        liked = overview_memory_feedback.apply_memory_feedback(base, "liked")
+        self.assertEqual(liked["priority"], "high")
+        self.assertEqual(liked["bucket"], "durable")
+        self.assertEqual(
+            overview_memory_context.host_context_injection_policy_from_record(liked),
+            overview_memory_context.INJECTION_GLOBAL_CONTEXT,
+        )
+        self.assertTrue(overview_memory_context.memory_record_has_global_context_approval(liked))
+
+        downvoted = overview_memory_feedback.apply_memory_feedback(base, "downvoted")
+        self.assertEqual(downvoted["bucket"], "low_priority")
+        self.assertEqual(downvoted["priority"], "low")
+        self.assertEqual(
+            overview_memory_context.host_context_injection_policy_from_record(downvoted),
+            overview_memory_context.INJECTION_LOCAL_ONLY,
+        )
+        self.assertTrue(overview_memory_context.memory_record_is_low_priority(downvoted))
+
     def test_context_memory_preview_only_uses_integrated_context_candidates(self):
         budget = asset_runtime.memory_summary_budget_from_max(5000)
         rows = [
@@ -4471,6 +4527,8 @@ Keep my own note.
         self.assertNotIn('<body data-language="zh" data-theme-choice="system">', html)
         self.assertIn('data-language-option="zh" aria-pressed="true"', html)
         self.assertIn('data-language-option="en" aria-pressed="false"', html)
+        self.assertIn("data-memory-feedback-endpoint=", html)
+        self.assertIn("wireMemoryFeedbackActions();", html)
         self.assertIn('"OpenRelix 工作台": "OpenRelix Workbench"', html)
         self.assertIn(
             '<span class="hero-brand-line"><span data-lang-only="zh">你的专属AI记忆珍藏</span><span data-lang-only="en">Your personal AI memory relics</span></span>',
@@ -4490,7 +4548,7 @@ Keep my own note.
         self.assertIn("window.localStorage", html)
         self.assertNotIn("side-nav-sublabel", html)
         self.assertIn("personal-memory-compiler-section", html)
-        self.assertIn("上下文编译", html)
+        self.assertIn("总览", html)
         self.assertIn("personal-memory-global-section", html)
         self.assertIn("personal-memory-project-section", html)
         self.assertIn("personal-memory-on-demand-section", html)
@@ -6188,6 +6246,7 @@ Keep my own note.
     def test_token_live_trusts_local_panel_post_endpoints(self):
         self.assertIn(overview_finder.FINDER_REVEAL_PATH, token_live_server.TRUSTED_POST_PATHS)
         self.assertIn(token_live_server.PANEL_REFRESH_PATH, token_live_server.TRUSTED_POST_PATHS)
+        self.assertIn(token_live_server.MEMORY_FEEDBACK_PATH, token_live_server.TRUSTED_POST_PATHS)
 
     def test_panel_refresh_runs_refresh_overview_for_requested_date(self):
         with TemporaryDirectory() as tmpdir:
@@ -10156,12 +10215,69 @@ Keep my own note.
             nightly_consolidate.LIGHTWEIGHT_SESSION_MEMORY_MAX,
         )
         self.assertEqual(len(summary["durable_memories"]), nightly_consolidate.LIGHTWEIGHT_DURABLE_MEMORY_MAX)
-        self.assertEqual(len(summary["low_priority_memories"]), 4)
+        self.assertEqual(
+            len(summary["low_priority_memories"]),
+            summary["lightweight_low_priority_memory_limit"],
+        )
         self.assertEqual(summary["lightweight_memory_candidate_count"], 30)
         self.assertEqual(summary["lightweight_memory_limit"], nightly_consolidate.LIGHTWEIGHT_SESSION_MEMORY_MAX)
         self.assertEqual(summary["lightweight_durable_memory_limit"], nightly_consolidate.LIGHTWEIGHT_DURABLE_MEMORY_MAX)
-        self.assertEqual(summary["lightweight_low_priority_memory_limit"], 4)
+        self.assertEqual(
+            summary["lightweight_low_priority_memory_limit"],
+            min(
+                nightly_consolidate.LIGHTWEIGHT_LOW_PRIORITY_MEMORY_MAX,
+                max(1, summary["lightweight_memory_limit"] // 5),
+            ),
+        )
         self.assertEqual(summary["lightweight_summary_version"], nightly_consolidate.LIGHTWEIGHT_SUMMARY_VERSION)
+
+    def test_daily_memory_storage_rows_are_capped_by_bucket_quality(self):
+        rows = []
+        for index in range(nightly_consolidate.MAX_DAILY_DURABLE_MEMORY_ITEMS + 3):
+            rows.append(
+                {
+                    "bucket": "durable",
+                    "priority": "high",
+                    "memory_type": "procedural",
+                    "title": "durable-{}".format(index),
+                    "source_window_ids": ["w{}".format(index)],
+                    "storage_quality_score": index,
+                }
+            )
+        for index in range(nightly_consolidate.MAX_DAILY_SESSION_MEMORY_ITEMS + 3):
+            rows.append(
+                {
+                    "bucket": "session",
+                    "priority": "medium",
+                    "memory_type": "semantic",
+                    "title": "session-{}".format(index),
+                    "source_window_ids": ["s{}".format(index)],
+                    "storage_quality_score": index,
+                }
+            )
+        for index in range(nightly_consolidate.MAX_DAILY_LOW_PRIORITY_MEMORY_ITEMS + 3):
+            rows.append(
+                {
+                    "bucket": "low_priority",
+                    "priority": "low",
+                    "memory_type": "task",
+                    "title": "low-{}".format(index),
+                    "source_window_ids": ["l{}".format(index)],
+                    "storage_quality_score": index,
+                }
+            )
+
+        selected = nightly_consolidate.select_daily_memory_rows_for_storage(rows)
+        counts = {}
+        for row in selected:
+            counts[row["bucket"]] = counts.get(row["bucket"], 0) + 1
+
+        self.assertEqual(counts["durable"], nightly_consolidate.MAX_DAILY_DURABLE_MEMORY_ITEMS)
+        self.assertEqual(counts["session"], nightly_consolidate.MAX_DAILY_SESSION_MEMORY_ITEMS)
+        self.assertEqual(counts["low_priority"], nightly_consolidate.MAX_DAILY_LOW_PRIORITY_MEMORY_ITEMS)
+        selected_titles = {row["title"] for row in selected}
+        self.assertIn("durable-{}".format(nightly_consolidate.MAX_DAILY_DURABLE_MEMORY_ITEMS + 2), selected_titles)
+        self.assertNotIn("durable-0", selected_titles)
 
     def test_lightweight_summary_uses_deep_style_pairs_and_daily_sections(self):
         raw_payload = {

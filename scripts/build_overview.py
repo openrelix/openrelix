@@ -48,6 +48,7 @@ from openrelix_overview import i18n as overview_i18n
 from openrelix_overview import labels as overview_labels
 from openrelix_overview import local_paths as overview_local_paths
 from openrelix_overview import memory_context as overview_memory_context
+from openrelix_overview import memory_feedback as overview_memory_feedback
 from openrelix_overview import mcp_usage as overview_mcp_usage
 from openrelix_overview import memory_registry as overview_memory_registry
 from openrelix_overview import pipeline_status as overview_pipeline_status
@@ -553,10 +554,12 @@ PANEL_I18N_EN = {
     "个人资产记忆": "Personal Asset Memory",
     "记忆数量": "Memory Counts",
     "上下文策略": "Context Policy",
-    "上下文编译": "Context Compiler",
+    "上下文编译": "Overview",
+    "总览": "Overview",
     "上下文预算": "Context Budget",
     "全局上下文": "Global Context",
     "项目上下文": "Project Context",
+    "通用上下文": "General Context",
     "按需召回": "On-demand Recall",
     "本地保留": "Local Only",
     "OpenRelix canonical memory -> host context 的策略预览": "Policy preview from OpenRelix canonical memory to host context",
@@ -1717,6 +1720,15 @@ def load_jsonl(path: Path):
 
 
 def normalize_loaded_memory_item_quality(item):
+    if item.get("user_feedback") == overview_memory_feedback.FEEDBACK_DOWNVOTED:
+        row = dict(item)
+        row["bucket"] = "low_priority"
+        row["priority"] = "low"
+        row["scope"] = "local"
+        row["injection_policy"] = "local_only"
+        row.setdefault("storage_quality_score", 0)
+        row.setdefault("storage_quality_reason", "user_downvoted")
+        return row
     quality = overview_memory_context.memory_storage_quality(item, bucket=item.get("bucket", ""))
     if quality["disposition"] == "drop":
         return None
@@ -1738,9 +1750,15 @@ def load_memory_registry_items():
     if canonical_path.exists() and canonical_path.stat().st_size > 0:
         rows.extend(load_jsonl(canonical_path))
     rows.extend(load_jsonl(legacy_path))
+    feedback_by_key = overview_memory_feedback.load_memory_feedback_map(PATHS)
     return [
         row
-        for row in (normalize_loaded_memory_item_quality(item) for item in rows)
+        for row in (
+            normalize_loaded_memory_item_quality(
+                overview_memory_feedback.apply_memory_feedback_map(item, feedback_by_key)
+            )
+            for item in rows
+        )
         if row is not None
     ]
 
@@ -1759,6 +1777,17 @@ def safe_int(value):
 
 def safe_float(value):
     return overview_common.safe_float(value)
+
+
+def memory_feedback_sort_rank(item):
+    feedback = str((item or {}).get("user_feedback") or "").strip()
+    if feedback == overview_memory_feedback.FEEDBACK_PINNED:
+        return 3
+    if feedback == overview_memory_feedback.FEEDBACK_LIKED:
+        return 2
+    if feedback == overview_memory_feedback.FEEDBACK_DOWNVOTED:
+        return -1
+    return 0
 
 
 def compact_number(value):
@@ -1838,6 +1867,7 @@ def sort_memory_summary_context_rows(context_rows):
 
     def sort_key(row):
         return (
+            -memory_feedback_sort_rank(row),
             bucket_rank.get(row.get("bucket", ""), 2),
             priority_rank.get(row.get("priority", "medium"), 1),
             memory_summary_reverse_date_sort_key(row.get("updated_at") or row.get("date") or row.get("created_at")),
@@ -4484,6 +4514,9 @@ def build_memory_registry(memory_items, window_overview, usage_window_overview=N
                 "value_note": item.get("value_note", ""),
                 "value_note_zh": item.get("value_note_zh", ""),
                 "value_note_en": item.get("value_note_en", ""),
+                "user_feedback": item.get("user_feedback", ""),
+                "user_feedback_updated_at": item.get("user_feedback_updated_at", ""),
+                "user_pinned": bool(item.get("user_pinned")),
                 "created_at": "",
                 "updated_at": "",
                 "occurrence_count": 0,
@@ -4521,6 +4554,12 @@ def build_memory_registry(memory_items, window_overview, usage_window_overview=N
             group["value_note"] = item.get("value_note", group["value_note"])
             group["value_note_zh"] = item.get("value_note_zh", group.get("value_note_zh", ""))
             group["value_note_en"] = item.get("value_note_en", group.get("value_note_en", ""))
+            group["user_feedback"] = item.get("user_feedback", group.get("user_feedback", ""))
+            group["user_feedback_updated_at"] = item.get(
+                "user_feedback_updated_at",
+                group.get("user_feedback_updated_at", ""),
+            )
+            group["user_pinned"] = bool(item.get("user_pinned", group.get("user_pinned", False)))
             group["_latest_source_window_ids"] = list(item.get("source_window_ids", []))
 
         for window_id in item.get("source_window_ids", []):
@@ -4633,6 +4672,9 @@ def build_memory_registry(memory_items, window_overview, usage_window_overview=N
                 language="en",
                 default=group["value_note"],
             ),
+            "user_feedback": group.get("user_feedback", ""),
+            "user_feedback_updated_at": group.get("user_feedback_updated_at", ""),
+            "user_pinned": bool(group.get("user_pinned")),
             "created_at": group["created_at"],
             "updated_at": group["updated_at"],
             "created_at_display": display_memory_date(group["created_at"]),
@@ -4658,6 +4700,7 @@ def build_memory_registry(memory_items, window_overview, usage_window_overview=N
 
     rows.sort(
         key=lambda item: (
+            memory_feedback_sort_rank(item),
             item.get("bucket", "") in {"durable", "session"},
             item.get("usage_frequency_sort_key", 0),
             item.get("usage_frequency_matched_window_count", 0),
@@ -10927,9 +10970,9 @@ def make_side_nav():
         ("link", "project-context-section", "项目上下文", "Context", "项目上下文", "Context"),
         ("group", "记忆层", "Memory Layer"),
         ("link", "memory-section", "个人资产记忆", "Personal Asset Memory", "个人资产记忆", "Personal Asset Memory"),
-        ("child", "personal-memory-compiler-section", "上下文编译", "Context Compiler", "个人资产记忆-上下文编译", "Personal Asset Memory - Context Compiler"),
+        ("child", "personal-memory-compiler-section", "总览", "Overview", "个人资产记忆-总览", "Personal Asset Memory - Overview"),
         ("child", "personal-memory-global-section", "全局上下文", "Global Context", "个人资产记忆-全局上下文", "Personal Asset Memory - Global Context"),
-        ("child", "personal-memory-project-section", "项目上下文", "Project Context", "个人资产记忆-项目上下文", "Personal Asset Memory - Project Context"),
+        ("child", "personal-memory-project-section", "通用上下文", "General Context", "个人资产记忆-通用上下文", "Personal Asset Memory - General Context"),
         ("child", "personal-memory-on-demand-section", "按需召回", "On-demand Recall", "个人资产记忆-按需召回", "Personal Asset Memory - On-demand Recall"),
         ("child", "personal-memory-local-section", "本地保留", "Local Only", "个人资产记忆-本地保留", "Personal Asset Memory - Local Only"),
         ("link", "codex-native-section", "Codex 原生记忆", "Codex Native Memory", "Codex 原生记忆", "Codex Native Memory"),
@@ -11110,9 +11153,8 @@ def make_memory_policy_count_widget(policy_views):
     )
     items = [
         ("注入", "Injected", host_value),
-        ("项目", "Project", safe_int(compiler.get("project_context_count", 0))),
+        ("通用", "General", safe_int(compiler.get("project_context_count", 0))),
         ("按需", "On-demand", safe_int(compiler.get("on_demand_count", 0))),
-        ("本地", "Local", safe_int(compiler.get("local_count", 0))),
     ]
     cards = []
     for label_zh, label_en, value in items:
@@ -11152,12 +11194,8 @@ def make_memory_context_compiler_body(policy_views):
     host_candidate_count = safe_int(
         compiler.get("host_context_candidate_count", compiler.get("global_candidate_count", 0))
     )
-    selected_host_count = safe_int(
-        compiler.get("selected_host_context_count", compiler.get("selected_global_count", 0))
-    )
     project_count = safe_int(compiler.get("project_context_count", 0))
     on_demand_count = safe_int(compiler.get("on_demand_count", 0))
-    local_count = safe_int(compiler.get("local_count", 0))
     meter_percent = max(0, min(100, safe_int(compiler.get("meter_percent", 0))))
     value_display = panel_language_variant_html(
         escape(compiler.get("value_display_zh") or ""),
@@ -11195,25 +11233,25 @@ def make_memory_context_compiler_body(policy_views):
                 "Canonical entries stored by OpenRelix",
             ),
             stat_card(
-                "可注入",
-                "Injectable",
+                "可进上下文",
+                "Context-ready",
                 host_candidate_count,
-                "全局和项目 durable/session 候选",
-                "Global and project durable/session candidates",
+                "全局和通用上下文候选",
+                "Global and general context candidates",
             ),
             stat_card(
-                "本次注入",
-                "Injected Now",
-                selected_host_count,
-                "受预算和去重后的 host context 预览",
-                "Host-context preview after budget and de-duplication",
+                "通用上下文",
+                "General Context",
+                project_count,
+                "按项目、仓库或工作区边界召回",
+                "Recalled by project, repo, or workspace boundary",
             ),
             stat_card(
-                "隔离保留",
-                "Kept Out",
-                on_demand_count + local_count,
-                "按需和本地条目不进 host context",
-                "On-demand and local rows stay out of host context",
+                "按需召回",
+                "On-demand",
+                on_demand_count,
+                "保留索引，需要时再检索",
+                "Indexed and retrieved only when needed",
             ),
         ]
     )
@@ -11595,6 +11633,50 @@ def make_memory_cards(items, include_bucket_meta=True, visible_count=4, meta_ren
             label=panel_language_text_html("查看来源与上下文", "Show context and source"),
             details=details,
         )
+        feedback_state = ui_text(item.get("user_feedback") or "")
+        feedback_status_labels = {
+            overview_memory_feedback.FEEDBACK_PINNED: ("已钉住，最高优先级", "Pinned, highest priority"),
+            overview_memory_feedback.FEEDBACK_LIKED: ("已标记有用", "Marked useful"),
+            overview_memory_feedback.FEEDBACK_DOWNVOTED: ("已放入本地保留", "Kept local"),
+        }
+        feedback_status = feedback_status_labels.get(feedback_state, ("", ""))
+        feedback_controls = ""
+        memory_key = ui_text(item.get("memory_key") or "")
+        if memory_key:
+            def feedback_button(feedback_value, zh_label, en_label):
+                active = feedback_state == feedback_value
+                return (
+                    '<button class="memory-feedback-button{active_class}" type="button" '
+                    'data-memory-feedback="{feedback}" data-memory-key="{memory_key}" '
+                    'data-memory-title="{memory_title}" aria-pressed="{pressed}">'
+                    "{label}</button>"
+                ).format(
+                    active_class=" is-active" if active else "",
+                    feedback=escape(feedback_value, quote=True),
+                    memory_key=escape(memory_key, quote=True),
+                    memory_title=escape(full_display_title or full_raw_title, quote=True),
+                    pressed="true" if active else "false",
+                    label=panel_language_text_html(zh_label, en_label),
+                )
+
+            feedback_controls = """
+              <div class="memory-feedback-row" data-memory-feedback-state="{state}">
+                {buttons}
+                <span class="memory-feedback-status">{status}</span>
+              </div>
+            """.format(
+                state=escape(feedback_state, quote=True),
+                buttons="".join(
+                    [
+                        feedback_button(overview_memory_feedback.FEEDBACK_PINNED, "钉住", "Pin"),
+                        feedback_button(overview_memory_feedback.FEEDBACK_LIKED, "有用", "Useful"),
+                        feedback_button(overview_memory_feedback.FEEDBACK_DOWNVOTED, "无用", "Not useful"),
+                    ]
+                ),
+                status=panel_language_text_html(feedback_status[0], feedback_status[1])
+                if feedback_status[0] or feedback_status[1]
+                else "",
+            )
 
         return """
           <article class="native-brief-card memory-brief-card">
@@ -11604,6 +11686,7 @@ def make_memory_cards(items, include_bucket_meta=True, visible_count=4, meta_ren
             </div>
             <h3>{title}</h3>
             <p>{value_note}</p>
+            {feedback_controls}
             {details}
           </article>
         """.format(
@@ -11611,6 +11694,7 @@ def make_memory_cards(items, include_bucket_meta=True, visible_count=4, meta_ren
             source_label=source_summary_html(item),
             title=title_html or panel_language_text_html("未命名记忆"),
             value_note=value_note_html,
+            feedback_controls=feedback_controls,
             details=details_html,
         )
 
@@ -14114,15 +14198,15 @@ def build_html(data):
         ],
     )
     memory_compiler_help = make_help_popover(
-        "上下文编译",
+        "总览",
         [
             {
                 "label": "统计什么",
-                "body": "把 OpenRelix 独立登记册按注入策略拆分，展示哪些条目会进入 host context，哪些只在项目或本地保留。",
+                "body": "把 OpenRelix 独立登记册按注入策略拆分，展示哪些条目会进入 host context，哪些用于按需召回或本地保留。",
             },
             {
                 "label": "怎么算",
-                "body": "先按 scope 和 injection_policy 归一化；只有 global_context 且 bucket 为 durable/session 的条目会进入全局 bounded summary 候选。",
+                "body": "先按 scope 和 injection_policy 归一化；通用上下文和高价值项目记忆会进入 bounded summary 候选。",
             },
         ],
     )
@@ -14146,15 +14230,15 @@ def build_html(data):
         ],
     )
     project_memory_help = make_help_popover(
-        "项目上下文",
+        "通用上下文",
         [
             {
                 "label": "统计什么",
-                "body": "绑定项目、仓库或工作区的个人资产记忆；保存在 OpenRelix 登记册，并作为带项目边界的候选进入 bounded host context。",
+                "body": "可跨项目复用、但需要带上下文边界的个人资产记忆；保存在 OpenRelix 登记册，并作为候选进入 bounded host context。",
             },
             {
                 "label": "含义",
-                "body": "这类条目注入时会保留项目标签，帮助模型识别适用边界，避免把项目规则误当成通用规则。",
+                "body": "这类条目注入时会保留上下文标签，帮助模型识别适用边界，避免把局部经验误当成无边界规则。",
             },
         ],
     )
@@ -14506,7 +14590,7 @@ def build_html(data):
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="openrelix:version" content="{current_version}" data-pkg="{npm_package}" data-update-endpoint="{update_endpoint}" data-update-status-endpoint="{update_status_endpoint}" data-asset-refresh-endpoint="{asset_refresh_endpoint}" data-claude-desktop-endpoint="{claude_desktop_endpoint}" data-finder-open-endpoint="{finder_open_endpoint}" data-update-token="{update_token}">
+  <meta name="openrelix:version" content="{current_version}" data-pkg="{npm_package}" data-update-endpoint="{update_endpoint}" data-update-status-endpoint="{update_status_endpoint}" data-asset-refresh-endpoint="{asset_refresh_endpoint}" data-memory-feedback-endpoint="{memory_feedback_endpoint}" data-claude-desktop-endpoint="{claude_desktop_endpoint}" data-finder-open-endpoint="{finder_open_endpoint}" data-update-token="{update_token}">
   <title>{document_title}</title>
   <script>
     (function () {{
@@ -17344,6 +17428,61 @@ def build_html(data):
       line-height: 1.7;
       overflow-wrap: anywhere;
       word-break: break-word;
+    }}
+
+    .memory-feedback-row {{
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+    }}
+
+    .memory-feedback-button {{
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 28px;
+      padding: 5px 10px;
+      border: 1px solid var(--line-strong);
+      border-radius: 999px;
+      background: var(--surface);
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+      line-height: 1.2;
+      cursor: pointer;
+      transition: background .15s ease, border-color .15s ease, color .15s ease, opacity .15s ease;
+    }}
+
+    .memory-feedback-button:hover {{
+      border-color: rgba(0, 113, 227, 0.35);
+      color: var(--teal);
+    }}
+
+    .memory-feedback-button.is-active {{
+      border-color: rgba(0, 113, 227, 0.38);
+      background: rgba(0, 113, 227, 0.09);
+      color: var(--teal);
+    }}
+
+    .memory-feedback-row[data-memory-feedback-state="downvoted"] .memory-feedback-button.is-active {{
+      border-color: rgba(198, 40, 40, 0.28);
+      background: rgba(198, 40, 40, 0.08);
+      color: #a12a2a;
+    }}
+
+    .memory-feedback-button:disabled {{
+      cursor: default;
+      opacity: .58;
+    }}
+
+    .memory-feedback-status {{
+      min-width: 0;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.35;
+      overflow-wrap: anywhere;
     }}
 
     .native-brief-chip-row {{
@@ -21022,6 +21161,123 @@ def build_html(data):
           }});
       }}
 
+      function memoryFeedbackStatusMessage(feedback) {{
+        const state = String(feedback || "");
+        if (state === "pinned") {{
+          return currentLanguage === "en" ? "Pinned, highest priority" : "已钉住，最高优先级";
+        }}
+        if (state === "liked") {{
+          return currentLanguage === "en" ? "Marked useful" : "已标记有用";
+        }}
+        if (state === "downvoted") {{
+          return currentLanguage === "en" ? "Kept local" : "已放入本地保留";
+        }}
+        return currentLanguage === "en" ? "Feedback cleared" : "已取消标记";
+      }}
+
+      function setMemoryFeedbackStatus(row, message) {{
+        const status = row ? row.querySelector(".memory-feedback-status") : null;
+        if (status) {{
+          status.textContent = message || "";
+        }}
+      }}
+
+      function updateMemoryFeedbackRow(row, feedback) {{
+        if (!row) {{
+          return;
+        }}
+        const state = String(feedback || "");
+        row.setAttribute("data-memory-feedback-state", state);
+        row.querySelectorAll("[data-memory-feedback]").forEach(function (candidate) {{
+          const active = candidate.getAttribute("data-memory-feedback") === state;
+          candidate.classList.toggle("is-active", active);
+          candidate.setAttribute("aria-pressed", active ? "true" : "false");
+        }});
+        setMemoryFeedbackStatus(row, memoryFeedbackStatusMessage(state));
+      }}
+
+      function submitMemoryFeedback(button) {{
+        const endpoint = openrelixMetaAttr("data-memory-feedback-endpoint");
+        const token = openrelixMetaAttr("data-update-token");
+        const row = button.closest(".memory-feedback-row");
+        const memoryKey = (button.getAttribute("data-memory-key") || "").trim();
+        let feedback = (button.getAttribute("data-memory-feedback") || "").trim();
+        if (button.getAttribute("aria-pressed") === "true") {{
+          feedback = "neutral";
+        }}
+        if (!endpoint || !token || !memoryKey || !window.fetch) {{
+          setMemoryFeedbackStatus(
+            row,
+            currentLanguage === "en"
+              ? "Local service is not running."
+              : "本地服务未启动。"
+          );
+          return;
+        }}
+        const buttons = row ? Array.from(row.querySelectorAll("[data-memory-feedback]")) : [button];
+        buttons.forEach(function (candidate) {{
+          candidate.disabled = true;
+        }});
+        setMemoryFeedbackStatus(
+          row,
+          currentLanguage === "en" ? "Saving..." : "正在保存…"
+        );
+        const headers = {{ "Content-Type": "application/json" }};
+        headers["X-OpenRelix-Token"] = token;
+        fetch(endpoint, {{
+          method: "POST",
+          headers: headers,
+          body: JSON.stringify({{
+            memory_key: memoryKey,
+            feedback: feedback,
+            title: button.getAttribute("data-memory-title") || "",
+            source: "panel"
+          }})
+        }})
+          .then(function (response) {{
+            return response.json().catch(function () {{
+              return null;
+            }}).then(function (payload) {{
+              if (!response.ok || !payload || payload.ok === false) {{
+                throw new Error((payload && payload.error) || ("HTTP " + response.status));
+              }}
+              return payload;
+            }});
+          }})
+          .then(function (payload) {{
+            const savedFeedback = payload && payload.feedback ? payload.feedback.feedback : feedback;
+            updateMemoryFeedbackRow(row, savedFeedback);
+            if (payload && payload.refresh_ok) {{
+              window.setTimeout(function () {{
+                window.location.reload();
+              }}, 650);
+            }}
+          }})
+          .catch(function () {{
+            setMemoryFeedbackStatus(
+              row,
+              currentLanguage === "en" ? "Save failed" : "保存失败"
+            );
+          }})
+          .finally(function () {{
+            buttons.forEach(function (candidate) {{
+              candidate.disabled = false;
+            }});
+          }});
+      }}
+
+      function wireMemoryFeedbackActions() {{
+        document.addEventListener("click", function (event) {{
+          const button = event.target.closest("[data-memory-feedback]");
+          if (!button) {{
+            return;
+          }}
+          event.preventDefault();
+          event.stopPropagation();
+          submitMemoryFeedback(button);
+        }});
+      }}
+
       function wireFinderOpenActions() {{
         document.addEventListener("click", function (event) {{
           const button = event.target.closest("[data-open-finder-path]");
@@ -22896,6 +23152,7 @@ def build_html(data):
       wireWindowOverviewDateInput();
       wireBackfillCopyButtons();
       wireFinderOpenActions();
+      wireMemoryFeedbackActions();
       wireExternalPanelLinks();
       wireWindowResumeActions();
       wireSideNav();
@@ -23217,6 +23474,10 @@ def build_html(data):
         update_endpoint=escape("http://{}:{}/run-update".format(LIVE_TOKEN_HOST, LIVE_TOKEN_PORT), quote=True),
         update_status_endpoint=escape("http://{}:{}/update-status".format(LIVE_TOKEN_HOST, LIVE_TOKEN_PORT), quote=True),
         asset_refresh_endpoint=escape("http://{}:{}/run-refresh".format(LIVE_TOKEN_HOST, LIVE_TOKEN_PORT), quote=True),
+        memory_feedback_endpoint=escape(
+            "http://{}:{}/memory-feedback".format(LIVE_TOKEN_HOST, LIVE_TOKEN_PORT),
+            quote=True,
+        ),
         claude_desktop_endpoint=escape(
             "http://{}:{}{}".format(
                 LIVE_TOKEN_HOST,
@@ -23372,7 +23633,7 @@ def build_html(data):
             "From Claude Code CLAUDE.md and projects/*/memory/*.md.",
         ),
         memory_compiler_header=make_panel_header(
-            "上下文编译",
+            "总览",
             "OpenRelix canonical memory -> host context 的策略预览",
             memory_compiler_help,
         ),
@@ -23383,8 +23644,8 @@ def build_html(data):
             global_memory_help,
         ),
         project_memory_header=make_panel_header(
-            "项目上下文",
-            "按项目、仓库或工作区隔离，也会参与 bounded host context 注入",
+            "通用上下文",
+            "跨项目复用的上下文候选，也会参与 bounded host context 注入",
             project_memory_help,
         ),
         on_demand_memory_header=make_panel_header(
