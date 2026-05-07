@@ -25,6 +25,7 @@ from openrelix_overview.memory_context import (
     memory_record_is_host_context_candidate,
     memory_scope_from_record,
 )
+from openrelix_overview.memory_feedback import apply_memory_feedback_map, load_memory_feedback_map
 
 
 PATHS = get_runtime_paths()
@@ -803,9 +804,17 @@ def personal_memory_group_key(item, bucket, title, scope, injection_policy):
     )
 
 
-def parse_personal_memory_registry(text, language=None, host_context_only=True, project_filter=None):
+def parse_personal_memory_registry(
+    text,
+    language=None,
+    host_context_only=True,
+    project_filter=None,
+    feedback_by_key=None,
+):
     language = current_language(language)
     grouped = {}
+    if feedback_by_key is None:
+        feedback_by_key = load_memory_feedback_map(PATHS)
     for raw_line in text.splitlines():
         line = raw_line.strip()
         if not line:
@@ -816,6 +825,7 @@ def parse_personal_memory_registry(text, language=None, host_context_only=True, 
             continue
         if not isinstance(item, dict):
             continue
+        item = apply_memory_feedback_map(item, feedback_by_key)
 
         bucket = str(item.get("bucket") or "").strip()
         if bucket not in {"durable", "session"}:
