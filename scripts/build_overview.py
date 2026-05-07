@@ -12935,6 +12935,23 @@ def make_window_summary_cards(window_overview, language=None):
             )
         open_button = ""
         if resume_command and resume_url:
+            codex_profile_scoped = bool(
+                str(codex_home or "").strip()
+                or str(codex_electron_user_data_path or "").strip()
+            )
+            open_label = localized("在 Codex App 打开", "Open in Codex App", language)
+            opened_label = localized("已发送", "Sent", language)
+            title_label = open_label
+            copy_resume_on_switch = ""
+            if codex_profile_scoped:
+                open_label = localized("切到 Codex App", "Switch to Codex App", language)
+                opened_label = localized("已切换", "Switched", language)
+                title_label = localized(
+                    "切到对应 Codex profile，并复制 resume 命令用于精确恢复",
+                    "Switch to the matching Codex profile and copy the resume command for exact restore",
+                    language,
+                )
+                copy_resume_on_switch = "1"
             open_button = """
           <button
             type="button"
@@ -12944,19 +12961,30 @@ def make_window_summary_cards(window_overview, language=None):
             data-codex-resume-id="{resume_app_session_id}"
             data-codex-home="{codex_home}"
             data-codex-electron-user-data-path="{codex_electron_user_data_path}"
+            data-resume-command="{resume_command}"
+            data-copy-resume-on-switch="{copy_resume_on_switch}"
             data-label="{open_label}"
             data-opening-label="{opening_label}"
             data-opened-label="{opened_label}"
+            data-focused-copied-label="{focused_copied_label}"
             data-error-label="{error_label}"
+            title="{title_label}"
           >{open_label}</button>""".format(
                 resume_url=escape(resume_url, quote=True),
                 resume_app_session_id=escape(resume_app_session_id, quote=True),
                 codex_home=escape(codex_home, quote=True),
                 codex_electron_user_data_path=escape(codex_electron_user_data_path, quote=True),
-                open_label=escape(localized("在 Codex App 打开", "Open in Codex App", language), quote=True),
+                resume_command=escape(resume_command, quote=True),
+                copy_resume_on_switch=escape(copy_resume_on_switch, quote=True),
+                open_label=escape(open_label, quote=True),
                 opening_label=escape(localized("正在打开", "Opening", language), quote=True),
-                opened_label=escape(localized("已切换", "Switched", language), quote=True),
+                opened_label=escape(opened_label, quote=True),
+                focused_copied_label=escape(
+                    localized("已切换，命令已复制", "Switched, command copied", language),
+                    quote=True,
+                ),
                 error_label=escape(localized("打开失败", "Open failed", language), quote=True),
+                title_label=escape(title_label, quote=True),
             )
         elif resume_command and resume_app_action == "claude_desktop" and resume_app_session_id:
             open_button = """
@@ -21286,12 +21314,16 @@ def build_html(data):
         const codexUrl = (button.getAttribute("data-codex-url") || "").trim();
         const codexHome = (button.getAttribute("data-codex-home") || "").trim();
         const codexElectronUserDataPath = (button.getAttribute("data-codex-electron-user-data-path") || "").trim();
+        const resumeCommand = button.getAttribute("data-resume-command") || "";
+        const shouldCopyResumeOnSwitch = button.getAttribute("data-copy-resume-on-switch") === "1" && !!resumeCommand;
         const endpoint = openrelixMetaAttr("data-codex-desktop-endpoint");
         const token = openrelixMetaAttr("data-update-token");
         const originalLabel = button.getAttribute("data-label") || button.textContent;
         const openingLabel = button.getAttribute("data-opening-label") || t("正在打开");
         const openedLabel = button.getAttribute("data-opened-label") || t("已发送");
+        const focusedCopiedLabel = button.getAttribute("data-focused-copied-label") || openedLabel;
         const errorLabel = button.getAttribute("data-error-label") || t("打开失败");
+        let resumeCopyPromise = null;
 
         function fallbackOpen() {{
           if (codexUrl && !codexHome && !codexElectronUserDataPath) {{
@@ -21310,6 +21342,13 @@ def build_html(data):
 
         button.disabled = true;
         button.textContent = openingLabel;
+        if (shouldCopyResumeOnSwitch) {{
+          resumeCopyPromise = copyText(resumeCommand).then(function () {{
+            return true;
+          }}).catch(function () {{
+            return false;
+          }});
+        }}
         const headers = {{ "Content-Type": "application/json" }};
         if (token) {{
           headers["X-OpenRelix-Token"] = token;
@@ -21333,8 +21372,16 @@ def build_html(data):
               return payload;
             }});
           }})
-          .then(function () {{
-            button.textContent = openedLabel;
+          .then(function (payload) {{
+            if (payload && payload.thread_navigation === "profile_focus_only" && resumeCopyPromise) {{
+              return resumeCopyPromise.then(function (copied) {{
+                return copied ? focusedCopiedLabel : openedLabel;
+              }});
+            }}
+            return openedLabel;
+          }})
+          .then(function (nextLabel) {{
+            button.textContent = nextLabel;
             resetButtonLabelLater(button, originalLabel);
           }})
           .catch(function () {{

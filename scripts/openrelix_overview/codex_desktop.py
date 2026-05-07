@@ -81,6 +81,8 @@ def open_existing_codex_profile(thread_id, process_id=0):
         "pid": int(process_id or 0),
         "status": "focused",
         "focus_result": focused,
+        "thread_navigation": "profile_focus_only",
+        "exact_thread_navigation": False,
     }
 
 
@@ -151,4 +153,6 @@ def start_codex_desktop_resume(
         "resume_id": thread_id,
         "used_profile": bool(codex_home or electron_user_data_path),
         "reused_running_profile": False,
+        "thread_navigation": "deeplink_launch",
+        "exact_thread_navigation": True,
     }

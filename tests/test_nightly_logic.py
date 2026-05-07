@@ -5603,6 +5603,13 @@ Keep my own note.
         self.assertIn("data-window-resume-open", html)
         self.assertIn('data-codex-home="/tmp/openrelix-codex-home"', html)
         self.assertIn('data-codex-electron-user-data-path="/tmp/OpenRelix Codex Profile"', html)
+        self.assertIn('data-copy-resume-on-switch="1"', html)
+        self.assertIn(
+            'data-resume-command="CODEX_HOME=/tmp/openrelix-codex-home codex resume {}'.format(thread_id),
+            html,
+        )
+        self.assertIn("切到 Codex App", html)
+        self.assertIn("已切换，命令已复制", html)
         self.assertIn('CODEX_HOME=/tmp/openrelix-codex-home codex resume {}'.format(thread_id), html)
 
     def test_window_cards_show_claude_app_button_when_desktop_resume_supported(self):
@@ -6344,6 +6351,8 @@ Keep my own note.
 
         self.assertTrue(result["ok"])
         self.assertEqual(result["pid"], 4321)
+        self.assertEqual(result["thread_navigation"], "deeplink_launch")
+        self.assertTrue(result["exact_thread_navigation"])
         command = popen.call_args.args[0]
         env = popen.call_args.kwargs["env"]
         self.assertEqual(command, [str(app_binary), "codex://threads/{}".format(thread_id)])
@@ -6379,6 +6388,8 @@ Keep my own note.
 
         self.assertTrue(result["ok"])
         self.assertEqual(result["status"], "focused")
+        self.assertEqual(result["thread_navigation"], "profile_focus_only")
+        self.assertFalse(result["exact_thread_navigation"])
         self.assertTrue(result["reused_running_profile"])
         self.assertEqual(result["target_process_id"], 2468)
         focus.assert_called_once_with(2468)
