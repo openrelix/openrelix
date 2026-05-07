@@ -155,14 +155,67 @@ def _iso_for_datetime(value):
     return value.astimezone().isoformat(timespec="seconds")
 
 
-def _schedule_next_interval(now, seconds):
+def _coerce_epoch(value):
+    try:
+        value = float(value)
+    except (TypeError, ValueError):
+        return 0.0
+    return value if value > 0 else 0.0
+
+
+def _datetime_from_epoch(value, now):
+    value = _coerce_epoch(value)
+    if not value:
+        return None
+    return datetime.fromtimestamp(value, tz=now.tzinfo)
+
+
+def _matches_interval_job(row, label, pipeline, stage, learn_memory):
+    if not isinstance(row, dict):
+        return False
+    row_pipeline = str(row.get("pipeline") or "")
+    row_stage = str(row.get("stage") or "")
+    expected = [(pipeline, stage)]
+    if label == "io.github.openrelix.overview-refresh" and learn_memory:
+        expected.insert(0, ("nightly_pipeline", stage))
+    for expected_pipeline, expected_stage in expected:
+        if row_pipeline != expected_pipeline:
+            continue
+        if expected_stage and row_stage != expected_stage:
+            continue
+        return True
+    return False
+
+
+def _latest_interval_anchor(status_payload, label, pipeline, stage, learn_memory):
+    if not isinstance(status_payload, dict):
+        return 0.0
+    rows = []
+    if status_payload.get("pipeline"):
+        rows.append(status_payload)
+    rows.extend(status_payload.get("recent_runs") or [])
+    latest = 0.0
+    for row in rows:
+        if not _matches_interval_job(row, label, pipeline, stage, learn_memory):
+            continue
+        anchor = (
+            _coerce_epoch(row.get("ended_at"))
+            or _coerce_epoch(row.get("updated_at"))
+            or _coerce_epoch(row.get("started_at"))
+        )
+        latest = max(latest, anchor)
+    return latest
+
+
+def _schedule_next_interval(now, seconds, anchor=None):
     try:
         seconds = int(seconds)
     except (TypeError, ValueError):
         return None
     if seconds <= 0:
         return None
-    return now + timedelta(seconds=seconds)
+    base = _datetime_from_epoch(anchor, now) if anchor else None
+    return (base or now) + timedelta(seconds=seconds)
 
 
 def _schedule_next_calendar(now, calendar):
@@ -181,7 +234,7 @@ def _schedule_next_calendar(now, calendar):
     return candidate
 
 
-def scheduled_runs(paths=None, now=None):
+def scheduled_runs(paths=None, now=None, status_payload=None):
     paths = paths or get_runtime_paths()
     now = now or datetime.now().astimezone()
     rows = []
@@ -189,17 +242,6 @@ def scheduled_runs(paths=None, now=None):
         plist_path = paths.launch_agents_dir / "{}.plist".format(label)
         payload = _load_plist(plist_path)
         if not payload:
-            continue
-        next_at = None
-        schedule_kind = ""
-        interval = payload.get("StartInterval")
-        if interval:
-            next_at = _schedule_next_interval(now, interval)
-            schedule_kind = "interval"
-        if next_at is None:
-            next_at = _schedule_next_calendar(now, payload.get("StartCalendarInterval"))
-            schedule_kind = "calendar" if next_at is not None else ""
-        if next_at is None:
             continue
         env = payload.get("EnvironmentVariables") if isinstance(payload.get("EnvironmentVariables"), dict) else {}
         learn_memory = str(env.get("OPENRELIX_REFRESH_LEARN_MEMORY", "")).strip().lower() in {
@@ -213,7 +255,20 @@ def scheduled_runs(paths=None, now=None):
             learn_window_days = int(env.get("OPENRELIX_REFRESH_LEARN_WINDOW_DAYS") or 0)
         except (TypeError, ValueError):
             learn_window_days = 0
-        rows.append({
+        next_at = None
+        schedule_kind = ""
+        interval = payload.get("StartInterval")
+        interval_anchor = 0.0
+        if interval:
+            interval_anchor = _latest_interval_anchor(status_payload, label, pipeline, stage, learn_memory)
+            next_at = _schedule_next_interval(now, interval, anchor=interval_anchor)
+            schedule_kind = "interval"
+        if next_at is None:
+            next_at = _schedule_next_calendar(now, payload.get("StartCalendarInterval"))
+            schedule_kind = "calendar" if next_at is not None else ""
+        if next_at is None:
+            continue
+        row = {
             "label": label,
             "title": title,
             "title_en": title_en,
@@ -225,7 +280,13 @@ def scheduled_runs(paths=None, now=None):
             "stage": stage,
             "learn_memory": learn_memory,
             "learn_window_days": learn_window_days,
-        })
+        }
+        if interval_anchor:
+            row["interval_anchor_at"] = interval_anchor
+            row["interval_anchor_at_iso"] = _iso_for_datetime(
+                _datetime_from_epoch(interval_anchor, now)
+            )
+        rows.append(row)
     rows.sort(key=lambda item: item.get("next_at") or 0)
     return rows
 
@@ -268,8 +329,6 @@ def load_status(paths=None):
     payload.setdefault("status", "idle")
     payload.setdefault("steps", [])
     payload["recent_runs"] = _sanitize_recent_runs(payload.get("recent_runs", []))
-    payload["scheduled_runs"] = scheduled_runs(paths)
-    payload["next_run"] = payload["scheduled_runs"][0] if payload["scheduled_runs"] else {}
     if payload.get("status") == "running":
         started_at = float(payload.get("started_at") or 0)
         if payload.get("pid") and not process_is_alive(payload.get("pid")):
@@ -291,6 +350,8 @@ def load_status(paths=None):
                 existing=payload,
             )
     payload = attach_failure_hint(payload)
+    payload["scheduled_runs"] = scheduled_runs(paths, status_payload=payload)
+    payload["next_run"] = payload["scheduled_runs"][0] if payload["scheduled_runs"] else {}
     return payload
 
 
