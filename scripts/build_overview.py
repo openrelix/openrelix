@@ -11216,9 +11216,7 @@ def make_memory_policy_count_widget(policy_views):
 def make_memory_context_compiler_body(policy_views):
     compiler = (policy_views or {}).get("compiler", {})
     total_count = safe_int(compiler.get("total_count", 0))
-    host_candidate_count = safe_int(
-        compiler.get("host_context_candidate_count", compiler.get("global_candidate_count", 0))
-    )
+    global_context_count = safe_int(compiler.get("global_candidate_count", 0))
     project_count = safe_int(compiler.get("project_context_count", 0))
     on_demand_count = safe_int(compiler.get("on_demand_count", 0))
     meter_percent = max(0, min(100, safe_int(compiler.get("meter_percent", 0))))
@@ -11258,11 +11256,11 @@ def make_memory_context_compiler_body(policy_views):
                 "Canonical entries stored by OpenRelix",
             ),
             stat_card(
-                "可进上下文",
-                "Context-ready",
-                host_candidate_count,
-                "通用和项目上下文候选",
-                "General and project context candidates",
+                "通用上下文",
+                "General Context",
+                global_context_count,
+                "会进入通用 host context 的候选",
+                "Candidates for the general host context",
             ),
             stat_card(
                 "项目上下文",
