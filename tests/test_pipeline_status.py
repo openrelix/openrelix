@@ -137,6 +137,86 @@ class PipelineStatusTests(unittest.TestCase):
             self.assertEqual(rows[0]["learn_window_days"], 7)
             self.assertEqual(payload["next_run"]["label"], "io.github.openrelix.nightly-organize")
 
+    def test_interval_schedule_uses_latest_matching_run_as_anchor(self):
+        with TemporaryDirectory() as tmpdir:
+            paths = runtime_paths_for_state(tmpdir)
+            launch_root = Path(tmpdir) / "LaunchAgents"
+            launch_root.mkdir(parents=True)
+            paths = replace(paths, launch_agents_dir=launch_root)
+            (launch_root / "io.github.openrelix.overview-refresh.plist").write_text(
+                """<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>io.github.openrelix.overview-refresh</string>
+  <key>StartInterval</key>
+  <integer>1800</integer>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>OPENRELIX_REFRESH_LEARN_MEMORY</key>
+    <string>1</string>
+    <key>OPENRELIX_REFRESH_STAGE</key>
+    <string>preliminary</string>
+    <key>OPENRELIX_REFRESH_LEARN_WINDOW_DAYS</key>
+    <string>7</string>
+  </dict>
+</dict>
+</plist>
+""",
+                encoding="utf-8",
+            )
+            status_payload = {
+                "pipeline": "nightly_pipeline",
+                "stage": "preliminary",
+                "ended_at": datetime.fromisoformat("2026-05-07T20:02:05+08:00").timestamp(),
+                "recent_runs": [
+                    {
+                        "pipeline": "refresh_overview",
+                        "stage": "manual",
+                        "ended_at": datetime.fromisoformat("2026-05-07T20:25:00+08:00").timestamp(),
+                    }
+                ],
+            }
+
+            rows = pipeline_status.scheduled_runs(
+                paths=paths,
+                now=datetime.fromisoformat("2026-05-07T20:28:00+08:00"),
+                status_payload=status_payload,
+            )
+
+            self.assertEqual(rows[0]["next_at_iso"], "2026-05-07T20:32:05+08:00")
+            self.assertEqual(rows[0]["interval_anchor_at_iso"], "2026-05-07T20:02:05+08:00")
+
+    def test_interval_schedule_falls_back_to_now_without_matching_run(self):
+        with TemporaryDirectory() as tmpdir:
+            paths = runtime_paths_for_state(tmpdir)
+            launch_root = Path(tmpdir) / "LaunchAgents"
+            launch_root.mkdir(parents=True)
+            paths = replace(paths, launch_agents_dir=launch_root)
+            (launch_root / "io.github.openrelix.overview-refresh.plist").write_text(
+                """<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>io.github.openrelix.overview-refresh</string>
+  <key>StartInterval</key>
+  <integer>1800</integer>
+</dict>
+</plist>
+""",
+                encoding="utf-8",
+            )
+
+            rows = pipeline_status.scheduled_runs(
+                paths=paths,
+                now=datetime.fromisoformat("2026-05-07T20:28:00+08:00"),
+                status_payload={"recent_runs": []},
+            )
+
+            self.assertEqual(rows[0]["next_at_iso"], "2026-05-07T20:58:00+08:00")
+
 
 if __name__ == "__main__":
     unittest.main()
