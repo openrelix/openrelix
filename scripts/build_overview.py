@@ -22174,6 +22174,79 @@ def build_html(data):
         }});
       }}
 
+      function appendZeroTokenEndRow(rows, tokenUsage, targetGroup) {{
+        const context = tokenUsage || {{}};
+        const endDateText = String(
+          context.range_end ||
+          (state.tokenFilters && state.tokenFilters.endDate) ||
+          ""
+        );
+        const match = endDateText.match(/^(\\d{{4}})-(\\d{{2}})-(\\d{{2}})$/);
+        if (!match) {{
+          return rows.slice();
+        }}
+        const group = normalizeTokenGroupBy(targetGroup);
+        const nextRows = rows.slice();
+        const endIso = match[1] + "-" + match[2] + "-" + match[3];
+        const endMonth = match[1] + "-" + match[2];
+        if (group === "month") {{
+          const hasMonth = nextRows.some(function (row) {{
+            return tokenRowMonthKey(row, context) === endMonth;
+          }});
+          if (hasMonth) {{
+            return nextRows;
+          }}
+        }} else {{
+          const hasDay = nextRows.some(function (row) {{
+            const rowDate = String(row.date || row.raw_date || row.sort_key || "");
+            return rowDate.slice(0, 10) === endIso;
+          }});
+          if (hasDay) {{
+            return nextRows;
+          }}
+        }}
+        const label = group === "month" ? endMonth : endIso.slice(5);
+        const rawDate = group === "month" ? endMonth : endIso;
+        const rowDate = group === "month" ? endMonth + "-01" : endIso;
+        const zeroValues = {{
+          total: 0,
+          input: 0,
+          cached: 0,
+          cacheCreate: 0,
+          output: 0,
+          reasoning: 0,
+        }};
+        nextRows.push({{
+          label: label,
+          date: rowDate,
+          raw_date: rawDate,
+          sort_key: rawDate,
+          group_by: group,
+          day_count: 1,
+          active_day_count: 0,
+          value: 0,
+          totalTokens: 0,
+          totalInputTokens: 0,
+          uncachedInputTokens: 0,
+          cachedInputTokens: 0,
+          cacheCreationTokens: 0,
+          outputTokens: 0,
+          reasoningOutputTokens: 0,
+          display: compactTokenWithCostValue(0, 0),
+          token_display: compactTokenValue(0),
+          costUSD: 0,
+          cost_display: formatUsdValue(0),
+          details: tokenBreakdownDetailsFromValues(zeroValues),
+          details_heading: currentLanguage === "en"
+            ? "Token breakdown for " + label
+            : label + " Token 构成",
+          tone: "token-daily-empty",
+        }});
+        return nextRows.sort(function (left, right) {{
+          return String(left.sort_key || "").localeCompare(String(right.sort_key || ""));
+        }});
+      }}
+
       function syncTokenFilterControls(tokenUsage) {{
         const filters = state.tokenFilters || {{}};
         const provider = normalizeTokenProvider(filters.provider);
@@ -22416,9 +22489,10 @@ def build_html(data):
           range_start: derived.range_start || (state.tokenFilters && state.tokenFilters.startDate) || "",
           range_end: derived.range_end || (state.tokenFilters && state.tokenFilters.endDate) || "",
         }});
-        const displayRows = targetGroup === "month" && sourceGroup !== "month"
+        let displayRows = targetGroup === "month" && sourceGroup !== "month"
           ? aggregateDailyRowsByMonth(sourceRows, monthContext)
           : sourceRows.slice();
+        displayRows = appendZeroTokenEndRow(displayRows, monthContext, targetGroup);
         derived.group_by = targetGroup;
         derived.daily_rows = displayRows;
         const activeRows = displayRows.filter(function (row) {{

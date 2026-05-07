@@ -1,7 +1,7 @@
 """Pure token-usage view shaping for overview and token-live server."""
 
 import math
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from decimal import Decimal, ROUND_HALF_UP
 
 from .common import (
@@ -424,6 +424,74 @@ def recent_token_daily_rows(
     return rows[-window_days:]
 
 
+def make_empty_token_daily_row(day, provider="", provider_label="", language=None):
+    if isinstance(day, datetime):
+        resolved_day = day.date()
+    elif isinstance(day, date):
+        resolved_day = day
+    else:
+        parsed_day = parse_token_usage_date(day)
+        resolved_day = parsed_day.date() if parsed_day else current_local_datetime().date()
+    parsed_date = datetime.combine(resolved_day, datetime.min.time())
+    return {
+        "raw_date": resolved_day.isoformat(),
+        "date_label": resolved_day.strftime("%m-%d"),
+        "sort_key": parsed_date.isoformat(),
+        "parsed_date": parsed_date,
+        "date": resolved_day.isoformat(),
+        "inputTokens": 0,
+        "totalInputTokens": 0,
+        "uncachedInputTokens": 0,
+        "cachedInputTokens": 0,
+        "cacheCreationTokens": 0,
+        "outputTokens": 0,
+        "reasoningOutputTokens": 0,
+        "totalTokens": 0,
+        "display_total_tokens": compact_token(0, language=language),
+        "costUSD": 0.0,
+        "provider": provider,
+        "providerLabel": provider_label,
+        "providers": {},
+    }
+
+
+def ensure_token_end_period_row(parsed_rows, end_date, group_by="day", provider="", provider_label="", language=None):
+    if not end_date:
+        return list(parsed_rows)
+    target_date = end_date.date() if isinstance(end_date, datetime) else end_date
+    if not isinstance(target_date, date):
+        parsed_target = parse_token_usage_date(target_date)
+        if not parsed_target:
+            return list(parsed_rows)
+        target_date = parsed_target.date()
+
+    rows = list(parsed_rows)
+    if group_by == "month":
+        target_month = target_date.strftime("%Y-%m")
+        has_target_period = any(
+            row.get("parsed_date") and row["parsed_date"].strftime("%Y-%m") == target_month
+            for row in rows
+        )
+    else:
+        has_target_period = any(
+            row.get("parsed_date") and row["parsed_date"].date() == target_date
+            for row in rows
+        )
+    if has_target_period:
+        return rows
+
+    rows.append(
+        make_empty_token_daily_row(
+            target_date,
+            provider=provider,
+            provider_label=provider_label,
+            language=language,
+        )
+    )
+    rows.sort(key=lambda item: item["sort_key"])
+    return rows
+
+
 def build_token_usage_view(
     ccusage_result,
     language=None,
@@ -435,6 +503,7 @@ def build_token_usage_view(
     language = current_language(language)
     group_by = normalize_token_group_by(group_by or ccusage_result.get("group_by"))
     window_days = max(safe_int(ccusage_result.get("window_days", CCUSAGE_WINDOW_DAYS)), 1)
+    now = now_func()
     refreshed_at = ccusage_result.get("fetched_at", "")
     refreshed_at_display = display_local_datetime(refreshed_at)
     requested_start = parse_token_usage_date(start_date or ccusage_result.get("range_start"))
@@ -528,19 +597,27 @@ def build_token_usage_view(
     else:
         parsed_rows = recent_token_daily_rows(parsed_rows, window_days=window_days, now_func=now_func)
 
+    end_period = requested_end or datetime.combine(now.date(), datetime.min.time())
+    parsed_rows = ensure_token_end_period_row(
+        parsed_rows,
+        end_period,
+        group_by=group_by,
+        provider=ccusage_result.get("provider", "codex"),
+        provider_label=ccusage_result.get("provider_label", "ccusage"),
+        language=language,
+    )
+
     if requested_start:
         effective_start = requested_start
     elif parsed_rows and parsed_rows[0].get("parsed_date"):
         effective_start = parsed_rows[0]["parsed_date"]
     else:
-        effective_start = datetime.combine(now_func().date() - timedelta(days=window_days - 1), datetime.min.time())
+        effective_start = datetime.combine(now.date() - timedelta(days=window_days - 1), datetime.min.time())
 
     if requested_end:
         effective_end = requested_end
-    elif parsed_rows and parsed_rows[-1].get("parsed_date"):
-        effective_end = parsed_rows[-1]["parsed_date"]
     else:
-        effective_end = datetime.combine(now_func().date(), datetime.min.time())
+        effective_end = datetime.combine(now.date(), datetime.min.time())
 
     display_rows = aggregate_monthly_token_rows(parsed_rows, language=language) if group_by == "month" else parsed_rows
     max_daily_tokens = max((row["totalTokens"] for row in display_rows), default=0)
