@@ -21757,6 +21757,16 @@ def build_html(data):
         }}, 1600);
       }}
 
+      function reviewPromptTextFromNode(node) {{
+        if (!node) {{
+          return "";
+        }}
+        if (node.tagName && node.tagName.toLowerCase() === "template" && node.content) {{
+          return node.content.textContent || "";
+        }}
+        return node.textContent || "";
+      }}
+
       function nativeExternalOpenHandler() {{
         return (
           window.webkit &&
@@ -22179,7 +22189,7 @@ def build_html(data):
             const promptTarget = reviewButton.getAttribute("data-review-prompt-target") || "";
             const promptNode = promptTarget ? document.getElementById(promptTarget) : null;
             const prompt = promptNode
-              ? promptNode.textContent
+              ? reviewPromptTextFromNode(promptNode)
               : (reviewButton.getAttribute("data-review-prompt") || "");
             copyText(prompt).then(function () {{
               flashButtonLabel(

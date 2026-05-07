@@ -9758,6 +9758,8 @@ Keep my own note.
         self.assertIn("openrelixOpenExternal", html)
         self.assertIn("wireExternalPanelLinks();", html)
         self.assertIn("wireWindowResumeActions();", html)
+        self.assertIn("function reviewPromptTextFromNode(node)", html)
+        self.assertIn("node.content.textContent", html)
 
     def test_daily_summary_view_carries_bilingual_dynamic_fields(self):
         view = build_overview.build_daily_summary_view(
