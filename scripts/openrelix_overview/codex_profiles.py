@@ -59,6 +59,8 @@ def parse_codex_profiles_from_process_text(text):
         process_id, line = split_process_line(raw_line)
         if not line or "CODEX_HOME=" not in line:
             continue
+        if "/Contents/MacOS/Codex Helper" in line:
+            continue
         if "/Contents/MacOS/Codex" not in line or "CODEX_ELECTRON_USER_DATA_PATH=" not in line:
             continue
         codex_home = read_env_value(line, "CODEX_HOME")

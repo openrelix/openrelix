@@ -73,22 +73,15 @@ def focus_codex_process(process_id, timeout=0.5):
 
 
 def open_existing_codex_profile(thread_id, process_id=0):
-    command = build_codex_existing_profile_open_command(thread_id)
-    if not command:
+    if not codex_thread_url(thread_id):
         return {"ok": False, "error": "invalid_codex_thread_id"}
-    focus_codex_process(process_id)
-    try:
-        proc = subprocess.Popen(
-            command,
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            close_fds=True,
-            start_new_session=True,
-        )
-    except OSError as exc:
-        return {"ok": False, "error": "codex_desktop_open_failed", "detail": str(exc)}
-    return {"ok": True, "pid": proc.pid, "status": "reused"}
+    focused = focus_codex_process(process_id)
+    return {
+        "ok": True,
+        "pid": int(process_id or 0),
+        "status": "focused",
+        "focus_result": focused,
+    }
 
 
 def start_codex_desktop_resume(

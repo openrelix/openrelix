@@ -29,6 +29,21 @@ class CollectCodexActivityTests(unittest.TestCase):
         self.assertEqual(profiles[0].source, "running")
         self.assertEqual(profiles[0].process_id, 12345)
 
+    def test_running_codex_process_text_ignores_helper_processes(self):
+        ps_text = (
+            "12345 /Applications/Codex.app/Contents/Frameworks/Codex Helper (Renderer).app/Contents/MacOS/Codex Helper "
+            "--type=renderer CODEX_HOME=/tmp/.codex-openrelix-pro "
+            "CODEX_ELECTRON_USER_DATA_PATH=/tmp/Application Support/Codex-OpenRelix-Pro\n"
+            "12346 /Applications/Codex.app/Contents/MacOS/Codex /repo "
+            "CODEX_HOME=/tmp/.codex-openrelix-pro "
+            "CODEX_ELECTRON_USER_DATA_PATH=/tmp/Application Support/Codex-OpenRelix-Pro\n"
+        )
+
+        profiles = codex_profiles.parse_codex_profiles_from_process_text(ps_text)
+
+        self.assertEqual(len(profiles), 1)
+        self.assertEqual(profiles[0].process_id, 12346)
+
     def test_history_collection_reads_requested_codex_home(self):
         from tempfile import TemporaryDirectory
         import json

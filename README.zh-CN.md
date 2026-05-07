@@ -70,7 +70,7 @@ Linux 和 Windows 是后续工作。部分底层 Python 脚本已经把路径做
 
 Codex app-server 采集是默认 Codex adapter 路径的一部分。默认 `--activity-host all` 和 `--activity-source auto`：有 Claude Code transcript 时会读取 Claude Code；Codex 侧先尝试 `codex app-server`，把每个 host 映射成同一套 raw window 格式并保留 `ai_host` 字段；app-server 不可用时再回退到 `CODEX_HOME/history.jsonl` 和 `CODEX_HOME/sessions/**/*.jsonl`。
 
-macOS 上，OpenRelix 还会从运行中的 Codex desktop 进程环境里识别 `CODEX_HOME` 和 `CODEX_ELECTRON_USER_DATA_PATH`。这样面板可以采集多个活跃 Codex home 的窗口，并把“在 Codex App 打开”路由回对应的 desktop profile。若要采集当前没运行的额外 home，可以把 `OPENRELIX_EXTRA_CODEX_HOMES` 或 `OPENRELIX_CODEX_HOMES` 设置成逗号分隔列表。
+macOS 上，OpenRelix 还会从运行中的 Codex desktop 进程环境里识别 `CODEX_HOME` 和 `CODEX_ELECTRON_USER_DATA_PATH`。这样面板可以采集多个活跃 Codex home 的窗口，并在隔离 home 场景下聚焦对应的 desktop profile，避免回退到全局 `codex://` URL scheme。若要采集当前没运行的额外 home，可以把 `OPENRELIX_EXTRA_CODEX_HOMES` 或 `OPENRELIX_CODEX_HOMES` 设置成逗号分隔列表。
 
 ```bash
 npx openrelix install --activity-source auto

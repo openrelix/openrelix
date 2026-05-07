@@ -12941,7 +12941,7 @@ def make_window_summary_cards(window_overview, language=None):
                 codex_electron_user_data_path=escape(codex_electron_user_data_path, quote=True),
                 open_label=escape(localized("在 Codex App 打开", "Open in Codex App", language), quote=True),
                 opening_label=escape(localized("正在打开", "Opening", language), quote=True),
-                opened_label=escape(localized("已发送", "Sent", language), quote=True),
+                opened_label=escape(localized("已切换", "Switched", language), quote=True),
                 error_label=escape(localized("打开失败", "Open failed", language), quote=True),
             )
         elif resume_command and resume_app_action == "claude_desktop" and resume_app_session_id:
@@ -21268,7 +21268,7 @@ def build_html(data):
         const errorLabel = button.getAttribute("data-error-label") || t("打开失败");
 
         function fallbackOpen() {{
-          if (codexUrl) {{
+          if (codexUrl && !codexHome && !codexElectronUserDataPath) {{
             window.location.href = codexUrl;
             return true;
           }}

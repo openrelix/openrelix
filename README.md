@@ -73,7 +73,7 @@ The current public adapters cover Codex CLI / Codex app-server and Claude Code C
 
 Codex app-server collection is part of the default Codex adapter path. By default, OpenRelix uses `--activity-host all` and `--activity-source auto`: it reads Claude Code transcripts when present, tries `codex app-server` for Codex threads, maps every host into the same raw window format with an `ai_host` field, and falls back to `CODEX_HOME/history.jsonl` plus `CODEX_HOME/sessions/**/*.jsonl` when app-server is unavailable.
 
-On macOS, OpenRelix also detects running Codex desktop profiles by reading the process environment for `CODEX_HOME` and `CODEX_ELECTRON_USER_DATA_PATH`. This lets the panel collect windows from multiple active Codex homes and route "Open in Codex App" back to the matching desktop profile. For extra homes that are not currently running, set `OPENRELIX_EXTRA_CODEX_HOMES` or `OPENRELIX_CODEX_HOMES` to a comma-separated list.
+On macOS, OpenRelix also detects running Codex desktop profiles by reading the process environment for `CODEX_HOME` and `CODEX_ELECTRON_USER_DATA_PATH`. This lets the panel collect windows from multiple active Codex homes and focus the matching desktop profile without falling back to the global `codex://` URL scheme for isolated homes. For extra homes that are not currently running, set `OPENRELIX_EXTRA_CODEX_HOMES` or `OPENRELIX_CODEX_HOMES` to a comma-separated list.
 
 ```bash
 npx openrelix install --activity-source auto
