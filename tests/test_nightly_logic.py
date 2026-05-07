@@ -4445,6 +4445,25 @@ Keep my own note.
             "Project Context",
         )
 
+    def test_memory_context_compiler_card_counts_general_context_only(self):
+        html = build_overview.make_memory_context_compiler_body(
+            {
+                "compiler": {
+                    "total_count": 86,
+                    "global_candidate_count": 25,
+                    "host_context_candidate_count": 73,
+                    "project_context_count": 48,
+                    "on_demand_count": 4,
+                }
+            }
+        )
+
+        self.assertIn("通用上下文", html)
+        self.assertIn("会进入通用 host context 的候选", html)
+        self.assertIn(">25</strong>", html)
+        self.assertNotIn("可进上下文", html)
+        self.assertNotIn(">73</strong>", html)
+
     def test_context_memory_preview_only_uses_integrated_context_candidates(self):
         budget = asset_runtime.memory_summary_budget_from_max(5000)
         rows = [
