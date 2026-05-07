@@ -77,8 +77,8 @@ INJECTION_POLICY_ORDER = (
 )
 
 POLICY_LABELS = {
-    INJECTION_GLOBAL_CONTEXT: ("全局上下文", "Global Context"),
-    INJECTION_PROJECT_CONTEXT: ("通用上下文", "General Context"),
+    INJECTION_GLOBAL_CONTEXT: ("通用上下文", "General Context"),
+    INJECTION_PROJECT_CONTEXT: ("项目上下文", "Project Context"),
     INJECTION_ON_DEMAND: ("按需召回", "On-demand Recall"),
     INJECTION_LOCAL_ONLY: ("本地保留", "Local Only"),
     INJECTION_NEVER: ("禁止注入", "Never Inject"),

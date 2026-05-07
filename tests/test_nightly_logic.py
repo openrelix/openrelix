@@ -4395,6 +4395,24 @@ Keep my own note.
         )
         self.assertTrue(overview_memory_context.memory_record_is_low_priority(downvoted))
 
+    def test_memory_context_policy_labels_use_general_and_project_context(self):
+        self.assertEqual(
+            overview_memory_context.policy_label(overview_memory_context.INJECTION_GLOBAL_CONTEXT, language="zh"),
+            "通用上下文",
+        )
+        self.assertEqual(
+            overview_memory_context.policy_label(overview_memory_context.INJECTION_GLOBAL_CONTEXT, language="en"),
+            "General Context",
+        )
+        self.assertEqual(
+            overview_memory_context.policy_label(overview_memory_context.INJECTION_PROJECT_CONTEXT, language="zh"),
+            "项目上下文",
+        )
+        self.assertEqual(
+            overview_memory_context.policy_label(overview_memory_context.INJECTION_PROJECT_CONTEXT, language="en"),
+            "Project Context",
+        )
+
     def test_context_memory_preview_only_uses_integrated_context_candidates(self):
         budget = asset_runtime.memory_summary_budget_from_max(5000)
         rows = [
