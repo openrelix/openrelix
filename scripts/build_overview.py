@@ -10996,8 +10996,8 @@ def make_side_nav():
         ("group", "记忆层", "Memory Layer"),
         ("link", "memory-section", "个人资产记忆", "Personal Asset Memory", "个人资产记忆", "Personal Asset Memory"),
         ("child", "personal-memory-compiler-section", "总览", "Overview", "个人资产记忆-总览", "Personal Asset Memory - Overview"),
-        ("child", "personal-memory-global-section", "全局上下文", "Global Context", "个人资产记忆-全局上下文", "Personal Asset Memory - Global Context"),
-        ("child", "personal-memory-project-section", "通用上下文", "General Context", "个人资产记忆-通用上下文", "Personal Asset Memory - General Context"),
+        ("child", "personal-memory-global-section", "通用上下文", "General Context", "个人资产记忆-通用上下文", "Personal Asset Memory - General Context"),
+        ("child", "personal-memory-project-section", "项目上下文", "Project Context", "个人资产记忆-项目上下文", "Personal Asset Memory - Project Context"),
         ("child", "personal-memory-on-demand-section", "按需召回", "On-demand Recall", "个人资产记忆-按需召回", "Personal Asset Memory - On-demand Recall"),
         ("child", "personal-memory-local-section", "本地保留", "Local Only", "个人资产记忆-本地保留", "Personal Asset Memory - Local Only"),
         ("link", "codex-native-section", "Codex 原生记忆", "Codex Native Memory", "Codex 原生记忆", "Codex Native Memory"),
@@ -11261,12 +11261,12 @@ def make_memory_context_compiler_body(policy_views):
                 "可进上下文",
                 "Context-ready",
                 host_candidate_count,
-                "全局和通用上下文候选",
-                "Global and general context candidates",
+                "通用和项目上下文候选",
+                "General and project context candidates",
             ),
             stat_card(
-                "通用上下文",
-                "General Context",
+                "项目上下文",
+                "Project Context",
                 project_count,
                 "按项目、仓库或工作区边界召回",
                 "Recalled by project, repo, or workspace boundary",
@@ -14254,12 +14254,12 @@ def build_html(data):
             },
             {
                 "label": "怎么算",
-                "body": "先按 scope 和 injection_policy 归一化；通用上下文和高价值项目记忆会进入 bounded summary 候选。",
+                "body": "先按 scope 和 injection_policy 归一化；通用上下文和高价值项目上下文会进入 bounded summary 候选。",
             },
         ],
     )
     global_memory_help = make_help_popover(
-        "全局上下文",
+        "通用上下文",
         [
             {
                 "label": "统计什么",
@@ -14278,15 +14278,15 @@ def build_html(data):
         ],
     )
     project_memory_help = make_help_popover(
-        "通用上下文",
+        "项目上下文",
         [
             {
                 "label": "统计什么",
-                "body": "可跨项目复用、但需要带上下文边界的个人资产记忆；保存在 OpenRelix 登记册，并作为候选进入 bounded host context。",
+                "body": "绑定项目、仓库或工作区的个人资产记忆；保存在 OpenRelix 登记册，并作为带项目边界的候选进入 bounded host context。",
             },
             {
                 "label": "含义",
-                "body": "这类条目注入时会保留上下文标签，帮助模型识别适用边界，避免把局部经验误当成无边界规则。",
+                "body": "这类条目注入时会保留项目标签，帮助模型识别适用边界，避免把项目规则误当成通用规则。",
             },
         ],
     )
@@ -23750,13 +23750,13 @@ def build_html(data):
         ),
         memory_compiler_body=make_memory_context_compiler_body(memory_policy_views),
         global_memory_header=make_panel_header(
-            "全局上下文",
+            "通用上下文",
             "会进入 host context 的通用个人资产记忆",
             global_memory_help,
         ),
         project_memory_header=make_panel_header(
-            "通用上下文",
-            "跨项目复用的上下文候选，也会参与 bounded host context 注入",
+            "项目上下文",
+            "按项目、仓库或工作区隔离，也会参与 bounded host context 注入",
             project_memory_help,
         ),
         on_demand_memory_header=make_panel_header(
