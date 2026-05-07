@@ -201,7 +201,7 @@ The installer stores the selected runtime language, memory mode, activity source
 
 Memory is on by default. The default mode is `integrated`: the system records one reusable personal-memory registry into the active state root, then syncs a bounded summary into enabled host-native contexts. Codex and Claude Code read the same shared personal memory summary for context injection, but the panel keeps OpenRelix personal memory out of the host-native memory views. Use `--record-memory-only` when you want strict local recording without context injection, or `--disable-personal-memory` to disable this system's local memory writes.
 
-The context sync is intentionally compressed: duplicate personal memories are merged by signature, durable / session items are prioritized, low-priority items stay local-only, and the injected summary targets about 6.7K tokens with an 8K hard budget.
+The context sync is intentionally compressed: duplicate personal memories are merged by signature, durable / session items are prioritized, low-priority items stay local-only, and the injected summary targets about 6.7K tokens with an 8K hard budget. By default, global memory can use up to 10% of the configured summary budget and the active project can use up to 30%; with the default 8K budget, that is about 800 tokens for global memory plus 2.4K tokens for the current project. When no active project is provided, project-scoped memories stay out of the shared host context.
 
 ```bash
 ./install/install.sh --record-memory-only
@@ -281,7 +281,7 @@ For release updates, use `openrelix update --check` in automation and `openrelix
 
 If the chosen bin directory is not already on `PATH`, the installer appends a managed `PATH` block to your active shell rc file and prints the one-line `export PATH=...` command for the current shell.
 
-By default, the installer and routine `review` / `backfill` / `refresh` commands write the same bounded summary into enabled host contexts so Codex and Claude Code can read compressed personal memory. The full local asset memory still lives in the active state root, while each host remains the owner of its native files. Use `--record-memory-only` or `--no-memory-summary` when you want to keep this system's memory out of host-native context.
+By default, the installer and routine `review` / `backfill` / `refresh` commands write the same bounded global summary into enabled host contexts so Codex and Claude Code can read compressed personal memory. The full local asset memory still lives in the active state root, while each host remains the owner of its native files. Use `--record-memory-only` or `--no-memory-summary` when you want to keep this system's memory out of host-native context.
 
 You can also build a custom profile by starting from the minimal default and adding explicit flags such as `--install-global-skills`, `--install-global-command`, `--enable-background-services`, `--record-memory-only`, `--disable-personal-memory`, `--enable-memories`, `--enable-history`, or `--sync-memory-summary`.
 
@@ -432,7 +432,7 @@ openrelix config --memory-summary-max-tokens 8000
 
 `openrelix models` reads the current local Codex CLI model catalog through `codex debug models` and prints a sanitized list of selectable model IDs. `openrelix tokens` defaults to `--provider all`, merging Codex `@ccusage/codex` and Claude Code `ccusage`; pass `--provider codex` or `--provider cc` for a single host. `codex_model` defaults to `gpt-5.4-mini`, `claude_model` defaults to `sonnet`, and `model_cli` selects which CLI OpenRelix uses for internal memory consolidation. `memory_summary_max_tokens` defaults to 8000 and accepts values from 2000 to 20000. Target and warning budgets are derived automatically from that max. Updating config refreshes the summary, overview, and panel by default; add `--no-refresh` when you only want to persist the config.
 
-Project-aware host context can be synced before opening a work session. It keeps global memory plus the memories whose `project_key`, `project_label`, or cwd metadata matches the current project, then writes that active summary into the enabled Codex / Claude Code host targets. The compiled project summary stays in the OpenRelix state root under `runtime/host-context/projects/`; OpenRelix does not write personal memory into the project repository by default.
+Project-aware host context can be synced before opening a work session. It keeps global memory plus the memories whose `project_key`, `project_label`, or cwd metadata matches the current project, then writes the same active summary into the enabled Codex / Claude Code host targets. Codex and Claude Code use the same selection policy: global context is capped at 10% of the configured summary budget, and the active project slice is capped at 30%. The compiled project summary stays in the OpenRelix state root under `runtime/host-context/projects/`; OpenRelix does not write personal memory into the project repository by default.
 
 ```bash
 openrelix context sync --cwd "$PWD"

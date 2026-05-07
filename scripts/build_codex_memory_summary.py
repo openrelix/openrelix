@@ -41,7 +41,9 @@ DEFAULT_PROFILE_TOKENS = 280
 DEFAULT_PREFERENCES_TOKENS = 950
 DEFAULT_TIPS_TOKENS = 950
 DEFAULT_ROUTES_TOKENS = 1250
-DEFAULT_PERSONAL_MEMORY_TOKENS = 2400
+DEFAULT_GLOBAL_MEMORY_TOKENS = 800
+DEFAULT_PROJECT_MEMORY_TOKENS = 2400
+DEFAULT_PERSONAL_MEMORY_TOKENS = DEFAULT_GLOBAL_MEMORY_TOKENS + DEFAULT_PROJECT_MEMORY_TOKENS
 DEFAULT_MAX_PREFERENCES = 10
 DEFAULT_MAX_TIPS = 8
 DEFAULT_MAX_ROUTE_ITEMS = 10
@@ -132,6 +134,8 @@ class SummaryBudget:
     tips_tokens: int = DEFAULT_TIPS_TOKENS
     routes_tokens: int = DEFAULT_ROUTES_TOKENS
     personal_memory_tokens: int = DEFAULT_PERSONAL_MEMORY_TOKENS
+    global_memory_tokens: int = DEFAULT_GLOBAL_MEMORY_TOKENS
+    project_memory_tokens: int = DEFAULT_PROJECT_MEMORY_TOKENS
     max_preferences: int = DEFAULT_MAX_PREFERENCES
     max_tips: int = DEFAULT_MAX_TIPS
     max_route_items: int = DEFAULT_MAX_ROUTE_ITEMS
@@ -200,6 +204,8 @@ def parse_args():
     parser.add_argument("--tips-tokens", type=int, default=DEFAULT_TIPS_TOKENS)
     parser.add_argument("--routes-tokens", type=int, default=DEFAULT_ROUTES_TOKENS)
     parser.add_argument("--personal-memory-tokens", type=int)
+    parser.add_argument("--global-memory-tokens", type=int)
+    parser.add_argument("--project-memory-tokens", type=int)
     parser.add_argument("--max-preferences", type=int, default=DEFAULT_MAX_PREFERENCES)
     parser.add_argument("--max-tips", type=int, default=DEFAULT_MAX_TIPS)
     parser.add_argument("--max-route-items", type=int, default=DEFAULT_MAX_ROUTE_ITEMS)
@@ -433,7 +439,7 @@ def record_project_candidate_texts(item):
 
 def memory_record_applies_to_project(item, scope, injection_policy, project_filter):
     if not project_filter_is_active(project_filter):
-        return True
+        return scope == MEMORY_SCOPE_GLOBAL or injection_policy == INJECTION_GLOBAL_CONTEXT
     if scope == MEMORY_SCOPE_GLOBAL or injection_policy == INJECTION_GLOBAL_CONTEXT:
         return True
     if injection_policy != INJECTION_PROJECT_CONTEXT:
@@ -821,10 +827,11 @@ def parse_personal_memory_registry(text, language=None, host_context_only=True, 
 
         scope = memory_scope_from_record(item)
         injection_policy = host_context_injection_policy_from_record(item)
-        if host_context_only and not memory_record_is_host_context_candidate(item):
-            continue
-        if not memory_record_applies_to_project(item, scope, injection_policy, project_filter):
-            continue
+        if host_context_only:
+            if not memory_record_is_host_context_candidate(item):
+                continue
+            if not memory_record_applies_to_project(item, scope, injection_policy, project_filter):
+                continue
 
         value_note = localized_record_value(item, "value_note", language=language)
         keywords = item.get("keywords") or []
@@ -1156,15 +1163,17 @@ def build_personal_memory_lines(
     max_items,
     blocked_match_keys=None,
     blocked_match_texts=None,
+    selected_match_texts=None,
+    include_heading=True,
 ):
     if not items or token_budget <= 0:
         return [], 0, "heuristic"
 
     blocked_match_keys = blocked_match_keys or set()
     blocked_match_texts = blocked_match_texts or []
-    selected_match_texts = []
-    rendered = ["### Local personal memory registry", ""]
-    heading_tokens, estimator = estimate_tokens("\n".join(rendered))
+    selected_match_texts = selected_match_texts if selected_match_texts is not None else []
+    rendered = ["### Local personal memory registry", ""] if include_heading else []
+    heading_tokens, estimator = estimate_tokens("\n".join(rendered)) if include_heading else (0, "heuristic")
     used_tokens = heading_tokens
     item_count = 0
     has_item_cap = max_items > 0
@@ -1246,6 +1255,38 @@ def build_personal_memory_lines(
     if item_count == 0:
         return [], 0, estimator
     return rendered, used_tokens, estimator
+
+
+def personal_memory_item_is_global_context(item):
+    return item.scope == MEMORY_SCOPE_GLOBAL or item.injection_policy == INJECTION_GLOBAL_CONTEXT
+
+
+def personal_memory_item_is_project_context(item):
+    return item.injection_policy == INJECTION_PROJECT_CONTEXT and not personal_memory_item_is_global_context(item)
+
+
+def split_personal_memory_items(personal_memory_items):
+    global_items = []
+    project_items = []
+    for item in personal_memory_items or []:
+        if personal_memory_item_is_global_context(item):
+            global_items.append(item)
+        elif personal_memory_item_is_project_context(item):
+            project_items.append(item)
+    return global_items, project_items
+
+
+def resolved_personal_memory_budgets(budget, has_project_items):
+    global_budget = max(0, int(budget.global_memory_tokens or 0))
+    project_budget = max(0, int(budget.project_memory_tokens or 0))
+    if global_budget or project_budget:
+        return global_budget, project_budget if has_project_items else 0
+
+    total_budget = max(0, int(budget.personal_memory_tokens or 0))
+    if not has_project_items:
+        return total_budget, 0
+    global_budget = max(100, min(total_budget, int(round(total_budget * 0.25))))
+    return global_budget, max(0, total_budget - global_budget)
 
 
 def generate_profile_paragraphs(groups):
@@ -1362,13 +1403,30 @@ def render_with_budgets(groups, existing_sections, personal_memory_items, budget
         budget.max_route_items,
         budget.max_route_keywords,
     )
-    personal_memory_lines, _, _ = build_personal_memory_lines(
-        personal_memory_items,
-        budget.personal_memory_tokens,
+    global_memory_items, project_memory_items = split_personal_memory_items(personal_memory_items)
+    global_memory_tokens, project_memory_tokens = resolved_personal_memory_budgets(
+        budget,
+        bool(project_memory_items),
+    )
+    selected_personal_match_texts = []
+    global_personal_memory_lines, _, _ = build_personal_memory_lines(
+        global_memory_items,
+        global_memory_tokens,
         budget.max_personal_memory_items,
         blocked_match_keys=blocked_memory_keys,
         blocked_match_texts=blocked_memory_texts,
+        selected_match_texts=selected_personal_match_texts,
     )
+    project_personal_memory_lines, _, _ = build_personal_memory_lines(
+        project_memory_items,
+        project_memory_tokens,
+        budget.max_personal_memory_items,
+        blocked_match_keys=blocked_memory_keys,
+        blocked_match_texts=blocked_memory_texts,
+        selected_match_texts=selected_personal_match_texts,
+        include_heading=not bool(global_personal_memory_lines),
+    )
+    personal_memory_lines = global_personal_memory_lines + project_personal_memory_lines
     return render_summary(
         profile_lines,
         preference_lines,
@@ -1388,6 +1446,12 @@ def tighten_budget(budget):
         tips_tokens=max(400, budget.tips_tokens - 120),
         routes_tokens=max(400, budget.routes_tokens - 180),
         personal_memory_tokens=max(300, budget.personal_memory_tokens - 100),
+        global_memory_tokens=(
+            0 if budget.global_memory_tokens <= 0 else max(200, budget.global_memory_tokens - 50)
+        ),
+        project_memory_tokens=(
+            0 if budget.project_memory_tokens <= 0 else max(300, budget.project_memory_tokens - 100)
+        ),
         max_preferences=max(4, budget.max_preferences - 1),
         max_tips=max(4, budget.max_tips - 1),
         max_route_items=max(4, budget.max_route_items - 1),
@@ -1465,6 +1529,16 @@ def build_budget_from_args(args):
             args.personal_memory_tokens
             if args.personal_memory_tokens is not None
             else runtime_budget["personal_memory_tokens"]
+        ),
+        global_memory_tokens=(
+            args.global_memory_tokens
+            if args.global_memory_tokens is not None
+            else (0 if args.personal_memory_tokens is not None else runtime_budget["global_memory_tokens"])
+        ),
+        project_memory_tokens=(
+            args.project_memory_tokens
+            if args.project_memory_tokens is not None
+            else (0 if args.personal_memory_tokens is not None else runtime_budget["project_memory_tokens"])
         ),
         max_preferences=args.max_preferences,
         max_tips=args.max_tips,

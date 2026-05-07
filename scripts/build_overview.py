@@ -27,9 +27,11 @@ from asset_runtime import (
     render_path,
 )
 from build_codex_memory_summary import (
+    DEFAULT_GLOBAL_MEMORY_TOKENS as MEMORY_SUMMARY_GLOBAL_MEMORY_TOKENS,
     DEFAULT_MAX_PERSONAL_MEMORY_ITEMS as MEMORY_SUMMARY_MAX_PERSONAL_MEMORY_ITEMS,
     DEFAULT_MAX_TOKENS as MEMORY_SUMMARY_MAX_TOKENS,
     DEFAULT_PERSONAL_MEMORY_TOKENS as MEMORY_SUMMARY_PERSONAL_MEMORY_TOKENS,
+    DEFAULT_PROJECT_MEMORY_TOKENS as MEMORY_SUMMARY_PROJECT_MEMORY_TOKENS,
     DEFAULT_TARGET_TOKENS as MEMORY_SUMMARY_TARGET_TOKENS,
     DEFAULT_WARN_TOKENS as MEMORY_SUMMARY_WARN_TOKENS,
     PERSONAL_MEMORY_NOTE_LIMIT,
@@ -1846,10 +1848,10 @@ def sort_memory_summary_context_rows(context_rows):
     return sorted(context_rows or [], key=sort_key)
 
 
-def select_memory_summary_context_rows(context_rows, max_items, token_budget):
+def select_memory_summary_context_rows(context_rows, max_items, token_budget, include_heading=True):
     if not context_rows or token_budget <= 0:
         return [], 0
-    heading_tokens, _ = estimate_summary_tokens("### Local personal memory registry\n")
+    heading_tokens, _ = estimate_summary_tokens("### Local personal memory registry\n") if include_heading else (0, "heuristic")
     used_tokens = heading_tokens
     selected_rows = []
     has_item_cap = max_items > 0
@@ -1877,6 +1879,52 @@ def estimate_memory_summary_fit(context_rows, max_items, token_budget):
     return len(selected_rows), used_tokens
 
 
+def memory_summary_row_is_global_context(row):
+    return overview_memory_context.host_context_injection_policy_from_record(row) == overview_memory_context.INJECTION_GLOBAL_CONTEXT
+
+
+def memory_summary_row_is_project_context(row):
+    return overview_memory_context.host_context_injection_policy_from_record(row) == overview_memory_context.INJECTION_PROJECT_CONTEXT
+
+
+def split_memory_summary_context_rows(context_rows):
+    global_rows = []
+    project_rows = []
+    for row in context_rows or []:
+        if memory_summary_row_is_global_context(row):
+            global_rows.append(row)
+        elif memory_summary_row_is_project_context(row):
+            project_rows.append(row)
+    return global_rows, project_rows
+
+
+def select_bounded_memory_summary_context_rows(context_rows, summary_budget, max_items):
+    global_rows, project_rows = split_memory_summary_context_rows(context_rows)
+    global_budget = int(summary_budget.get("global_memory_tokens") or 0)
+    project_budget = int(summary_budget.get("project_memory_tokens") or 0)
+    personal_budget = int(summary_budget.get("personal_memory_tokens") or 0)
+    if global_budget <= 0 and project_budget <= 0:
+        if project_rows:
+            global_budget = max(100, min(personal_budget, int(round(personal_budget * 0.25))))
+            project_budget = max(0, personal_budget - global_budget)
+        else:
+            global_budget = personal_budget
+
+    selected_global, global_tokens = select_memory_summary_context_rows(
+        global_rows,
+        max_items,
+        global_budget,
+        include_heading=True,
+    )
+    selected_project, project_tokens = select_memory_summary_context_rows(
+        project_rows,
+        max_items,
+        project_budget,
+        include_heading=not bool(selected_global),
+    )
+    return selected_global + selected_project, global_tokens + project_tokens
+
+
 def build_personal_memory_context_preview(
     memory_registry,
     memory_mode,
@@ -1886,7 +1934,6 @@ def build_personal_memory_context_preview(
     if str(memory_mode or "integrated") != "integrated":
         return []
     summary_budget = memory_summary_budget or get_memory_summary_budget(PATHS)
-    personal_memory_budget_tokens = summary_budget["personal_memory_tokens"]
     rows = memory_registry or []
     context_rows = [
         row
@@ -1899,13 +1946,13 @@ def build_personal_memory_context_preview(
         if has_candidate_cap
         else len(context_rows)
     )
-    selected_rows, _ = select_memory_summary_context_rows(
+    selected_rows, _ = select_bounded_memory_summary_context_rows(
         context_rows,
+        summary_budget,
         context_item_limit,
-        personal_memory_budget_tokens,
     )
     if item_count is not None:
-        selected_rows = selected_rows[: max(0, safe_int(item_count))]
+        selected_rows = sort_memory_summary_context_rows(selected_rows)[: max(0, safe_int(item_count))]
     return selected_rows
 
 
@@ -1943,6 +1990,8 @@ def build_personal_memory_token_usage(
     summary_warn_tokens = summary_budget["warn_tokens"]
     summary_max_tokens = summary_budget["max_tokens"]
     personal_memory_budget_tokens = summary_budget["personal_memory_tokens"]
+    global_memory_budget_tokens = summary_budget.get("global_memory_tokens", MEMORY_SUMMARY_GLOBAL_MEMORY_TOKENS)
+    project_memory_budget_tokens = summary_budget.get("project_memory_tokens", MEMORY_SUMMARY_PROJECT_MEMORY_TOKENS)
     enabled = memory_mode != "off"
     rows = memory_registry or []
     row_count = len(rows)
@@ -1959,11 +2008,12 @@ def build_personal_memory_token_usage(
         if has_candidate_cap
         else len(context_rows)
     )
-    estimated_context_item_count, estimated_personal_memory_tokens = estimate_memory_summary_fit(
+    selected_context_rows, estimated_personal_memory_tokens = select_bounded_memory_summary_context_rows(
         context_rows,
+        summary_budget,
         context_item_limit,
-        personal_memory_budget_tokens,
     )
+    estimated_context_item_count = len(selected_context_rows)
     count_label_zh = "约"
     count_label_en = "about"
     estimated_tokens = estimated_personal_memory_tokens if memory_mode == "integrated" else 0
@@ -1971,6 +2021,8 @@ def build_personal_memory_token_usage(
     target_tokens_display = compact_token_k(summary_target_tokens)
     warn_tokens_display = compact_token_k(summary_warn_tokens)
     personal_budget_display = compact_token_k(personal_memory_budget_tokens)
+    global_budget_display = compact_token_k(global_memory_budget_tokens)
+    project_budget_display = compact_token_k(project_memory_budget_tokens)
     estimated_personal_display = compact_token_k(estimated_personal_memory_tokens)
 
     if memory_mode == "integrated":
@@ -1997,15 +2049,19 @@ def build_personal_memory_token_usage(
             estimated_context_item_count,
             candidate_policy_en,
         )
-        caption_zh = "摘要目标 {} / 警戒 {} / 上限 {}".format(
+        caption_zh = "摘要目标 {} / 警戒 {} / 上限 {}；全局 {} / 项目 {}".format(
             target_tokens_display,
             warn_tokens_display,
             max_tokens_display,
+            global_budget_display,
+            project_budget_display,
         )
-        caption_en = "Summary target {} / warning {} / max {}".format(
+        caption_en = "Summary target {} / warning {} / max {}; global {} / project {}".format(
             target_tokens_display,
             warn_tokens_display,
             max_tokens_display,
+            global_budget_display,
+            project_budget_display,
         )
         status_zh = "受控"
         status_en = "Bounded"
@@ -2039,21 +2095,23 @@ def build_personal_memory_token_usage(
 
     method_note_zh = (
         "面板展示的是 bounded summary 预算状态，不是完整登记册体积；"
-        "默认上限 8K；当前 target {}、warn {}、max {} 会随配置的 max 自动派生，个人记忆分区预算 {}。"
+        "默认上限 8K；当前 target {}、warn {}、max {} 会随配置的 max 自动派生，全局记忆 {}、当前项目记忆 {}。"
     ).format(
         target_tokens_display,
         warn_tokens_display,
         max_tokens_display,
-        personal_budget_display,
+        global_budget_display,
+        project_budget_display,
     )
     method_note_en = (
         "This card shows bounded-summary budget status, not the full registry footprint; "
-        "the default max is 8K; current target {}, warning {}, and max {} are derived from the configured max, with {} for personal memories."
+        "the default max is 8K; current target {}, warning {}, and max {} are derived from the configured max, with {} for global memory and {} for the active project."
     ).format(
         target_tokens_display,
         warn_tokens_display,
         max_tokens_display,
-        personal_budget_display,
+        global_budget_display,
+        project_budget_display,
     )
 
     return {
@@ -2082,6 +2140,10 @@ def build_personal_memory_token_usage(
         "max_tokens_display": max_tokens_display,
         "personal_memory_budget_tokens": personal_memory_budget_tokens,
         "personal_memory_budget_display": personal_budget_display,
+        "global_memory_budget_tokens": global_memory_budget_tokens,
+        "global_memory_budget_display": global_budget_display,
+        "project_memory_budget_tokens": project_memory_budget_tokens,
+        "project_memory_budget_display": project_budget_display,
         "estimated_personal_memory_tokens": estimated_personal_memory_tokens,
         "estimated_personal_memory_display": estimated_personal_display,
         "context_candidate_count": len(context_rows),

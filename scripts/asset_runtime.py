@@ -32,6 +32,8 @@ DEFAULT_CLAUDE_MODEL = "auto"
 DEFAULT_MEMORY_SUMMARY_MAX_TOKENS = 8000
 MIN_MEMORY_SUMMARY_MAX_TOKENS = 2000
 MAX_MEMORY_SUMMARY_MAX_TOKENS = 20000
+GLOBAL_MEMORY_SUMMARY_RATIO = 0.10
+PROJECT_MEMORY_SUMMARY_RATIO = 0.30
 LANGUAGE_ALIASES = {
     "zh": "zh",
     "zh-cn": "zh",
@@ -423,14 +425,21 @@ def memory_summary_budget_from_max(max_tokens: Optional[Union[int, str]]) -> dic
     normalized_max = normalize_memory_summary_max_tokens(max_tokens)
     target_tokens = min(normalized_max - 200, max(1200, _round_token_budget(normalized_max * 0.84)))
     warn_tokens = min(normalized_max - 100, max(target_tokens + 100, _round_token_budget(normalized_max * 0.92)))
-    personal_memory_tokens = min(
+    global_memory_tokens = min(
         normalized_max - 500,
-        max(300, _round_token_budget(normalized_max * 0.30)),
+        max(200, _round_token_budget(normalized_max * GLOBAL_MEMORY_SUMMARY_RATIO)),
     )
+    project_memory_tokens = min(
+        normalized_max - 500,
+        max(300, _round_token_budget(normalized_max * PROJECT_MEMORY_SUMMARY_RATIO)),
+    )
+    personal_memory_tokens = global_memory_tokens + project_memory_tokens
     return {
         "target_tokens": target_tokens,
         "warn_tokens": warn_tokens,
         "max_tokens": normalized_max,
+        "global_memory_tokens": global_memory_tokens,
+        "project_memory_tokens": project_memory_tokens,
         "personal_memory_tokens": personal_memory_tokens,
     }
 

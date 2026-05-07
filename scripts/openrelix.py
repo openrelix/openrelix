@@ -3577,6 +3577,8 @@ def memory_summary_budget_payload(config=None):
         "memory_summary_target_tokens": budget["target_tokens"],
         "memory_summary_warn_tokens": budget["warn_tokens"],
         "personal_memory_budget_tokens": budget["personal_memory_tokens"],
+        "global_memory_budget_tokens": budget["global_memory_tokens"],
+        "project_memory_budget_tokens": budget["project_memory_tokens"],
         "config_path": str(PATHS.runtime_dir / "config.json"),
         "configured_model_cli": config.get("model_cli"),
         "configured_codex_model": config.get("codex_model"),
@@ -3622,6 +3624,8 @@ def command_config(args):
         print("- memory_summary_max_tokens: {}".format(payload["memory_summary_max_tokens"]))
         print("- memory_summary_target_tokens: {}".format(payload["memory_summary_target_tokens"]))
         print("- memory_summary_warn_tokens: {}".format(payload["memory_summary_warn_tokens"]))
+        print("- global_memory_budget_tokens: {}".format(payload["global_memory_budget_tokens"]))
+        print("- project_memory_budget_tokens: {}".format(payload["project_memory_budget_tokens"]))
         print("- personal_memory_budget_tokens: {}".format(payload["personal_memory_budget_tokens"]))
         print("- config: {}".format(payload["config_path"]))
         return
@@ -3701,6 +3705,8 @@ def command_config(args):
     print("- memory_summary_max_tokens: {}".format(payload["memory_summary_max_tokens"]))
     print("- memory_summary_target_tokens: {}".format(payload["memory_summary_target_tokens"]))
     print("- memory_summary_warn_tokens: {}".format(payload["memory_summary_warn_tokens"]))
+    print("- global_memory_budget_tokens: {}".format(payload["global_memory_budget_tokens"]))
+    print("- project_memory_budget_tokens: {}".format(payload["project_memory_budget_tokens"]))
     print("- personal_memory_budget_tokens: {}".format(payload["personal_memory_budget_tokens"]))
     print("- config: {}".format(payload["config_path"]))
     if refreshed:

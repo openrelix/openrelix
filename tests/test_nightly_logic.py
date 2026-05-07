@@ -367,7 +367,9 @@ class NightlyLogicTests(unittest.TestCase):
                 self.assertTrue(config["personal_memory_enabled"])
                 self.assertTrue(config["codex_context_enabled"])
                 self.assertEqual(asset_runtime.get_memory_summary_budget(paths)["max_tokens"], 8000)
-                self.assertEqual(asset_runtime.get_memory_summary_budget(paths)["personal_memory_tokens"], 2400)
+                self.assertEqual(asset_runtime.get_memory_summary_budget(paths)["global_memory_tokens"], 800)
+                self.assertEqual(asset_runtime.get_memory_summary_budget(paths)["project_memory_tokens"], 2400)
+                self.assertEqual(asset_runtime.get_memory_summary_budget(paths)["personal_memory_tokens"], 3200)
                 self.assertEqual(asset_runtime.get_runtime_language(paths), "en")
                 self.assertEqual(asset_runtime.get_memory_mode(paths), "integrated")
                 self.assertEqual(asset_runtime.get_activity_source(paths), "auto")
@@ -4074,7 +4076,7 @@ Keep my own note.
         self.assertIn("memory-token-widget", widget)
         self.assertIn("Host context 预算", widget)
         self.assertIn("≈ ", widget)
-        self.assertIn("摘要目标 6.7K / 警戒 7.4K / 上限 8K", widget)
+        self.assertIn("摘要目标 6.7K / 警戒 7.4K / 上限 8K；全局 0.8K / 项目 2.4K", widget)
         self.assertIn("1 条留本地，约 1 条进摘要（候选不设条数上限）", widget)
 
         many_usage = build_overview.build_personal_memory_token_usage(
@@ -5916,7 +5918,9 @@ Keep my own note.
             self.assertEqual(config["memory_summary_max_tokens"], 8000)
             payload = json.loads(stdout.getvalue())
             self.assertEqual(payload["memory_summary_max_tokens"], 8000)
-            self.assertEqual(payload["personal_memory_budget_tokens"], 2400)
+            self.assertEqual(payload["global_memory_budget_tokens"], 800)
+            self.assertEqual(payload["project_memory_budget_tokens"], 2400)
+            self.assertEqual(payload["personal_memory_budget_tokens"], 3200)
             self.assertFalse(payload["refreshed"])
 
     def test_openrelix_config_updates_activity_source(self):

@@ -216,9 +216,15 @@ class MemorySummaryBuilderTests(unittest.TestCase):
         self.assertEqual(chinese_items[0].title, "默认中文标题")
         self.assertEqual(chinese_items[0].value_note, "默认中文说明")
 
-    def test_personal_memory_registry_injects_global_and_project_context_by_default(self):
+    def test_personal_memory_registry_injects_global_only_without_active_project(self):
         host_context_items = build_codex_memory_summary.parse_personal_memory_registry(
             SCOPED_PERSONAL_MEMORY_REGISTRY
+        )
+        active_project_items = build_codex_memory_summary.parse_personal_memory_registry(
+            SCOPED_PERSONAL_MEMORY_REGISTRY,
+            project_filter=build_codex_memory_summary.build_project_context_filter(
+                project_label="Android App",
+            ),
         )
         all_items = build_codex_memory_summary.parse_personal_memory_registry(
             SCOPED_PERSONAL_MEMORY_REGISTRY,
@@ -227,6 +233,10 @@ class MemorySummaryBuilderTests(unittest.TestCase):
 
         self.assertEqual(
             [item.title for item in host_context_items],
+            ["Global patch preference"],
+        )
+        self.assertEqual(
+            [item.title for item in active_project_items],
             ["Global patch preference", "Project-only Gradle cleanup"],
         )
         self.assertEqual(len(all_items), 4)
@@ -380,7 +390,10 @@ class MemorySummaryBuilderTests(unittest.TestCase):
         )
         existing_summary = SAMPLE_EXISTING_SUMMARY + "\n## What's in Memory\n\n- Global patch preference\n"
         personal_items = build_codex_memory_summary.parse_personal_memory_registry(
-            SCOPED_PERSONAL_MEMORY_REGISTRY
+            SCOPED_PERSONAL_MEMORY_REGISTRY,
+            project_filter=build_codex_memory_summary.build_project_context_filter(
+                project_label="Android App",
+            ),
         )
 
         result = build_codex_memory_summary.build_memory_summary(
