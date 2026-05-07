@@ -1782,12 +1782,10 @@ def safe_float(value):
 
 def memory_feedback_sort_rank(item):
     feedback = str((item or {}).get("user_feedback") or "").strip()
-    if feedback == overview_memory_feedback.FEEDBACK_PINNED:
-        return 3
     if feedback == overview_memory_feedback.FEEDBACK_LIKED:
         return 2
     if feedback == overview_memory_feedback.FEEDBACK_DOWNVOTED:
-        return -1
+        return -10
     return 0
 
 
@@ -11659,28 +11657,45 @@ def make_memory_cards(items, include_bucket_meta=True, visible_count=4, meta_ren
             details=details,
         )
         feedback_state = ui_text(item.get("user_feedback") or "")
+        if feedback_state == "pinned":
+            feedback_state = overview_memory_feedback.FEEDBACK_LIKED
         feedback_status_labels = {
-            overview_memory_feedback.FEEDBACK_PINNED: ("已钉住，最高优先级", "Pinned, highest priority"),
-            overview_memory_feedback.FEEDBACK_LIKED: ("已标记有用", "Marked useful"),
-            overview_memory_feedback.FEEDBACK_DOWNVOTED: ("已放入本地保留", "Kept local"),
+            overview_memory_feedback.FEEDBACK_LIKED: ("已标记有用，将优先展示", "Marked useful; prioritized"),
+            overview_memory_feedback.FEEDBACK_DOWNVOTED: ("已放入本地保留末尾", "Kept local at lowest priority"),
         }
         feedback_status = feedback_status_labels.get(feedback_state, ("", ""))
         feedback_controls = ""
         memory_key = ui_text(item.get("memory_key") or "")
         if memory_key:
+            def feedback_icon(feedback_value):
+                if feedback_value == overview_memory_feedback.FEEDBACK_DOWNVOTED:
+                    return (
+                        '<svg class="memory-feedback-icon" viewBox="0 0 24 24" aria-hidden="true">'
+                        '<path d="M17 14V2"></path>'
+                        '<path d="M9 18.12 10 14H4.17a2 2 0 0 1-1.92-2.56l2.33-8A2 2 0 0 1 6.5 2H20a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2.76a2 2 0 0 0-1.79 1.11L12 22a3.13 3.13 0 0 1-3-3.88Z"></path>'
+                        '</svg>'
+                    )
+                return (
+                    '<svg class="memory-feedback-icon" viewBox="0 0 24 24" aria-hidden="true">'
+                    '<path d="M7 10v12"></path>'
+                    '<path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2a3.13 3.13 0 0 1 3 3.88Z"></path>'
+                    '</svg>'
+                )
+
             def feedback_button(feedback_value, zh_label, en_label):
                 active = feedback_state == feedback_value
                 return (
                     '<button class="memory-feedback-button{active_class}" type="button" '
                     'data-memory-feedback="{feedback}" data-memory-key="{memory_key}" '
                     'data-memory-title="{memory_title}" aria-pressed="{pressed}">'
-                    "{label}</button>"
+                    "{icon}{label}</button>"
                 ).format(
                     active_class=" is-active" if active else "",
                     feedback=escape(feedback_value, quote=True),
                     memory_key=escape(memory_key, quote=True),
                     memory_title=escape(full_display_title or full_raw_title, quote=True),
                     pressed="true" if active else "false",
+                    icon=feedback_icon(feedback_value),
                     label=panel_language_text_html(zh_label, en_label),
                 )
 
@@ -11693,7 +11708,6 @@ def make_memory_cards(items, include_bucket_meta=True, visible_count=4, meta_ren
                 state=escape(feedback_state, quote=True),
                 buttons="".join(
                     [
-                        feedback_button(overview_memory_feedback.FEEDBACK_PINNED, "钉住", "Pin"),
                         feedback_button(overview_memory_feedback.FEEDBACK_LIKED, "有用", "Useful"),
                         feedback_button(overview_memory_feedback.FEEDBACK_DOWNVOTED, "无用", "Not useful"),
                     ]
@@ -17612,6 +17626,7 @@ def build_html(data):
       display: inline-flex;
       align-items: center;
       justify-content: center;
+      gap: 5px;
       min-height: 28px;
       padding: 5px 10px;
       border: 1px solid var(--line-strong);
@@ -17640,6 +17655,17 @@ def build_html(data):
       border-color: rgba(198, 40, 40, 0.28);
       background: rgba(198, 40, 40, 0.08);
       color: #a12a2a;
+    }}
+
+    .memory-feedback-icon {{
+      width: 14px;
+      height: 14px;
+      flex: 0 0 auto;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
     }}
 
     .memory-feedback-button:disabled {{
@@ -21404,14 +21430,11 @@ def build_html(data):
 
       function memoryFeedbackStatusMessage(feedback) {{
         const state = String(feedback || "");
-        if (state === "pinned") {{
-          return currentLanguage === "en" ? "Pinned, highest priority" : "已钉住，最高优先级";
-        }}
-        if (state === "liked") {{
-          return currentLanguage === "en" ? "Marked useful" : "已标记有用";
+        if (state === "liked" || state === "pinned") {{
+          return currentLanguage === "en" ? "Saved. Refreshing in background." : "已保存，后台刷新中";
         }}
         if (state === "downvoted") {{
-          return currentLanguage === "en" ? "Kept local" : "已放入本地保留";
+          return currentLanguage === "en" ? "Saved to local-only. Refreshing in background." : "已保存到本地保留，后台刷新中";
         }}
         return currentLanguage === "en" ? "Feedback cleared" : "已取消标记";
       }}
@@ -21427,7 +21450,7 @@ def build_html(data):
         if (!row) {{
           return;
         }}
-        const state = String(feedback || "");
+        const state = String(feedback || "") === "pinned" ? "liked" : String(feedback || "");
         row.setAttribute("data-memory-feedback-state", state);
         row.querySelectorAll("[data-memory-feedback]").forEach(function (candidate) {{
           const active = candidate.getAttribute("data-memory-feedback") === state;
@@ -21435,6 +21458,18 @@ def build_html(data):
           candidate.setAttribute("aria-pressed", active ? "true" : "false");
         }});
         setMemoryFeedbackStatus(row, memoryFeedbackStatusMessage(state));
+      }}
+
+      function moveMemoryFeedbackCard(row, feedback) {{
+        if (!row) return;
+        const card = row.closest(".memory-brief-card");
+        const grid = card ? card.closest(".native-brief-grid") : null;
+        if (!card || !grid) return;
+        if (feedback === "liked" && grid.firstElementChild !== card) {{
+          grid.insertBefore(card, grid.firstElementChild);
+        }} else if (feedback === "downvoted") {{
+          grid.appendChild(card);
+        }}
       }}
 
       function submitMemoryFeedback(button) {{
@@ -21459,10 +21494,7 @@ def build_html(data):
         buttons.forEach(function (candidate) {{
           candidate.disabled = true;
         }});
-        setMemoryFeedbackStatus(
-          row,
-          currentLanguage === "en" ? "Saving..." : "正在保存…"
-        );
+        setMemoryFeedbackStatus(row, currentLanguage === "en" ? "Saving..." : "正在保存…");
         const headers = {{ "Content-Type": "application/json" }};
         headers["X-OpenRelix-Token"] = token;
         fetch(endpoint, {{
@@ -21488,10 +21520,12 @@ def build_html(data):
           .then(function (payload) {{
             const savedFeedback = payload && payload.feedback ? payload.feedback.feedback : feedback;
             updateMemoryFeedbackRow(row, savedFeedback);
-            if (payload && payload.refresh_ok) {{
+            moveMemoryFeedbackCard(row, savedFeedback);
+            const reloadAfterMs = Number((payload && payload.reload_after_ms) || 0);
+            if (reloadAfterMs > 0) {{
               window.setTimeout(function () {{
                 window.location.reload();
-              }}, 650);
+              }}, Math.max(reloadAfterMs, 1200));
             }}
           }})
           .catch(function () {{
