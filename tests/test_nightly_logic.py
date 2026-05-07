@@ -1268,6 +1268,45 @@ class NightlyLogicTests(unittest.TestCase):
         self.assertIn("移动端扫描/录制链路", topic_labels)
         self.assertIn("性能与体验评审", topic_labels)
 
+    def test_project_contexts_sort_projects_by_discussion_count(self):
+        window_overview = {
+            "date": "2026-04-27",
+            "windows": [
+                {
+                    "project_label": "Quiet Latest",
+                    "cwd": "/tmp/quiet",
+                    "cwd_display": "Quiet Latest",
+                    "question_count": 1,
+                    "conclusion_count": 1,
+                    "question_summary": "最近但讨论少",
+                    "main_takeaway": "讨论少",
+                    "keywords": [],
+                    "latest_activity_at": "2026-04-27T12:00:00+08:00",
+                    "latest_activity_display": "04-27 12:00",
+                    "recent_prompts": [],
+                    "recent_conclusions": [],
+                },
+                {
+                    "project_label": "Busy Older",
+                    "cwd": "/tmp/busy",
+                    "cwd_display": "Busy Older",
+                    "question_count": 5,
+                    "conclusion_count": 4,
+                    "question_summary": "更早但讨论多",
+                    "main_takeaway": "讨论多",
+                    "keywords": [],
+                    "latest_activity_at": "2026-04-27T10:00:00+08:00",
+                    "latest_activity_display": "04-27 10:00",
+                    "recent_prompts": [],
+                    "recent_conclusions": [],
+                },
+            ],
+        }
+
+        contexts = build_overview.build_project_contexts(window_overview)
+
+        self.assertEqual([item["label"] for item in contexts], ["Busy Older", "Quiet Latest"])
+
     def test_context_topic_prefers_domain_rules_and_filters_noisy_titles(self):
         self.assertEqual(
             build_overview.infer_context_topic_label(
@@ -1357,17 +1396,17 @@ class NightlyLogicTests(unittest.TestCase):
         self.assertEqual(views["2"]["source_date_count"], 2)
         self.assertEqual(views["2"]["project_contexts"][0]["topic_count"], 2)
 
-    def test_project_context_hidden_topics_are_expandable(self):
+    def test_project_context_topics_render_as_compact_task_chips(self):
         topics = [
             {
                 "label": "Topic {}".format(index),
-                "window_count": 1,
+                "window_count": index,
                 "latest_activity_display": "04-27 1{}:00".format(index),
                 "question_preview": "Question {}".format(index),
                 "takeaway_preview": "Takeaway {}".format(index),
                 "keywords": ["kw{}".format(index)],
             }
-            for index in range(6)
+            for index in range(1, 8)
         ]
 
         cards_html = build_overview.make_project_context_cards(
@@ -1387,13 +1426,70 @@ class NightlyLogicTests(unittest.TestCase):
             ]
         )
 
-        self.assertEqual(cards_html.count('<article class="context-topic">'), 6)
-        self.assertIn("查看更多 2 个主题", cards_html)
-        self.assertIn("Show 2 more topics", cards_html)
-        self.assertIn("收起更多主题", cards_html)
+        self.assertNotIn('<article class="context-topic">', cards_html)
+        self.assertIn("并行任务", cards_html)
+        self.assertIn("Topic 7", cards_html)
+        self.assertIn("Topic 3", cards_html)
+        self.assertIn("查看更多 2 个任务", cards_html)
+        self.assertLess(cards_html.index("Topic 7"), cards_html.index("Topic 6"))
+        self.assertLess(cards_html.index("Topic 3"), cards_html.index("查看更多 2 个任务"))
+        self.assertGreater(cards_html.index("Topic 2"), cards_html.index("查看更多 2 个任务"))
+        self.assertNotIn("Question 7", cards_html)
+        self.assertNotIn("Takeaway 7", cards_html)
         self.assertNotIn("窗口明细中展开", cards_html)
-        self.assertLess(cards_html.index("Topic 3"), cards_html.index("查看更多 2 个主题"))
-        self.assertGreater(cards_html.index("Topic 4"), cards_html.index("查看更多 2 个主题"))
+
+    def test_project_context_cards_link_to_source_windows(self):
+        cards_html = build_overview.make_project_context_cards(
+            [
+                {
+                    "label": "OpenRelix",
+                    "window_count": 1,
+                    "question_count": 1,
+                    "conclusion_count": 1,
+                    "latest_activity_display": "05-07 21:40",
+                    "cwd_preview": "OpenRelix",
+                    "question_preview": "项目上下文需要更清晰",
+                    "takeaway_preview": "来源窗口要能跳到窗口明细",
+                    "keywords": ["openrelix"],
+                    "source_windows": [
+                        {
+                            "window_id": "w-context",
+                            "anchor_id": "window-w-context",
+                            "display_label": "3",
+                            "latest_activity_display": "05-07 21:40",
+                            "title": "来源窗口联动",
+                        }
+                    ],
+                    "topics": [
+                        {
+                            "label": "面板可视化",
+                            "window_count": 1,
+                            "latest_activity_display": "05-07 21:40",
+                            "question_preview": "如何快速看懂项目脉络",
+                            "takeaway_preview": "先看地图再追溯窗口",
+                            "keywords": ["panel"],
+                            "source_windows": [
+                                {
+                                    "window_id": "w-context",
+                                    "anchor_id": "window-w-context",
+                                    "display_label": "3",
+                                },
+                                {
+                                    "window_id": "w-followup",
+                                    "anchor_id": "window-w-followup",
+                                    "display_label": "4",
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ]
+        )
+
+        self.assertIn('href="#window-w-context"', cards_html)
+        self.assertIn('href="#window-w-followup"', cards_html)
+        self.assertIn('data-window-target="window-w-context"', cards_html)
+        self.assertIn("追溯", cards_html)
 
     def test_parse_nightly_summary_date_fails_closed(self):
         self.assertIsNone(build_overview.parse_nightly_summary_date({"date": "bad-date"}))
