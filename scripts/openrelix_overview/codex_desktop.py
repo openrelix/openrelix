@@ -1,0 +1,93 @@
+import os
+import re
+import subprocess
+from pathlib import Path
+from urllib.parse import quote
+
+from openrelix_overview import codex_profiles
+
+
+CODEX_DESKTOP_OPEN_PATH = "/open-codex-thread"
+DEFAULT_CODEX_APP_BINARY = Path("/Applications/Codex.app/Contents/MacOS/Codex")
+
+
+def is_valid_codex_thread_id(value):
+    return bool(
+        re.fullmatch(
+            r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}",
+            str(value or "").strip(),
+        )
+    )
+
+
+def codex_thread_url(thread_id):
+    thread_id = str(thread_id or "").strip()
+    if not is_valid_codex_thread_id(thread_id):
+        return ""
+    return "codex://threads/{}".format(quote(thread_id, safe=""))
+
+
+def build_codex_desktop_resume_command(thread_id, codex_home="", electron_user_data_path="", app_binary=None):
+    url = codex_thread_url(thread_id)
+    if not url:
+        return []
+    binary = Path(app_binary or os.environ.get("OPENRELIX_CODEX_APP_BINARY") or DEFAULT_CODEX_APP_BINARY)
+    if not binary.exists():
+        return []
+    return [str(binary), url]
+
+
+def start_codex_desktop_resume(
+    thread_id,
+    codex_home="",
+    electron_user_data_path="",
+    paths=None,
+    app_binary=None,
+):
+    thread_id = str(thread_id or "").strip()
+    if not is_valid_codex_thread_id(thread_id):
+        return {"ok": False, "error": "invalid_codex_thread_id"}
+
+    resolved_profile = None
+    if codex_home and paths is not None:
+        resolved_profile = codex_profiles.find_profile_for_home(codex_home, paths)
+    if resolved_profile:
+        electron_user_data_path = electron_user_data_path or resolved_profile.electron_user_data_path
+    if codex_home and paths is not None and not electron_user_data_path:
+        requested = codex_profiles.resolved_path_key(codex_home)
+        primary = codex_profiles.resolved_path_key(paths.codex_home)
+        if requested != primary:
+            return {"ok": False, "error": "codex_desktop_profile_unknown"}
+
+    command = build_codex_desktop_resume_command(
+        thread_id,
+        codex_home=codex_home,
+        electron_user_data_path=electron_user_data_path,
+        app_binary=app_binary,
+    )
+    if not command:
+        return {"ok": False, "error": "codex_desktop_app_not_found"}
+
+    env = os.environ.copy()
+    if codex_home:
+        env["CODEX_HOME"] = str(Path(codex_home).expanduser())
+    if electron_user_data_path:
+        env["CODEX_ELECTRON_USER_DATA_PATH"] = str(Path(electron_user_data_path).expanduser())
+    try:
+        proc = subprocess.Popen(
+            command,
+            env=env,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            close_fds=True,
+            start_new_session=True,
+        )
+    except OSError as exc:
+        return {"ok": False, "error": "codex_desktop_open_failed", "detail": str(exc)}
+    return {
+        "ok": True,
+        "pid": proc.pid,
+        "resume_id": thread_id,
+        "used_profile": bool(codex_home or electron_user_data_path),
+    }

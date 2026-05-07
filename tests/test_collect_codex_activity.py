@@ -9,9 +9,96 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 import collect_codex_activity  # noqa: E402
+from openrelix_overview import codex_profiles  # noqa: E402
 
 
 class CollectCodexActivityTests(unittest.TestCase):
+    def test_running_codex_process_text_extracts_home_and_electron_profile(self):
+        ps_text = (
+            "/Applications/Codex.app/Contents/MacOS/Codex /repo "
+            "CODEX_HOME=/tmp/.codex-openrelix-pro "
+            "CODEX_ELECTRON_USER_DATA_PATH=/tmp/Application Support/Codex-OpenRelix-Pro "
+            "XPC_FLAGS=1\n"
+        )
+
+        profiles = codex_profiles.parse_codex_profiles_from_process_text(ps_text)
+
+        self.assertEqual(len(profiles), 1)
+        self.assertEqual(str(profiles[0].codex_home), "/tmp/.codex-openrelix-pro")
+        self.assertEqual(profiles[0].electron_user_data_path, "/tmp/Application Support/Codex-OpenRelix-Pro")
+        self.assertEqual(profiles[0].source, "running")
+
+    def test_history_collection_reads_requested_codex_home(self):
+        from tempfile import TemporaryDirectory
+        import json
+
+        with TemporaryDirectory() as tmpdir:
+            codex_home = Path(tmpdir) / "codex-home"
+            session_id = "019dcefe-37f1-7a83-a8a6-720bd6b79d7f"
+            history_path = codex_home / "history.jsonl"
+            session_path = codex_home / "sessions" / "2026" / "04" / "28" / "rollout-{}.jsonl".format(session_id)
+            history_path.parent.mkdir(parents=True)
+            session_path.parent.mkdir(parents=True)
+            history_path.write_text(
+                json.dumps(
+                    {
+                        "session_id": session_id,
+                        "ts": 1777305600,
+                        "text": "读取第二个 Codex home",
+                    },
+                    ensure_ascii=False,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            session_rows = [
+                {
+                    "type": "session_meta",
+                    "payload": {
+                        "cwd": "/tmp/project",
+                        "originator": "codex",
+                        "source": "cli",
+                        "timestamp": "2026-04-28T00:00:00Z",
+                    },
+                },
+                {"type": "turn_context", "payload": {"turn_id": "turn-1"}},
+                {
+                    "type": "event_msg",
+                    "timestamp": "2026-04-28T00:00:00Z",
+                    "payload": {"type": "user_message", "message": "读取第二个 Codex home"},
+                },
+                {
+                    "type": "event_msg",
+                    "payload": {
+                        "type": "task_complete",
+                        "turn_id": "turn-1",
+                        "completed_at": 1777305900,
+                        "last_agent_message": "已读取第二个 home。",
+                    },
+                },
+            ]
+            session_path.write_text(
+                "\n".join(json.dumps(row, ensure_ascii=False) for row in session_rows) + "\n",
+                encoding="utf-8",
+            )
+            profile = codex_profiles.CodexProfile(
+                codex_home=codex_home,
+                electron_user_data_path="/tmp/Codex Profile",
+                source="test",
+            )
+
+            windows = collect_codex_activity.load_history_windows_for_date(
+                "2026-04-28",
+                "manual",
+                profile=profile,
+            )
+
+        self.assertEqual(len(windows), 1)
+        self.assertEqual(windows[0]["window_id"], session_id)
+        self.assertEqual(windows[0]["codex_home"], str(codex_home))
+        self.assertEqual(windows[0]["codex_electron_user_data_path"], "/tmp/Codex Profile")
+        self.assertEqual(windows[0]["prompts"][0]["text"], "读取第二个 Codex home")
+
     def test_app_server_thread_maps_to_existing_raw_window_shape(self):
         thread = {
             "id": "thread-1",

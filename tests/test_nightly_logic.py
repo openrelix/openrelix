@@ -31,6 +31,7 @@ import sync_host_memory_summary  # noqa: E402
 import token_live_server  # noqa: E402
 from openrelix_overview import contract as overview_contract  # noqa: E402
 from openrelix_overview import claude_desktop  # noqa: E402
+from openrelix_overview import codex_desktop as overview_codex_desktop  # noqa: E402
 from openrelix_overview import finder as overview_finder  # noqa: E402
 from openrelix_overview import token_fetcher  # noqa: E402
 
@@ -5131,8 +5132,8 @@ Keep my own note.
         self.assertIn("data-window-resume-copy", html)
         self.assertIn('data-resume-command="codex resume {}"'.format(thread_id), html)
         self.assertIn("data-window-resume-open", html)
-        self.assertIn('href="codex://threads/{}"'.format(thread_id), html)
         self.assertIn('data-codex-url="codex://threads/{}"'.format(thread_id), html)
+        self.assertIn('data-codex-resume-id="{}"'.format(thread_id), html)
         self.assertIn("执行", html)
         self.assertIn("<code>codex resume {}</code>".format(thread_id), html)
         self.assertNotIn('<p class="window-card-path"><a', html)
@@ -5449,6 +5450,46 @@ Keep my own note.
         self.assertIn('data-resume-command="codex resume thread-name"', html)
         self.assertNotIn("data-window-resume-open", html)
         self.assertNotIn("data-codex-url=", html)
+
+    def test_window_cards_include_codex_home_for_profile_aware_resume(self):
+        thread_id = "019dcefe-37f1-7a83-a8a6-720bd6b79d7f"
+        codex_home = "/tmp/openrelix-codex-home"
+        electron_user_data = "/tmp/OpenRelix Codex Profile"
+        html = build_overview.make_window_summary_cards(
+            {
+                "date": "2026-04-28",
+                "windows": [
+                    {
+                        "window_id": thread_id,
+                        "display_index": 1,
+                        "project_label": "OpenRelix",
+                        "resume_id": thread_id,
+                        "resume_command": build_overview.window_resume_command(
+                            "codex",
+                            thread_id,
+                            codex_home=codex_home,
+                        ),
+                        "resume_url": build_overview.codex_resume_url(thread_id),
+                        "codex_home": codex_home,
+                        "codex_electron_user_data_path": electron_user_data,
+                        "question_count": 1,
+                        "conclusion_count": 1,
+                        "question_summary": "问题",
+                        "main_takeaway": "结论",
+                        "keywords": [],
+                        "latest_activity_display": "刚刚",
+                        "started_at_display": "刚刚",
+                        "recent_prompts": [],
+                        "recent_conclusions": [],
+                    }
+                ],
+            }
+        )
+
+        self.assertIn("data-window-resume-open", html)
+        self.assertIn('data-codex-home="/tmp/openrelix-codex-home"', html)
+        self.assertIn('data-codex-electron-user-data-path="/tmp/OpenRelix Codex Profile"', html)
+        self.assertIn('CODEX_HOME=/tmp/openrelix-codex-home codex resume {}'.format(thread_id), html)
 
     def test_window_cards_show_claude_app_button_when_desktop_resume_supported(self):
         session_id = "c5ffea1c-8cf8-4dd2-a7ac-bf11f4dfa12b"
@@ -6159,6 +6200,42 @@ Keep my own note.
         thread_cls.assert_called_once()
         thread.start.assert_called_once()
 
+    def test_codex_desktop_resume_rejects_unknown_non_primary_home(self):
+        thread_id = "019dcefe-37f1-7a83-a8a6-720bd6b79d7f"
+        paths = argparse.Namespace(codex_home="/tmp/primary-codex-home")
+
+        with mock.patch.object(overview_codex_desktop.codex_profiles, "find_profile_for_home", return_value=None):
+            result = overview_codex_desktop.start_codex_desktop_resume(
+                thread_id,
+                codex_home="/tmp/other-codex-home",
+                paths=paths,
+            )
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["error"], "codex_desktop_profile_unknown")
+
+    def test_codex_desktop_resume_launches_with_profile_env(self):
+        thread_id = "019dcefe-37f1-7a83-a8a6-720bd6b79d7f"
+        with TemporaryDirectory() as tmpdir:
+            app_binary = Path(tmpdir) / "Codex"
+            app_binary.write_text("#!/bin/sh\n", encoding="utf-8")
+            process = mock.Mock(pid=4321)
+            with mock.patch.object(overview_codex_desktop.subprocess, "Popen", return_value=process) as popen:
+                result = overview_codex_desktop.start_codex_desktop_resume(
+                    thread_id,
+                    codex_home="/tmp/other-codex-home",
+                    electron_user_data_path="/tmp/Codex Profile",
+                    app_binary=app_binary,
+                )
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["pid"], 4321)
+        command = popen.call_args.args[0]
+        env = popen.call_args.kwargs["env"]
+        self.assertEqual(command, [str(app_binary), "codex://threads/{}".format(thread_id)])
+        self.assertEqual(env["CODEX_HOME"], "/tmp/other-codex-home")
+        self.assertEqual(env["CODEX_ELECTRON_USER_DATA_PATH"], "/tmp/Codex Profile")
+
     def test_finder_reveal_uses_macos_open_R_for_existing_path(self):
         with TemporaryDirectory() as tmpdir:
             target = Path(tmpdir) / "SKILL.md"
@@ -6186,6 +6263,7 @@ Keep my own note.
             self.assertEqual(overview_finder.reveal_path_in_finder(relative)["error"], "path_not_found")
 
     def test_token_live_trusts_local_panel_post_endpoints(self):
+        self.assertIn(overview_codex_desktop.CODEX_DESKTOP_OPEN_PATH, token_live_server.TRUSTED_POST_PATHS)
         self.assertIn(overview_finder.FINDER_REVEAL_PATH, token_live_server.TRUSTED_POST_PATHS)
         self.assertIn(token_live_server.PANEL_REFRESH_PATH, token_live_server.TRUSTED_POST_PATHS)
 

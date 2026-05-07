@@ -17,6 +17,10 @@ from openrelix_overview.claude_desktop import (
     CLAUDE_DESKTOP_OPEN_PATH,
     start_claude_desktop_resume,
 )
+from openrelix_overview.codex_desktop import (
+    CODEX_DESKTOP_OPEN_PATH,
+    start_codex_desktop_resume,
+)
 from openrelix_overview.config import (
     CCUSAGE_WINDOW_DAYS,
     LIVE_TOKEN_ENDPOINT,
@@ -70,6 +74,7 @@ ALLOWED_PANEL_ORIGIN_EXACT = {"null"}
 TRUSTED_POST_PATHS = {
     "/run-update",
     PANEL_REFRESH_PATH,
+    CODEX_DESKTOP_OPEN_PATH,
     CLAUDE_DESKTOP_OPEN_PATH,
     FINDER_REVEAL_PATH,
 }
@@ -631,6 +636,22 @@ class TokenLiveHandler(BaseHTTPRequestHandler):
             snapshot = start_claude_desktop_resume(payload.get("resume_id", ""), paths=PATHS)
             status_code = 202 if snapshot.get("ok") else 400
             if snapshot.get("error") in {"claude_desktop_app_not_found", "claude_cli_not_found"}:
+                status_code = 503
+            self._send_json(status_code, snapshot, allow_origin=origin or None)
+            return
+        if parsed.path == CODEX_DESKTOP_OPEN_PATH:
+            try:
+                payload = json.loads(body.decode("utf-8")) if body else {}
+            except (UnicodeDecodeError, json.JSONDecodeError):
+                payload = {}
+            snapshot = start_codex_desktop_resume(
+                payload.get("resume_id", ""),
+                codex_home=payload.get("codex_home", ""),
+                electron_user_data_path=payload.get("codex_electron_user_data_path", ""),
+                paths=PATHS,
+            )
+            status_code = 202 if snapshot.get("ok") else 400
+            if snapshot.get("error") in {"codex_desktop_app_not_found", "codex_desktop_profile_unknown"}:
                 status_code = 503
             self._send_json(status_code, snapshot, allow_origin=origin or None)
             return

@@ -43,6 +43,7 @@ from openrelix_overview import common as overview_common
 from openrelix_overview import contract as overview_contract
 from openrelix_overview import asset_discovery as overview_asset_discovery
 from openrelix_overview import claude_desktop as overview_claude_desktop
+from openrelix_overview import codex_desktop as overview_codex_desktop
 from openrelix_overview import finder as overview_finder
 from openrelix_overview import i18n as overview_i18n
 from openrelix_overview import labels as overview_labels
@@ -6742,11 +6743,27 @@ def window_resume_id(raw_window, window_id=""):
     ).strip()
 
 
-def codex_resume_command(resume_id):
+def resolved_path_text(path):
+    try:
+        return str(Path(path).expanduser().resolve(strict=False))
+    except OSError:
+        return str(Path(path).expanduser())
+
+
+def is_primary_codex_home(codex_home):
+    if not codex_home:
+        return True
+    return resolved_path_text(codex_home) == resolved_path_text(PATHS.codex_home)
+
+
+def codex_resume_command(resume_id, codex_home=""):
     resume_id = str(resume_id or "").strip()
     if not resume_id:
         return ""
-    return "codex resume {}".format(shlex.quote(resume_id))
+    command = "codex resume {}".format(shlex.quote(resume_id))
+    if codex_home and not is_primary_codex_home(codex_home):
+        return "CODEX_HOME={} {}".format(shlex.quote(str(codex_home)), command)
+    return command
 
 
 def claude_resume_command(resume_id):
@@ -6756,10 +6773,10 @@ def claude_resume_command(resume_id):
     return "claude --resume {}".format(shlex.quote(resume_id))
 
 
-def window_resume_command(ai_host, resume_id):
+def window_resume_command(ai_host, resume_id, codex_home=""):
     if ai_host == "claude":
         return claude_resume_command(resume_id)
-    return codex_resume_command(resume_id)
+    return codex_resume_command(resume_id, codex_home=codex_home)
 
 
 def window_host_label(ai_host, language=None):
@@ -7008,6 +7025,8 @@ def build_window_items_from_daily_capture(daily_capture, latest_nightly=None, la
         activity_source = normalize_window_activity_source(raw_window, daily_capture)
         thread_source = (raw_window.get("app_server") or {}).get("thread_source", "")
         resume_app_action = claude_desktop_resume_action(ai_host, resume_id)
+        codex_home = raw_window.get("codex_home", "")
+        codex_electron_user_data_path = raw_window.get("codex_electron_user_data_path", "")
         items.append(
             {
                 "date": (daily_capture or {}).get("date", ""),
@@ -7022,8 +7041,10 @@ def build_window_items_from_daily_capture(daily_capture, latest_nightly=None, la
                 "thread_source": thread_source,
                 "window_summary": window_summary,
                 "resume_id": resume_id,
-                "resume_command": window_resume_command(ai_host, resume_id),
+                "resume_command": window_resume_command(ai_host, resume_id, codex_home=codex_home),
                 "resume_url": codex_resume_url(resume_id) if ai_host == "codex" else "",
+                "codex_home": codex_home,
+                "codex_electron_user_data_path": codex_electron_user_data_path,
                 "resume_app_action": resume_app_action,
                 "resume_app_session_id": resume_id if resume_app_action else "",
                 "activity_source_label": window_activity_source_label(
@@ -7086,6 +7107,8 @@ def build_window_overview(latest_nightly, language=None, target_date=""):
             if ai_host not in {"codex", "claude"}:
                 ai_host = "codex"
             resume_id = item.get("resume_id", "") or item.get("window_id", "")
+            codex_home = item.get("codex_home", "")
+            codex_electron_user_data_path = item.get("codex_electron_user_data_path", "")
             resume_app_action = claude_desktop_resume_action(ai_host, resume_id)
             fallback_items.append(
                 {
@@ -7127,8 +7150,10 @@ def build_window_overview(latest_nightly, language=None, target_date=""):
                         or localized("未捕获窗口摘要", "No captured window summary", language)
                     ),
                     "resume_id": resume_id,
-                    "resume_command": window_resume_command(ai_host, resume_id),
+                    "resume_command": window_resume_command(ai_host, resume_id, codex_home=codex_home),
                     "resume_url": codex_resume_url(resume_id) if ai_host == "codex" else "",
+                    "codex_home": codex_home,
+                    "codex_electron_user_data_path": codex_electron_user_data_path,
                     "resume_app_action": resume_app_action,
                     "resume_app_session_id": resume_id if resume_app_action else "",
                     "keywords": [normalize_brand_display_text(keyword) for keyword in item.get("keywords", [])],
@@ -12784,23 +12809,40 @@ def make_window_summary_cards(window_overview, language=None):
             )
         return "".join(rows)
 
-    def render_resume_actions(resume_command, resume_url, resume_app_action="", resume_app_session_id=""):
+    def render_resume_actions(
+        resume_command,
+        resume_url,
+        resume_app_action="",
+        resume_app_session_id="",
+        codex_home="",
+        codex_electron_user_data_path="",
+    ):
         if not resume_command:
             return ""
         open_button = ""
         if resume_url:
             open_button = """
-          <a
-            href="{resume_url}"
+          <button
+            type="button"
             class="window-resume-button is-secondary"
             data-window-resume-open
             data-codex-url="{resume_url}"
+            data-codex-resume-id="{resume_app_session_id}"
+            data-codex-home="{codex_home}"
+            data-codex-electron-user-data-path="{codex_electron_user_data_path}"
             data-label="{open_label}"
+            data-opening-label="{opening_label}"
             data-opened-label="{opened_label}"
-          >{open_label}</a>""".format(
+            data-error-label="{error_label}"
+          >{open_label}</button>""".format(
                 resume_url=escape(resume_url, quote=True),
+                resume_app_session_id=escape(resume_app_session_id, quote=True),
+                codex_home=escape(codex_home, quote=True),
+                codex_electron_user_data_path=escape(codex_electron_user_data_path, quote=True),
                 open_label=escape(localized("在 Codex App 打开", "Open in Codex App", language), quote=True),
-                opened_label=escape(localized("正在打开", "Opening", language), quote=True),
+                opening_label=escape(localized("正在打开", "Opening", language), quote=True),
+                opened_label=escape(localized("已发送", "Sent", language), quote=True),
+                error_label=escape(localized("打开失败", "Open failed", language), quote=True),
             )
         elif resume_app_action == "claude_desktop" and resume_app_session_id:
             open_button = """
@@ -13142,15 +13184,21 @@ def make_window_summary_cards(window_overview, language=None):
                 or localized("未捕获窗口摘要", "No captured window summary", language)
             )
         resume_id = item.get("resume_id", "") or window_id
-        resume_command = item.get("resume_command", "") or window_resume_command(ai_host, resume_id)
+        resume_command = item.get("resume_command", "") or window_resume_command(
+            ai_host,
+            resume_id,
+            codex_home=item.get("codex_home", ""),
+        )
         resume_url = item.get("resume_url", "") or (codex_resume_url(resume_id) if ai_host == "codex" else "")
         resume_app_action = item.get("resume_app_action", "") or claude_desktop_resume_action(ai_host, resume_id)
-        resume_app_session_id = item.get("resume_app_session_id", "") or (resume_id if resume_app_action else "")
+        resume_app_session_id = item.get("resume_app_session_id", "") or (resume_id if (resume_app_action or ai_host == "codex") else "")
         resume_actions = render_resume_actions(
             resume_command,
             resume_url,
             resume_app_action=resume_app_action,
             resume_app_session_id=resume_app_session_id,
+            codex_home=item.get("codex_home", ""),
+            codex_electron_user_data_path=item.get("codex_electron_user_data_path", ""),
         )
         question_count = safe_int(item.get("question_count", len(summary_pairs)))
         if question_count <= 0:
@@ -14506,7 +14554,7 @@ def build_html(data):
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="openrelix:version" content="{current_version}" data-pkg="{npm_package}" data-update-endpoint="{update_endpoint}" data-update-status-endpoint="{update_status_endpoint}" data-asset-refresh-endpoint="{asset_refresh_endpoint}" data-claude-desktop-endpoint="{claude_desktop_endpoint}" data-finder-open-endpoint="{finder_open_endpoint}" data-update-token="{update_token}">
+  <meta name="openrelix:version" content="{current_version}" data-pkg="{npm_package}" data-update-endpoint="{update_endpoint}" data-update-status-endpoint="{update_status_endpoint}" data-asset-refresh-endpoint="{asset_refresh_endpoint}" data-codex-desktop-endpoint="{codex_desktop_endpoint}" data-claude-desktop-endpoint="{claude_desktop_endpoint}" data-finder-open-endpoint="{finder_open_endpoint}" data-update-token="{update_token}">
   <title>{document_title}</title>
   <script>
     (function () {{
@@ -20940,6 +20988,71 @@ def build_html(data):
         }}, 1600);
       }}
 
+      function openCodexDesktopResume(button) {{
+        const resumeId = (button.getAttribute("data-codex-resume-id") || "").trim();
+        const codexUrl = (button.getAttribute("data-codex-url") || "").trim();
+        const codexHome = (button.getAttribute("data-codex-home") || "").trim();
+        const codexElectronUserDataPath = (button.getAttribute("data-codex-electron-user-data-path") || "").trim();
+        const endpoint = openrelixMetaAttr("data-codex-desktop-endpoint");
+        const token = openrelixMetaAttr("data-update-token");
+        const originalLabel = button.getAttribute("data-label") || button.textContent;
+        const openingLabel = button.getAttribute("data-opening-label") || t("正在打开");
+        const openedLabel = button.getAttribute("data-opened-label") || t("已发送");
+        const errorLabel = button.getAttribute("data-error-label") || t("打开失败");
+
+        function fallbackOpen() {{
+          if (codexUrl) {{
+            window.location.href = codexUrl;
+            return true;
+          }}
+          return false;
+        }}
+
+        if (!resumeId || !endpoint || !window.fetch) {{
+          if (!fallbackOpen()) {{
+            flashButtonLabel(button, errorLabel);
+          }}
+          return;
+        }}
+
+        button.disabled = true;
+        button.textContent = openingLabel;
+        const headers = {{ "Content-Type": "application/json" }};
+        if (token) {{
+          headers["X-OpenRelix-Token"] = token;
+        }}
+        fetch(endpoint, {{
+          method: "POST",
+          headers: headers,
+          body: JSON.stringify({{
+            resume_id: resumeId,
+            codex_home: codexHome,
+            codex_electron_user_data_path: codexElectronUserDataPath
+          }})
+        }})
+          .then(function (response) {{
+            return response.json().catch(function () {{
+              return null;
+            }}).then(function (payload) {{
+              if (!response.ok || !payload || payload.ok === false) {{
+                throw new Error((payload && payload.error) || ("HTTP " + response.status));
+              }}
+              return payload;
+            }});
+          }})
+          .then(function () {{
+            button.textContent = openedLabel;
+            resetButtonLabelLater(button, originalLabel);
+          }})
+          .catch(function () {{
+            button.disabled = false;
+            button.textContent = originalLabel;
+            if (!fallbackOpen()) {{
+              flashButtonLabel(button, errorLabel);
+            }}
+          }});
+      }}
+
       function openClaudeDesktopResume(button) {{
         const resumeId = (button.getAttribute("data-claude-resume-id") || "").trim();
         const endpoint = openrelixMetaAttr("data-claude-desktop-endpoint");
@@ -21098,19 +21211,9 @@ def build_html(data):
           }}
           const openButton = event.target.closest("[data-window-resume-open]");
           if (openButton) {{
+            event.preventDefault();
             event.stopPropagation();
-            const codexUrl = openButton.getAttribute("data-codex-url") || "";
-            const tagName = (openButton.tagName || "").toLowerCase();
-            if (codexUrl) {{
-              flashButtonLabel(
-                openButton,
-                openButton.getAttribute("data-opened-label") || t("正在打开")
-              );
-              if (tagName !== "a") {{
-                event.preventDefault();
-                window.location.href = codexUrl;
-              }}
-            }}
+            openCodexDesktopResume(openButton);
           }}
         }});
       }}
@@ -23217,6 +23320,14 @@ def build_html(data):
         update_endpoint=escape("http://{}:{}/run-update".format(LIVE_TOKEN_HOST, LIVE_TOKEN_PORT), quote=True),
         update_status_endpoint=escape("http://{}:{}/update-status".format(LIVE_TOKEN_HOST, LIVE_TOKEN_PORT), quote=True),
         asset_refresh_endpoint=escape("http://{}:{}/run-refresh".format(LIVE_TOKEN_HOST, LIVE_TOKEN_PORT), quote=True),
+        codex_desktop_endpoint=escape(
+            "http://{}:{}{}".format(
+                LIVE_TOKEN_HOST,
+                LIVE_TOKEN_PORT,
+                overview_codex_desktop.CODEX_DESKTOP_OPEN_PATH,
+            ),
+            quote=True,
+        ),
         claude_desktop_endpoint=escape(
             "http://{}:{}{}".format(
                 LIVE_TOKEN_HOST,

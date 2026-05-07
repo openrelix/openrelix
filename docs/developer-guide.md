@@ -78,6 +78,7 @@ External state root
 | --- | --- |
 | `AI_ASSET_STATE_DIR` | 覆盖 state root |
 | `CODEX_HOME` / `CODEX_BIN` | 覆盖 Codex home 和 binary |
+| `OPENRELIX_CODEX_HOMES` / `OPENRELIX_EXTRA_CODEX_HOMES` | 额外 Codex home 列表，逗号分隔；运行中的 Codex desktop profile 会在 macOS 上自动探测 |
 | `CLAUDE_HOME` / `CLAUDE_CONFIG_DIR` / `CLAUDE_BIN` | 覆盖 Claude Code home 和 binary |
 | `AI_ASSET_LANGUAGE` | `zh` / `en`，控制本地输出和报告语言 |
 | `AI_ASSET_MEMORY_MODE` | `integrated` / `local-only` / `off` |
