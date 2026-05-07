@@ -4625,6 +4625,9 @@ Keep my own note.
         self.assertIn("function tokenEffectiveWindowDays(filters, fallbackWindowDays)", html)
         self.assertIn("function tokenUsageMatchesRequestFilters(tokenUsage, filters)", html)
         self.assertIn("function tokenShortDateMonthKey(text, context)", html)
+        self.assertIn("function tokenShortDateIsoKey(text, context)", html)
+        self.assertIn("function tokenRowDayKey(row, context)", html)
+        self.assertIn("return tokenRowDayKey(row, context) === endIso;", html)
         self.assertIn("function aggregateDailyRowsByMonth(rows, tokenUsage)", html)
         self.assertIn("const monthContext = Object.assign", html)
         self.assertIn("aggregateDailyRowsByMonth(sourceRows, monthContext)", html)
@@ -4646,6 +4649,7 @@ Keep my own note.
         self.assertIn("display: compactTokenWithCostValue(row.value, rowCost)", html)
         self.assertIn("prepared.summary_cards = deriveTokenSummaryCards(prepared);", html)
         self.assertIn('updateTokenVisuals(state.tokenUsage, state.tokenSourceKind);', html)
+        self.assertNotIn("rowDate.slice(0, 10) === endIso", html)
         self.assertNotIn('updateMetricCard(\n          "today_token",\n          tokenUsage.today_total_tokens_display', html)
 
     def test_product_showcase_chinese_default_has_localized_visible_labels(self):
