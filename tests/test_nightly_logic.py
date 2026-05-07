@@ -9383,6 +9383,48 @@ Keep my own note.
             ["token-input", "token-cache", "token-output", "token-reasoning"],
         )
 
+    def test_token_usage_view_shows_zero_when_today_has_no_usage_row(self):
+        with mock.patch.object(
+            build_overview,
+            "current_local_datetime",
+            return_value=datetime.fromisoformat("2026-05-07T12:00:00+08:00"),
+        ):
+            view = build_overview.build_token_usage_view(
+                {
+                    "available": True,
+                    "payload": {
+                        "daily": [
+                            {
+                                "date": "May 06, 2026",
+                                "inputTokens": 1000,
+                                "cachedInputTokens": 250,
+                                "outputTokens": 200,
+                                "reasoningOutputTokens": 0,
+                                "totalTokens": 1200,
+                                "costUSD": 2.0,
+                            },
+                        ]
+                    },
+                    "error": "",
+                    "fetched_at": "2026-05-07T12:00:00+08:00",
+                    "window_days": 7,
+                    "range_start": "2026-05-01",
+                    "range_end": "2026-05-07",
+                },
+                language="zh",
+            )
+
+        self.assertEqual(view["today_total_tokens"], 0)
+        self.assertEqual(view["today_total_tokens_display"], "0")
+        self.assertEqual(view["today_date_label"], "05-07")
+        self.assertEqual(view["daily_rows"][-1]["date"], "2026-05-07")
+        self.assertEqual(view["daily_rows"][-1]["value"], 0)
+        self.assertEqual(view["daily_rows"][-1]["tone"], "token-daily-empty")
+        self.assertEqual(view["daily_rows"][-2]["value"], 1200)
+        self.assertEqual(view["period_total_tokens"], 1200)
+        self.assertEqual(view["active_period_count"], 1)
+        self.assertTrue(all(row["value"] == 0 for row in view["today_breakdown"]))
+
     def test_token_usage_view_filters_daily_rows_to_recent_calendar_week(self):
         daily = []
         for index, raw_date in enumerate(
