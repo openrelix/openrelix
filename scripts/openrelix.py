@@ -57,6 +57,7 @@ from asset_runtime import (
     write_runtime_config,
 )
 from openrelix_overview import asset_discovery as overview_asset_discovery
+from openrelix_overview import codex_profiles as overview_codex_profiles
 from openrelix_overview.token_fetcher import fetch_ccusage_daily, normalize_token_provider
 from openrelix_overview.token_usage import build_token_usage_view, normalize_token_group_by
 from openrelix_memory_migration import (
@@ -3962,11 +3963,19 @@ def command_asset_stats(args):
     target_date = parse_date_arg(args.date, "--date")
     monthly_months = normalize_positive_int(args.monthly_months, "--monthly-months")
     top_limit = normalize_positive_int(args.top_limit, "--top-limit")
+    runtime_config = load_runtime_config(PATHS)
+    codex_profiles = overview_codex_profiles.collect_codex_profiles(
+        PATHS,
+        config=runtime_config,
+        include_running=True,
+    )
+    codex_homes = [profile.codex_home for profile in codex_profiles]
     snapshot = overview_asset_discovery.build_asset_stats_snapshot(
         PATHS,
         target_date,
         monthly_months=monthly_months,
         top_limit=top_limit,
+        codex_homes=codex_homes,
     )
     snapshot["command"] = "openrelix asset-stats --date {}".format(snapshot["date"])
     REPORTS_DIR.mkdir(parents=True, exist_ok=True)

@@ -2,6 +2,7 @@
 
 import json
 from collections import OrderedDict
+from dataclasses import replace
 from datetime import date as date_cls
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -172,6 +173,50 @@ def _coerce_date(value):
     return datetime.now().date()
 
 
+def _resolved(path):
+    try:
+        return Path(path).expanduser().resolve(strict=False)
+    except OSError:
+        return Path(path).expanduser()
+
+
+def _codex_home_from_value(value):
+    if value is None:
+        return None
+    if hasattr(value, "codex_home"):
+        value = getattr(value, "codex_home")
+    text = str(value or "").strip()
+    return Path(text).expanduser() if text else None
+
+
+def _codex_homes(paths, codex_homes=None):
+    homes = []
+    primary = _codex_home_from_value(getattr(paths, "codex_home", ""))
+    if primary is not None:
+        homes.append(primary)
+    for value in codex_homes or []:
+        home = _codex_home_from_value(value)
+        if home is not None:
+            homes.append(home)
+
+    deduped = OrderedDict()
+    for home in homes:
+        deduped.setdefault(_resolved(home).as_posix(), home)
+    return list(deduped.values())
+
+
+def _paths_for_codex_home(paths, codex_home):
+    home = _codex_home_from_value(codex_home) or paths.codex_home
+    try:
+        return replace(paths, codex_home=home, user_skill_root=home / "skills")
+    except (TypeError, ValueError):
+        return paths
+
+
+def _codex_path_variants(paths, codex_homes=None):
+    return [_paths_for_codex_home(paths, home) for home in _codex_homes(paths, codex_homes)]
+
+
 def _parse_json_line(line):
     try:
         return json.loads(line)
@@ -250,7 +295,7 @@ def _scan_codex_session(path):
     return calls
 
 
-def build_mcp_usage_view(paths, today, lookback_days=30, limit=10):
+def build_mcp_usage_view(paths, today, lookback_days=30, limit=10, codex_homes=None):
     """Build a sanitized MCP usage summary from recent Codex function calls."""
     anchor = _coerce_date(today)
     days = max(int(lookback_days or 0), 1)
@@ -261,50 +306,51 @@ def build_mcp_usage_view(paths, today, lookback_days=30, limit=10):
 
     for offset in range(days):
         session_date = start + timedelta(days=offset)
-        for session_path in _iter_codex_sessions_for_date(paths, session_date):
-            scanned_sessions += 1
-            session_tool_names = set()
-            session_server_names = set()
-            for server, tool, name in _scan_codex_session(session_path):
-                description, description_en = describe_mcp_tool(server, tool)
-                row = tool_stats.setdefault(
-                    name,
-                    {
-                        "name": name,
-                        "server": server,
-                        "tool": tool,
-                        "label": "{}/{}".format(server, tool),
-                        "description": description,
-                        "description_en": description_en,
-                        "calls": 0,
-                        "sessions": 0,
-                        "last_seen": "",
-                    },
-                )
-                row["calls"] += 1
-                if not row["last_seen"] or session_date.isoformat() > row["last_seen"]:
-                    row["last_seen"] = session_date.isoformat()
-                session_tool_names.add(name)
+        for codex_paths in _codex_path_variants(paths, codex_homes):
+            for session_path in _iter_codex_sessions_for_date(codex_paths, session_date):
+                scanned_sessions += 1
+                session_tool_names = set()
+                session_server_names = set()
+                for server, tool, name in _scan_codex_session(session_path):
+                    description, description_en = describe_mcp_tool(server, tool)
+                    row = tool_stats.setdefault(
+                        name,
+                        {
+                            "name": name,
+                            "server": server,
+                            "tool": tool,
+                            "label": "{}/{}".format(server, tool),
+                            "description": description,
+                            "description_en": description_en,
+                            "calls": 0,
+                            "sessions": 0,
+                            "last_seen": "",
+                        },
+                    )
+                    row["calls"] += 1
+                    if not row["last_seen"] or session_date.isoformat() > row["last_seen"]:
+                        row["last_seen"] = session_date.isoformat()
+                    session_tool_names.add(name)
 
-                server_row = server_stats.setdefault(
-                    server,
-                    {
-                        "server": server,
-                        "label": server,
-                        "calls": 0,
-                        "sessions": 0,
-                        "last_seen": "",
-                    },
-                )
-                server_row["calls"] += 1
-                if not server_row["last_seen"] or session_date.isoformat() > server_row["last_seen"]:
-                    server_row["last_seen"] = session_date.isoformat()
-                session_server_names.add(server)
+                    server_row = server_stats.setdefault(
+                        server,
+                        {
+                            "server": server,
+                            "label": server,
+                            "calls": 0,
+                            "sessions": 0,
+                            "last_seen": "",
+                        },
+                    )
+                    server_row["calls"] += 1
+                    if not server_row["last_seen"] or session_date.isoformat() > server_row["last_seen"]:
+                        server_row["last_seen"] = session_date.isoformat()
+                    session_server_names.add(server)
 
-            for name in session_tool_names:
-                tool_stats[name]["sessions"] += 1
-            for server in session_server_names:
-                server_stats[server]["sessions"] += 1
+                for name in session_tool_names:
+                    tool_stats[name]["sessions"] += 1
+                for server in session_server_names:
+                    server_stats[server]["sessions"] += 1
 
     def sort_key(row):
         return (-int(row.get("calls") or 0), -int(row.get("sessions") or 0), str(row.get("label") or ""))

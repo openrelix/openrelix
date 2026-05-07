@@ -22,6 +22,7 @@ from asset_runtime import (
     get_project_version,
     get_runtime_language,
     get_runtime_paths,
+    load_runtime_config,
     PREVIOUS_PUBLIC_APP_SLUG,
     PROJECT_PACKAGE_NAME,
     render_path,
@@ -43,6 +44,7 @@ from openrelix_overview import common as overview_common
 from openrelix_overview import contract as overview_contract
 from openrelix_overview import asset_discovery as overview_asset_discovery
 from openrelix_overview import claude_desktop as overview_claude_desktop
+from openrelix_overview import codex_profiles as overview_codex_profiles
 from openrelix_overview import codex_desktop as overview_codex_desktop
 from openrelix_overview import finder as overview_finder
 from openrelix_overview import i18n as overview_i18n
@@ -8079,18 +8081,26 @@ def sort_top_assets(enriched_assets):
 
 def build_data(assets, usage_events, reviews, language=None):
     language = current_language(language)
+    runtime_config = load_runtime_config(PATHS)
+    codex_profiles = overview_codex_profiles.collect_codex_profiles(
+        PATHS,
+        config=runtime_config,
+        include_running=True,
+    )
+    codex_homes = [profile.codex_home for profile in codex_profiles]
     memory_items = load_memory_registry_items()
     nightly_candidates = load_nightly_summary_candidates()
     primary_nightly, active_nightly = load_primary_and_active_nightly_summaries()
     display_nightly = select_display_nightly(primary_nightly, active_nightly)
     today = current_local_datetime().date()
     today_date_str = today.isoformat()
-    installed_assets = overview_asset_discovery.discover_installed_assets(PATHS)
+    installed_assets = overview_asset_discovery.discover_installed_assets(PATHS, codex_homes=codex_homes)
     discovered_snapshot = overview_asset_discovery.compute_activation_snapshot(
         PATHS,
         installed_assets,
         today,
         monthly_months=6,
+        codex_homes=codex_homes,
     )
     all_discovered_assets = discovered_snapshot["assets"]
     discovered_asset_frequency = discovered_snapshot["frequency_by_key"]
@@ -8255,6 +8265,7 @@ def build_data(assets, usage_events, reviews, language=None):
         today,
         lookback_days=30,
         limit=None,
+        codex_homes=codex_homes,
     )
     localized_usage_events = enrich_usage_events(recent_usage_events, language=language)
     minutes_saved_total = sum(

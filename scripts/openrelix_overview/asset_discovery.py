@@ -14,6 +14,7 @@ import shutil
 import subprocess
 import sys
 from collections import OrderedDict
+from dataclasses import replace
 from datetime import date as date_cls
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -222,6 +223,43 @@ def _direct_skill_under_root(path, root, identifier):
 
 def _default_codex_home():
     return Path.home() / ".codex"
+
+
+def _codex_home_from_value(value):
+    if value is None:
+        return None
+    if hasattr(value, "codex_home"):
+        value = getattr(value, "codex_home")
+    text = str(value or "").strip()
+    return Path(text).expanduser() if text else None
+
+
+def _codex_homes(paths, codex_homes=None):
+    homes = []
+    primary = _codex_home_from_value(getattr(paths, "codex_home", ""))
+    if primary is not None:
+        homes.append(primary)
+    for value in codex_homes or []:
+        home = _codex_home_from_value(value)
+        if home is not None:
+            homes.append(home)
+
+    deduped = OrderedDict()
+    for home in homes:
+        deduped.setdefault(_resolved(home).as_posix(), home)
+    return list(deduped.values())
+
+
+def _paths_for_codex_home(paths, codex_home):
+    home = _codex_home_from_value(codex_home) or paths.codex_home
+    try:
+        return replace(paths, codex_home=home, user_skill_root=home / "skills")
+    except (TypeError, ValueError):
+        return paths
+
+
+def _codex_path_variants(paths, codex_homes=None):
+    return [_paths_for_codex_home(paths, home) for home in _codex_homes(paths, codex_homes)]
 
 
 def _codex_home_label(paths):
@@ -472,37 +510,38 @@ def _discover_launch_agents(paths):
     return assets
 
 
-def discover_installed_assets(paths):
+def discover_installed_assets(paths, codex_homes=None):
     """Discover static assets installed on this machine.
 
     The returned rows are display-safe and do not include raw absolute paths.
     Missing directories and malformed plugin manifests are treated as empty.
     """
-    codex_skill_root = paths.codex_home / "skills"
-    codex_memory_skill_root = paths.codex_home / "memories" / "skills"
     claude_skill_root = Path.home() / ".claude" / "skills"
     agent_skill_root = Path.home() / ".agents" / "skills"
     repo_skill_root = paths.repo_skill_root
     discovered = []
-    discovered.extend(
-        _discover_skill_dir(
-            codex_skill_root,
-            "codex_skill",
-            "{}/skills".format(_codex_home_label(paths)),
+    for codex_paths in _codex_path_variants(paths, codex_homes):
+        codex_skill_root = codex_paths.codex_home / "skills"
+        codex_memory_skill_root = codex_paths.codex_home / "memories" / "skills"
+        discovered.extend(
+            _discover_skill_dir(
+                codex_skill_root,
+                "codex_skill",
+                "{}/skills".format(_codex_home_label(codex_paths)),
+            )
         )
-    )
-    discovered.extend(
-        _discover_skill_dir(
-            codex_memory_skill_root,
-            "codex_skill",
-            "{}/memories/skills".format(_codex_home_label(paths)),
+        discovered.extend(
+            _discover_skill_dir(
+                codex_memory_skill_root,
+                "codex_skill",
+                "{}/memories/skills".format(_codex_home_label(codex_paths)),
+            )
         )
-    )
+        discovered.extend(_discover_codex_prompts(codex_paths))
+        discovered.extend(_discover_codex_rules(codex_paths))
     discovered.extend(_discover_skill_dir(claude_skill_root, "claude_skill", "~/.claude/skills"))
     discovered.extend(_discover_skill_dir(agent_skill_root, "agent_skill", "~/.agents/skills"))
     discovered.extend(_discover_skill_dir(repo_skill_root, "repo_skill", ".agents/skills"))
-    discovered.extend(_discover_codex_prompts(paths))
-    discovered.extend(_discover_codex_rules(paths))
     discovered.extend(_discover_claude_plugins())
     discovered.extend(_discover_launch_agents(paths))
     return _dedupe_and_sort_assets(discovered)
@@ -572,7 +611,7 @@ def _absolute_path_from_raw(raw_path):
     return None
 
 
-def classify_skill_manifest_path(raw_path, paths):
+def classify_skill_manifest_path(raw_path, paths, codex_homes=None):
     """Return (kind, identifier) for a SKILL.md path, or None if unsupported."""
     hits = _skill_manifest_hits(raw_path)
     if hits:
@@ -588,15 +627,16 @@ def classify_skill_manifest_path(raw_path, paths):
 
     absolute_path = _absolute_path_from_raw(path_text)
     if absolute_path is not None:
-        codex_skill_root = paths.codex_home / "skills"
-        codex_memory_skill_root = paths.codex_home / "memories" / "skills"
+        for codex_paths in _codex_path_variants(paths, codex_homes):
+            codex_skill_root = codex_paths.codex_home / "skills"
+            codex_memory_skill_root = codex_paths.codex_home / "memories" / "skills"
+            if _direct_skill_under_root(absolute_path, codex_skill_root, identifier):
+                return ("codex_skill", identifier)
+            if _direct_skill_under_root(absolute_path, codex_memory_skill_root, identifier):
+                return ("codex_skill", identifier)
         claude_skill_root = Path.home() / ".claude" / "skills"
         agent_skill_root = Path.home() / ".agents" / "skills"
         repo_skill_root = paths.repo_skill_root
-        if _direct_skill_under_root(absolute_path, codex_skill_root, identifier):
-            return ("codex_skill", identifier)
-        if _direct_skill_under_root(absolute_path, codex_memory_skill_root, identifier):
-            return ("codex_skill", identifier)
         if _direct_skill_under_root(absolute_path, claude_skill_root, identifier):
             return ("claude_skill", identifier)
         if _direct_skill_under_root(absolute_path, agent_skill_root, identifier):
@@ -640,8 +680,8 @@ def _organic_asset_from_manifest(kind, identifier, raw_path, cache):
     )
 
 
-def _hit_key_and_row(raw_path, paths):
-    classified = classify_skill_manifest_path(raw_path, paths)
+def _hit_key_and_row(raw_path, paths, codex_homes=None):
+    classified = classify_skill_manifest_path(raw_path, paths, codex_homes=codex_homes)
     if not classified:
         return None
     kind, identifier = classified
@@ -666,7 +706,7 @@ def _merge_session_hit(hits, hit):
     hits[key]["read_events"] = int(hits[key].get("read_events") or 0) + int(hit.get("read_events") or 1)
 
 
-def _scan_codex_session(session_path, paths):
+def _scan_codex_session(session_path, paths, codex_homes=None):
     hits = OrderedDict()
     try:
         payload = Path(session_path).read_bytes()
@@ -690,7 +730,7 @@ def _scan_codex_session(session_path, paths):
             line = raw_line.decode("utf-8")
         except UnicodeDecodeError:
             continue
-        for hit in _hits_from_codex_json_line(line, paths):
+        for hit in _hits_from_codex_json_line(line, paths, codex_homes=codex_homes):
             _merge_session_hit(hits, hit)
     return hits
 
@@ -793,7 +833,7 @@ def _iter_codex_session_month_roots(paths, start, anchor):
     return roots
 
 
-def _hits_from_codex_json_line(line, paths):
+def _hits_from_codex_json_line(line, paths, codex_homes=None):
     obj = _parse_json_line(line)
     if not isinstance(obj, dict) or obj.get("type") != "response_item":
         return []
@@ -818,13 +858,13 @@ def _hits_from_codex_json_line(line, paths):
         if not isinstance(cmd, str) or "SKILL.md" not in cmd:
             continue
         for raw_path, _identifier in _skill_manifest_hits(cmd):
-            hit = _hit_key_and_row(raw_path, paths)
+            hit = _hit_key_and_row(raw_path, paths, codex_homes=codex_homes)
             if hit:
                 hits.append(hit)
     return hits
 
 
-def _scan_codex_sessions_with_rg(paths, lookback_start, anchor):
+def _scan_codex_sessions_with_rg(paths, lookback_start, anchor, codex_homes=None):
     if not shutil.which("rg"):
         return None
     roots = _iter_codex_session_month_roots(paths, lookback_start, anchor)
@@ -873,7 +913,7 @@ def _scan_codex_sessions_with_rg(paths, lookback_start, anchor):
         if not json_line:
             continue
         session_hits = sessions.setdefault(session_path, (session_date, OrderedDict()))[1]
-        for hit in _hits_from_codex_json_line(json_line, paths):
+        for hit in _hits_from_codex_json_line(json_line, paths, codex_homes=codex_homes):
             _merge_session_hit(session_hits, hit)
     return list(sessions.values())
 
@@ -959,7 +999,7 @@ def _record_monthly_activity(date_value, hits, monthly_activity):
                 monthly_activity[month_label].add(identifier)
 
 
-def compute_activation_snapshot(paths, installed, today, monthly_months=6):
+def compute_activation_snapshot(paths, installed, today, monthly_months=6, codex_homes=None):
     """Return discovered assets, 30-day frequency, and optional monthly activity.
 
     Frequency exposes both deduped sessions and raw SKILL.md read events:
@@ -985,18 +1025,24 @@ def compute_activation_snapshot(paths, installed, today, monthly_months=6):
 
     frontmatter_cache = {}
     lookback_days = max((anchor - lookback_start).days + 1, 30)
-    rg_codex_sessions = _scan_codex_sessions_with_rg(paths, lookback_start, anchor)
-    if rg_codex_sessions is not None:
-        for session_date, hits in rg_codex_sessions:
-            _record_monthly_activity(session_date, hits, monthly_activity)
-            _record_activation(session_date, hits, assets_by_key, frequency_by_key, frontmatter_cache, anchor)
-    else:
+    for codex_paths in _codex_path_variants(paths, codex_homes):
+        rg_codex_sessions = _scan_codex_sessions_with_rg(
+            codex_paths,
+            lookback_start,
+            anchor,
+            codex_homes=codex_homes,
+        )
+        if rg_codex_sessions is not None:
+            for session_date, hits in rg_codex_sessions:
+                _record_monthly_activity(session_date, hits, monthly_activity)
+                _record_activation(session_date, hits, assets_by_key, frequency_by_key, frontmatter_cache, anchor)
+            continue
         for offset in range(lookback_days):
             session_date = anchor - timedelta(days=offset)
             if session_date < lookback_start:
                 continue
-            for session_path in _iter_codex_sessions_for_date(paths, session_date):
-                hits = _scan_codex_session(session_path, paths)
+            for session_path in _iter_codex_sessions_for_date(codex_paths, session_date):
+                hits = _scan_codex_session(session_path, codex_paths, codex_homes=codex_homes)
                 _record_monthly_activity(session_date, hits, monthly_activity)
                 _record_activation(session_date, hits, assets_by_key, frequency_by_key, frontmatter_cache, anchor)
 
@@ -1022,14 +1068,14 @@ def compute_activation_snapshot(paths, installed, today, monthly_months=6):
     }
 
 
-def compute_activations_and_extend(paths, installed, today):
+def compute_activations_and_extend(paths, installed, today, codex_homes=None):
     """Return discovered assets plus real SKILL.md activation frequencies.
 
     The returned frequency keeps windows_7d/windows_30d for backward
     compatibility; those values are deduped session counts. read_events_7d and
     read_events_30d hold the raw manifest-read count.
     """
-    snapshot = compute_activation_snapshot(paths, installed, today, monthly_months=0)
+    snapshot = compute_activation_snapshot(paths, installed, today, monthly_months=0, codex_homes=codex_homes)
     return (snapshot["assets"], snapshot["frequency_by_key"])
 
 
@@ -1278,15 +1324,16 @@ def top_skill_rows(render_rows, limit=10):
     return sorted_rows[: max(int(limit or 0), 0)]
 
 
-def build_asset_stats_snapshot(paths, target_date, generated_at=None, monthly_months=6, top_limit=10):
+def build_asset_stats_snapshot(paths, target_date, generated_at=None, monthly_months=6, top_limit=10, codex_homes=None):
     """Build a single-date asset statistics snapshot without writing state."""
     anchor = _coerce_date(target_date)
-    installed_assets = discover_installed_assets(paths)
+    installed_assets = discover_installed_assets(paths, codex_homes=codex_homes)
     activation_snapshot = compute_activation_snapshot(
         paths,
         installed_assets,
         anchor,
         monthly_months=monthly_months,
+        codex_homes=codex_homes,
     )
     all_assets = activation_snapshot["assets"]
     frequency_by_key = activation_snapshot["frequency_by_key"]

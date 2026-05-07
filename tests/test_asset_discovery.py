@@ -83,8 +83,9 @@ class AssetDiscoveryTests(unittest.TestCase):
         manifest.write_text("\n".join(pieces) + "\n", encoding="utf-8")
         return manifest
 
-    def write_codex_rollout(self, day, session_id, commands, extra_lines=None):
-        root = self.paths.codex_home / "sessions" / day.strftime("%Y") / day.strftime("%m") / day.strftime("%d")
+    def write_codex_rollout(self, day, session_id, commands, extra_lines=None, codex_home=None):
+        home = Path(codex_home or self.paths.codex_home)
+        root = home / "sessions" / day.strftime("%Y") / day.strftime("%m") / day.strftime("%d")
         root.mkdir(parents=True, exist_ok=True)
         path = root / "rollout-{}.jsonl".format(session_id)
         rows = list(extra_lines or [])
@@ -158,6 +159,16 @@ class AssetDiscoveryTests(unittest.TestCase):
         self.assertIn("codex_skill:alpha", assets)
         self.assertEqual(assets["codex_skill:alpha"]["name"], "Alpha")
         self.assertEqual(assets["codex_skill:alpha"]["description"], "Codex helper")
+
+    def test_discovers_extra_codex_home_skill(self):
+        extra_home = self.home / ".codex-pro"
+        manifest = self.write_skill(extra_home / "skills", "extra", name="Extra", description="Pro helper")
+
+        assets = self.assets_by_key(asset_discovery.discover_installed_assets(self.paths, codex_homes=[extra_home]))
+
+        self.assertIn("codex_skill:extra", assets)
+        self.assertEqual(assets["codex_skill:extra"]["description"], "Pro helper")
+        self.assertEqual(assets["codex_skill:extra"]["manifest_abspath"], str(manifest.resolve()))
 
     def test_discovers_codex_memory_skill_as_codex_skill(self):
         manifest = self.write_skill(
@@ -397,6 +408,23 @@ class AssetDiscoveryTests(unittest.TestCase):
         _assets, frequency = self.compute(installed)
 
         self.assertEqual(frequency["codex_skill:foo"]["windows_30d"], 2)
+
+    def test_codex_rollout_merges_extra_codex_home_sessions(self):
+        extra_home = self.home / ".codex-pro"
+        manifest = self.write_skill(extra_home / "skills", "foo")
+        installed = asset_discovery.discover_installed_assets(self.paths, codex_homes=[extra_home])
+        self.write_codex_rollout(self.today, "one", ["cat {}".format(manifest)], codex_home=extra_home)
+        self.write_codex_rollout(self.today, "two", ["sed -n '1p' {}".format(manifest)], codex_home=extra_home)
+
+        _assets, frequency = asset_discovery.compute_activations_and_extend(
+            self.paths,
+            installed,
+            self.today,
+            codex_homes=[extra_home],
+        )
+
+        self.assertEqual(frequency["codex_skill:foo"]["windows_30d"], 2)
+        self.assertEqual(frequency["codex_skill:foo"]["read_events_30d"], 2)
 
     def test_codex_rollout_uses_path_date_for_bucket(self):
         manifest = self.write_skill(self.paths.codex_home / "skills", "foo")
@@ -814,6 +842,37 @@ class AssetDiscoveryTests(unittest.TestCase):
         self.assertEqual(view["tools"][0]["sessions"], 1)
         self.assertIn("Figma", view["tools"][0]["description"])
         self.assertIn("design context", view["tools"][0]["description_en"])
+
+    def test_mcp_usage_merges_extra_codex_home_sessions(self):
+        extra_home = self.home / ".codex-pro"
+        session_root = extra_home / "sessions" / "2026" / "05" / "05"
+        session_root.mkdir(parents=True, exist_ok=True)
+        (session_root / "rollout-mcp-extra.jsonl").write_text(
+            json.dumps(
+                {
+                    "type": "response_item",
+                    "payload": {
+                        "type": "function_call",
+                        "name": "mcp__node_repl__js",
+                        "arguments": "{}",
+                    },
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        view = mcp_usage.build_mcp_usage_view(
+            self.paths,
+            self.today,
+            lookback_days=1,
+            limit=None,
+            codex_homes=[extra_home],
+        )
+
+        self.assertEqual(view["scanned_sessions"], 1)
+        self.assertEqual(view["total_calls"], 1)
+        self.assertEqual(view["tools"][0]["label"], "node_repl/js")
 
     def test_mcp_usage_panel_renders_tool_descriptions_as_table(self):
         html = build_overview.make_mcp_usage_panel(
