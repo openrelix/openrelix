@@ -198,13 +198,13 @@ pipeline_status_finish() {
   if [[ -z "$pipeline_run_id" ]]; then
     return "$exit_code"
   fi
-  local status="completed"
+  local finish_status="completed"
   if (( exit_code != 0 )); then
-    status="failed"
+    finish_status="failed"
   fi
   "$PYTHON_BIN" "$REPO_ROOT/scripts/openrelix_pipeline_status.py" finish \
     --run-id "$pipeline_run_id" \
-    --status "$status" \
+    --status "$finish_status" \
     --exit-code "$exit_code" >/dev/null 2>&1 || true
   return "$exit_code"
 }

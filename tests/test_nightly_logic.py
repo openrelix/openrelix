@@ -7974,6 +7974,16 @@ Keep my own note.
         self.assertIn('for signal_name in ("SIGHUP", "SIGTERM"):', openrelix_cli)
         self.assertIn("process_descendant_pids(process.pid)", openrelix_cli)
 
+    def test_pipeline_status_finish_avoids_zsh_readonly_status_variable(self):
+        refresh_script = (ROOT / "scripts" / "refresh_overview.sh").read_text(encoding="utf-8")
+        nightly_script = (ROOT / "scripts" / "nightly_pipeline.sh").read_text(encoding="utf-8")
+
+        for script in (refresh_script, nightly_script):
+            self.assertIn('local finish_status="completed"', script)
+            self.assertIn('--status "$finish_status"', script)
+            self.assertNotIn("local status=", script)
+            self.assertNotIn('--status "$status"', script)
+
     def test_installer_chinese_language_uses_chinese_guidance_for_install_steps(self):
         installer = (ROOT / "install" / "install.sh").read_text(encoding="utf-8")
         openrelix_cli = (ROOT / "scripts" / "openrelix.py").read_text(encoding="utf-8")
