@@ -4358,9 +4358,10 @@ Keep my own note.
             ]
         )
 
-        self.assertIn('data-memory-feedback="pinned"', cards_html)
+        self.assertNotIn('data-memory-feedback="pinned"', cards_html)
         self.assertIn('data-memory-feedback="liked"', cards_html)
         self.assertIn('data-memory-feedback="downvoted"', cards_html)
+        self.assertIn('class="memory-feedback-icon"', cards_html)
         self.assertIn('data-memory-key="memory-feedback-demo"', cards_html)
         self.assertIn('data-memory-feedback-state="liked"', cards_html)
         self.assertIn('data-memory-feedback="liked" data-memory-key="memory-feedback-demo"', cards_html)
@@ -4377,6 +4378,7 @@ Keep my own note.
             "value_note": "当用户要求修改文件时，应优先使用 apply_patch，保持局部改动。",
         }
 
+        self.assertEqual(overview_memory_feedback.normalize_feedback("pinned"), "liked")
         liked = overview_memory_feedback.apply_memory_feedback(base, "liked")
         self.assertEqual(liked["priority"], "high")
         self.assertEqual(liked["bucket"], "durable")
@@ -4394,6 +4396,36 @@ Keep my own note.
             overview_memory_context.INJECTION_LOCAL_ONLY,
         )
         self.assertTrue(overview_memory_context.memory_record_is_low_priority(downvoted))
+
+    def test_downvoted_memory_stays_last_in_local_only_view(self):
+        views = overview_memory_context.build_memory_policy_views(
+            [
+                {
+                    "title": "Normal local",
+                    "bucket": "session",
+                    "priority": "medium",
+                    "scope": "local",
+                    "injection_policy": "local_only",
+                },
+                {
+                    "title": "Downvoted local",
+                    "bucket": "low_priority",
+                    "priority": "low",
+                    "scope": "local",
+                    "injection_policy": "local_only",
+                    "user_feedback": "downvoted",
+                },
+                {
+                    "title": "Never local",
+                    "bucket": "session",
+                    "priority": "medium",
+                    "scope": "local",
+                    "injection_policy": "never",
+                },
+            ]
+        )
+
+        self.assertEqual(views["local_only"]["rows"][-1]["title"], "Downvoted local")
 
     def test_memory_context_policy_labels_use_general_and_project_context(self):
         self.assertEqual(
@@ -6435,6 +6467,48 @@ Keep my own note.
         self.assertEqual(run.call_args.kwargs["env"]["OPENRELIX_ENABLE_NATIVE_DISPLAY_POLISH"], "0")
         self.assertTrue(run.call_args.kwargs["capture_output"])
         self.assertEqual(run.call_args.kwargs["timeout"], token_live_server.PANEL_REFRESH_TIMEOUT_SECONDS)
+
+    def test_memory_feedback_refresh_returns_before_background_rebuild(self):
+        old_state = dict(token_live_server.MEMORY_FEEDBACK_REFRESH_STATE)
+
+        class ImmediateThread:
+            def __init__(self, target, name=None, daemon=None):
+                self.target = target
+                self.name = name
+                self.daemon = daemon
+
+            def start(self):
+                self.target()
+
+        try:
+            token_live_server.MEMORY_FEEDBACK_REFRESH_STATE.clear()
+            token_live_server.MEMORY_FEEDBACK_REFRESH_STATE.update(
+                {
+                    "status": "idle",
+                    "started_at": 0,
+                    "ended_at": 0,
+                    "exit_code": None,
+                    "error": "",
+                }
+            )
+            with mock.patch.object(
+                token_live_server.threading,
+                "Thread",
+                ImmediateThread,
+            ), mock.patch.object(
+                token_live_server,
+                "run_memory_feedback_refresh",
+                return_value={"ok": True, "status": "completed", "ended_at": 1, "exit_code": 0},
+            ) as refresh:
+                started, snapshot = token_live_server.start_memory_feedback_refresh_async()
+
+            self.assertTrue(started)
+            self.assertEqual(snapshot["status"], "running")
+            refresh.assert_called_once()
+            self.assertEqual(token_live_server.memory_feedback_refresh_snapshot()["status"], "completed")
+        finally:
+            token_live_server.MEMORY_FEEDBACK_REFRESH_STATE.clear()
+            token_live_server.MEMORY_FEEDBACK_REFRESH_STATE.update(old_state)
 
     def test_panel_update_starts_detached_worker_and_persists_status(self):
         with TemporaryDirectory() as tmpdir:

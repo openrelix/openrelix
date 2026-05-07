@@ -58,6 +58,14 @@ PANEL_REFRESH_TIMEOUT_SECONDS = 180
 PANEL_REFRESH_LOG_TAIL_LINES = 20
 MEMORY_FEEDBACK_PATH = "/memory-feedback"
 MEMORY_FEEDBACK_REFRESH_TIMEOUT_SECONDS = 120
+MEMORY_FEEDBACK_REFRESH_LOCK = threading.RLock()
+MEMORY_FEEDBACK_REFRESH_STATE = {
+    "status": "idle",
+    "started_at": 0,
+    "ended_at": 0,
+    "exit_code": None,
+    "error": "",
+}
 UPDATE_LOCK = threading.RLock()
 UPDATE_STATE = {
     "status": "idle",
@@ -352,6 +360,63 @@ def run_memory_feedback_refresh():
         "stdout_tail": tail_text("\n".join(stdout_parts)),
         "stderr_tail": tail_text("\n".join(stderr_parts)),
     }
+
+
+def memory_feedback_refresh_snapshot():
+    with MEMORY_FEEDBACK_REFRESH_LOCK:
+        return dict(MEMORY_FEEDBACK_REFRESH_STATE)
+
+
+def start_memory_feedback_refresh_async():
+    with MEMORY_FEEDBACK_REFRESH_LOCK:
+        if MEMORY_FEEDBACK_REFRESH_STATE.get("status") == "running":
+            return False, dict(MEMORY_FEEDBACK_REFRESH_STATE)
+        snapshot = {
+            "ok": True,
+            "status": "running",
+            "started_at": time.time(),
+            "ended_at": 0,
+            "exit_code": None,
+            "error": "",
+        }
+        MEMORY_FEEDBACK_REFRESH_STATE.update(snapshot)
+
+    def worker():
+        try:
+            result = run_memory_feedback_refresh()
+        except Exception as exc:
+            result = {
+                "ok": False,
+                "status": "failed",
+                "ended_at": time.time(),
+                "exit_code": None,
+                "error": str(exc),
+            }
+        with MEMORY_FEEDBACK_REFRESH_LOCK:
+            MEMORY_FEEDBACK_REFRESH_STATE.update(result)
+            MEMORY_FEEDBACK_REFRESH_STATE["updated_at"] = time.time()
+
+    try:
+        thread = threading.Thread(
+            target=worker,
+            name="openrelix-memory-feedback-refresh",
+            daemon=True,
+        )
+        thread.start()
+    except Exception as exc:
+        failed = dict(snapshot)
+        failed.update(
+            {
+                "ok": False,
+                "status": "failed",
+                "ended_at": time.time(),
+                "error": str(exc),
+            }
+        )
+        with MEMORY_FEEDBACK_REFRESH_LOCK:
+            MEMORY_FEEDBACK_REFRESH_STATE.update(failed)
+        return False, failed
+    return True, snapshot
 
 
 def start_manual_pipeline_refresh(target_date=None):
@@ -759,15 +824,16 @@ class TokenLiveHandler(BaseHTTPRequestHandler):
                     allow_origin=origin or None,
                 )
                 return
-            refresh_snapshot = run_memory_feedback_refresh()
+            refresh_started, refresh_snapshot = start_memory_feedback_refresh_async()
             self._send_json(
-                200,
+                202 if refresh_started else 200,
                 {
                     "ok": True,
-                    "status": "completed",
+                    "status": "accepted",
                     "feedback": feedback,
                     "refresh": refresh_snapshot,
-                    "refresh_ok": bool(refresh_snapshot.get("ok")),
+                    "refresh_started_now": refresh_started,
+                    "reload_after_ms": 3000,
                 },
                 allow_origin=origin or None,
             )

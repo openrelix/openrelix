@@ -564,7 +564,10 @@ def build_memory_policy_views(memory_rows, selected_global_rows=None, token_usag
         ]
 
     policy_counts = Counter(row.get("injection_policy") or INJECTION_LOCAL_ONLY for row in rows)
-    local_rows = policy_rows[INJECTION_LOCAL_ONLY] + policy_rows[INJECTION_NEVER]
+    local_rows = sorted(
+        policy_rows[INJECTION_LOCAL_ONLY] + policy_rows[INJECTION_NEVER],
+        key=lambda row: str(row.get("user_feedback") or "").strip() == "downvoted",
+    )
     token_usage = token_usage or {}
     selected_host_count = len(host_rows)
     if "estimated_context_item_count" in token_usage:

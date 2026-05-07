@@ -9,17 +9,15 @@ from .memory_registry import build_memory_group_key
 
 
 MEMORY_FEEDBACK_FILE = "memory_feedback.jsonl"
-FEEDBACK_PINNED = "pinned"
 FEEDBACK_LIKED = "liked"
 FEEDBACK_DOWNVOTED = "downvoted"
 FEEDBACK_NEUTRAL = "neutral"
 FEEDBACK_VALUES = {
-    FEEDBACK_PINNED,
     FEEDBACK_LIKED,
     FEEDBACK_DOWNVOTED,
     FEEDBACK_NEUTRAL,
 }
-POSITIVE_FEEDBACK = {FEEDBACK_PINNED, FEEDBACK_LIKED}
+POSITIVE_FEEDBACK = {FEEDBACK_LIKED}
 
 
 def current_timestamp(now=None):
@@ -33,10 +31,10 @@ def memory_feedback_path(paths):
 def normalize_feedback(value):
     text = str(value or "").strip().lower().replace("-", "_")
     aliases = {
-        "pin": FEEDBACK_PINNED,
-        "pinned": FEEDBACK_PINNED,
-        "固定": FEEDBACK_PINNED,
-        "钉住": FEEDBACK_PINNED,
+        "pin": FEEDBACK_LIKED,
+        "pinned": FEEDBACK_LIKED,
+        "固定": FEEDBACK_LIKED,
+        "钉住": FEEDBACK_LIKED,
         "like": FEEDBACK_LIKED,
         "liked": FEEDBACK_LIKED,
         "up": FEEDBACK_LIKED,
@@ -152,7 +150,7 @@ def apply_memory_feedback(item, feedback=None):
     row["bucket"] = "durable"
     row["global_context_approved"] = True
     row["host_context_approved"] = True
-    row["user_pinned"] = state == FEEDBACK_PINNED
+    row["user_pinned"] = False
     current_policy = str(row.get("injection_policy") or "").strip()
     if current_policy in {"", "on_demand", "local_only", "never"}:
         scope = str(row.get("scope") or "").strip()
