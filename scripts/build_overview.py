@@ -21510,11 +21510,6 @@ def build_html(data):
 
     {pipeline_status_panel}
 
-    <section class="panel" id="project-context-section">
-      {project_context_header}
-      {project_context_body}
-    </section>
-
     <section class="memory-family" id="memory-section" data-openrelix-section="memory_registry">
       {personal_asset_memory_family_header}
       <section class="panel memory-compiler-panel" id="personal-memory-compiler-section">
@@ -21678,6 +21673,11 @@ def build_html(data):
           </tbody>
         </table>
       </div>
+    </section>
+
+    <section class="panel" id="project-context-section">
+      {project_context_header}
+      {project_context_body}
     </section>
 
     <section class="grid" id="window-overview-section">

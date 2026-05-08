@@ -5536,12 +5536,12 @@ Keep my own note.
         self.assertLess(main_template.index("{mcp_usage_panel}"), main_template.index("{discovered_assets_section}"))
         self.assertNotIn("{scope_panel}", main_template)
         self.assertNotIn("{domain_panel}", main_template)
-        self.assertLess(main_template.index("{pipeline_status_panel}"), main_template.index("{project_context_body}"))
-        self.assertLess(main_template.index("{project_context_body}"), main_template.index("{memory_compiler_header}"))
-        self.assertLess(main_template.index("{project_context_body}"), main_template.index("{asset_metric_cards}"))
-        self.assertLess(main_template.index("{project_context_body}"), main_template.index("{discovered_assets_section}"))
-        self.assertLess(main_template.index("{project_context_body}"), main_template.index("{reviews_header}"))
+        self.assertLess(main_template.index("{pipeline_status_panel}"), main_template.index("{memory_compiler_header}"))
+        self.assertLess(main_template.index("{asset_metric_cards}"), main_template.index("{project_context_body}"))
+        self.assertLess(main_template.index("{discovered_assets_section}"), main_template.index("{project_context_body}"))
+        self.assertLess(main_template.index("{reviews_header}"), main_template.index("{project_context_body}"))
         self.assertLess(main_template.index("{usage_rows}"), main_template.index("{window_overview_header}"))
+        self.assertLess(main_template.index("{usage_rows}"), main_template.index("{project_context_body}"))
         self.assertLess(main_template.index("{project_context_body}"), main_template.index("{window_overview_header}"))
 
     def test_build_html_routes_skill_file_opens_through_finder_endpoint(self):
