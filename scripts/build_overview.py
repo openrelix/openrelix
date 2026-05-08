@@ -5412,6 +5412,9 @@ def parse_codex_native_memory_summary(
     else:
         text = str(summary_text)
 
+    visible_text, has_managed_block = strip_openrelix_managed_memory_text(text)
+    text = visible_text
+
     counts = {
         "topic_items": 0,
         "user_profile": 0,
@@ -5421,6 +5424,7 @@ def parse_codex_native_memory_summary(
         "source_readable": True,
         "source_error": "",
         "hidden_personal_memory_items": 0,
+        "managed_block_present": has_managed_block,
     }
 
     rows = []
@@ -5830,13 +5834,17 @@ CLAUDE_AUTO_MEMORY_LINE_LIMIT = 200
 CLAUDE_AUTO_MEMORY_BYTE_LIMIT = 25 * 1024
 
 
-def strip_claude_managed_memory_text(text):
+def strip_openrelix_managed_memory_text(text):
     if CLAUDE_MANAGED_MEMORY_START not in text or CLAUDE_MANAGED_MEMORY_END not in text:
         return text, False
     before, _, tail = text.partition(CLAUDE_MANAGED_MEMORY_START)
     _, _, after = tail.partition(CLAUDE_MANAGED_MEMORY_END)
     visible_text = "\n\n".join(part.strip() for part in (before, after) if part.strip())
     return (visible_text + "\n" if visible_text else ""), True
+
+
+def strip_claude_managed_memory_text(text):
+    return strip_openrelix_managed_memory_text(text)
 
 
 def claude_auto_memory_files(claude_home):

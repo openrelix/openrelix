@@ -94,6 +94,8 @@ CONFIGURE_CODEX_USER_SCRIPT = REPO_ROOT / "install" / "configure_codex_user.py"
 BUILD_MACOS_CLIENT_SCRIPT = REPO_ROOT / "scripts" / "build_macos_client.sh"
 CLAUDE_MANAGED_MEMORY_START = "<!-- openrelix:shared-memory:start -->"
 CLAUDE_MANAGED_MEMORY_END = "<!-- openrelix:shared-memory:end -->"
+LEGACY_CODEX_PROFILE_MARKER = "The injected context is compiled from OpenRelix canonical"
+LEGACY_CODEX_REGISTRY_MARKER = "### Local personal memory registry"
 RENDER_TEMPLATE_SCRIPT = REPO_ROOT / "install" / "render_template.py"
 MACOS_CLIENT_APP_NAME = "OpenRelix.app"
 NPM_PACKAGE_NAME = PROJECT_PACKAGE_NAME
@@ -521,8 +523,8 @@ def build_parser():
         "--delete-local-memory",
         action="store_true",
         help=localized(
-            "同时删除本地 state root 和 OpenRelix 写入的 host memory summary。",
-            "Also delete the local state root and OpenRelix-written host memory summary.",
+            "同时删除本地 state root，并移除 host context 里的 OpenRelix 受控块。",
+            "Also delete the local state root and remove OpenRelix managed blocks from host context.",
         ),
     )
     local_memory_group.add_argument(
@@ -4484,8 +4486,8 @@ def should_delete_local_memory(args):
         return False
 
     print(localized(
-        "是否同时删除本地记忆？这会删除 state root，并移除 OpenRelix 写入的 host memory summary。",
-        "Delete local memory too? This removes the state root and the OpenRelix-written host memory summary.",
+        "是否同时删除本地记忆？这会删除 state root，并移除 host context 里的 OpenRelix 受控块。",
+        "Delete local memory too? This removes the state root and OpenRelix managed blocks from host context.",
     ))
     print("- state_root: {}".format(PATHS.state_root))
     print("- codex_summary: {}".format(PATHS.codex_home / "memories" / "memory_summary.md"))
@@ -4494,13 +4496,70 @@ def should_delete_local_memory(args):
     return answer in {"y", "yes", "是", "是的", "好", "好的", "1"}
 
 
-def strip_managed_claude_memory_block(text):
+def strip_managed_memory_block(text):
     if CLAUDE_MANAGED_MEMORY_START not in text or CLAUDE_MANAGED_MEMORY_END not in text:
         return text, False
     before, _, tail = text.partition(CLAUDE_MANAGED_MEMORY_START)
     _, _, after = tail.partition(CLAUDE_MANAGED_MEMORY_END)
     updated = "\n\n".join(part.strip() for part in (before, after) if part.strip())
     return (updated + "\n" if updated else ""), True
+
+
+def strip_managed_claude_memory_block(text):
+    return strip_managed_memory_block(text)
+
+
+def is_legacy_openrelix_codex_summary(text):
+    stripped = text.lstrip()
+    return (
+        stripped.startswith("## User Profile")
+        and LEGACY_CODEX_PROFILE_MARKER in stripped
+        and LEGACY_CODEX_REGISTRY_MARKER in stripped
+    )
+
+
+def remove_codex_memory_summary_for_uninstall(actions, dry_run=False):
+    summary_path = PATHS.codex_home / "memories" / "memory_summary.md"
+    if not path_exists_or_symlink(summary_path):
+        record_uninstall_action(actions, "codex_memory_summary", summary_path, "missing")
+        return
+    if summary_path.exists() and not (summary_path.is_file() or summary_path.is_symlink()):
+        record_uninstall_action(actions, "codex_memory_summary", summary_path, "kept", "memory_summary.md path is not a file")
+        return
+    try:
+        existing = summary_path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        record_uninstall_action(actions, "codex_memory_summary", summary_path, "error", exc)
+        return
+
+    if is_legacy_openrelix_codex_summary(existing):
+        if dry_run:
+            record_uninstall_action(actions, "codex_memory_summary", summary_path, "would_remove", "legacy OpenRelix full-file summary")
+            return
+        try:
+            summary_path.unlink()
+        except OSError as exc:
+            record_uninstall_action(actions, "codex_memory_summary", summary_path, "error", exc)
+            return
+        record_uninstall_action(actions, "codex_memory_summary", summary_path, "removed", "legacy OpenRelix full-file summary")
+        return
+
+    updated, removed = strip_managed_memory_block(existing)
+    if not removed:
+        record_uninstall_action(actions, "codex_memory_summary", summary_path, "kept", "no OpenRelix managed block")
+        return
+    if dry_run:
+        record_uninstall_action(actions, "codex_memory_summary", summary_path, "would_remove", "managed block")
+        return
+    try:
+        if updated.strip():
+            atomic_write_text(summary_path, updated)
+        else:
+            summary_path.unlink()
+    except OSError as exc:
+        record_uninstall_action(actions, "codex_memory_summary", summary_path, "error", exc)
+        return
+    record_uninstall_action(actions, "codex_memory_summary", summary_path, "removed", "managed block")
 
 
 def remove_claude_memory_summary_for_uninstall(actions, dry_run=False):
@@ -4542,8 +4601,7 @@ def remove_local_memory_for_uninstall(actions, dry_run=False):
         else:
             remove_path_for_uninstall(state_root, "local_memory", actions, dry_run=dry_run, record_missing=False)
 
-    summary_path = PATHS.codex_home / "memories" / "memory_summary.md"
-    remove_path_for_uninstall(summary_path, "codex_memory_summary", actions, dry_run=dry_run)
+    remove_codex_memory_summary_for_uninstall(actions, dry_run=dry_run)
     remove_claude_memory_summary_for_uninstall(actions, dry_run=dry_run)
 
 

@@ -198,9 +198,9 @@ npx openrelix install --profile integrated --enable-learning-refresh --activity-
 
 1. 初始化 state root
 2. 生成第一份 overview 和 panel
-3. 按默认 `integrated` 开启 host-native context，并把同一份 bounded summary 同步到启用的 host context
+3. 按默认 `integrated` 开启 host-native context，并把同一份 bounded summary 同步到启用 host context 的 OpenRelix 受控块
 
-默认最小安装会初始化 state root、生成第一份 overview，并把 bounded summary 同步进启用的 host context 以便注入上下文。Codex 目标是 `CODEX_HOME/memories/memory_summary.md`；Claude Code 目标是 `CLAUDE_HOME/CLAUDE.md` 中的 OpenRelix 受控块。它仍然不会安装全局命令，不会写 shell rc，也不会注册 LaunchAgent。如果只想本地记录、不注入 host context，请显式传 `--record-memory-only`。
+默认最小安装会初始化 state root、生成第一份 overview，并把 bounded summary 同步进启用 host context 的 OpenRelix 受控块以便注入上下文。Codex 目标是 `CODEX_HOME/memories/memory_summary.md` 中的受控块；Claude Code 目标是 `CLAUDE_HOME/CLAUDE.md` 中的受控块。受控块之外的 host 原生内容会保留。它仍然不会安装全局命令，不会写 shell rc，也不会注册 LaunchAgent。如果只想本地记录、不注入 host context，请显式传 `--record-memory-only`。
 
 从 repo checkout 本地验证“安装后能看到面板”的最小闭环时，建议使用临时烟测脚本：
 
@@ -230,7 +230,7 @@ scripts/cleanup_smoke_temp.sh --yes
 
 当前支持 `zh` / `en`。交互式安装如果没有传 `--language`，会提示选择中文或英文；非交互安装默认 `zh`，也可以显式传 `--language` 固定自动化行为。选择结果会写入 state root 的 `runtime/config.json`，并影响终端输出、overview 本地转化、夜间整理 prompt、fallback summary、即时任务复盘、资产 / 复用记录的人读字段，以及写入本地 `memory_entries.jsonl` 的结构化记忆语言。`type`、`scope`、`status`、`memory_type` 这类枚举键保持稳定，展示层再按语言转成中文或英文。
 
-个人记忆系统默认开启，并且默认模式是 `integrated`：一份完整的本地资产记忆记录到本项目的 state root，同时把压缩后的 bounded summary 同步进当前 host native context。用户可以按需要显式选择只本地记录，或关闭本系统本地记忆写入。
+个人记忆系统默认开启，并且默认模式是 `integrated`：一份完整的本地资产记忆记录到本项目的 state root，同时把压缩后的 bounded summary 同步进当前 host native context 的 OpenRelix 受控块。用户可以按需要显式选择只本地记录，或关闭本系统本地记忆写入。
 
 bounded summary 的压缩策略保持轻量：同签名记忆跨天归并，只让 effective `injection_policy=global_context/project_context` 的条目参与注入，low-priority 默认只留本地；默认 token budget 是 target 6.7K、warn 7.4K、max 8K，避免把原始窗口或完整 registry 塞进 host context。
 
@@ -241,7 +241,7 @@ bounded summary 的压缩策略保持轻量：同签名记忆跨天归并，只�
 ```
 
 - `--use-integrated`
-  使用当前 host native memory context：把同一份 bounded summary 同步进启用的 host context。这是当前默认模式。
+  使用当前 host native memory context：把同一份 bounded summary 同步进启用 host context 的 OpenRelix 受控块。这是当前默认模式。
 - `--record-memory-only`
   记录个人记忆，但禁用 host native memory context，并保持 bounded summary 不同步到 host context
 - `--disable-personal-memory`
@@ -255,13 +255,13 @@ bounded summary 的压缩策略保持轻量：同签名记忆跨天归并，只�
 
 完整集成会额外做这些事：
 
-1. 默认补齐用于本地采集的 bounded `history` 配置，并开启 host native context 与 bounded summary 同步
+1. 默认补齐用于本地采集的 bounded `history` 配置，并开启 host native context 受控块与 bounded summary 同步
 2. 把 repo 内的 skills 软链接到用户级 `~/.codex/skills/`，包括 `memory-review`
 3. 把 repo 提供的 custom prompt 安装到用户级 `~/.codex/prompts/`，作为兼容 fallback
 4. 安装全局 `openrelix` 命令，并在需要时把对应用户 bin 目录写入 shell `PATH`
 5. 安装 macOS 后台 refresh 服务；加 `--enable-learning-refresh` 时，每 1 小时自动读取当前 activity host，并通过当前 `model_cli` 学习最近 7 天窗口
 
-完整集成默认会把同一份 bounded summary 写入启用的 host context，让 Codex 和 Claude Code 能读取压缩后的个人记忆。完整的结构化资产记忆仍写入 state root；面板继续把 host native memory 和本项目本地 memory registry 分层展示，并且不会把 OpenRelix 注入的个人记忆块当作 host 原生记忆卡片展示。需要严格隔离时，使用 `--record-memory-only` 或 `--no-memory-summary`。
+完整集成默认会把同一份 bounded summary 写入启用 host context 的 OpenRelix 受控块，让 Codex 和 Claude Code 能读取压缩后的个人记忆。完整的结构化资产记忆仍写入 state root；面板继续把 host native memory 和本项目本地 memory registry 分层展示，并且不会把 OpenRelix 注入的个人记忆块当作 host 原生记忆卡片展示。受控块之外的 host 原生内容会保留；需要严格隔离时，使用 `--record-memory-only` 或 `--no-memory-summary`。
 
 如果你还想启用夜间整理和夜间任务执行时的防睡眠策略：
 
@@ -471,7 +471,7 @@ npx openrelix uninstall --keep-local-memory
 npx openrelix uninstall --delete-local-memory
 ```
 
-`--delete-local-memory` 会删除 active state root、OpenRelix 写入的 `CODEX_HOME/memories/memory_summary.md`，并移除 `CLAUDE_HOME/CLAUDE.md` 中的 OpenRelix 受控块，但不会删除整个 `CODEX_HOME`、整个 `CLAUDE_HOME`、host 登录凭据或 host history/session 文件。
+`--delete-local-memory` 会删除 active state root，并移除 `CODEX_HOME/memories/memory_summary.md` 和 `CLAUDE_HOME/CLAUDE.md` 中的 OpenRelix 受控块；受控块之外的 host 原生内容会保留，不会删除整个 `CODEX_HOME`、整个 `CLAUDE_HOME`、host 登录凭据或 host history/session 文件。
 
 ---
 

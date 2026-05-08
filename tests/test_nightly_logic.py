@@ -3137,6 +3137,45 @@ Keep my own note.
         self.assertIn("Check the active provider", parsed["tip_rows"][0]["value_note"])
         self.assertNotIn("OpenRelix shared personal memory", json.dumps(parsed, ensure_ascii=False))
 
+    def test_parse_codex_native_memory_summary_hides_openrelix_managed_block(self):
+        sample = """## User Profile
+
+Native Codex profile.
+
+## User preferences
+
+- Keep this native Codex preference.
+
+<!-- openrelix:shared-memory:start -->
+# OpenRelix Personal Memory
+
+## User preferences
+
+- OpenRelix injected preference should stay out of native cards.
+
+## What's in Memory
+
+### Local personal memory registry
+
+- OpenRelix injected memory should stay out of native cards.
+<!-- openrelix:shared-memory:end -->
+"""
+
+        with TemporaryDirectory() as tmpdir:
+            summary_path = Path(tmpdir) / "memory_summary.md"
+            summary_path.write_text(sample, encoding="utf-8")
+
+            parsed = build_overview.parse_codex_native_memory_summary(
+                summary_path,
+                language="zh",
+            )
+
+        self.assertEqual(parsed["counts"]["user_preferences"], 1)
+        self.assertEqual(len(parsed["preference_rows"]), 1)
+        self.assertTrue(parsed["counts"]["managed_block_present"])
+        self.assertIn("Keep this native Codex preference", parsed["preference_rows"][0]["body"])
+        self.assertNotIn("OpenRelix injected", json.dumps(parsed, ensure_ascii=False))
+
     def test_parse_claude_native_memory_summary_only_managed_block_has_no_native_rows(self):
         sample = """<!-- openrelix:shared-memory:start -->
 # OpenRelix Shared Personal Memory
@@ -3286,6 +3325,60 @@ Keep my own note.
         self.assertNotIn("- Shared item", second)
         self.assertEqual(second.count(sync_host_memory_summary.MANAGED_START), 1)
 
+    def test_sync_host_memory_summary_preserves_codex_native_memory_content(self):
+        with TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            paths = replace(
+                sync_host_memory_summary.PATHS,
+                codex_home=root / "codex-home",
+            )
+            codex_summary = paths.codex_home / "memories" / "memory_summary.md"
+            codex_summary.parent.mkdir(parents=True)
+            codex_summary.write_text("## User Profile\n\nNative Codex memory.\n", encoding="utf-8")
+
+            with mock.patch.object(sync_host_memory_summary, "PATHS", paths):
+                first_result = sync_host_memory_summary.sync_codex_summary("## What's in Memory\n\n- Shared item\n")
+                second_result = sync_host_memory_summary.sync_codex_summary("## Updated\n\n- New shared item\n")
+                updated = codex_summary.read_text(encoding="utf-8")
+
+            self.assertEqual(first_result["status"], "synced")
+            self.assertEqual(second_result["status"], "synced")
+            self.assertIn("Native Codex memory.", updated)
+            self.assertIn("## Updated", updated)
+            self.assertIn("- New shared item", updated)
+            self.assertNotIn("- Shared item", updated)
+            self.assertEqual(updated.count(sync_host_memory_summary.MANAGED_START), 1)
+
+    def test_sync_host_memory_summary_migrates_legacy_codex_full_file_summary(self):
+        legacy_openrelix_summary = (
+            "## User Profile\n\n"
+            "The injected context is compiled from OpenRelix canonical memory.\n\n"
+            "## What's in Memory\n\n"
+            "### Local personal memory registry\n\n"
+            "- stale shared item\n"
+        )
+
+        with TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            paths = replace(
+                sync_host_memory_summary.PATHS,
+                codex_home=root / "codex-home",
+            )
+            codex_summary = paths.codex_home / "memories" / "memory_summary.md"
+            codex_summary.parent.mkdir(parents=True)
+            codex_summary.write_text(legacy_openrelix_summary, encoding="utf-8")
+
+            with mock.patch.object(sync_host_memory_summary, "PATHS", paths):
+                result = sync_host_memory_summary.sync_codex_summary("## Updated\n\n- New shared item\n")
+                updated = codex_summary.read_text(encoding="utf-8")
+
+            self.assertEqual(result["status"], "synced")
+            self.assertIn("migrated legacy", result["detail"])
+            self.assertIn(sync_host_memory_summary.MANAGED_START, updated)
+            self.assertIn("## Updated", updated)
+            self.assertNotIn("- stale shared item", updated)
+            self.assertNotIn("The injected context is compiled from OpenRelix canonical memory.", updated)
+
     def test_sync_host_memory_summary_clear_helpers_remove_managed_surfaces(self):
         with TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -3298,7 +3391,12 @@ Keep my own note.
             claude_summary = paths.claude_home / "CLAUDE.md"
             codex_summary.parent.mkdir(parents=True)
             claude_summary.parent.mkdir(parents=True)
-            codex_summary.write_text("## What's in Memory\n\n- stale shared item\n", encoding="utf-8")
+            codex_summary.write_text(
+                "## User Profile\n\n"
+                "Native Codex memory.\n\n"
+                + sync_host_memory_summary.managed_codex_block("## What's in Memory\n\n- stale shared item\n"),
+                encoding="utf-8",
+            )
             claude_summary.write_text(
                 "# User notes\n\n"
                 + sync_host_memory_summary.managed_claude_block("## What's in Memory\n\n- stale shared item\n"),
@@ -3312,10 +3410,31 @@ Keep my own note.
 
             self.assertEqual(codex_result["status"], "removed")
             self.assertEqual(claude_result["status"], "removed")
-            self.assertFalse(codex_summary.exists())
+            self.assertTrue(codex_summary.exists())
+            self.assertIn("Native Codex memory.", codex_summary.read_text(encoding="utf-8"))
+            self.assertNotIn(sync_host_memory_summary.MANAGED_START, codex_summary.read_text(encoding="utf-8"))
             self.assertTrue(claude_summary.exists())
             self.assertIn("# User notes", claude_text)
             self.assertNotIn(sync_host_memory_summary.MANAGED_START, claude_text)
+
+    def test_sync_host_memory_summary_clear_codex_keeps_unmanaged_native_file(self):
+        with TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            paths = replace(
+                sync_host_memory_summary.PATHS,
+                codex_home=root / "codex-home",
+            )
+            codex_summary = paths.codex_home / "memories" / "memory_summary.md"
+            codex_summary.parent.mkdir(parents=True)
+            codex_summary.write_text("## User Profile\n\nNative Codex memory.\n", encoding="utf-8")
+
+            with mock.patch.object(sync_host_memory_summary, "PATHS", paths):
+                result = sync_host_memory_summary.clear_codex_summary()
+                updated = codex_summary.read_text(encoding="utf-8")
+
+            self.assertEqual(result["status"], "kept")
+            self.assertIn("no managed block", result["detail"])
+            self.assertIn("Native Codex memory.", updated)
 
     def test_sync_host_memory_summary_skips_codex_when_memories_are_disabled(self):
         with TemporaryDirectory() as tmpdir:
@@ -8956,6 +9075,54 @@ Keep my own note.
         self.assertIn("npx openrelix uninstall --delete-local-memory", readme)
         self.assertIn("npx openrelix uninstall --delete-local-memory", zh_readme)
 
+    def test_openrelix_uninstall_removes_only_codex_managed_memory_block(self):
+        with TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            paths = replace(
+                openrelix.PATHS,
+                codex_home=root / "codex-home",
+            )
+            summary_path = paths.codex_home / "memories" / "memory_summary.md"
+            summary_path.parent.mkdir(parents=True)
+            summary_path.write_text(
+                "## User Profile\n\n"
+                "Native Codex memory.\n\n"
+                + sync_host_memory_summary.managed_codex_block("## What's in Memory\n\n- Shared item\n"),
+                encoding="utf-8",
+            )
+            actions = []
+
+            with mock.patch.object(openrelix, "PATHS", paths):
+                openrelix.remove_codex_memory_summary_for_uninstall(actions)
+
+            self.assertEqual(actions[0]["status"], "removed")
+            self.assertEqual(actions[0]["detail"], "managed block")
+            self.assertTrue(summary_path.exists())
+            updated = summary_path.read_text(encoding="utf-8")
+            self.assertIn("Native Codex memory.", updated)
+            self.assertNotIn(openrelix.CLAUDE_MANAGED_MEMORY_START, updated)
+            self.assertNotIn("- Shared item", updated)
+
+    def test_openrelix_uninstall_keeps_unmanaged_codex_native_memory(self):
+        with TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            paths = replace(
+                openrelix.PATHS,
+                codex_home=root / "codex-home",
+            )
+            summary_path = paths.codex_home / "memories" / "memory_summary.md"
+            summary_path.parent.mkdir(parents=True)
+            summary_path.write_text("## User Profile\n\nNative Codex memory.\n", encoding="utf-8")
+            actions = []
+
+            with mock.patch.object(openrelix, "PATHS", paths):
+                openrelix.remove_codex_memory_summary_for_uninstall(actions)
+
+            self.assertEqual(actions[0]["status"], "kept")
+            self.assertEqual(actions[0]["detail"], "no OpenRelix managed block")
+            self.assertTrue(summary_path.exists())
+            self.assertIn("Native Codex memory.", summary_path.read_text(encoding="utf-8"))
+
     def test_sqlite_index_is_exposed_in_cli_npm_and_package(self):
         openrelix_cli = (ROOT / "scripts" / "openrelix.py").read_text(encoding="utf-8")
         npm_bin = (ROOT / "install" / "npm-bin.js").read_text(encoding="utf-8")
@@ -9010,7 +9177,10 @@ Keep my own note.
             (state_root / "registry").mkdir()
             (state_root / "registry" / "memory_items.jsonl").write_text("{}", encoding="utf-8")
             (codex_home / "memories").mkdir(parents=True)
-            (codex_home / "memories" / "memory_summary.md").write_text("## What's in Memory\n", encoding="utf-8")
+            (codex_home / "memories" / "memory_summary.md").write_text(
+                sync_host_memory_summary.managed_codex_block("## What's in Memory\n\n- managed item\n"),
+                encoding="utf-8",
+            )
             claude_home.mkdir(parents=True)
             claude_file = claude_home / "CLAUDE.md"
             claude_file.write_text(

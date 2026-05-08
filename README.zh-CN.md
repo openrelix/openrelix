@@ -150,7 +150,7 @@ npx openrelix install --enable-learning-refresh --keep-awake=during-job --enable
 ./install/install.sh --minimal
 ```
 
-默认安装档位是 `integrated`。它默认安装本地 shell 命令、全局 skill symlink、轻量 macOS 客户端、后台刷新服务和夜间整理 LaunchAgents。最小安装会初始化 state root，生成第一份 overview，开启 bounded host context，并把同一份 bounded memory summary 同步到已启用的 host context：Codex 的 `memory_summary.md` 和 Claude Code `CLAUDE.md` 中的 OpenRelix 受控块。它不会安装 shell 命令，不改 shell rc，也不 bootstrap LaunchAgents。需要只在本系统本地记录、不注入 host context 时，使用 `--minimal --record-memory-only`。
+默认安装档位是 `integrated`。它默认安装本地 shell 命令、全局 skill symlink、轻量 macOS 客户端、后台刷新服务和夜间整理 LaunchAgents。最小安装会初始化 state root，生成第一份 overview，开启 bounded host context，并把同一份 bounded memory summary 同步到已启用 host context 的 OpenRelix 受控块：Codex 的 `memory_summary.md` 和 Claude Code 的 `CLAUDE.md`。受控块之外的 host 原生内容会保留。它不会安装 shell 命令，不改 shell rc，也不 bootstrap LaunchAgents。需要只在本系统本地记录、不注入 host context 时，使用 `--minimal --record-memory-only`。
 
 如果只是想在 repo checkout 里做一次临时烟测，验证从安装到生成面板的效果，并且不触碰真实 state root 或真实 `CODEX_HOME`，运行：
 
@@ -190,7 +190,7 @@ npx openrelix uninstall --keep-local-memory
 npx openrelix uninstall --delete-local-memory
 ```
 
-`--delete-local-memory` 会删除 active state root、OpenRelix 写入的 `CODEX_HOME/memories/memory_summary.md`，并移除 `CLAUDE_HOME/CLAUDE.md` 里的 OpenRelix 受控块。它不会删除整个 `CODEX_HOME`、整个 `CLAUDE_HOME`、host 登录凭据或 host history/session 文件。
+`--delete-local-memory` 会删除 active state root，并移除 `CODEX_HOME/memories/memory_summary.md` 和 `CLAUDE_HOME/CLAUDE.md` 里的 OpenRelix 受控块。受控块之外的 host 原生内容会保留；它不会删除整个 `CODEX_HOME`、整个 `CLAUDE_HOME`、host 登录凭据或 host history/session 文件。
 
 installer 会把运行语言、memory mode、activity source、activity host、model CLI、Codex 模型、Claude 模型和 token budget 写入 state root 下的 `runtime/config.json`。支持的语言是 `zh` 和 `en`；语言会影响终端输出、overview 文件、夜间 summary prompt、fallback summary、即时 task review、asset / usage event 的展示字段，以及本地 consolidation pipeline 写出的结构化 memory items。稳定 enum keys 保持 canonical，展示层再按语言格式化。
 
@@ -199,7 +199,7 @@ installer 会把运行语言、memory mode、activity source、activity host、m
 ./install/install.sh --language en
 ```
 
-Memory 默认开启。默认模式是 `integrated`：系统把一份可复用个人记忆登记册记录到 active state root，再把 bounded summary 同步进启用的 host-native context。Codex 和 Claude Code 会读取同一份个人记忆摘要用于 context 注入，但面板会把 OpenRelix 个人记忆从 host 原生记忆视图里排除。需要严格本地记录时用 `--record-memory-only`，需要关闭本系统本地 memory 写入时用 `--disable-personal-memory`。
+Memory 默认开启。默认模式是 `integrated`：系统把一份可复用个人记忆登记册记录到 active state root，再把 bounded summary 同步进启用 host-native context 的 OpenRelix 受控块。Codex 和 Claude Code 会读取同一份个人记忆摘要用于 context 注入，但面板会把 OpenRelix 个人记忆从 host 原生记忆视图里排除。需要严格本地记录时用 `--record-memory-only`，需要关闭本系统本地 memory 写入时用 `--disable-personal-memory`。
 
 context sync 会做压缩：重复个人记忆按签名合并，由 injection policy 决定是否进入 host context，低优先级只留本地；注入摘要默认目标约 6.7K token，硬上限 8K。全局记忆最多使用配置预算的 10%，项目记忆最多使用 30%；默认 8K 下约等于全局 800 token、项目 2.4K token。全局和项目上下文都会进入同一份统一 host-context summary，并分别按优先级、热度、新鲜度和预算控制。
 
@@ -388,7 +388,7 @@ openrelix config --memory-summary-max-tokens 8000
 
 `openrelix models` 会通过 `codex debug models` 读取当前本机 Codex CLI 的模型 catalog，并只打印脱敏后的可选模型 ID。`openrelix tokens` 默认 `--provider all`，会合并 Codex 的 `@ccusage/codex` 和 Claude Code 的 `ccusage`；需要单独看某个 host 时传 `--provider codex` 或 `--provider cc`。`codex_model` 默认 `gpt-5.4-mini`，`claude_model` 默认 `sonnet`，`model_cli` 决定 OpenRelix 内部记忆回溯用哪个 CLI。`memory_summary_max_tokens` 默认 8000，支持 2000 到 20000。target 和 warning budgets 会自动从 max 派生。更新后默认刷新 summary、overview 和 panel；只想持久化配置时加 `--no-refresh`。
 
-host context 可以随时重新同步。它会从 eligible 的全局和项目个人记忆编译一份统一摘要，再把同一份 bounded summary 写到启用的 Codex / Claude Code host 目标。Codex 和 Claude Code 使用同一套选择策略：全局上下文 capped 在配置摘要预算的 10%，项目上下文 capped 在 30%。编译后的摘要保存在 OpenRelix state root 的 `runtime/host-context/memory_summary.md`，默认不会把个人记忆写进项目仓库。
+host context 可以随时重新同步。它会从 eligible 的全局和项目个人记忆编译一份统一摘要，再把同一份 bounded summary 写进启用的 Codex / Claude Code host 目标中的 OpenRelix 受控块。Codex 和 Claude Code 使用同一套选择策略：全局上下文 capped 在配置摘要预算的 10%，项目上下文 capped 在 30%。编译后的摘要保存在 OpenRelix state root 的 `runtime/host-context/memory_summary.md`，默认不会把个人记忆写进项目仓库，也不会替换受控块之外的 host 原生记忆。
 
 ```bash
 openrelix context sync

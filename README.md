@@ -152,7 +152,7 @@ Minimal install:
 ./install/install.sh --minimal
 ```
 
-The default install profile is `integrated`. It installs the local shell command, global skill symlink, lightweight macOS client, background refresh services, and nightly organization LaunchAgents by default. Minimal install initializes the state root, generates the first overview, enables bounded host context, and syncs one shared bounded memory summary into configured host contexts: Codex `memory_summary.md` and a managed OpenRelix block in Claude Code `CLAUDE.md`. It still does not install shell commands, change shell rc files, or bootstrap LaunchAgents. Use `--minimal --record-memory-only` when you want a minimal install that records only to this system's local state root without host-context injection.
+The default install profile is `integrated`. It installs the local shell command, global skill symlink, lightweight macOS client, background refresh services, and nightly organization LaunchAgents by default. Minimal install initializes the state root, generates the first overview, enables bounded host context, and syncs one shared bounded memory summary into managed OpenRelix blocks inside configured host contexts: Codex `memory_summary.md` and Claude Code `CLAUDE.md`. It preserves host-owned content outside those blocks. It still does not install shell commands, change shell rc files, or bootstrap LaunchAgents. Use `--minimal --record-memory-only` when you want a minimal install that records only to this system's local state root without host-context injection.
 
 For a repo-checkout smoke test that stops at the generated panel and does not touch your real state root or real `CODEX_HOME`, run:
 
@@ -192,7 +192,7 @@ npx openrelix uninstall --keep-local-memory
 npx openrelix uninstall --delete-local-memory
 ```
 
-`--delete-local-memory` deletes the active state root, the OpenRelix-written `CODEX_HOME/memories/memory_summary.md`, and the managed OpenRelix block inside `CLAUDE_HOME/CLAUDE.md`. It does not delete your whole `CODEX_HOME`, your whole `CLAUDE_HOME`, host auth, or host history/session files.
+`--delete-local-memory` deletes the active state root and removes the managed OpenRelix blocks inside `CODEX_HOME/memories/memory_summary.md` and `CLAUDE_HOME/CLAUDE.md`. It preserves host-owned content outside those blocks and does not delete your whole `CODEX_HOME`, your whole `CLAUDE_HOME`, host auth, or host history/session files.
 
 The installer stores the selected runtime language, memory mode, activity source, activity host, model CLI, Codex model, Claude model, and token budget in the state root under `runtime/config.json`. Supported language values are `zh` and `en`; interactive installs prompt when no language is passed, and non-interactive installs default to `zh`. The language controls local terminal output, generated overview files, nightly summary prompts, fallback summaries, immediate task reviews, asset / usage-event human-facing fields, and the structured memory items written by the local consolidation pipeline. Stable enum keys stay canonical so automation can still classify records, while the visible fields follow the selected language.
 
@@ -283,7 +283,7 @@ For release updates, use `openrelix update --check` in automation and `openrelix
 
 If the chosen bin directory is not already on `PATH`, the installer appends a managed `PATH` block to your active shell rc file and prints the one-line `export PATH=...` command for the current shell.
 
-By default, the installer and routine `review` / `backfill` / `refresh` commands write the same bounded global-plus-project summary into enabled host contexts so Codex and Claude Code can read compressed personal memory. The full local asset memory still lives in the active state root, while each host remains the owner of its native files. Use `--record-memory-only` or `--no-memory-summary` when you want to keep this system's memory out of host-native context.
+By default, the installer and routine `review` / `backfill` / `refresh` commands maintain the same bounded global-plus-project summary as managed OpenRelix blocks in enabled host contexts so Codex and Claude Code can read compressed personal memory. The full local asset memory still lives in the active state root, while each host remains the owner of its native files and OpenRelix only updates its own block. Use `--record-memory-only` or `--no-memory-summary` when you want to keep this system's memory out of host-native context.
 
 You can also build a custom profile by starting from the minimal default and adding explicit flags such as `--install-global-skills`, `--install-global-command`, `--enable-background-services`, `--record-memory-only`, `--disable-personal-memory`, `--enable-memories`, `--enable-history`, or `--sync-memory-summary`.
 
@@ -434,7 +434,7 @@ openrelix config --memory-summary-max-tokens 8000
 
 `openrelix models` reads the current local Codex CLI model catalog through `codex debug models` and prints a sanitized list of selectable model IDs. `openrelix tokens` defaults to `--provider all`, merging Codex `@ccusage/codex` and Claude Code `ccusage`; pass `--provider codex` or `--provider cc` for a single host. `codex_model` defaults to `gpt-5.4-mini`, `claude_model` defaults to `sonnet`, and `model_cli` selects which CLI OpenRelix uses for internal memory consolidation. `memory_summary_max_tokens` defaults to 8000 and accepts values from 2000 to 20000. Target and warning budgets are derived automatically from that max. Updating config refreshes the summary, overview, and panel by default; add `--no-refresh` when you only want to persist the config.
 
-Host context can be resynced at any time. It compiles one unified summary from eligible global and project personal memories, then writes that same bounded summary into the enabled Codex / Claude Code host targets. Codex and Claude Code use the same selection policy: global context is capped at 10% of the configured summary budget, and project context is capped at 30%. The compiled summary stays in the OpenRelix state root under `runtime/host-context/memory_summary.md`; OpenRelix does not write personal memory into the project repository by default.
+Host context can be resynced at any time. It compiles one unified summary from eligible global and project personal memories, then writes that same bounded summary into OpenRelix-managed blocks in the enabled Codex / Claude Code host targets. Codex and Claude Code use the same selection policy: global context is capped at 10% of the configured summary budget, and project context is capped at 30%. The compiled summary stays in the OpenRelix state root under `runtime/host-context/memory_summary.md`; OpenRelix does not write personal memory into the project repository by default and does not replace host-owned native memory outside its managed blocks.
 
 ```bash
 openrelix context sync
