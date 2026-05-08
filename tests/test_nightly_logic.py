@@ -1500,6 +1500,32 @@ trust_level = "trusted"
         self.assertNotIn("Takeaway 7", cards_html)
         self.assertNotIn("窗口明细中展开", cards_html)
 
+    def test_project_context_cards_show_three_projects_then_more(self):
+        cards_html = build_overview.make_project_context_cards(
+            [
+                {
+                    "label": "Project {}".format(index),
+                    "window_count": index,
+                    "question_count": index,
+                    "conclusion_count": 0,
+                    "latest_activity_display": "05-08 1{}:00".format(index),
+                    "cwd_preview": "/tmp/project-{}".format(index),
+                    "topics": [],
+                }
+                for index in range(1, 5)
+            ]
+        )
+
+        self.assertIn("Project 1", cards_html)
+        self.assertIn("Project 2", cards_html)
+        self.assertIn("Project 3", cards_html)
+        self.assertIn("Project 4", cards_html)
+        self.assertIn("查看更多 1 个项目", cards_html)
+        self.assertIn("收起更多项目", cards_html)
+        self.assertLess(cards_html.index("Project 3"), cards_html.index("查看更多 1 个项目"))
+        self.assertGreater(cards_html.index("Project 4"), cards_html.index("查看更多 1 个项目"))
+        self.assertNotIn("查看更多 1 组窗口总览", cards_html)
+
     def test_project_context_cards_link_to_source_windows(self):
         cards_html = build_overview.make_project_context_cards(
             [
@@ -10415,9 +10441,14 @@ Keep my own note.
         self.assertIn('"window_filter_start_date": "2026-04-24"', html)
         self.assertIn('"window_filter_end_date": "2026-04-26"', html)
         self.assertIn('"window_detail_visible_count": 20', html)
+        self.assertIn('"window_overview_project_visible_count": 3', html)
         self.assertIn("function applyWindowFilters()", html)
         self.assertIn("function wireWindowFilters()", html)
         self.assertIn("wireWindowFilters();", html)
+        self.assertIn("windowOverviewProjectVisibleCount", html)
+        self.assertIn("data-window-overview-project-more", html)
+        self.assertIn("function wireWindowOverviewProjectMore()", html)
+        self.assertIn("wireWindowOverviewProjectMore();", html)
         self.assertIn("function syncDateControlValue(select)", html)
         self.assertNotIn("wireWindowOverviewDateInput();", html)
         self.assertIn("function wireExternalPanelLinks()", html)

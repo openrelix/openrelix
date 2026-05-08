@@ -94,7 +94,7 @@ BRAND_DISPLAY_REPLACEMENTS = (
 )
 BRAND_DISPLAY_NAME = overview_redaction.BRAND_DISPLAY_NAME
 LEGACY_BRAND_PHRASES = overview_redaction.LEGACY_BRAND_PHRASES
-PROJECT_CONTEXT_VISIBLE_COUNT = 4
+PROJECT_CONTEXT_VISIBLE_COUNT = 3
 PROJECT_CONTEXT_DEFAULT_DAYS = 3
 PROJECT_CONTEXT_MAX_DAYS = 30
 WINDOW_FILTER_DEFAULT_DAYS = 3
@@ -10989,11 +10989,11 @@ def make_project_context_cards(items, language=None):
         primary_cards,
         extra_cards,
         len(items) - visible_count,
-        localized("组窗口总览", "window overviews", language),
+        localized("个项目", "projects", language),
         "project-context-list content-more-grid",
-        expanded_label=localized("收起更多窗口总览", "Collapse more window overviews", language),
-        item_label_en="window overviews",
-        expanded_label_en="Collapse more window overviews",
+        expanded_label=localized("收起更多项目", "Collapse more projects", language),
+        item_label_en="projects",
+        expanded_label_en="Collapse more projects",
     )
 
 
@@ -15019,6 +15019,7 @@ def build_html(data):
             "window_filter_default_days": data.get("window_filter_default_days", WINDOW_FILTER_DEFAULT_DAYS),
             "window_filter_max_days": data.get("window_filter_max_days", WINDOW_FILTER_MAX_DAYS),
             "window_detail_visible_count": window_detail_visible_count,
+            "window_overview_project_visible_count": PROJECT_CONTEXT_VISIBLE_COUNT,
             "pipeline_status": data.get("pipeline_status", {}),
         },
         ensure_ascii=False,
@@ -19602,6 +19603,10 @@ def build_html(data):
       align-items: stretch;
     }}
 
+    .window-overview-project-more-row {{
+      margin-top: 2px;
+    }}
+
     .context-range-control {{
       display: flex;
       flex-wrap: wrap;
@@ -22086,6 +22091,7 @@ def build_html(data):
       const defaultTokenDateRange = tokenDefaultDateRange(7);
       const defaultWindowFilterStart = String(snapshot.window_filter_start_date || "");
       const defaultWindowFilterEnd = String(snapshot.window_filter_end_date || "");
+      const windowOverviewProjectVisibleCount = Math.max(Number(snapshot.window_overview_project_visible_count) || 3, 1);
       const state = {{
         tokenUsage: snapshot.token_usage || null,
         tokenRefreshedAt: (snapshot.token_usage && snapshot.token_usage.refreshed_at) || "",
@@ -22104,6 +22110,7 @@ def build_html(data):
         }},
         defaultWindowFilters: null,
         windowDetailsExpanded: false,
+        windowOverviewProjectsExpanded: false,
         activeWindowDateField: "",
         windowDatePickerMonth: null,
         selectedNightlyDate: snapshot.daily_summary_default_date || "",
@@ -23175,6 +23182,25 @@ def build_html(data):
         );
       }}
 
+      function renderWindowOverviewProjectMoreButton(hiddenCount) {{
+        if (hiddenCount <= 0) {{
+          return "";
+        }}
+        const expanded = state.windowOverviewProjectsExpanded;
+        const label = expanded
+          ? localizeValue("收起更多项目", "Collapse more projects")
+          : (currentLanguage === "en"
+            ? "Show " + hiddenCount + " more projects"
+            : "查看更多 " + hiddenCount + " 个项目");
+        return (
+          '<div class="window-overview-project-more-row">' +
+            '<button class="content-more-button" type="button" data-window-overview-project-more="true" aria-expanded="' + (expanded ? "true" : "false") + '">' +
+              escapeHtml(label) +
+            '</button>' +
+          '</div>'
+        );
+      }}
+
       function windowFilterRangeLabel(filters, windowCount) {{
         const activeFilters = normalizeWindowFilters(filters);
         const countLabel = currentLanguage === "en"
@@ -23243,9 +23269,13 @@ def build_html(data):
             '<div class="context-map-signals">' + statsHtml + '</div>' +
           '</div>'
         );
-        elements.windowOverviewContextList.innerHTML = projects.map(function (project, index) {{
+        const hiddenProjectCount = Math.max(projects.length - windowOverviewProjectVisibleCount, 0);
+        const visibleProjects = state.windowOverviewProjectsExpanded
+          ? projects
+          : projects.slice(0, windowOverviewProjectVisibleCount);
+        elements.windowOverviewContextList.innerHTML = visibleProjects.map(function (project, index) {{
           return renderDynamicContextCard(project, index + 1, maxWindowCount);
-        }}).join("");
+        }}).join("") + renderWindowOverviewProjectMoreButton(hiddenProjectCount);
       }}
 
       function syncWindowFilterControls(matchedCount) {{
@@ -23350,6 +23380,7 @@ def build_html(data):
       function setWindowFilterState(nextFilters) {{
         state.windowFilters = normalizeWindowFilters(nextFilters);
         state.windowDetailsExpanded = false;
+        state.windowOverviewProjectsExpanded = false;
         applyWindowFilters();
       }}
 
@@ -24575,6 +24606,23 @@ def build_html(data):
           revealWindowCardById(decodedHashTargetId(), false);
         }});
         revealWindowCardById(decodedHashTargetId(), false);
+      }}
+
+      function wireWindowOverviewProjectMore() {{
+        if (!elements.windowOverviewContextList) {{
+          return;
+        }}
+        elements.windowOverviewContextList.addEventListener("click", function (event) {{
+          const button = event.target && event.target.closest
+            ? event.target.closest("[data-window-overview-project-more]")
+            : null;
+          if (!button) {{
+            return;
+          }}
+          event.preventDefault();
+          state.windowOverviewProjectsExpanded = button.getAttribute("aria-expanded") !== "true";
+          applyWindowFilters();
+        }});
       }}
 
       function describeRelativeTime(isoValue, actionText) {{
@@ -26256,6 +26304,7 @@ def build_html(data):
       }}
       wireContentMoreButtons();
       wireWindowFilters();
+      wireWindowOverviewProjectMore();
       wireProjectContextWindowLinks();
       wireThemeButtons();
       wireLanguageButtons();
