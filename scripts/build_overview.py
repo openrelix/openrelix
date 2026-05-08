@@ -18487,6 +18487,23 @@ def build_html(data):
       box-shadow: none;
     }}
 
+    .window-filter-panel.is-sticky {{
+      position: fixed;
+      top: var(--window-filter-sticky-top, 12px);
+      left: var(--window-filter-sticky-left, 0);
+      z-index: 72;
+      width: var(--window-filter-sticky-width, auto);
+      margin: 0;
+      border-color: rgba(210, 210, 215, 0.74);
+      background: color-mix(in srgb, var(--panel) 94%, transparent);
+      box-shadow: 0 18px 48px rgba(15, 23, 42, 0.16), 0 2px 8px rgba(15, 23, 42, 0.06);
+      backdrop-filter: saturate(180%) blur(28px);
+    }}
+
+    .window-filter-sticky-placeholder[hidden] {{
+      display: none;
+    }}
+
     .window-filter-grid {{
       grid-template-columns: minmax(360px, 1.3fr) repeat(2, minmax(160px, 0.72fr));
     }}
@@ -20139,7 +20156,7 @@ def build_html(data):
     }}
 
     .window-card {{
-      scroll-margin-top: 24px;
+      scroll-margin-top: calc(var(--window-filter-sticky-height, 0px) + 28px);
     }}
 
     .window-card.is-context-highlight {{
@@ -22029,6 +22046,7 @@ def build_html(data):
     <section class="panel" id="project-context-section">
       {project_context_header}
       {window_filter_panel}
+      <div class="window-filter-sticky-placeholder" id="window-filter-sticky-placeholder" hidden></div>
       {project_context_body}
     </section>
 
@@ -22129,6 +22147,7 @@ def build_html(data):
         windowOverviewNote: document.getElementById("window-overview-note"),
         windowSummaryList: document.getElementById("window-summary-list"),
         windowFilterPanel: document.getElementById("window-filter-panel"),
+        windowFilterStickyPlaceholder: document.getElementById("window-filter-sticky-placeholder"),
         windowFilterSummary: document.getElementById("window-filter-summary"),
         windowStartDateInput: document.getElementById("window-start-date"),
         windowEndDateInput: document.getElementById("window-end-date"),
@@ -22141,6 +22160,7 @@ def build_html(data):
         windowDateNavButtons: Array.from(document.querySelectorAll("[data-window-date-nav]")),
         windowDetailMoreRow: document.getElementById("window-detail-more-row"),
         windowDetailMoreButton: document.getElementById("window-detail-more-button"),
+        windowOverviewSection: document.getElementById("window-overview-section"),
         windowOverviewMap: document.getElementById("window-overview-map"),
         windowOverviewContextList: document.getElementById("window-overview-context-list"),
         nightlyBadgeRow: document.getElementById("nightly-badge-row"),
@@ -22911,6 +22931,69 @@ def build_html(data):
         positionWindowDatePopover(button);
       }}
 
+      function windowFilterStickyOffset() {{
+        return window.innerWidth <= 760 ? 8 : 12;
+      }}
+
+      function clearWindowFilterSticky() {{
+        if (!elements.windowFilterPanel) {{
+          return;
+        }}
+        if (
+          elements.windowFilterStickyPlaceholder &&
+          elements.windowFilterStickyPlaceholder.parentNode &&
+          elements.windowFilterPanel.parentElement !== elements.windowFilterStickyPlaceholder.parentElement
+        ) {{
+          elements.windowFilterStickyPlaceholder.parentNode.insertBefore(
+            elements.windowFilterPanel,
+            elements.windowFilterStickyPlaceholder
+          );
+        }}
+        elements.windowFilterPanel.classList.remove("is-sticky");
+        elements.windowFilterPanel.style.removeProperty("--window-filter-sticky-top");
+        elements.windowFilterPanel.style.removeProperty("--window-filter-sticky-left");
+        elements.windowFilterPanel.style.removeProperty("--window-filter-sticky-width");
+        if (elements.windowFilterStickyPlaceholder) {{
+          elements.windowFilterStickyPlaceholder.hidden = true;
+          elements.windowFilterStickyPlaceholder.style.height = "";
+        }}
+        document.documentElement.style.setProperty("--window-filter-sticky-height", "0px");
+      }}
+
+      function syncWindowFilterSticky() {{
+        if (!elements.windowFilterPanel || !elements.windowFilterStickyPlaceholder || !elements.windowOverviewSection) {{
+          return;
+        }}
+        const panel = elements.windowFilterPanel;
+        const placeholder = elements.windowFilterStickyPlaceholder;
+        const isSticky = panel.classList.contains("is-sticky");
+        const offset = windowFilterStickyOffset();
+        const markerRect = isSticky ? placeholder.getBoundingClientRect() : panel.getBoundingClientRect();
+        const markerTop = markerRect.top + window.scrollY;
+        const detailRect = elements.windowOverviewSection.getBoundingClientRect();
+        const detailBottom = detailRect.bottom + window.scrollY;
+        const measuredHeight = Math.ceil((isSticky ? placeholder : panel).getBoundingClientRect().height || panel.offsetHeight || 0);
+        const shouldStick = window.scrollY + offset > markerTop && window.scrollY + offset + measuredHeight < detailBottom;
+        if (!shouldStick) {{
+          clearWindowFilterSticky();
+          return;
+        }}
+        const width = markerRect.width || panel.getBoundingClientRect().width;
+        placeholder.style.height = measuredHeight + "px";
+        placeholder.hidden = false;
+        if (panel.parentElement !== document.body) {{
+          document.body.appendChild(panel);
+        }}
+        panel.style.setProperty("--window-filter-sticky-top", offset + "px");
+        panel.style.setProperty("--window-filter-sticky-left", Math.round(markerRect.left) + "px");
+        panel.style.setProperty("--window-filter-sticky-width", Math.round(width) + "px");
+        panel.classList.add("is-sticky");
+        document.documentElement.style.setProperty("--window-filter-sticky-height", measuredHeight + "px");
+        if (elements.windowDatePopover && !elements.windowDatePopover.hidden) {{
+          positionWindowDatePopover(windowDateButtonForField(state.activeWindowDateField || "start"));
+        }}
+      }}
+
       function windowFilterDateRange(days, endDateValue) {{
         const resolvedDays = Math.max(Number(days) || Number(snapshot.window_filter_default_days) || 3, 1);
         const fallbackEnd = defaultWindowFilterEnd || tokenDateInputValue(new Date());
@@ -23375,6 +23458,7 @@ def build_html(data):
         }}
         syncWindowFilterControls(matchedCards.length);
         renderWindowOverviewFromCards(matchedCards);
+        syncWindowFilterSticky();
       }}
 
       function setWindowFilterState(nextFilters) {{
@@ -24623,6 +24707,15 @@ def build_html(data):
           state.windowOverviewProjectsExpanded = button.getAttribute("aria-expanded") !== "true";
           applyWindowFilters();
         }});
+      }}
+
+      function wireWindowFilterSticky() {{
+        if (!elements.windowFilterPanel || !elements.windowFilterStickyPlaceholder || !elements.windowOverviewSection) {{
+          return;
+        }}
+        window.addEventListener("scroll", syncWindowFilterSticky, {{ passive: true }});
+        window.addEventListener("resize", syncWindowFilterSticky);
+        syncWindowFilterSticky();
       }}
 
       function describeRelativeTime(isoValue, actionText) {{
@@ -26305,6 +26398,7 @@ def build_html(data):
       wireContentMoreButtons();
       wireWindowFilters();
       wireWindowOverviewProjectMore();
+      wireWindowFilterSticky();
       wireProjectContextWindowLinks();
       wireThemeButtons();
       wireLanguageButtons();
