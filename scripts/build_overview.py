@@ -5016,6 +5016,21 @@ def is_untranslated_english_text(text):
     return bool(text and not contains_cjk(text) and re.search(r"[A-Za-z]", text))
 
 
+def is_untranslated_display_text(text):
+    text = normalize_brand_display_text(str(text or "")).strip()
+    if is_untranslated_english_text(text):
+        return True
+    cjk_letters = len(re.findall(r"[\u3400-\u9fff]", text))
+    technical_stripped = re.sub(r"`[^`]+`", " ", text)
+    technical_stripped = re.sub(
+        r"\b[A-Za-z0-9][A-Za-z0-9_./:-]*(?:[/_.:-][A-Za-z0-9_./:-]+)+\b",
+        " ",
+        technical_stripped,
+    )
+    english_words = re.findall(r"\b[A-Za-z]{2,}\b", technical_stripped)
+    return bool(len(english_words) >= max(10, cjk_letters // 2))
+
+
 def codex_native_task_group_labels_zh(title="", keywords=None):
     keyword_text = " ".join(str(keyword or "") for keyword in (keywords or []))
     source_text = normalize_brand_display_text("{} {}".format(title or "", keyword_text))
@@ -5278,10 +5293,12 @@ def build_codex_native_display_note(
 def empty_codex_native_memory_summary(source_exists=False, source_readable=False, source_error=""):
     return {
         "rows": [],
+        "profile_rows": [],
         "preference_rows": [],
         "tip_rows": [],
         "counts": {
             "topic_items": 0,
+            "user_profile": 0,
             "user_preferences": 0,
             "general_tips": 0,
             "source_exists": source_exists,
@@ -5295,6 +5312,53 @@ def empty_codex_native_memory_summary(source_exists=False, source_readable=False
 OPENRELIX_PERSONAL_MEMORY_SECTION_HEADINGS = {
     "Local personal memory registry",
 }
+
+
+def native_untranslated_display_fallback(kind, language=None):
+    if is_english(language):
+        return ""
+    labels = {
+        "profile": "这份用户画像",
+        "preference": "这条用户偏好",
+        "tip": "这条通用 tips",
+        "task_group": "这个历史任务索引",
+    }
+    return "{}来自原生记忆；中文展示缓存暂未命中，英文原文已折叠，可展开核对。".format(
+        labels.get(kind, "这条原生记忆")
+    )
+
+
+def make_codex_native_profile_row(profile_paragraphs, summary_path, language=None):
+    language = current_language(language)
+    body = normalize_brand_display_text(" ".join(profile_paragraphs or []))
+    if not body:
+        return None
+    display_title = localized("用户画像与工作习惯", "User Profile and Habits", language)
+    body_for_cache = compact_preview_text(body, limit=520)
+    display_body = body
+    if not is_english(language) and is_untranslated_english_text(body):
+        display_body = native_untranslated_display_fallback("profile", language=language)
+    cached_display = codex_native_cached_display("profile", body_for_cache, body_for_cache, language=language)
+    if cached_display:
+        display_title = cached_display.get("title_zh") or display_title
+        display_body = cached_display.get("body_zh") or display_body
+    return {
+        "kind": "profile",
+        "display_kind": localized("用户画像", "User Profile", language),
+        "title": "User Profile",
+        "display_title": compact_preview_text(display_title, limit=MEMORY_BRIEF_TITLE_LIMIT),
+        "display_title_en": "User Profile and Habits",
+        "body": body_for_cache,
+        "display_body": compact_preview_text(display_body, limit=260),
+        "display_body_en": body_for_cache,
+        "meta": localized("Codex 原生 · User Profile", "Codex Native · User Profile", language),
+        "source_files": [
+            {
+                "path": str(summary_path),
+                "label": "memory_summary.md",
+            }
+        ],
+    }
 
 
 def parse_codex_native_memory_summary(
@@ -5322,6 +5386,7 @@ def parse_codex_native_memory_summary(
 
     counts = {
         "topic_items": 0,
+        "user_profile": 0,
         "user_preferences": 0,
         "general_tips": 0,
         "source_exists": True,
@@ -5331,6 +5396,9 @@ def parse_codex_native_memory_summary(
     }
 
     rows = []
+    profile_rows = []
+    profile_paragraphs = []
+    profile_buffer = []
     preference_rows = []
     tip_rows = []
     current_h2 = ""
@@ -5385,6 +5453,15 @@ def parse_codex_native_memory_summary(
                 }
             ],
         }
+
+    def flush_profile_buffer():
+        nonlocal profile_buffer
+        if not profile_buffer:
+            return
+        paragraph = normalize_brand_display_text(" ".join(profile_buffer))
+        if paragraph:
+            profile_paragraphs.append(paragraph)
+        profile_buffer = []
 
     def flush_current_item():
         nonlocal current_item
@@ -5536,11 +5613,23 @@ def parse_codex_native_memory_summary(
         line = raw_line.rstrip()
         stripped = line.strip()
         if line.startswith("## "):
+            flush_profile_buffer()
             flush_current_item()
             current_h2 = line[3:].strip()
             current_h3 = ""
             current_h4 = ""
             current_date = ""
+            continue
+
+        if current_h2 == "User Profile":
+            if stripped:
+                if stripped.startswith("- "):
+                    flush_profile_buffer()
+                    profile_paragraphs.append(stripped[2:].strip())
+                else:
+                    profile_buffer.append(stripped)
+            else:
+                flush_profile_buffer()
             continue
 
         if current_h2 == "User preferences" and line.startswith("- "):
@@ -5632,7 +5721,12 @@ def parse_codex_native_memory_summary(
             elif current_item.get("desc"):
                 current_item["desc"] = "{} {}".format(current_item["desc"], stripped).strip()
 
+    flush_profile_buffer()
     flush_current_item()
+    profile_row = make_codex_native_profile_row(profile_paragraphs, summary_path, language=language)
+    if profile_row:
+        profile_rows.append(profile_row)
+        counts["user_profile"] = 1
 
     rows.sort(
         key=lambda item: (
@@ -5643,6 +5737,7 @@ def parse_codex_native_memory_summary(
     )
     return {
         "rows": rows,
+        "profile_rows": profile_rows,
         "preference_rows": preference_rows,
         "tip_rows": tip_rows,
         "counts": counts,
@@ -8216,6 +8311,10 @@ def build_data(assets, usage_events, reviews, language=None):
         }
     for item in codex_native_memory["rows"]:
         item.setdefault("source_files", []).append(index_source_file)
+    codex_native_global_context_rows = make_codex_native_global_context_rows(
+        codex_native_memory,
+        language=language,
+    )
     codex_native_memory_comparison_zh = build_codex_native_memory_comparison(
         codex_native_memory["rows"],
         memory_registry["rows"],
@@ -8709,8 +8808,10 @@ def build_data(assets, usage_events, reviews, language=None):
         "personal_memory_token_usage": personal_memory_token_usage,
         "context_memory_preview": context_memory_preview,
         "codex_native_memory": codex_native_memory["rows"],
+        "codex_native_profile_rows": codex_native_memory.get("profile_rows", []),
         "codex_native_preference_rows": codex_native_memory.get("preference_rows", []),
         "codex_native_tip_rows": codex_native_memory.get("tip_rows", []),
+        "codex_native_global_context_rows": codex_native_global_context_rows,
         "codex_native_task_groups": codex_memory_index_stats.get("task_groups", []),
         "codex_native_memory_counts": codex_native_memory["counts"],
         "codex_native_memory_comparison": codex_native_memory_comparison,
@@ -12177,7 +12278,7 @@ def make_codex_native_brief_memory_items(rows, kind, language=None):
             for keyword in (keywords or [])[:5]
             if normalize_brand_display_text(str(keyword))
         ]
-        zh_keywords = [keyword for keyword in cleaned if not is_untranslated_english_text(keyword)]
+        zh_keywords = [keyword for keyword in cleaned if not is_untranslated_display_text(keyword)]
         return zh_keywords, cleaned
 
     items = []
@@ -12189,7 +12290,7 @@ def make_codex_native_brief_memory_items(rows, kind, language=None):
         display_title_en = normalize_brand_display_text(
             row.get("display_title_en") or row.get("title_en") or ""
         )
-        if not display_title_en and is_untranslated_english_text(display_title):
+        if not display_title_en and is_untranslated_display_text(display_title):
             display_title_en = display_title
         raw_title = normalize_brand_display_text(row.get("title") or "")
         if not raw_title or raw_title == display_title:
@@ -12199,7 +12300,7 @@ def make_codex_native_brief_memory_items(rows, kind, language=None):
         body_en = normalize_brand_display_text(
             row.get("display_body_en") or row.get("body") or row.get("scope", "") or display_body
         )
-        if not is_english(language) and is_untranslated_english_text(display_title):
+        if not is_english(language) and is_untranslated_display_text(display_title):
             if kind == "task_group":
                 display_title = generic_codex_native_task_group_title(
                     row.get("title") or display_title,
@@ -12208,7 +12309,7 @@ def make_codex_native_brief_memory_items(rows, kind, language=None):
                 )
             else:
                 display_title = "{} {}".format(kind_config.get("title_prefix_zh", "条目"), index)
-        if not is_english(language) and is_untranslated_english_text(display_body):
+        if not is_english(language) and is_untranslated_display_text(display_body):
             if kind == "task_group":
                 labels = codex_native_task_group_labels_zh(
                     row.get("title") or display_title_en or display_title,
@@ -12220,7 +12321,7 @@ def make_codex_native_brief_memory_items(rows, kind, language=None):
                     labels,
                 )
             else:
-                display_body = kind_config.get("empty_body_zh", "")
+                display_body = native_untranslated_display_fallback(kind, language=language)
         zh_keywords, en_keywords = split_keywords_for_language(row.get("keywords", []))
         if zh_keywords:
             keyword_text = "、".join(zh_keywords)
@@ -12323,7 +12424,7 @@ def make_codex_native_brief_cards(rows, kind, language=None):
 
     def split_keywords_for_language(row):
         keywords = row_keywords(row)
-        zh_keywords = [keyword for keyword in keywords if not is_untranslated_english_text(keyword)]
+        zh_keywords = [keyword for keyword in keywords if not is_untranslated_display_text(keyword)]
         return zh_keywords, keywords
 
     def render_keyword_chip_html(keywords):
@@ -12384,9 +12485,9 @@ def make_codex_native_brief_cards(rows, kind, language=None):
         display_title_full = normalize_brand_display_text(row.get("display_title") or fallback_title_zh)
         display_title_en = normalize_brand_display_text(row.get("display_title_en") or "")
         raw_title = normalize_brand_display_text(row.get("title") or fallback_title_en)
-        if not display_title_en and is_untranslated_english_text(display_title_full):
+        if not display_title_en and is_untranslated_display_text(display_title_full):
             display_title_en = display_title_full
-        if not is_english(language) and is_untranslated_english_text(display_title_full):
+        if not is_english(language) and is_untranslated_display_text(display_title_full):
             if kind == "task_group":
                 display_title_full = generic_codex_native_task_group_title(
                     row.get("title") or display_title_full,
@@ -12411,7 +12512,7 @@ def make_codex_native_brief_cards(rows, kind, language=None):
             or row.get("display_body")
             or kind_config.get("empty_body_en", "")
         )
-        if not is_english(language) and is_untranslated_english_text(display_body_full):
+        if not is_english(language) and is_untranslated_display_text(display_body_full):
             if kind == "task_group":
                 labels = codex_native_task_group_labels_zh(
                     row.get("title") or display_title_en or display_title_full,
@@ -12423,7 +12524,7 @@ def make_codex_native_brief_cards(rows, kind, language=None):
                     labels,
                 )
             else:
-                display_body_full = kind_config.get("empty_body_zh", "")
+                display_body_full = native_untranslated_display_fallback(kind, language=language)
         zh_keywords, en_keywords = split_keywords_for_language(row)
         if zh_keywords:
             keyword_text = "、".join(zh_keywords)
@@ -12486,6 +12587,161 @@ def make_codex_native_brief_cards(rows, kind, language=None):
         item_label_en="items",
         expanded_label_en="Collapse extra items",
     )
+
+
+def first_native_row_source_files(rows):
+    for row in rows or []:
+        source_files = row.get("source_files") or []
+        if source_files:
+            return source_files
+    return [{"path": "", "label": "memory_summary.md"}]
+
+
+def native_summary_snippets(rows, zh_keys, en_keys, limit=4):
+    zh_parts = []
+    en_parts = []
+    for row in rows or []:
+        zh_value = ""
+        en_value = ""
+        for key in zh_keys:
+            value = normalize_brand_display_text(row.get(key, ""))
+            if value:
+                zh_value = value
+                break
+        for key in en_keys:
+            value = normalize_brand_display_text(row.get(key, ""))
+            if value:
+                en_value = value
+                break
+        if zh_value and is_untranslated_display_text(zh_value):
+            zh_value = ""
+        if zh_value and zh_value not in zh_parts:
+            zh_parts.append(zh_value)
+        if en_value and en_value not in en_parts:
+            en_parts.append(en_value)
+        if len(zh_parts) >= limit and len(en_parts) >= limit:
+            break
+    return zh_parts[:limit], en_parts[:limit]
+
+
+def make_codex_native_context_summary_row(
+    key,
+    title_zh,
+    title_en,
+    rows,
+    memory_type,
+    zh_keys,
+    en_keys,
+    language=None,
+    fallback_zh="",
+):
+    language = current_language(language)
+    rows = rows or []
+    if not rows:
+        return None
+    zh_parts, en_parts = native_summary_snippets(rows, zh_keys, en_keys)
+    count_zh = "{} 条".format(len(rows))
+    count_en = "{} {}".format(len(rows), "item" if len(rows) == 1 else "items")
+    if zh_parts:
+        display_value_note = "；".join(zh_parts)
+    else:
+        display_value_note = fallback_zh or "已整理 {}原生记忆；中文展示缓存暂未命中。".format(count_zh)
+    value_note_en = "; ".join(en_parts) if en_parts else title_en
+    return {
+        "memory_key": "codex-native-summary::{}".format(key),
+        "bucket": "durable",
+        "display_bucket": localized("Host context 摘要", "Host Context Summary", language),
+        "memory_type": memory_type,
+        "display_memory_type": display_memory_type(memory_type, language=language),
+        "priority": "high" if key in {"profile", "preferences"} else "medium",
+        "display_priority": display_memory_priority(
+            "high" if key in {"profile", "preferences"} else "medium",
+            language=language,
+        ),
+        "scope": overview_memory_context.MEMORY_SCOPE_GLOBAL,
+        "injection_policy": overview_memory_context.INJECTION_GLOBAL_CONTEXT,
+        "title": title_en,
+        "title_zh": title_zh,
+        "title_en": title_en,
+        "display_title": localized(title_zh, title_en, language),
+        "display_value_note": compact_preview_text(display_value_note, limit=300),
+        "display_value_note_en": compact_preview_text(value_note_en, limit=300),
+        "value_note": compact_preview_text(value_note_en, limit=520),
+        "value_note_zh": compact_preview_text(display_value_note, limit=520),
+        "value_note_en": compact_preview_text(value_note_en, limit=520),
+        "occurrence_count": len(rows),
+        "occurrence_label": localized(count_zh, count_en, language),
+        "display_context": localized("通用 host context", "General host context", language),
+        "context_labels": [localized("通用上下文", "General Context", language)],
+        "source_fact_label": localized("来源文件", "Source file", language),
+        "source_files": first_native_row_source_files(rows),
+        "source_windows": [],
+        "source_window_count": 0,
+    }
+
+
+def make_codex_native_global_context_rows(native_summary, language=None):
+    language = current_language(language)
+    native_summary = native_summary or {}
+    profile_row = make_codex_native_context_summary_row(
+        "profile",
+        "用户习惯与工作方式",
+        "User habits and working style",
+        native_summary.get("profile_rows", []),
+        "semantic",
+        ["display_body", "body"],
+        ["display_body_en", "body"],
+        language=language,
+        fallback_zh="已读取 User Profile；中文展示缓存暂未命中，英文原文可在原生记忆卡片中核对。",
+    )
+    preference_row = make_codex_native_context_summary_row(
+        "preferences",
+        "用户偏好摘要",
+        "User preference summary",
+        native_summary.get("preference_rows", []),
+        "preference",
+        ["display_body", "body"],
+        ["display_body_en", "body"],
+        language=language,
+        fallback_zh="已整理 User preferences；中文展示缓存暂未命中，英文原文可在原生记忆卡片中核对。",
+    )
+    tip_row = make_codex_native_context_summary_row(
+        "tips",
+        "通用 tips 与经验",
+        "General tips and lessons",
+        native_summary.get("tip_rows", []),
+        "procedural",
+        ["display_body", "body"],
+        ["display_body_en", "body"],
+        language=language,
+        fallback_zh="已整理 General Tips；中文展示缓存暂未命中，英文原文可在原生记忆卡片中核对。",
+    )
+    experience_row = make_codex_native_context_summary_row(
+        "experience",
+        "历史经验索引",
+        "Historical lessons index",
+        native_summary.get("rows", []),
+        "semantic",
+        ["display_value_note", "value_note"],
+        ["display_value_note_en", "value_note_en", "value_note"],
+        language=language,
+        fallback_zh="已整理 What's in Memory 历史经验；中文展示缓存暂未命中，英文原文可在原生记忆卡片中核对。",
+    )
+    return [row for row in (profile_row, preference_row, tip_row, experience_row) if row]
+
+
+def merge_global_context_display_rows(policy_rows, summary_rows):
+    merged = []
+    seen = set()
+    for row in list(policy_rows or []) + list(summary_rows or []):
+        key = row.get("memory_key") or normalize_memory_signature_text(
+            "{} {}".format(row.get("display_title") or row.get("title", ""), row.get("display_value_note") or "")
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        merged.append(row)
+    return merged
 
 
 def derive_nightly_window_title(nightly_title):
@@ -14412,9 +14668,25 @@ def build_html(data):
         token_usage=data.get("personal_memory_token_usage", {}),
     )
     codex_native_memory = data.get("codex_native_memory") or []
+    codex_native_profile_rows = data.get("codex_native_profile_rows") or []
     codex_native_preference_rows = data.get("codex_native_preference_rows") or []
     codex_native_tip_rows = data.get("codex_native_tip_rows") or []
     codex_native_task_groups = data.get("codex_native_task_groups") or []
+    codex_native_global_context_rows = data.get("codex_native_global_context_rows")
+    if codex_native_global_context_rows is None:
+        codex_native_global_context_rows = make_codex_native_global_context_rows(
+            {
+                "rows": codex_native_memory,
+                "profile_rows": codex_native_profile_rows,
+                "preference_rows": codex_native_preference_rows,
+                "tip_rows": codex_native_tip_rows,
+            },
+            language=language,
+        )
+    global_context_display_rows = merge_global_context_display_rows(
+        memory_policy_views.get("global_context", {}).get("rows", []),
+        codex_native_global_context_rows,
+    )
     codex_native_memory_counts = data.get("codex_native_memory_counts") or {}
     codex_native_memory_comparison = data.get("codex_native_memory_comparison") or {}
     claude_native_memory = data.get("claude_native_memory") or []
@@ -25430,7 +25702,7 @@ def build_html(data):
         ),
         nightly_window_cards=make_window_summary_cards(window_overview),
         global_memory_cards=make_policy_memory_type_grouped_cards(
-            memory_policy_views.get("global_context", {}).get("rows", []),
+            global_context_display_rows,
         ),
         project_memory_cards=make_policy_memory_type_grouped_cards(
             memory_policy_views.get("project_context", {}).get("rows", []),

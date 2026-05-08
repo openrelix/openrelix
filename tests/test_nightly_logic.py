@@ -1799,6 +1799,107 @@ class NightlyLogicTests(unittest.TestCase):
         self.assertNotIn("通用 tips：", tip["display_title"])
         self.assertNotIn("这条通用提示来自", tip["display_body"])
 
+    def test_codex_native_brief_cards_do_not_show_empty_when_translation_cache_misses(self):
+        sample_summary = """## General Tips
+
+- In the observed memory-system-v2 worktree, project/repo/domain memory was policy-gated in the registry/index.
+"""
+
+        with TemporaryDirectory() as tmpdir:
+            summary_path = Path(tmpdir) / "memory_summary.md"
+            summary_path.write_text(sample_summary, encoding="utf-8")
+
+            parsed = build_overview.parse_codex_native_memory_summary(summary_path, language="zh")
+            html = build_overview.make_codex_native_brief_cards(
+                parsed["tip_rows"],
+                "tip",
+                language="zh",
+            )
+
+        self.assertNotIn("暂无通用提示", html)
+        self.assertIn("中文展示缓存暂未命中", html)
+        self.assertIn("查看英文原文", html)
+        self.assertIn("project/repo/domain memory", html)
+
+    def test_codex_native_summary_contributes_general_context_rows(self):
+        sample_summary = """## User Profile
+
+The user prefers concrete runtime evidence before broad explanations.
+
+## User preferences
+
+- Prefer worktree-first delivery for OpenRelix changes.
+
+## General Tips
+
+- Verify rendered panel output after overview changes.
+
+## What's in Memory
+
+### OpenRelix
+
+- Panel verification workflow
+  - desc: Rendered panel output is stronger evidence than source-only review.
+"""
+
+        with TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            summary_path = tmp / "memory_summary.md"
+            cache_path = tmp / "codex-native-display-cache.json"
+            summary_path.write_text(sample_summary, encoding="utf-8")
+            cache_path.write_text(
+                json.dumps(
+                    {
+                        "version": 1,
+                        "items": {
+                            build_overview.codex_native_display_cache_key(
+                                "profile",
+                                "The user prefers concrete runtime evidence before broad explanations.",
+                                "The user prefers concrete runtime evidence before broad explanations.",
+                            ): {
+                                "title_zh": "用户重视运行证据",
+                                "body_zh": "用户更希望先看到真实运行证据，再展开解释。",
+                            },
+                            build_overview.codex_native_display_cache_key(
+                                "preference",
+                                "Prefer worktree-first delivery for OpenRelix changes.",
+                                "Prefer worktree-first delivery for OpenRelix changes.",
+                            ): {
+                                "title_zh": "OpenRelix先用worktree",
+                                "body_zh": "OpenRelix 改动默认先在独立 worktree 里交付。",
+                            },
+                            build_overview.codex_native_display_cache_key(
+                                "tip",
+                                "Verify rendered panel output after overview changes.",
+                                "Verify rendered panel output after overview changes.",
+                            ): {
+                                "title_zh": "面板改动后看渲染",
+                                "body_zh": "overview 改动后要验证真实渲染出的 panel。",
+                            },
+                        },
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+
+            with mock.patch.object(build_overview, "CODEX_NATIVE_DISPLAY_CACHE_PATH", cache_path):
+                build_overview.load_codex_native_display_cache.cache_clear()
+                parsed = build_overview.parse_codex_native_memory_summary(summary_path, language="zh")
+                rows = build_overview.make_codex_native_global_context_rows(parsed, language="zh")
+
+        titles = [row["display_title"] for row in rows]
+        self.assertIn("用户习惯与工作方式", titles)
+        self.assertIn("用户偏好摘要", titles)
+        self.assertIn("通用 tips 与经验", titles)
+        self.assertIn("历史经验索引", titles)
+        notes = "\n".join(row["display_value_note"] for row in rows)
+        self.assertIn("用户更希望先看到真实运行证据", notes)
+        self.assertIn("独立 worktree", notes)
+        self.assertIn("真实渲染出的 panel", notes)
+        self.assertTrue(all(row["scope"] == "global" for row in rows))
+        self.assertTrue(all(row["injection_policy"] == "global_context" for row in rows))
+
     def test_codex_native_memory_preferences_use_model_display_cache(self):
         preference_source = "When the target state is clear, default to direct edits and concrete outputs instead of long proposal mode."
         tip_source = "Use local browser checks for product pages when browser tooling is available."

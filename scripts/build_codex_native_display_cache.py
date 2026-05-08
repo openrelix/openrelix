@@ -84,6 +84,10 @@ def collect_entries(
             language="en",
         )
 
+        for row in parsed.get("profile_rows", []):
+            body = source_text(row.get("display_body_en") or row.get("body") or "")
+            append("profile", body, body, "User Profile")
+
         for row in parsed.get("preference_rows", []):
             body = source_text(row.get("display_body_en") or row.get("body") or "")
             append("preference", body, body, "User preferences")
