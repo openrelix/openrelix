@@ -4249,8 +4249,12 @@ def build_project_contexts(window_overview, language=None):
                 "window_id": window_id,
                 "anchor_id": "window-{}".format(window_id),
                 "display_label": display_label,
+                "started_at_display": source_item.get("started_at_display", ""),
                 "latest_activity_display": source_item.get("latest_activity_display", ""),
                 "title": compact_preview_text(title, limit=80),
+                "takeaway": compact_preview_text(source_item.get("main_takeaway", ""), limit=150),
+                "question_count": source_item.get("question_count", 0),
+                "conclusion_count": source_item.get("conclusion_count", 0),
             }
         )
 
@@ -10838,15 +10842,62 @@ def make_project_context_cards(items, language=None):
                 "Window {}".format(display_label),
                 language,
             )
-            title_parts = [
-                str(ref.get("latest_activity_display", "") or "").strip(),
-                str(ref.get("title", "") or "").strip(),
-            ]
-            title = " · ".join([part for part in title_parts if part])
+            tooltip_title = str(ref.get("title", "") or "").strip()
+            tooltip_takeaway = str(ref.get("takeaway", "") or ref.get("main_takeaway", "") or "").strip()
+            tooltip_created = str(ref.get("started_at_display", "") or ref.get("created_at_display", "") or "").strip()
+            tooltip_latest = str(ref.get("latest_activity_display", "") or "").strip()
+            question_count = safe_int(ref.get("question_count", 0))
+            conclusion_count = safe_int(ref.get("conclusion_count", 0))
+            tooltip_meta = ""
+            if question_count or conclusion_count:
+                tooltip_meta = localized(
+                    "{} 问题 · {} 结论".format(question_count, conclusion_count),
+                    "{} · {}".format(
+                        plural_en(question_count, "question"),
+                        plural_en(conclusion_count, "conclusion"),
+                    ),
+                    language,
+                )
+            aria_parts = [link_label]
+            if tooltip_title:
+                aria_parts.append(
+                    localized("标题：{}", "Title: {}", language).format(tooltip_title)
+                )
+            if tooltip_takeaway:
+                aria_parts.append(
+                    localized("结论：{}", "Conclusion: {}", language).format(tooltip_takeaway)
+                )
+            if tooltip_created:
+                aria_parts.append(
+                    localized("创建：{}", "Created: {}", language).format(tooltip_created)
+                )
+            if tooltip_latest:
+                aria_parts.append(
+                    localized("最近：{}", "Recent: {}", language).format(tooltip_latest)
+                )
+            if tooltip_meta:
+                aria_parts.append(tooltip_meta)
+            link_attrs = {
+                "href": "#{}".format(anchor_id),
+                "data-window-target": anchor_id,
+                "data-window-tooltip": "true",
+                "data-window-tooltip-title": tooltip_title,
+                "data-window-tooltip-takeaway": tooltip_takeaway,
+                "data-window-tooltip-created": tooltip_created,
+                "data-window-tooltip-latest": tooltip_latest,
+                "data-window-tooltip-meta": tooltip_meta,
+                "aria-label": (", " if is_english(language) else "，").join(
+                    [part for part in aria_parts if part]
+                ),
+            }
+            attr_html = " ".join(
+                '{}="{}"'.format(name, escape(value, quote=True))
+                for name, value in link_attrs.items()
+                if value
+            )
             links.append(
-                '<a class="context-window-link" href="#{anchor_id}" data-window-target="{anchor_id}" title="{title}">{label}</a>'.format(
-                    anchor_id=escape(anchor_id, quote=True),
-                    title=escape(title or link_label, quote=True),
+                '<a class="context-window-link" {attrs}>{label}</a>'.format(
+                    attrs=attr_html,
                     label=escape(link_label),
                 )
             )
@@ -14263,6 +14314,7 @@ def make_window_summary_cards(
             "data-window-project": project_label,
             "data-window-cwd": cwd_display,
             "data-window-task": window_summary,
+            "data-window-takeaway": compact_preview_text(main_takeaway, limit=180),
             "data-window-topic": topic_label,
             "data-window-anchor": card_dom_id,
             "data-window-display-label": item.get("display_label", card_index),
@@ -20075,6 +20127,88 @@ def build_html(data):
       outline: none;
     }}
 
+    .context-window-link[data-window-tooltip="true"] {{
+      cursor: help;
+    }}
+
+    .context-window-hover-card {{
+      position: fixed;
+      z-index: 1200;
+      width: min(340px, calc(100vw - 32px));
+      border: 1px solid rgba(148, 163, 184, 0.42);
+      border-radius: 14px;
+      background: color-mix(in srgb, var(--card) 94%, transparent);
+      box-shadow: 0 18px 52px rgba(15, 23, 42, 0.24);
+      color: var(--ink);
+      padding: 12px 13px;
+      pointer-events: none;
+      opacity: 0;
+      transform: translateY(6px);
+      transition: opacity 0.12s ease, transform 0.12s ease;
+    }}
+
+    .context-window-hover-card[hidden] {{
+      display: none;
+    }}
+
+    .context-window-hover-card.is-visible {{
+      opacity: 1;
+      transform: translateY(0);
+    }}
+
+    .context-window-hover-card::after {{
+      content: "";
+      position: absolute;
+      left: var(--tooltip-arrow-left, 50%);
+      bottom: -6px;
+      width: 10px;
+      height: 10px;
+      border-right: 1px solid rgba(148, 163, 184, 0.42);
+      border-bottom: 1px solid rgba(148, 163, 184, 0.42);
+      background: color-mix(in srgb, var(--card) 94%, transparent);
+      transform: translateX(-50%) rotate(45deg);
+    }}
+
+    .context-window-hover-card.is-below::after {{
+      top: -6px;
+      bottom: auto;
+      border: 0;
+      border-left: 1px solid rgba(148, 163, 184, 0.42);
+      border-top: 1px solid rgba(148, 163, 184, 0.42);
+    }}
+
+    .context-window-hover-title {{
+      margin: 0 0 9px;
+      font-size: 13px;
+      font-weight: 750;
+      line-height: 1.35;
+      overflow-wrap: anywhere;
+    }}
+
+    .context-window-hover-list {{
+      display: grid;
+      gap: 7px;
+    }}
+
+    .context-window-hover-row {{
+      display: grid;
+      gap: 2px;
+    }}
+
+    .context-window-hover-label {{
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 700;
+      line-height: 1.2;
+    }}
+
+    .context-window-hover-value {{
+      color: var(--ink);
+      font-size: 12px;
+      line-height: 1.45;
+      overflow-wrap: anywhere;
+    }}
+
     .context-window-more {{
       color: var(--muted);
       background: var(--soft);
@@ -23088,8 +23222,10 @@ def build_html(data):
           topic: topic,
           anchor: card.getAttribute("id") || card.getAttribute("data-window-anchor") || "",
           displayLabel: String(card.getAttribute("data-window-display-label") || fallbackIndex || "").trim(),
+          createdDisplay: card.getAttribute("data-window-started-display") || "",
           latestAt: card.getAttribute("data-window-latest-at") || "",
           latestDisplay: card.getAttribute("data-window-latest-display") || "",
+          takeaway: String(card.getAttribute("data-window-takeaway") || "").trim(),
           questionCount: questionCount,
           conclusionCount: conclusionCount,
           discussionCount: questionCount + conclusionCount,
@@ -23114,6 +23250,56 @@ def build_html(data):
         );
       }}
 
+      function windowTooltipMetaText(sourceWindow) {{
+        const questionCount = Number(sourceWindow.questionCount) || 0;
+        const conclusionCount = Number(sourceWindow.conclusionCount) || 0;
+        if (!questionCount && !conclusionCount) {{
+          return "";
+        }}
+        return currentLanguage === "en"
+          ? pluralEn(questionCount, "question") + " · " + pluralEn(conclusionCount, "conclusion")
+          : questionCount + " 问题 · " + conclusionCount + " 结论";
+      }}
+
+      function buildContextWindowLinkAttrs(sourceWindow, label, anchor) {{
+        const title = String(sourceWindow.task || sourceWindow.title || "").trim();
+        const takeaway = String(sourceWindow.takeaway || sourceWindow.mainTakeaway || "").trim();
+        const created = String(sourceWindow.createdDisplay || sourceWindow.startedDisplay || "").trim();
+        const latest = String(sourceWindow.latestDisplay || "").trim();
+        const meta = windowTooltipMetaText(sourceWindow);
+        const ariaParts = [label];
+        if (title) {{
+          ariaParts.push(localizeValue("标题：" + title, "Title: " + title));
+        }}
+        if (takeaway) {{
+          ariaParts.push(localizeValue("结论：" + takeaway, "Conclusion: " + takeaway));
+        }}
+        if (created) {{
+          ariaParts.push(localizeValue("创建：" + created, "Created: " + created));
+        }}
+        if (latest) {{
+          ariaParts.push(localizeValue("最近：" + latest, "Recent: " + latest));
+        }}
+        if (meta) {{
+          ariaParts.push(meta);
+        }}
+        const attrs = {{
+          href: "#" + anchor,
+          "data-window-target": anchor,
+          "data-window-tooltip": "true",
+          "data-window-tooltip-title": title,
+          "data-window-tooltip-takeaway": takeaway,
+          "data-window-tooltip-created": created,
+          "data-window-tooltip-latest": latest,
+          "data-window-tooltip-meta": meta,
+          "aria-label": ariaParts.filter(Boolean).join(currentLanguage === "en" ? ", " : "，"),
+        }};
+        return Object.keys(attrs).map(function (name) {{
+          const value = attrs[name];
+          return value ? name + '="' + escapeHtml(value) + '"' : "";
+        }}).filter(Boolean).join(" ");
+      }}
+
       function renderDynamicContextWindowLinks(topic) {{
         const windows = (topic.sourceWindows || []).slice().sort(function (left, right) {{
           return (right.sortValue || 0) - (left.sortValue || 0);
@@ -23128,9 +23314,8 @@ def build_html(data):
           }}
           const displayLabel = sourceWindow.displayLabel || String(index + 1);
           const label = localizeValue("窗口 " + displayLabel, "Window " + displayLabel);
-          const title = [sourceWindow.latestDisplay || "", sourceWindow.task || ""].filter(Boolean).join(" · ") || label;
           return (
-            '<a class="context-window-link" href="#' + escapeHtml(anchor) + '" data-window-target="' + escapeHtml(anchor) + '" title="' + escapeHtml(title) + '">' +
+            '<a class="context-window-link" ' + buildContextWindowLinkAttrs(sourceWindow, label, anchor) + '>' +
               escapeHtml(label) +
             '</a>'
           );
@@ -23217,8 +23402,12 @@ def build_html(data):
           topic.sourceWindows.push({{
             anchor: meta.anchor,
             displayLabel: meta.displayLabel,
+            createdDisplay: meta.createdDisplay,
             latestDisplay: meta.latestDisplay,
             task: meta.task,
+            takeaway: meta.takeaway,
+            questionCount: meta.questionCount,
+            conclusionCount: meta.conclusionCount,
             sortValue: sortValue,
           }});
         }});
@@ -24699,6 +24888,158 @@ def build_html(data):
           revealWindowCardById(decodedHashTargetId(), false);
         }});
         revealWindowCardById(decodedHashTargetId(), false);
+      }}
+
+      function contextWindowTooltipHtml(link) {{
+        const label = String((link && link.textContent) || "").trim() || localizeValue("窗口", "Window");
+        const rows = [
+          [localizeValue("标题", "Title"), link.getAttribute("data-window-tooltip-title") || ""],
+          [localizeValue("结论", "Conclusion"), link.getAttribute("data-window-tooltip-takeaway") || ""],
+          [localizeValue("创建", "Created"), link.getAttribute("data-window-tooltip-created") || ""],
+          [localizeValue("最近", "Recent"), link.getAttribute("data-window-tooltip-latest") || ""],
+          [localizeValue("数量", "Count"), link.getAttribute("data-window-tooltip-meta") || ""],
+        ].filter(function (row) {{
+          return String(row[1] || "").trim();
+        }});
+        if (!rows.length) {{
+          return "";
+        }}
+        return (
+          '<div class="context-window-hover-title">' + escapeHtml(label) + '</div>' +
+          '<div class="context-window-hover-list">' +
+            rows.map(function (row) {{
+              return (
+                '<div class="context-window-hover-row">' +
+                  '<span class="context-window-hover-label">' + escapeHtml(row[0]) + '</span>' +
+                  '<span class="context-window-hover-value">' + escapeHtml(row[1]) + '</span>' +
+                '</div>'
+              );
+            }}).join("") +
+          '</div>'
+        );
+      }}
+
+      function ensureContextWindowTooltip() {{
+        let tooltip = document.getElementById("context-window-hover-card");
+        if (!tooltip) {{
+          tooltip = document.createElement("div");
+          tooltip.id = "context-window-hover-card";
+          tooltip.className = "context-window-hover-card";
+          tooltip.setAttribute("role", "tooltip");
+          tooltip.hidden = true;
+          document.body.appendChild(tooltip);
+        }}
+        return tooltip;
+      }}
+
+      function positionContextWindowTooltip(link, tooltip) {{
+        if (!link || !tooltip || tooltip.hidden) {{
+          return;
+        }}
+        const margin = 12;
+        const gap = 10;
+        const rect = link.getBoundingClientRect();
+        const width = tooltip.offsetWidth || 320;
+        const height = tooltip.offsetHeight || 120;
+        let left = rect.left + rect.width / 2 - width / 2;
+        left = Math.max(margin, Math.min(left, window.innerWidth - width - margin));
+        let top = rect.top - height - gap;
+        const below = top < margin;
+        if (below) {{
+          top = rect.bottom + gap;
+        }}
+        tooltip.classList.toggle("is-below", below);
+        tooltip.style.left = Math.round(left) + "px";
+        tooltip.style.top = Math.round(top) + "px";
+        const arrowLeft = Math.max(16, Math.min(rect.left + rect.width / 2 - left, width - 16));
+        tooltip.style.setProperty("--tooltip-arrow-left", Math.round(arrowLeft) + "px");
+      }}
+
+      let activeContextWindowTooltipLink = null;
+
+      function showContextWindowTooltip(link) {{
+        if (!link) {{
+          return;
+        }}
+        const html = contextWindowTooltipHtml(link);
+        if (!html) {{
+          hideContextWindowTooltip();
+          return;
+        }}
+        const tooltip = ensureContextWindowTooltip();
+        activeContextWindowTooltipLink = link;
+        tooltip.innerHTML = html;
+        tooltip.hidden = false;
+        tooltip.style.visibility = "hidden";
+        tooltip.classList.remove("is-visible");
+        positionContextWindowTooltip(link, tooltip);
+        tooltip.style.visibility = "";
+        window.requestAnimationFrame(function () {{
+          if (activeContextWindowTooltipLink === link) {{
+            tooltip.classList.add("is-visible");
+          }}
+        }});
+      }}
+
+      function hideContextWindowTooltip() {{
+        const tooltip = document.getElementById("context-window-hover-card");
+        activeContextWindowTooltipLink = null;
+        if (!tooltip) {{
+          return;
+        }}
+        tooltip.classList.remove("is-visible");
+        tooltip.hidden = true;
+      }}
+
+      function wireContextWindowTooltips() {{
+        document.addEventListener("pointerover", function (event) {{
+          const link = event.target && event.target.closest
+            ? event.target.closest('.context-window-link[data-window-tooltip="true"]')
+            : null;
+          if (link) {{
+            showContextWindowTooltip(link);
+          }}
+        }});
+        document.addEventListener("pointerout", function (event) {{
+          const link = event.target && event.target.closest
+            ? event.target.closest('.context-window-link[data-window-tooltip="true"]')
+            : null;
+          if (!link || (event.relatedTarget && link.contains(event.relatedTarget))) {{
+            return;
+          }}
+          hideContextWindowTooltip();
+        }});
+        document.addEventListener("focusin", function (event) {{
+          const link = event.target && event.target.matches && event.target.matches('.context-window-link[data-window-tooltip="true"]')
+            ? event.target
+            : null;
+          if (link) {{
+            showContextWindowTooltip(link);
+          }}
+        }});
+        document.addEventListener("focusout", function (event) {{
+          const link = event.target && event.target.matches && event.target.matches('.context-window-link[data-window-tooltip="true"]')
+            ? event.target
+            : null;
+          if (link) {{
+            hideContextWindowTooltip();
+          }}
+        }});
+        document.addEventListener("click", function () {{
+          hideContextWindowTooltip();
+        }});
+        window.addEventListener("scroll", function () {{
+          const tooltip = document.getElementById("context-window-hover-card");
+          if (activeContextWindowTooltipLink && tooltip && !tooltip.hidden) {{
+            positionContextWindowTooltip(activeContextWindowTooltipLink, tooltip);
+          }}
+        }}, {{ passive: true }});
+        window.addEventListener("resize", function () {{
+          const tooltip = document.getElementById("context-window-hover-card");
+          if (activeContextWindowTooltipLink && tooltip && !tooltip.hidden) {{
+            positionContextWindowTooltip(activeContextWindowTooltipLink, tooltip);
+          }}
+        }});
       }}
 
       function wireWindowOverviewProjectMore() {{
@@ -26409,6 +26750,7 @@ def build_html(data):
       wireWindowOverviewProjectMore();
       wireWindowFilterSticky();
       wireProjectContextWindowLinks();
+      wireContextWindowTooltips();
       wireThemeButtons();
       wireLanguageButtons();
       wireNightlyDateInput();

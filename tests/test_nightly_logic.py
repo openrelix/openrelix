@@ -1330,6 +1330,44 @@ trust_level = "trusted"
         self.assertIn("移动端扫描/录制链路", topic_labels)
         self.assertIn("性能与体验评审", topic_labels)
 
+    def test_project_context_window_links_carry_hover_tooltip_metadata(self):
+        window_overview = {
+            "date": "2026-05-08",
+            "windows": [
+                {
+                    "window_id": "w-scan",
+                    "display_index": 7,
+                    "project_label": "Demo Project",
+                    "cwd": "/tmp/demo-project",
+                    "cwd_display": "Demo Project",
+                    "window_title": "移动端录制链路",
+                    "question_count": 3,
+                    "conclusion_count": 2,
+                    "question_summary": "长按录制链路怎么恢复",
+                    "main_takeaway": "先停底层录制，再清理片段状态。",
+                    "keywords": ["录制", "状态"],
+                    "latest_activity_at": "2026-05-08T17:06:00+08:00",
+                    "latest_activity_display": "05-08 17:06",
+                    "started_at_display": "05-08 16:50",
+                    "recent_prompts": [],
+                    "recent_conclusions": [],
+                }
+            ],
+        }
+
+        contexts = build_overview.build_project_contexts(window_overview)
+        source_window = contexts[0]["topics"][0]["source_windows"][0]
+        html = build_overview.make_project_context_cards(contexts)
+
+        self.assertEqual(source_window["display_label"], "7")
+        self.assertEqual(source_window["started_at_display"], "05-08 16:50")
+        self.assertEqual(source_window["takeaway"], "先停底层录制，再清理片段状态。")
+        self.assertIn('data-window-tooltip="true"', html)
+        self.assertIn('data-window-tooltip-title="移动端录制链路"', html)
+        self.assertIn('data-window-tooltip-takeaway="先停底层录制，再清理片段状态。"', html)
+        self.assertIn('data-window-tooltip-created="05-08 16:50"', html)
+        self.assertIn('data-window-tooltip-meta="3 问题 · 2 结论"', html)
+
     def test_project_contexts_sort_projects_by_discussion_count(self):
         window_overview = {
             "date": "2026-04-27",
@@ -5946,6 +5984,7 @@ Native Codex profile.
         self.assertIn("窗口创建 刚刚", html)
         self.assertLess(html.index("窗口创建 刚刚"), html.index("最近活动 刚刚"))
         self.assertIn('data-window-started-display="刚刚"', html)
+        self.assertIn('data-window-takeaway="**结论**：执行 codex resume', html)
         self.assertIn('data-window-topic=', html)
         self.assertIn('class="window-summary-pair-list"', html)
         self.assertIn('class="window-summary-pair-item"', html)
