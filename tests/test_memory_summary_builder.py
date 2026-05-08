@@ -442,6 +442,40 @@ class MemorySummaryBuilderTests(unittest.TestCase):
         self.assertNotIn("Apply patch by default", personal_section)
         self.assertIn("Keep runtime state outside repos", personal_section)
 
+    def test_summary_omits_boilerplate_profile_and_dedupes_brief_rules(self):
+        budget = build_codex_memory_summary.SummaryBudget(
+            target_tokens=720,
+            warn_tokens=780,
+            max_tokens=860,
+            profile_tokens=80,
+            preferences_tokens=120,
+            tips_tokens=220,
+            personal_memory_tokens=220,
+            max_preferences=4,
+            max_tips=6,
+            max_personal_memory_items=8,
+        )
+        personal_items = build_codex_memory_summary.parse_personal_memory_registry(
+            """
+{"date":"2026-05-08","source":"canonical","bucket":"durable","title":"多 profile 场景要显式保留环境标识","memory_type":"rule","priority":"high","scope":"global","injection_policy":"global_context","value_note":"恢复、跳转、注入等入口不能只看当前 primary 目录；只要不是系统默认 profile，就应保留 `CODEX_HOME` 或等价的 profile 路由信息。","keywords":["多 profile","多 home","CODEX_HOME","路由"]}
+{"date":"2026-05-08","source":"canonical","bucket":"durable","title":"多 profile 恢复命令不能省略 CODEX_HOME","memory_type":"rule","priority":"high","scope":"global","injection_policy":"global_context","value_note":"恢复或唤起命令不要只看当前 primary home；只要不是系统默认 Codex profile，或者属于隔离 profile，就必须显式保留 `CODEX_HOME`。","keywords":["resume","CODEX_HOME","profile","多 home","隔离环境"]}
+{"date":"2026-05-08","source":"canonical","bucket":"durable","title":"文件修改默认优先 apply_patch","memory_type":"preference","priority":"high","scope":"global","injection_policy":"global_context","value_note":"用户已经明确偏好用 `apply_patch` 做文件修改。","keywords":["apply_patch"]}
+"""
+        )
+
+        result = build_codex_memory_summary.build_memory_summary(
+            "",
+            "",
+            budget,
+            personal_memory_items=personal_items,
+        )
+
+        self.assertNotIn("## User Profile", result.text)
+        self.assertNotIn("The injected context is compiled", result.text)
+        self.assertNotIn("No profile summary is available yet", result.text)
+        self.assertEqual(result.text.count("多 profile"), 1)
+        self.assertIn("文件修改默认优先 apply_patch", result.text)
+
     def test_personal_memory_context_lines_stay_compact_and_keep_metadata(self):
         item = build_codex_memory_summary.PersonalMemoryItem(
             title="Very long personal memory title " * 5,

@@ -6080,8 +6080,8 @@ Native Codex profile.
         self.assertIn("SQLite 是否值得切", summary_html)
         self.assertIn("结论1", summary_html)
         self.assertIn("先切底层索引", summary_html)
-        self.assertNotIn("问题2：搜索 UI 是否先做", html)
-        self.assertNotIn("结论2：UI 后置", html)
+        self.assertNotIn("问题2：搜索 UI 是否先做", summary_html)
+        self.assertNotIn("结论2：UI 后置", summary_html)
         for text in ["问题1", "SQLite 是否值得切", "结论1", "先切底层索引", "问题2", "搜索 UI 是否先做", "结论2", "UI 后置"]:
             self.assertIn(text, detail_html)
         self.assertLess(detail_html.index("问题1"), detail_html.index("SQLite 是否值得切"))

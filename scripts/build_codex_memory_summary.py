@@ -253,6 +253,28 @@ def summary_text_similarity(left, right):
     return max(jaccard, containment * 0.85)
 
 
+def summary_brief_signatures(text):
+    normalized = normalize_summary_key(text)
+    words = normalized.split()
+    signatures = set()
+    if len(words) >= 2 and words[0] in {"多", "multi", "multiple"}:
+        signatures.add("multi:{}".format(words[1]))
+    if "多 profile" in normalized:
+        signatures.add("multi:profile")
+    if "多 home" in normalized:
+        signatures.add("multi:home")
+    return signatures
+
+
+def summary_texts_are_redundant(left, right, threshold=PERSONAL_MEMORY_INTERNAL_DUPLICATE_THRESHOLD):
+    if summary_text_similarity(left, right) >= threshold:
+        return True
+    left_signatures = summary_brief_signatures(left)
+    if left_signatures and left_signatures & summary_brief_signatures(right):
+        return True
+    return False
+
+
 def memory_date_value(item):
     return str(
         item.get("updated_at")
@@ -529,11 +551,15 @@ def fit_bullets(items, token_budget, max_items):
 def dedupe_preserve_order(items):
     deduped = []
     seen = set()
+    seen_texts = []
     for item in items:
         normalized = normalize_summary_key(item)
         if not normalized or normalized in seen:
             continue
+        if any(summary_texts_are_redundant(item, seen_text) for seen_text in seen_texts):
+            continue
         seen.add(normalized)
+        seen_texts.append(item)
         deduped.append(item)
     return deduped
 
@@ -551,7 +577,7 @@ def rendered_summary_line_match_text(line):
 
 def personal_memory_item_is_similar_to_texts(item, texts, threshold):
     item_text = personal_memory_item_match_text(item)
-    return any(summary_text_similarity(item_text, text) >= threshold for text in texts or [])
+    return any(summary_texts_are_redundant(item_text, text, threshold=threshold) for text in texts or [])
 
 
 def build_personal_memory_lines(
@@ -694,35 +720,7 @@ def unique_personal_memory_context_labels(items, limit=4):
 
 
 def generate_profile_paragraphs_from_personal_memory(items):
-    global_items, project_items = split_personal_memory_items(items)
-    labels = unique_personal_memory_context_labels(project_items)
-    if global_items and labels:
-        label_text = ", ".join(labels)
-        return [
-            "The injected context is compiled from OpenRelix canonical memory.",
-            "Global habits and project-specific entries both participate, with project context represented by labels such as {}.".format(
-                label_text
-            ),
-            "Prefer the structured local registry below as the bounded host-context source; search the full memory index only when deeper evidence is needed.",
-        ]
-    if labels:
-        return [
-            "The injected context is compiled from OpenRelix canonical project memory.",
-            "Project-specific entries participate by heat within their bounded budget, with labels such as {}.".format(
-                ", ".join(labels)
-            ),
-            "Search the full memory index only when deeper evidence or rollout details are needed.",
-        ]
-    if global_items:
-        return [
-            "The injected context is compiled from OpenRelix canonical global memory.",
-            "Global entries participate by heat within their bounded budget.",
-            "Search the full memory index only when deeper evidence or rollout details are needed.",
-        ]
-    return [
-        "The injected context is compiled from OpenRelix canonical memory when eligible entries exist.",
-        "Global and project entries are selected by heat within separate bounded budgets.",
-    ]
+    return []
 
 
 def build_profile_lines(personal_memory_items, token_budget):
@@ -741,7 +739,7 @@ def personal_memory_bullet_text(item):
 def personal_memory_item_is_preference(item):
     memory_type = str(item.memory_type or "").lower()
     text = "{} {}".format(item.title, item.value_note).lower()
-    return memory_type == "preference" or "prefer" in text or "偏好" in text or "默认" in text
+    return memory_type == "preference" or "prefer" in text or "偏好" in text or "更喜欢" in text or "喜欢" in text
 
 
 def personal_memory_item_is_tip(item):
@@ -770,13 +768,14 @@ def build_tip_lines(personal_memory_items, token_budget, max_items):
 
 
 def render_summary(profile_lines, preference_lines, tip_lines, personal_memory_lines):
-    lines = ["## User Profile", ""]
+    lines = []
     if profile_lines:
+        lines.extend(["## User Profile", ""])
         lines.extend(profile_lines)
-    else:
-        lines.append("No profile summary is available yet.")
 
-    lines.extend(["", "## User preferences", ""])
+    if lines:
+        lines.append("")
+    lines.extend(["## User preferences", ""])
     if preference_lines:
         lines.extend(preference_lines)
     else:
