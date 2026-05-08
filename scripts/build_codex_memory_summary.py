@@ -257,6 +257,10 @@ def summary_brief_signatures(text):
     normalized = normalize_summary_key(text)
     words = normalized.split()
     signatures = set()
+    compact = normalized.replace(" ", "")
+    for prefix in ("大改动", "长任务", "多profile", "多home"):
+        if compact.startswith(prefix):
+            signatures.add("topic:{}".format(prefix))
     if len(words) >= 2 and words[0] in {"多", "multi", "multiple"}:
         signatures.add("multi:{}".format(words[1]))
     if "多 profile" in normalized:
