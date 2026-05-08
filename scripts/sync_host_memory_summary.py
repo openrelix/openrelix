@@ -115,6 +115,8 @@ def managed_codex_block(summary_text):
 
 
 def is_legacy_openrelix_codex_summary(existing_text):
+    if MANAGED_START in existing_text or MANAGED_END in existing_text:
+        return False
     text = existing_text.lstrip()
     return (
         text.startswith("## User Profile")

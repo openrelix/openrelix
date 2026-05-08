@@ -3335,14 +3335,22 @@ Native Codex profile.
             codex_summary = paths.codex_home / "memories" / "memory_summary.md"
             codex_summary.parent.mkdir(parents=True)
             codex_summary.write_text("## User Profile\n\nNative Codex memory.\n", encoding="utf-8")
+            shared_summary = (
+                "## User Profile\n\n"
+                "The injected context is compiled from OpenRelix canonical memory.\n\n"
+                "## What's in Memory\n\n"
+                "### Local personal memory registry\n\n"
+                "- Shared item\n"
+            )
 
             with mock.patch.object(sync_host_memory_summary, "PATHS", paths):
-                first_result = sync_host_memory_summary.sync_codex_summary("## What's in Memory\n\n- Shared item\n")
+                first_result = sync_host_memory_summary.sync_codex_summary(shared_summary)
                 second_result = sync_host_memory_summary.sync_codex_summary("## Updated\n\n- New shared item\n")
                 updated = codex_summary.read_text(encoding="utf-8")
 
             self.assertEqual(first_result["status"], "synced")
             self.assertEqual(second_result["status"], "synced")
+            self.assertNotIn("migrated legacy", second_result.get("detail", ""))
             self.assertIn("Native Codex memory.", updated)
             self.assertIn("## Updated", updated)
             self.assertIn("- New shared item", updated)

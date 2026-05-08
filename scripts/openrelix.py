@@ -4510,6 +4510,8 @@ def strip_managed_claude_memory_block(text):
 
 
 def is_legacy_openrelix_codex_summary(text):
+    if CLAUDE_MANAGED_MEMORY_START in text or CLAUDE_MANAGED_MEMORY_END in text:
+        return False
     stripped = text.lstrip()
     return (
         stripped.startswith("## User Profile")
