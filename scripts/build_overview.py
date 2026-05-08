@@ -642,6 +642,10 @@ PANEL_I18N_EN = {
     "复制命令": "Copy command",
     "已复制回溯命令": "Backfill command copied",
     "复制失败，请手动选择命令。": "Copy failed. Select the command manually.",
+    "复盘 prompt 已复制，请到对应窗口粘贴复盘文本。": (
+        "Review prompt copied. Paste it into the matching window."
+    ),
+    "复制失败，请手动选择复盘文本。": "Copy failed. Select the review prompt manually.",
     "该日期暂无窗口整理结果。": "No window synthesis for this date.",
     "完整回溯": "Full backfill",
     "手动": "Manual",
@@ -13474,12 +13478,33 @@ def make_window_summary_cards(window_overview, language=None):
             data-label="{review_label}"
             data-copied-label="{review_copied_label}"
             data-error-label="{review_error_label}"
+            data-status-label="{review_status_label}"
+            data-error-status-label="{review_error_status_label}"
           >{review_label}</button>""".format(
                 review_prompt_target=escape(review_prompt_target, quote=True),
                 review_label=escape(localized("发起复盘", "Start review", language), quote=True),
-                review_copied_label=escape(localized("复盘指令已复制", "Review prompt copied", language), quote=True),
+                review_copied_label=escape(localized("已复制", "Copied", language), quote=True),
                 review_error_label=escape(localized("复制失败", "Copy failed", language), quote=True),
+                review_status_label=escape(
+                    localized(
+                        "复盘 prompt 已复制，请到对应窗口粘贴复盘文本。",
+                        "Review prompt copied. Paste it into the matching window.",
+                        language,
+                    ),
+                    quote=True,
+                ),
+                review_error_status_label=escape(
+                    localized("复制失败，请手动选择复盘文本。", "Copy failed. Select the review prompt manually.", language),
+                    quote=True,
+                ),
             )
+            review_button += """
+          <span
+            class="window-review-copy-status"
+            data-window-review-status
+            role="status"
+            aria-live="polite"
+          ></span>"""
         if not copy_button and not open_button and not review_button:
             return ""
         return """
@@ -13518,7 +13543,7 @@ def make_window_summary_cards(window_overview, language=None):
         cwd_text = cwd_raw or cwd_display
         if is_english(language):
             lines = [
-                "/memory-review",
+                "memory-review",
                 "",
                 "Review this source window and prioritize turning it into a reusable asset, not just a log entry.",
                 "Decide whether it should become a playbook, skill, template, automation, or no asset.",
@@ -13542,7 +13567,7 @@ def make_window_summary_cards(window_overview, language=None):
             )
         else:
             lines = [
-                "/memory-review",
+                "memory-review",
                 "",
                 "请基于这个来源窗口发起人工复盘，重点判断能否沉淀为可复用资产，而不是只记录日志。",
                 "请明确它应该成为 playbook、skill、template、automation，还是不沉淀资产。",
@@ -14381,8 +14406,8 @@ def build_metric_help_sections(metric):
             {
                 "label": "如何登记",
                 "body": {
-                    "zh": "通常通过 /memory-review 或 memory-review 工作流在复盘时写入 registry/assets.jsonl；也可以直接维护这个 JSONL 登记册。单纯新增 SKILL.md 不会进入这里。",
-                    "en": "Usually written through the /memory-review or memory-review workflow during task review; you can also maintain registry/assets.jsonl directly. Adding a SKILL.md alone does not enter this registry.",
+                    "zh": "通常通过 memory-review 工作流在复盘时写入 registry/assets.jsonl；也可以直接维护这个 JSONL 登记册。单纯新增 SKILL.md 不会进入这里。",
+                    "en": "Usually written through the memory-review workflow during task review; you can also maintain registry/assets.jsonl directly. Adding a SKILL.md alone does not enter this registry.",
                 },
             },
             {
@@ -19990,6 +20015,13 @@ def build_html(data):
       color: #087c70;
     }}
 
+    .window-review-copy-status {{
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.35;
+      max-width: min(360px, 100%);
+    }}
+
     .window-resume-button:hover {{
       transform: translateY(-1px);
     }}
@@ -22573,6 +22605,14 @@ def build_html(data):
         return node.textContent || "";
       }}
 
+      function setWindowReviewStatus(button, message) {{
+        const actions = button ? button.closest(".window-resume-actions") : null;
+        const status = actions ? actions.querySelector("[data-window-review-status]") : null;
+        if (status) {{
+          status.textContent = message || "";
+        }}
+      }}
+
       function nativeExternalOpenHandler() {{
         return (
           window.webkit &&
@@ -22998,11 +23038,19 @@ def build_html(data):
               ? reviewPromptTextFromNode(promptNode)
               : (reviewButton.getAttribute("data-review-prompt") || "");
             copyText(prompt).then(function () {{
+              setWindowReviewStatus(
+                reviewButton,
+                reviewButton.getAttribute("data-status-label") || t("复盘 prompt 已复制，请到对应窗口粘贴复盘文本。")
+              );
               flashButtonLabel(
                 reviewButton,
                 reviewButton.getAttribute("data-copied-label") || t("已复制")
               );
             }}).catch(function () {{
+              setWindowReviewStatus(
+                reviewButton,
+                reviewButton.getAttribute("data-error-status-label") || t("复制失败，请手动选择复盘文本。")
+              );
               flashButtonLabel(
                 reviewButton,
                 reviewButton.getAttribute("data-error-label") || t("复制失败")

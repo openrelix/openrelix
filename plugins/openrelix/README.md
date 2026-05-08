@@ -33,8 +33,10 @@ The exact custom prompt compatibility entrypoint remains a user-local prompt ins
 After integrated installer setup, the primary in-Codex entrypoint is:
 
 ```text
-/memory-review
+memory-review
 ```
+
+Use the plain-text trigger in Codex CLI; some versions reject `/memory-review` before the model can route it to this skill.
 
 And the user-level custom prompt compatibility route is:
 

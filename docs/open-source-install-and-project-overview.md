@@ -410,10 +410,10 @@ custom prompt 文件路径是：
 - repo 负责维护可审阅、可开源的 skill、模板和脚本
 - installer 负责把它挂成用户本地可直接调用的 skill / prompt / shell 入口
 
-安装完成后，主推荐入口是在新的 AI agent 线程里直接输入；当前预览版适配器对应 Codex 线程：
+安装完成后，主推荐入口是在新的 AI agent 线程里直接输入普通文本；不要带斜杠，避免 Codex CLI 把它当成未知 slash command 拦截：
 
 ```text
-/memory-review
+memory-review
 ```
 
 兼容 prompt 入口仍然是：

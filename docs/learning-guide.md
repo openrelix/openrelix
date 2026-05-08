@@ -156,7 +156,7 @@ open "$AI_ASSET_STATE_DIR/reports/panel.html"
 
 理解目标：
 
-- `/memory-review` 的主入口是 skill。
+- `memory-review` 的主入口是 skill；在 Codex CLI 里不要带斜杠，避免被当成未知 slash command 拦截。
 - custom prompt 是兼容 fallback。
 - 复盘写入 `reviews/YYYY/`。
 - 复盘后先由模型判断是否值得资产化；确认后再生成 memory、skill、playbook、template 或 automation。

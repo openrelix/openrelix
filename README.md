@@ -235,10 +235,10 @@ The integrated profile does this:
 
 For Chinese runtime language, the manual refresh and nightly pipelines automatically maintain a local Codex-native display cache so memory cards get readable Chinese titles and summaries by default. Set `OPENRELIX_ENABLE_NATIVE_DISPLAY_POLISH=0` to keep those pipelines strictly source-text only. The generated display cache stays in the local state root.
 
-When you need an immediate task review inside the active AI coding agent, the current Codex adapter exposes this skill entrypoint:
+When you need an immediate task review inside the active AI coding agent, type the plain-text skill trigger so Codex CLI does not reject it as an unsupported slash command:
 
 ```text
-/memory-review
+memory-review
 ```
 
 The custom prompt compatibility route is:

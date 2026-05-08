@@ -10,8 +10,8 @@ Use this skill as the stable immediate-entry workflow for task review inside an 
 ## Why this exists
 
 - The reusable asset workflow for immediate task review lives in this repository.
-- Some AI host / Codex CLI versions do not surface repo-installed custom prompts as top-level slash commands.
-- This skill gives the model a direct, shared route for `/memory-review` style requests without depending on custom prompt UI behavior.
+- Some AI host / Codex CLI versions do not surface repo-installed custom prompts as top-level slash commands, and may reject `/memory-review` before the model sees it.
+- This skill gives the model a direct, shared route for `memory-review` style requests without depending on custom prompt UI behavior.
 
 ## Canonical source
 
@@ -26,7 +26,7 @@ Use this skill as the stable immediate-entry workflow for task review inside an 
 
 ## Workflow
 
-1. Treat `/memory-review` as an explicit request to do an immediate task review for the current thread.
+1. Treat `memory-review` or `/memory-review` as an explicit request to do an immediate task review for the current thread.
 2. Resolve runtime language from `scripts/asset_runtime.py` / `runtime/config.json` before writing files.
 3. Infer the task name from the recent conversation unless the user already provided one.
 4. Write or update a sanitized task review under `reviews/YYYY/` in the active state root.
@@ -86,5 +86,5 @@ Generate reusable memory only for concise, durable facts that should influence f
 
 ## Notes
 
-- Prefer this skill-trigger route as the primary `/memory-review` entrypoint.
+- Prefer the plain-text `memory-review` skill-trigger route as the primary Codex CLI entrypoint.
 - If a user-level custom prompt like `/prompts:memory-review` also exists, treat it as a compatibility layer, not the main contract.

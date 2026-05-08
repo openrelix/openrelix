@@ -1688,7 +1688,7 @@ EOF
 
   if (( INSTALL_GLOBAL_SKILLS )); then
     cat <<EOF
-  3. 在新的 Codex 线程里，需要临时复盘任务时可以输入 /memory-review。
+  3. 在新的 Codex 线程里，需要临时复盘任务时可以直接输入 memory-review（不要带斜杠，避免 CLI 当成未知 slash command 拦截）。
 EOF
   fi
 
@@ -1796,7 +1796,7 @@ EOF
 
   if (( INSTALL_GLOBAL_SKILLS )); then
     cat <<EOF
-  3. In a new Codex thread, type /memory-review only when you need an immediate task review.
+  3. In a new Codex thread, type memory-review without a slash when you need an immediate task review so Codex CLI does not intercept it as an unknown slash command.
 EOF
   fi
 
