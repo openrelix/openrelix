@@ -87,6 +87,8 @@ BACKFILL_LOOKBACK_DAYS = 14
 BACKFILL_LEARN_WINDOW_DAYS = 7
 PROJECT_GITHUB_URL = "https://github.com/openrelix/openrelix"
 WRITE_REPO_PANEL_ENTRYPOINT_ENV = "OPENRELIX_WRITE_REPO_PANEL_ENTRYPOINT"
+# Temporarily hide the per-window review launcher while the workflow is iterated.
+WINDOW_REVIEW_ACTION_ENABLED = False
 BRAND_DISPLAY_REPLACEMENTS = (
     ("scripts/openrelix.py.py", "scripts/openrelix.py"),
 )
@@ -13902,17 +13904,19 @@ def make_window_summary_cards(window_overview, language=None):
         resume_url = item.get("resume_url", "") or (codex_resume_url(resume_id) if ai_host == "codex" else "")
         resume_app_action = item.get("resume_app_action", "") or claude_desktop_resume_action(ai_host, resume_id)
         resume_app_session_id = item.get("resume_app_session_id", "") or (resume_id if (resume_app_action or ai_host == "codex") else "")
-        review_prompt = build_window_review_prompt(
-            project_label,
-            ai_host_label,
-            window_date,
-            window_id,
-            cwd_raw,
-            cwd_display,
-            question_summary_display,
-            conclusion_summary_display,
-            resume_command,
-        )
+        review_prompt = ""
+        if WINDOW_REVIEW_ACTION_ENABLED:
+            review_prompt = build_window_review_prompt(
+                project_label,
+                ai_host_label,
+                window_date,
+                window_id,
+                cwd_raw,
+                cwd_display,
+                question_summary_display,
+                conclusion_summary_display,
+                resume_command,
+            )
         resume_actions = render_resume_actions(
             resume_command,
             resume_url,
