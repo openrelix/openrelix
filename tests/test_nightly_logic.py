@@ -5744,6 +5744,45 @@ Keep my own note.
         self.assertIn("已打开，命令已复制", html)
         self.assertIn('CODEX_HOME=/tmp/openrelix-codex-home codex resume {}'.format(thread_id), html)
 
+    def test_window_cards_include_codex_home_for_primary_isolated_profile_resume(self):
+        thread_id = "019dcefe-37f1-7a83-a8a6-720bd6b79d7f"
+        codex_home = Path("/tmp/openrelix-codex-home")
+        electron_user_data = "/tmp/OpenRelix Codex Profile"
+        paths = replace(build_overview.PATHS, codex_home=codex_home)
+        with mock.patch.object(build_overview, "PATHS", paths):
+            html = build_overview.make_window_summary_cards(
+                {
+                    "date": "2026-04-28",
+                    "windows": [
+                        {
+                            "window_id": thread_id,
+                            "display_index": 1,
+                            "project_label": "OpenRelix",
+                            "resume_id": thread_id,
+                            "resume_url": build_overview.codex_resume_url(thread_id),
+                            "codex_home": str(codex_home),
+                            "codex_electron_user_data_path": electron_user_data,
+                            "question_count": 1,
+                            "conclusion_count": 1,
+                            "question_summary": "问题",
+                            "main_takeaway": "结论",
+                            "keywords": [],
+                            "latest_activity_display": "刚刚",
+                            "started_at_display": "刚刚",
+                            "recent_prompts": [],
+                            "recent_conclusions": [],
+                        }
+                    ],
+                }
+            )
+
+        self.assertIn(
+            'data-resume-command="CODEX_HOME=/tmp/openrelix-codex-home codex resume {}'.format(thread_id),
+            html,
+        )
+        self.assertIn('data-copy-resume-on-switch="1"', html)
+        self.assertIn('CODEX_HOME=/tmp/openrelix-codex-home codex resume {}'.format(thread_id), html)
+
     def test_window_cards_use_deeplink_for_system_codex_resume(self):
         thread_id = "019dcefe-37f1-7a83-a8a6-720bd6b79d7f"
         html = build_overview.make_window_summary_cards(

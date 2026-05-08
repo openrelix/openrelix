@@ -6849,7 +6849,7 @@ def codex_resume_command(resume_id, codex_home=""):
     if not resume_id:
         return ""
     command = "codex resume {}".format(shlex.quote(resume_id))
-    if codex_home and not is_primary_codex_home(codex_home):
+    if codex_home and (not is_primary_codex_home(codex_home) or not is_system_codex_profile(codex_home)):
         return "CODEX_HOME={} {}".format(shlex.quote(str(codex_home)), command)
     return command
 
