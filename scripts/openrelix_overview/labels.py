@@ -64,9 +64,9 @@ DISPLAY_MEMORY_TYPE = {
 }
 
 DISPLAY_MEMORY_PRIORITY = {
-    "high": "高优先",
-    "medium": "中优先",
-    "low": "低优先",
+    "high": "重点",
+    "medium": "常规",
+    "low": "低权重",
 }
 
 DISPLAY_TYPE_EN = {
@@ -146,9 +146,9 @@ MEMORY_TYPE_GROUP_ORDER = (
 )
 
 DISPLAY_MEMORY_PRIORITY_EN = {
-    "high": "High Priority",
-    "medium": "Medium Priority",
-    "low": "Low Priority",
+    "high": "Important",
+    "medium": "Standard",
+    "low": "Low Weight",
 }
 
 DISPLAY_DISCOVERED_ASSET_KIND = {

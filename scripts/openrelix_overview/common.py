@@ -78,14 +78,46 @@ def compact_number(value):
     return str(number)
 
 
-def compact_token_zh(value):
+def compact_with_units(value, unit_specs, max_digits=3):
     number = safe_int(value)
+    if number == 0:
+        return "0"
+    sign = "-" if number < 0 else ""
     abs_number = abs(number)
-    if abs_number >= 100_000_000:
-        return "{:.1f}亿".format(number / 100_000_000)
-    if abs_number >= 10_000:
-        return "{:.1f}万".format(number / 10_000)
-    return str(number)
+    selected_index = None
+    for index, (divisor, _unit) in enumerate(unit_specs):
+        if abs_number >= divisor:
+            selected_index = index
+            break
+    if selected_index is None:
+        return "{}{}".format(sign, abs_number)
+
+    def format_scaled(divisor):
+        scaled = abs_number / divisor
+        integer_digits = len(str(int(scaled))) if scaled >= 1 else 1
+        decimals = max(0, max_digits - integer_digits)
+        text = "{:.{}f}".format(scaled, decimals)
+        if "." in text:
+            text = text.rstrip("0").rstrip(".")
+        return text
+
+    text = format_scaled(unit_specs[selected_index][0])
+    digit_count = len([char for char in text if char.isdigit()])
+    while digit_count > max_digits and selected_index > 0:
+        selected_index -= 1
+        text = format_scaled(unit_specs[selected_index][0])
+        digit_count = len([char for char in text if char.isdigit()])
+    return "{}{}{}".format(sign, text, unit_specs[selected_index][1])
+
+
+def compact_token_zh(value):
+    return compact_with_units(
+        value,
+        (
+            (100_000_000, "亿"),
+            (10_000, "万"),
+        ),
+    )
 
 
 def compact_token(value, language=None):

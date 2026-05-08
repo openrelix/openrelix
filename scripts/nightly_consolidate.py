@@ -3143,6 +3143,17 @@ def memory_scope_metadata(summary, item, bucket_name):
         if label and label not in labels:
             labels.append(label)
 
+    if labels and overview_memory_context.memory_record_is_general_context_candidate(
+        item,
+        project_labels=labels,
+    ):
+        return {
+            "scope": "global",
+            "injection_policy": "global_context",
+            "project_key": "",
+            "project_label": "",
+        }
+
     if labels:
         label = labels[0]
         return {

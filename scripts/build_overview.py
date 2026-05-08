@@ -766,6 +766,9 @@ PANEL_I18N_EN = {
     "整理命中": "Synthesis Hits",
     "高优先": "High Priority",
     "中优先": "Medium Priority",
+    "重点": "Important",
+    "常规": "Standard",
+    "低权重": "Low Weight",
     "高频率": "High Frequency",
     "中频率": "Medium Frequency",
     "语义": "Semantic",
@@ -1041,12 +1044,12 @@ PANEL_I18N_EN = {
         "A daily synthesis card switchable by date, defaulting to today."
     ),
     "日期选择器和摘要主结论。": "Date selector and main summary takeaway.",
-    "窗口数、个人资产-长期记忆、个人资产-工作记忆、个人资产-低优先级记忆。": (
-        "Window count, personal asset long-term memories, personal asset work memories, and personal asset low-priority memories."
+    "窗口数、通用上下文、项目上下文、今日 Token。": (
+        "Window count, general context, project context, and today Token."
     ),
     "最近相关的上下文标签。": "Recently related context labels.",
-    "这些数字来自当前整理结果，用来快速判断今天沉淀了多少内容。": (
-        "These numbers come from the selected synthesis and help estimate how much was captured that day."
+    "这些数字按新记忆策略和今日 Token 快照展示：通用会进 host context，项目按边界注入。": (
+        "These numbers combine the new memory policy with today's Token snapshot: general context enters host context, while project context stays bounded."
     ),
     "当前登记册中 bucket = durable 的长期记忆，按近 7 日热度排序。": (
         "Long-term memories where bucket = durable in the current registry, sorted by 7-day heat."
@@ -1159,8 +1162,8 @@ PANEL_I18N_EN = {
     "最近一次窗口整理里的窗口级明细。每张卡对应一个窗口，而不是一个资产。": (
         "Window-level details from the latest window synthesis. Each card represents one window, not one asset."
     ),
-    "工作窗口、长期记忆、工作记忆、低优先级记忆。": (
-        "Work windows, long-term memory, work memory, and low-priority memory."
+    "工作窗口、通用上下文、项目上下文、今日 Token。": (
+        "Work windows, general context, project context, and today Token."
     ),
     "原生记忆偏长期规则、稳定 workflow、历史 rollout 结论。": (
         "Native memory leans toward long-term rules, stable workflows, and historical rollout conclusions."
@@ -1814,6 +1817,21 @@ def compact_token_zh(value):
 
 def compact_token(value, language=None):
     return overview_common.compact_token(value, language=current_language(language))
+
+
+def compact_token_metric(value, language=None, max_digits=3):
+    if is_english(language):
+        unit_specs = (
+            (1_000_000_000, "B"),
+            (1_000_000, "M"),
+            (1_000, "K"),
+        )
+    else:
+        unit_specs = (
+            (100_000_000, "亿"),
+            (10_000, "万"),
+        )
+    return overview_common.compact_with_units(value, unit_specs, max_digits=max_digits)
 
 
 def compact_token_k(value):
@@ -8441,7 +8459,11 @@ def build_data(assets, usage_events, reviews, language=None):
     summary_terms = default_summary_term_view(summary_term_views).get("terms", [])
     token_usage = build_token_usage_view(resolve_ccusage_daily(), language=language)
     pipeline_status = overview_pipeline_status.load_status(PATHS)
-    daily_summary_views = build_daily_summary_views(nightly_candidates, language=language)
+    daily_summary_views = build_daily_summary_views(
+        nightly_candidates,
+        token_usage=token_usage,
+        language=language,
+    )
     backfill = build_backfill_view(nightly_candidates)
     asset_stats_snapshot = load_asset_stats_snapshot()
     daily_summary_select_dates = sorted(
@@ -11624,7 +11646,13 @@ def make_memory_family_header(title_zh, title_en, note_zh, note_en, extra_html="
     )
 
 
-def make_memory_cards(items, include_bucket_meta=True, visible_count=4, meta_renderer=None):
+def make_memory_cards(
+    items,
+    include_bucket_meta=True,
+    visible_count=4,
+    meta_renderer=None,
+    primary_container_class="",
+):
     if not items:
         return '<p class="empty">暂无。</p>'
 
@@ -12017,8 +12045,8 @@ def make_memory_cards(items, include_bucket_meta=True, visible_count=4, meta_ren
         return """
           <article class="native-brief-card memory-brief-card">
             <div class="native-brief-topline">
-              <span>{meta}</span>
-              <span>{source_label}</span>
+              <div class="native-brief-topline-meta">{meta}</div>
+              <span class="native-brief-source-label">{source_label}</span>
             </div>
             <h3>{title}</h3>
             <p>{value_note}</p>
@@ -12035,6 +12063,11 @@ def make_memory_cards(items, include_bucket_meta=True, visible_count=4, meta_ren
         )
 
     primary_cards = "".join(render_card(item) for item in items[:visible_count])
+    if primary_container_class:
+        primary_cards = '<div class="{class_name}">{cards}</div>'.format(
+            class_name=escape(primary_container_class, quote=True),
+            cards=primary_cards,
+        )
     extra_cards = "".join(render_card(item) for item in items[visible_count:])
     return wrap_expandable_block(
         primary_cards,
@@ -12084,8 +12117,47 @@ def context_memory_priority_label(item, language=None):
     priority = str(item.get("priority") or "").strip().lower()
     display_priority = normalize_brand_display_text(item.get("display_priority") or "")
     if priority == "high" or display_priority.startswith("高"):
-        return localized("高优先", "High Priority", language)
-    return localized("中优先", "Medium Priority", language)
+        return localized("重点", "Important", language)
+    return localized("常规", "Standard", language)
+
+
+def context_memory_type_label(item, language=None):
+    memory_type = str(item.get("memory_type") or "").strip()
+    display_type = normalize_brand_display_text(item.get("display_memory_type") or "")
+    if is_english(language):
+        return display_memory_type(memory_type, language="en") if memory_type else panel_english_text(display_type)
+    return display_type or display_memory_type(memory_type, language=language) or localized("未分类", "Uncategorized", language)
+
+
+def context_memory_heat_label(item, language=None):
+    display_score = str(item.get("usage_frequency_display") or "").strip()
+    if not display_score:
+        score = safe_float(item.get("usage_frequency_sort_key", item.get("usage_frequency", 0)))
+        if score <= 0:
+            return ""
+        display_score = "{:.1f}".format(score).rstrip("0").rstrip(".")
+    return localized("热度 {}".format(display_score), "Heat {}".format(display_score), language)
+
+
+def memory_card_tag_html(label_zh, label_en="", tone=""):
+    label_zh = str(label_zh or "").strip()
+    label_en = str(label_en or "").strip()
+    if not label_zh and not label_en:
+        return ""
+    tone_class = " {}".format(tone) if tone else ""
+    return '<span class="memory-card-tag{tone_class}">{label}</span>'.format(
+        tone_class=escape(tone_class, quote=True),
+        label=panel_language_text_html(label_zh, label_en or label_zh),
+    )
+
+
+def memory_policy_tag_labels(item, language=None):
+    return [
+        memory_policy_label(item, language=language),
+        context_memory_type_label(item, language=language),
+        context_memory_priority_label(item, language=language),
+        context_memory_heat_label(item, language=language),
+    ]
 
 
 def make_context_memory_card_meta(item):
@@ -12116,21 +12188,13 @@ def memory_scope_label(item, language=None):
 
 
 def make_policy_memory_card_meta(item):
-    meta_parts_zh = [
-        memory_policy_label(item, language="zh"),
-        memory_scope_label(item, language="zh"),
-        context_memory_bucket_label(item, language="zh"),
-        context_memory_priority_label(item, language="zh"),
-    ]
-    meta_parts_en = [
-        memory_policy_label(item, language="en"),
-        memory_scope_label(item, language="en"),
-        context_memory_bucket_label(item, language="en"),
-        context_memory_priority_label(item, language="en"),
-    ]
-    return panel_language_variant_html(
-        escape(" · ".join(part for part in meta_parts_zh if part)),
-        escape(" · ".join(part for part in meta_parts_en if part)),
+    meta_parts_zh = memory_policy_tag_labels(item, language="zh")
+    meta_parts_en = memory_policy_tag_labels(item, language="en")
+    tags = []
+    for zh_label, en_label in zip(meta_parts_zh, meta_parts_en):
+        tags.append(memory_card_tag_html(zh_label, en_label))
+    return '<div class="memory-card-tag-row">{}</div>'.format(
+        "".join(tag for tag in tags if tag)
     )
 
 
@@ -12208,6 +12272,16 @@ def make_policy_memory_type_grouped_cards(items):
         items,
         include_bucket_meta=False,
         meta_renderer=make_policy_memory_card_meta,
+    )
+
+
+def make_policy_memory_cards(items):
+    return make_memory_cards(
+        sort_memory_rows_by_usage(items or []),
+        include_bucket_meta=False,
+        visible_count=4,
+        meta_renderer=make_policy_memory_card_meta,
+        primary_container_class="native-brief-grid memory-grid content-more-grid",
     )
 
 
@@ -12358,7 +12432,7 @@ def make_codex_native_brief_memory_items(rows, kind, language=None):
                 "memory_type": kind_config.get("memory_type", kind),
                 "display_memory_type": kind_config.get("display_memory_type", kind),
                 "priority": "medium",
-                "display_priority": localized("中优先", "Medium Priority", language),
+                "display_priority": localized("常规", "Standard", language),
                 "title": raw_title,
                 "display_title": display_title,
                 "display_title_en": display_title_en,
@@ -12866,7 +12940,54 @@ def stage_display_label(stage, language=None):
     return {"final": "完整回溯", "preliminary": "快速回溯", "manual": "手动整理"}.get(stage, stage)
 
 
-def build_daily_summary_view(nightly, window_overview=None, project_contexts=None, language=None):
+DAILY_MEMORY_BUCKET_SPECS = (
+    ("durable_memories", "durable"),
+    ("session_memories", "session"),
+    ("low_priority_memories", "low_priority"),
+)
+
+
+def daily_summary_memory_policy_counts(nightly):
+    counts = Counter()
+    nightly = nightly or {}
+    source_name = nightly.get("source") or nightly.get("source_system") or "nightly_codex"
+    for list_key, bucket in DAILY_MEMORY_BUCKET_SPECS:
+        for item in nightly.get(list_key, []) or []:
+            row = dict(item) if isinstance(item, dict) else {}
+            row.setdefault("bucket", bucket)
+            row.setdefault("source", source_name)
+            if "storage_quality_score" not in row or "storage_quality_reason" not in row:
+                quality = overview_memory_context.memory_storage_quality(row, bucket=bucket)
+                row.setdefault("storage_quality_score", quality.get("score", 0))
+                row.setdefault("storage_quality_reason", quality.get("reason", ""))
+            policy = overview_memory_context.host_context_injection_policy_from_record(row)
+            counts[policy] += 1
+    return counts
+
+
+def daily_summary_token_display(token_usage=None, date_str="", language=None):
+    token_usage = token_usage or {}
+    date_str = str(date_str or "").strip()
+    for row in token_usage.get("daily_rows", []) or []:
+        if str(row.get("date") or row.get("raw_date") or "").strip() != date_str:
+            continue
+        if row.get("value") is not None:
+            return compact_token_metric(row.get("value", 0), language=language)
+        display = str(row.get("token_display") or "").strip()
+        if display:
+            return display
+        return compact_token_metric(row.get("value", 0), language=language)
+    if date_str and date_str == current_local_datetime().date().isoformat():
+        if token_usage.get("today_total_tokens") is not None:
+            return compact_token_metric(token_usage.get("today_total_tokens", 0), language=language)
+        display = str(token_usage.get("today_total_tokens_display") or "").strip()
+        if display:
+            return display
+        return compact_token_metric(token_usage.get("today_total_tokens", 0), language=language)
+    return "—"
+
+
+def build_daily_summary_view(nightly, window_overview=None, project_contexts=None, token_usage=None, language=None):
     language = current_language(language)
     nightly = nightly or {}
     stage = nightly.get("stage", "")
@@ -12909,36 +13030,41 @@ def build_daily_summary_view(nightly, window_overview=None, project_contexts=Non
     lead_text_en = summary_parts_en[0] if summary_parts_en else "No synthesis has been generated yet."
     lead_text = localized(lead_text_zh, lead_text_en, language)
     detail_parts = localized(summary_parts_zh[1:], summary_parts_en[1:], language)
+    policy_counts = daily_summary_memory_policy_counts(nightly)
     stats = [
         {"label": localized("工作窗口", "Work Windows", language), "value": nightly_window_count},
         {
             "label": localized(
-                "长期记忆",
-                "Long-term Memory",
+                "通用上下文",
+                "General Context",
                 language,
             ),
-            "value": len(nightly.get("durable_memories", [])),
+            "value": policy_counts.get(overview_memory_context.INJECTION_GLOBAL_CONTEXT, 0),
         },
         {
             "label": localized(
-                "工作记忆",
-                "Work Memory",
+                "项目上下文",
+                "Project Context",
                 language,
             ),
-            "value": len(nightly.get("session_memories", [])),
+            "value": policy_counts.get(overview_memory_context.INJECTION_PROJECT_CONTEXT, 0),
         },
         {
             "label": localized(
-                "低优先级",
-                "Low-priority Memory",
+                "今日 Token",
+                "Today Token",
                 language,
             ),
-            "value": len(nightly.get("low_priority_memories", [])),
+            "value": daily_summary_token_display(
+                token_usage,
+                nightly.get("date", ""),
+                language=language,
+            ),
         },
     ]
 
-    note_text_zh = "这些数字来自当前整理结果，用来快速判断今天沉淀了多少内容。"
-    note_text_en = "These numbers come from the selected synthesis and help estimate how much was captured that day."
+    note_text_zh = "这些数字按新记忆策略和今日 Token 快照展示：通用会进 host context，项目按边界注入。"
+    note_text_en = "These numbers combine the new memory policy with today's Token snapshot: general context enters host context, while project context stays bounded."
     if stage == "preliminary":
         if is_current_local_date(nightly.get("date", "")):
             note_text_zh = "今天仍在进行中，当前是快速回溯结果；只保留窗口摘要和快速索引，次日完整回溯会再生成记忆。"
@@ -12988,7 +13114,7 @@ def build_daily_summary_view(nightly, window_overview=None, project_contexts=Non
     }
 
 
-def build_daily_summary_views(candidates, language=None):
+def build_daily_summary_views(candidates, token_usage=None, language=None):
     language = current_language(language)
     by_date = {}
     for payload in candidates:
@@ -13010,6 +13136,7 @@ def build_daily_summary_views(candidates, language=None):
                 payload,
                 window_overview=window_overview,
                 project_contexts=project_contexts,
+                token_usage=token_usage,
                 language=language,
             )
         )
@@ -13098,6 +13225,7 @@ def make_nightly_summary_panel(
     selected_date="",
     selectable_dates=None,
     backfill=None,
+    token_usage=None,
 ):
     nightly = nightly or {}
     summary_views = summary_views or []
@@ -13107,6 +13235,7 @@ def make_nightly_summary_panel(
         nightly,
         window_overview=window_overview,
         project_contexts=project_contexts,
+        token_usage=token_usage,
     )
     if summary_views:
         matched_view = next(
@@ -13120,6 +13249,7 @@ def make_nightly_summary_panel(
                 {},
                 window_overview=window_overview,
                 project_contexts=project_contexts,
+                token_usage=token_usage,
             )
             current_view["date"] = selected_date
 
@@ -13140,13 +13270,21 @@ def make_nightly_summary_panel(
         badges="".join(badges),
     )
 
+    def stat_card_class(item):
+        label = str(item.get("label", "") if isinstance(item, dict) else "")
+        classes = ["nightly-stat-card"]
+        if "token" in label.lower():
+            classes.append("is-token-metric")
+        return " ".join(classes)
+
     stat_cards = "".join(
         """
-        <article class="nightly-stat-card">
+        <article class="{card_class}">
           <div class="nightly-stat-label">{label}</div>
           <div class="nightly-stat-value">{value}</div>
         </article>
         """.format(
+            card_class=escape(stat_card_class(item), quote=True),
             label=escape(item.get("label", "")),
             value=escape(str(item.get("value", ""))),
         )
@@ -15022,7 +15160,7 @@ def build_html(data):
                 "label": "包含什么",
                 "body": [
                     "日期选择器和摘要主结论。",
-                    "工作窗口、长期记忆、工作记忆、低优先级记忆。",
+                    "工作窗口、通用上下文、项目上下文、今日 Token。",
                     "最近相关的上下文标签。",
                 ],
             },
@@ -15058,8 +15196,8 @@ def build_html(data):
             {
                 "label": "怎么看",
                 "body": {
-                    "zh": "先按流程、语义等记忆类型分组，每组默认展示 2 行 2 列，点开卡片可看来源与上下文。",
-                    "en": "Items are grouped by memory type such as procedural and semantic; each group shows a 2-by-2 preview by default, and cards expand to show source context.",
+                    "zh": "按热度从高到低展示；注入去向、边界、类型、优先级和热度都放在每张卡片标签里。",
+                    "en": "Sorted by heat; destination, boundary, memory type, priority, and heat are shown as card tags.",
                 },
             },
         ],
@@ -15073,7 +15211,7 @@ def build_html(data):
             },
             {
                 "label": "含义",
-                "body": "这类条目注入时会保留项目标签，帮助模型识别适用边界，避免把项目规则误当成通用规则。",
+                "body": "按热度从高到低展示，类型不再单独分组，而是作为每张卡片的标签，避免把项目规则误当成通用规则。",
             },
         ],
     )
@@ -15366,6 +15504,7 @@ def build_html(data):
         selected_date=data.get("daily_summary_default_date", ""),
         selectable_dates=data.get("daily_summary_select_dates", []),
         backfill=data.get("backfill", {}),
+        token_usage=data.get("token_usage", {}),
     )
     pipeline_status_help = make_help_popover(
         "后台运行监控",
@@ -17641,7 +17780,7 @@ def build_html(data):
       flex-direction: column;
       justify-content: space-between;
       min-height: 108px;
-      padding: 20px;
+      padding: 16px;
       border-radius: 22px;
       border: 1px solid var(--line);
       background: var(--card);
@@ -17666,8 +17805,15 @@ def build_html(data):
       font-weight: 600;
       line-height: 1;
       font-variant-numeric: tabular-nums;
-      overflow-wrap: anywhere;
-      word-break: break-word;
+      white-space: nowrap;
+      overflow-wrap: normal;
+      word-break: normal;
+      max-width: 100%;
+    }}
+
+    .nightly-stat-card.is-token-metric .nightly-stat-value {{
+      font-size: 30px;
+      line-height: 1.05;
     }}
 
     .nightly-rail-note {{
@@ -18518,14 +18664,56 @@ def build_html(data):
     .native-brief-topline {{
       display: flex;
       justify-content: space-between;
+      align-items: flex-start;
       gap: 12px;
       color: var(--muted);
       font-size: 12px;
       line-height: 1.35;
     }}
 
-    .native-brief-topline span {{
+    .native-brief-topline-meta {{
+      display: flex;
+      flex: 1 1 auto;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 6px;
       min-width: 0;
+    }}
+
+    .native-brief-topline > span,
+    .native-brief-topline-meta > span:not(.memory-card-tag),
+    .native-brief-source-label {{
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }}
+
+    .native-brief-source-label {{
+      flex: 0 1 32%;
+      min-width: 0;
+      text-align: right;
+    }}
+
+    .memory-card-tag-row {{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      min-width: 0;
+    }}
+
+    .memory-card-tag {{
+      display: inline-flex;
+      align-items: center;
+      max-width: 100%;
+      min-width: 0;
+      padding: 4px 8px;
+      border: 1px solid var(--line-strong);
+      border-radius: 999px;
+      background: var(--chip-muted-bg);
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.25;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
@@ -21312,6 +21500,11 @@ def build_html(data):
 
     {pipeline_status_panel}
 
+    <section class="panel" id="project-context-section">
+      {project_context_header}
+      {project_context_body}
+    </section>
+
     <section class="memory-family" id="memory-section" data-openrelix-section="memory_registry">
       {personal_asset_memory_family_header}
       <section class="panel memory-compiler-panel" id="personal-memory-compiler-section">
@@ -21482,11 +21675,6 @@ def build_html(data):
           </tbody>
         </table>
       </div>
-    </section>
-
-    <section class="panel" id="project-context-section">
-      {project_context_header}
-      {project_context_body}
     </section>
 
     <section class="grid" id="window-overview-section">
@@ -22147,6 +22335,45 @@ def build_html(data):
         }}) || null;
       }}
 
+      function dailySummaryTokenValueForDate(dateValue) {{
+        const tokenUsage = state.tokenUsage || snapshot.token_usage || null;
+        const targetDate = String(dateValue || "").slice(0, 10);
+        if (!tokenUsage || !targetDate) {{
+          return "";
+        }}
+        const rows = Array.isArray(tokenUsage.daily_rows) ? tokenUsage.daily_rows : [];
+        const matchedRow = rows.find(function (row) {{
+          return tokenRowDayKey(row, tokenUsage) === targetDate ||
+            String((row && (row.date || row.raw_date)) || "").slice(0, 10) === targetDate;
+        }});
+        if (matchedRow) {{
+          const rowValues = tokenRowBreakdownValues(matchedRow);
+          const total = Number(rowValues.total) || Number(matchedRow.value) || 0;
+          return compactTokenValue(total);
+        }}
+        const rangeEnd = String(tokenUsage.range_end || "").slice(0, 10);
+        if (rangeEnd && rangeEnd === targetDate) {{
+          const todayTotal = Number(tokenUsage.today_total_tokens) || 0;
+          if (todayTotal > 0) {{
+            return compactTokenValue(todayTotal);
+          }}
+        }}
+        return "";
+      }}
+
+      function resolveNightlyStatValue(summary, item) {{
+        const label = String((item && item.label) || "");
+        if (/token/i.test(label)) {{
+          return dailySummaryTokenValueForDate(summary && summary.date) || item.value || "—";
+        }}
+        return item && item.value !== undefined ? item.value : "";
+      }}
+
+      function nightlyStatCardClass(item) {{
+        const label = String((item && item.label) || "");
+        return /token/i.test(label) ? "nightly-stat-card is-token-metric" : "nightly-stat-card";
+      }}
+
       function findWindowOverview(dateValue) {{
         const views = Array.isArray(snapshot.window_overviews) ? snapshot.window_overviews : [];
         return views.find(function (view) {{
@@ -22430,10 +22657,11 @@ def build_html(data):
         const stats = Array.isArray(summary.stats) ? summary.stats : [];
         if (elements.nightlyStatGrid) {{
           elements.nightlyStatGrid.innerHTML = stats.map(function (item) {{
+            const value = resolveNightlyStatValue(summary, item);
             return (
-              '<article class="nightly-stat-card">' +
+              '<article class="' + nightlyStatCardClass(item) + '">' +
                 '<div class="nightly-stat-label">' + escapeHtml(t(item.label || "")) + '</div>' +
-                '<div class="nightly-stat-value">' + escapeHtml(String(item.value || 0)) + '</div>' +
+                '<div class="nightly-stat-value">' + escapeHtml(String(value || 0)) + '</div>' +
               '</article>'
             );
           }}).join("");
@@ -23506,25 +23734,38 @@ def build_html(data):
       function compactTokenValue(value) {{
         const number = Number(value) || 0;
         const absNumber = Math.abs(number);
-        if (currentLanguage === "en") {{
-          if (absNumber >= 1000000000) {{
-            return (number / 1000000000).toFixed(1) + "B";
+        const unitSpecs = currentLanguage === "en"
+          ? [[1000000000, "B"], [1000000, "M"], [1000, "K"]]
+          : [[100000000, "亿"], [10000, "万"]];
+        const maxDigits = 3;
+        let selectedIndex = -1;
+        for (let index = 0; index < unitSpecs.length; index += 1) {{
+          if (absNumber >= unitSpecs[index][0]) {{
+            selectedIndex = index;
+            break;
           }}
-          if (absNumber >= 1000000) {{
-            return (number / 1000000).toFixed(1) + "M";
-          }}
-          if (absNumber >= 1000) {{
-            return (number / 1000).toFixed(1) + "K";
-          }}
+        }}
+        if (selectedIndex < 0) {{
           return String(Math.round(number));
         }}
-        if (absNumber >= 100000000) {{
-          return (number / 100000000).toFixed(1) + "亿";
+        function formatScaled(divisor) {{
+          const scaled = absNumber / divisor;
+          const integerDigits = scaled >= 1 ? String(Math.floor(scaled)).length : 1;
+          const decimals = Math.max(0, maxDigits - integerDigits);
+          let text = scaled.toFixed(decimals);
+          if (text.indexOf(".") >= 0) {{
+            text = text.replace(/0+$/, "").replace(/\\.$/, "");
+          }}
+          return text;
         }}
-        if (absNumber >= 10000) {{
-          return (number / 10000).toFixed(1) + "万";
+        let text = formatScaled(unitSpecs[selectedIndex][0]);
+        let digitCount = (text.match(/\\d/g) || []).length;
+        while (digitCount > maxDigits && selectedIndex > 0) {{
+          selectedIndex -= 1;
+          text = formatScaled(unitSpecs[selectedIndex][0]);
+          digitCount = (text.match(/\\d/g) || []).length;
         }}
-        return String(Math.round(number));
+        return (number < 0 ? "-" : "") + text + unitSpecs[selectedIndex][1];
       }}
 
       function compactSignedTokenValue(value) {{
@@ -24856,6 +25097,9 @@ def build_html(data):
         renderTokenSummaryCards(preparedTokenUsage.summary_cards || []);
         renderBarRows(elements.dailyTokenRows, (preparedTokenUsage.daily_rows || []).slice().reverse(), "token-daily-mid");
         renderBarRows(elements.todayTokenRows, preparedTokenUsage.today_breakdown || [], "token-input");
+        if (state.selectedNightlyDate) {{
+          renderNightlySummary(state.selectedNightlyDate);
+        }}
         translateStaticText();
       }}
 
@@ -25756,7 +26000,7 @@ def build_html(data):
         global_memory_cards=make_policy_memory_type_grouped_cards(
             global_context_display_rows,
         ),
-        project_memory_cards=make_policy_memory_type_grouped_cards(
+        project_memory_cards=make_policy_memory_cards(
             memory_policy_views.get("project_context", {}).get("rows", []),
         ),
         on_demand_memory_cards=make_policy_memory_type_grouped_cards(

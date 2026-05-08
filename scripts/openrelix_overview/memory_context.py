@@ -185,6 +185,40 @@ MEMORY_STRONG_SIGNAL_PATTERNS = (
     r"\b(?:avoid|boundary|canonical|dedupe|default|must|prefer|preference|rule|workflow|verify)\b",
 )
 
+GENERAL_CONTEXT_MEMORY_TYPES = {
+    "preference",
+    "procedural",
+    "procedure",
+    "rule",
+    "workflow",
+}
+
+GENERAL_CONTEXT_TEXT_PATTERNS = (
+    r"apply_patch",
+    r"\bCODEX_HOME\b",
+    r"/memory-review",
+    r"(?:复盘|任务复盘).{0,24}(?:资产化|playbook|skill|template|automation)",
+    r"(?:代理|trace).{0,16}(?:工具|请求|头体|响应)",
+    r"(?:文件|编辑|修改).{0,20}(?:默认|优先|prefer)",
+    r"(?:不同项目|不同账号|项目/账号).{0,24}(?:隔离|独立)",
+    r"(?:默认|优先|必须|应该|应当|不要|不能).{0,32}(?:文件|编辑|修改|复盘|资产|工具|代理|trace|隔离|账号|home|CODEX_HOME|apply_patch)",
+    r"\b(?:global|general|personal|preference|workflow|rule)\b",
+)
+
+PROJECT_SPECIFIC_CONTEXT_PATTERNS = (
+    r"\bOpenRelix\b",
+    r"build_overview\.py",
+    r"scripts/openrelix",
+    r"\bpanel\.html\b",
+    r"\bworktree\b",
+    r"\b(?:npm|GitHub Release|LaunchAgents?|installer)\b",
+    r"(?:面板|看板|卡片|侧栏|按钮|布局|渲染|筛选页|日期选择器|live\s*接口)",
+    r"(?:回溯|轻量层|深度整理|preliminary|final|nightly|安装器|升级|发布|主线|origin/main)",
+    r"(?:注入预算|bounded\s+host\s+context|memory_summary|原生记忆|展示缓存|窗口计数|工具事件|反馈保存)",
+    r"(?:ASR|PCM|RecordControl|VERecorder|AudioEncode|Hubble|app\s*key|长按|录制|抽帧|相机|视觉搜索|native/API|Buffer|callback)",
+    r"\b(?:Android|Kotlin|Gradle|Java|iOS)\b",
+)
+
 MEMORY_QUESTION_PATTERNS = (
     r"[?？]",
     r"(?:什么|怎么|怎样|为何|为什么|吗|呢|是否|是不是|要不要|能不能|可不可以)",
@@ -319,6 +353,47 @@ def regex_any(patterns, text):
     return any(re.search(pattern, text, flags=re.IGNORECASE) for pattern in patterns)
 
 
+def memory_record_generated_scope_is_reclassifiable(item):
+    return bool(memory_source_names_from_record(item) & LEGACY_SYNTHESIS_SOURCES)
+
+
+def memory_record_project_labels(item):
+    if not isinstance(item, dict):
+        return []
+    labels = []
+    for key in ("project_label", "project_key", "repo", "cwd_display"):
+        value = collapse_whitespace(item.get(key, ""))
+        if value and value not in labels:
+            labels.append(value)
+    return labels
+
+
+def memory_record_mentions_project_label(item, project_labels=None):
+    blob = memory_record_text_blob(item).lower()
+    for label in list(project_labels or []) + memory_record_project_labels(item):
+        label_text = collapse_whitespace(label).lower()
+        if len(label_text) >= 4 and label_text in blob:
+            return True
+    return False
+
+
+def memory_record_is_general_context_candidate(item, project_labels=None):
+    if not isinstance(item, dict) or memory_record_is_low_priority(item):
+        return False
+    blob = memory_record_text_blob(item)
+    if not blob:
+        return False
+    if memory_record_mentions_project_label(item, project_labels=project_labels):
+        return False
+    if regex_any(PROJECT_SPECIFIC_CONTEXT_PATTERNS, blob):
+        return False
+    memory_type = str(item.get("memory_type") or "").strip().lower()
+    priority = str(item.get("priority") or "").strip().lower()
+    if memory_type not in GENERAL_CONTEXT_MEMORY_TYPES and priority != "high":
+        return False
+    return regex_any(GENERAL_CONTEXT_TEXT_PATTERNS, blob)
+
+
 def memory_source_window_count(item):
     if not isinstance(item, dict):
         return 0
@@ -430,6 +505,12 @@ def memory_scope_from_record(item):
     explicit_scope = first_record_value(item, MEMORY_SCOPE_KEYS)
     scope = normalize_memory_scope(explicit_scope)
     if scope:
+        if (
+            scope in {MEMORY_SCOPE_PROJECT, MEMORY_SCOPE_REPO}
+            and memory_record_generated_scope_is_reclassifiable(item)
+            and memory_record_is_general_context_candidate(item)
+        ):
+            return MEMORY_SCOPE_GLOBAL
         return scope
 
     if str(item.get("bucket") or "").strip() == "low_priority" or str(
@@ -438,8 +519,15 @@ def memory_scope_from_record(item):
         return MEMORY_SCOPE_LOCAL
 
     if any(collapse_whitespace(item.get(key, "")) for key in ("project_key", "project_label", "repo", "cwd")):
+        if (
+            memory_record_generated_scope_is_reclassifiable(item)
+            and memory_record_is_general_context_candidate(item)
+        ):
+            return MEMORY_SCOPE_GLOBAL
         return MEMORY_SCOPE_PROJECT
     if has_source_window_refs(item):
+        if memory_record_is_general_context_candidate(item):
+            return MEMORY_SCOPE_GLOBAL
         return MEMORY_SCOPE_PROJECT
     return MEMORY_SCOPE_GLOBAL
 
@@ -469,6 +557,12 @@ def host_context_injection_policy_from_record(item):
     explicit_policy = first_record_value(item, INJECTION_POLICY_KEYS)
     policy = normalize_injection_policy(explicit_policy)
     if policy:
+        if (
+            policy == INJECTION_PROJECT_CONTEXT
+            and memory_record_generated_scope_is_reclassifiable(item)
+            and memory_record_is_general_context_candidate(item)
+        ):
+            policy = INJECTION_GLOBAL_CONTEXT
         return effective_host_context_policy(item, policy)
     return effective_host_context_policy(
         item,

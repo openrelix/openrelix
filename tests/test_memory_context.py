@@ -61,6 +61,52 @@ class MemoryContextPolicyTests(unittest.TestCase):
         )
         self.assertTrue(memory_context.memory_record_is_host_context_candidate(row))
 
+    def test_generated_generic_rules_promote_to_global_context(self):
+        row = {
+            "bucket": "durable",
+            "priority": "high",
+            "memory_type": "procedural",
+            "source": "nightly_codex",
+            "scope": "project",
+            "injection_policy": "project_context",
+            "project_label": "OpenRelix",
+            "title": "编辑文件默认优先用 apply_patch",
+            "value_note": "文件修改的稳定偏好是优先用 apply_patch。",
+            "storage_quality_score": 8,
+            "storage_quality_reason": "type,priority,strong_signal",
+            "source_window_ids": ["w-project"],
+        }
+
+        self.assertEqual(memory_context.memory_scope_from_record(row), "global")
+        self.assertEqual(
+            memory_context.host_context_injection_policy_from_record(row),
+            "global_context",
+        )
+        self.assertTrue(memory_context.memory_record_is_global_context(row))
+
+    def test_generated_project_rules_keep_project_context(self):
+        row = {
+            "bucket": "durable",
+            "priority": "high",
+            "memory_type": "procedural",
+            "source": "nightly_codex",
+            "scope": "project",
+            "injection_policy": "project_context",
+            "project_label": "OpenRelix",
+            "title": "OpenRelix 的 worktree 与合并默认规则",
+            "value_note": "做 bugfix/feature 时先起独立 worktree，只推 origin/main。",
+            "storage_quality_score": 8,
+            "storage_quality_reason": "type,priority,strong_signal",
+            "source_window_ids": ["w-project"],
+        }
+
+        self.assertEqual(memory_context.memory_scope_from_record(row), "project")
+        self.assertEqual(
+            memory_context.host_context_injection_policy_from_record(row),
+            "project_context",
+        )
+        self.assertFalse(memory_context.memory_record_is_global_context(row))
+
     def test_low_priority_legacy_rows_stay_local(self):
         row = {
             "bucket": "low_priority",

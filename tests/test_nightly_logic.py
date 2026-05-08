@@ -3857,6 +3857,60 @@ Keep my own note.
         self.assertFalse(build_overview.overview_memory_context.memory_record_is_global_context(row))
         self.assertTrue(build_overview.overview_memory_context.memory_record_is_host_context_candidate(row))
 
+    def test_memory_scope_metadata_promotes_generic_generated_rules_to_global(self):
+        summary = {
+            "language": "zh",
+            "window_summaries": [
+                {
+                    "window_id": "w1",
+                    "cwd": str(ROOT),
+                }
+            ],
+        }
+        item = {
+            "title": "编辑文件默认优先用 apply_patch",
+            "memory_type": "procedural",
+            "priority": "high",
+            "value_note": "文件修改的稳定偏好是优先用 apply_patch。",
+            "source_window_ids": ["w1"],
+            "keywords": ["apply_patch"],
+        }
+
+        self.assertEqual(
+            nightly_consolidate.memory_scope_metadata(summary, item, "durable"),
+            {
+                "scope": "global",
+                "injection_policy": "global_context",
+                "project_key": "",
+                "project_label": "",
+            },
+        )
+
+    def test_memory_scope_metadata_keeps_project_specific_rules_project_scoped(self):
+        summary = {
+            "language": "zh",
+            "window_summaries": [
+                {
+                    "window_id": "w1",
+                    "cwd": str(ROOT),
+                }
+            ],
+        }
+        item = {
+            "title": "OpenRelix 的 worktree 与合并默认规则",
+            "memory_type": "procedural",
+            "priority": "high",
+            "value_note": "做 bugfix/feature 时先起独立 worktree，只推 origin/main。",
+            "source_window_ids": ["w1"],
+            "keywords": ["worktree"],
+        }
+
+        metadata = nightly_consolidate.memory_scope_metadata(summary, item, "durable")
+
+        self.assertEqual(metadata["scope"], "project")
+        self.assertEqual(metadata["injection_policy"], "project_context")
+        self.assertTrue(metadata["project_label"])
+
     def test_memory_usage_frequency_ignores_occurrences_outside_7_day_window(self):
         usage_window_overview = {"date": "2026-04-28", "days": 7, "windows": []}
 
@@ -4530,10 +4584,10 @@ Keep my own note.
 
         self.assertIn('class="memory-type-group"', cards_html)
         self.assertLess(cards_html.index(">流程<"), cards_html.index(">语义<"))
-        self.assertIn("长期记忆 · 高优先 · 直接证据", cards_html)
-        self.assertIn("Long-term Memory · High Priority · Direct Evidence", cards_html)
-        self.assertIn("工作记忆 · 中优先 · 待验证", cards_html)
-        self.assertIn("低优先级记忆 · 中优先 · 待验证", cards_html)
+        self.assertIn("长期记忆 · 重点 · 直接证据", cards_html)
+        self.assertIn("Long-term Memory · Important · Direct Evidence", cards_html)
+        self.assertIn("工作记忆 · 常规 · 待验证", cards_html)
+        self.assertIn("低优先级记忆 · 常规 · 待验证", cards_html)
         self.assertNotIn(" · 低优先 · ", cards_html)
         self.assertIn("查看来源与上下文", cards_html)
         self.assertIn("查看更多 1 条", cards_html)
@@ -4563,6 +4617,64 @@ Keep my own note.
         self.assertIn('data-memory-feedback-state="liked"', cards_html)
         self.assertIn('data-memory-feedback="liked" data-memory-key="memory-feedback-demo"', cards_html)
         self.assertIn('aria-pressed="true"', cards_html)
+
+    def test_policy_memory_cards_sort_by_heat_and_use_new_tags(self):
+        cards_html = build_overview.make_policy_memory_cards(
+            [
+                {
+                    "title": "Low heat task",
+                    "display_title": "低热任务",
+                    "value_note": "Task note.",
+                    "display_value_note": "任务摘要。",
+                    "bucket": "durable",
+                    "scope": "project",
+                    "injection_policy": "project_context",
+                    "memory_type": "task",
+                    "priority": "medium",
+                    "usage_frequency_sort_key": 1,
+                },
+                {
+                    "title": "High heat procedure",
+                    "display_title": "高热流程",
+                    "value_note": "Procedure note.",
+                    "display_value_note": "流程摘要。",
+                    "bucket": "durable",
+                    "scope": "project",
+                    "injection_policy": "project_context",
+                    "memory_type": "procedural",
+                    "priority": "high",
+                    "usage_frequency_sort_key": 9,
+                },
+            ]
+            + [
+                {
+                    "title": "Extra procedure {}".format(index),
+                    "display_title": "额外流程 {}".format(index),
+                    "value_note": "Extra note.",
+                    "display_value_note": "额外摘要。",
+                    "bucket": "durable",
+                    "scope": "project",
+                    "injection_policy": "project_context",
+                    "memory_type": "procedural",
+                    "priority": "high",
+                    "usage_frequency_sort_key": 0.5,
+                }
+                for index in range(3)
+            ]
+        )
+
+        self.assertNotIn('class="memory-type-group"', cards_html)
+        self.assertLess(cards_html.index("高热流程"), cards_html.index("低热任务"))
+        self.assertEqual(cards_html.count("native-brief-grid memory-grid content-more-grid"), 2)
+        self.assertIn("项目上下文", cards_html)
+        self.assertIn("流程", cards_html)
+        self.assertIn("任务", cards_html)
+        self.assertIn("重点", cards_html)
+        self.assertIn("常规", cards_html)
+        self.assertIn("热度 9", cards_html)
+        self.assertNotIn('<span data-lang-only="zh">项目</span><span data-lang-only="en">Project</span>', cards_html)
+        self.assertNotIn("长期记忆", cards_html)
+        self.assertNotIn("Long-term Memory", cards_html)
 
     def test_memory_feedback_adjusts_host_context_policy(self):
         base = {
@@ -4749,8 +4861,8 @@ Keep my own note.
 
         self.assertIn(">事件记忆<", cards_html)
         self.assertIn(">Episodic<", cards_html)
-        self.assertIn("事件记忆 · 中优先", cards_html)
-        self.assertIn("Episodic · Medium Priority", cards_html)
+        self.assertIn("事件记忆 · 常规", cards_html)
+        self.assertIn("Episodic · Standard", cards_html)
 
     def test_build_html_language_switch_defaults_to_chinese(self):
         html = build_overview.build_html(
@@ -4969,6 +5081,10 @@ Keep my own note.
         self.assertIn("const monthContext = Object.assign", html)
         self.assertIn("aggregateDailyRowsByMonth(sourceRows, monthContext)", html)
         self.assertIn("function tokenRowBreakdownValues(row)", html)
+        self.assertIn("function dailySummaryTokenValueForDate(dateValue)", html)
+        self.assertIn("function resolveNightlyStatValue(summary, item)", html)
+        self.assertIn("const value = resolveNightlyStatValue(summary, item);", html)
+        self.assertIn("renderNightlySummary(state.selectedNightlyDate);", html)
         self.assertIn("cacheCreationTokens", html)
         self.assertIn("token-cache-write", html)
         self.assertIn('requestUrl.searchParams.set("provider", normalizeTokenProvider(filters.provider));', html)
@@ -4985,6 +5101,11 @@ Keep my own note.
         self.assertIn("function extractTokenRowCost(row)", html)
         self.assertIn("display: compactTokenWithCostValue(row.value, rowCost)", html)
         self.assertIn("prepared.summary_cards = deriveTokenSummaryCards(prepared);", html)
+        self.assertIn("function dailySummaryTokenValueForDate(dateValue)", html)
+        self.assertIn("function resolveNightlyStatValue(summary, item)", html)
+        self.assertIn("function nightlyStatCardClass(item)", html)
+        self.assertIn("const value = resolveNightlyStatValue(summary, item);", html)
+        self.assertIn("renderNightlySummary(state.selectedNightlyDate);", html)
         self.assertIn('updateTokenVisuals(state.tokenUsage, state.tokenSourceKind);', html)
         self.assertNotIn("rowDate.slice(0, 10) === endIso", html)
         self.assertNotIn('updateMetricCard(\n          "today_token",\n          tokenUsage.today_total_tokens_display', html)
@@ -5285,11 +5406,12 @@ Keep my own note.
         self.assertLess(main_template.index("{mcp_usage_panel}"), main_template.index("{discovered_assets_section}"))
         self.assertNotIn("{scope_panel}", main_template)
         self.assertNotIn("{domain_panel}", main_template)
-        self.assertLess(main_template.index("{memory_compiler_header}"), main_template.index("{project_context_body}"))
-        self.assertLess(main_template.index("{discovered_assets_section}"), main_template.index("{project_context_body}"))
-        self.assertLess(main_template.index("{reviews_header}"), main_template.index("{project_context_body}"))
+        self.assertLess(main_template.index("{pipeline_status_panel}"), main_template.index("{project_context_body}"))
+        self.assertLess(main_template.index("{project_context_body}"), main_template.index("{memory_compiler_header}"))
+        self.assertLess(main_template.index("{project_context_body}"), main_template.index("{asset_metric_cards}"))
+        self.assertLess(main_template.index("{project_context_body}"), main_template.index("{discovered_assets_section}"))
+        self.assertLess(main_template.index("{project_context_body}"), main_template.index("{reviews_header}"))
         self.assertLess(main_template.index("{usage_rows}"), main_template.index("{window_overview_header}"))
-        self.assertLess(main_template.index("{usage_rows}"), main_template.index("{project_context_body}"))
         self.assertLess(main_template.index("{project_context_body}"), main_template.index("{window_overview_header}"))
 
     def test_build_html_routes_skill_file_opens_through_finder_endpoint(self):
@@ -5332,6 +5454,9 @@ Keep my own note.
         self.assertIn("align-items: start;", nightly_css)
         self.assertIn("height: fit-content;", nightly_css)
         self.assertIn("grid-template-columns: repeat(auto-fit, minmax(min(124px, 100%), 1fr));", nightly_css)
+        self.assertIn("padding: 16px;", nightly_css)
+        self.assertIn(".nightly-stat-card.is-token-metric .nightly-stat-value {{", nightly_css)
+        self.assertIn("font-size: 30px;", nightly_css)
         self.assertIn(".nightly-backfill-command[hidden] {{", nightly_css)
         self.assertNotIn("min-height: 100%;", nightly_css)
 
@@ -5369,11 +5494,11 @@ Keep my own note.
                     "context_labels": ["OpenRelix"],
                     "stats": [
                         {"label": "窗口", "value": 15},
-                        {"label": "长期记忆", "value": 1},
-                        {"label": "工作记忆", "value": 1},
-                        {"label": "低优先级", "value": 1},
+                        {"label": "通用上下文", "value": 1},
+                        {"label": "项目上下文", "value": 1},
+                        {"label": "今日 Token", "value": "1.4亿"},
                     ],
-                    "note_text": "这些数字来自当前整理结果，用来快速判断今天沉淀了多少内容。",
+                    "note_text": "这些数字按新记忆策略和今日 Token 快照展示：通用会进 host context，项目按边界注入。",
                     "badges": [],
                 }
             ],
@@ -5388,6 +5513,7 @@ Keep my own note.
         self.assertNotIn('type="date"', html)
         self.assertIn('value="2026-04-27" selected>2026/04/27</option>', html)
         self.assertNotIn('class="nightly-meta-row"', html)
+        self.assertIn('class="nightly-stat-card is-token-metric"', html)
         self.assertLess(html.index('id="nightly-summary-title"'), html.index('id="nightly-date-input"'))
         self.assertLess(html.index('id="nightly-date-input"'), html.index('id="nightly-lead"'))
 
@@ -10009,7 +10135,16 @@ Keep my own note.
                 "stage": "final",
                 "day_summary": "今天沉淀了新的记忆。",
                 "raw_window_count": 2,
-                "durable_memories": [1],
+                "durable_memories": [
+                    {
+                        "title": "编辑文件默认优先用 apply_patch",
+                        "memory_type": "procedural",
+                        "priority": "high",
+                        "value_note": "文件修改的稳定偏好是优先用 apply_patch。",
+                        "source_window_ids": ["w1"],
+                        "keywords": ["apply_patch"],
+                    }
+                ],
                 "session_memories": [],
                 "low_priority_memories": [],
             },
@@ -10028,8 +10163,108 @@ Keep my own note.
         self.assertIn("Related contexts: Personal assets system, Codex local environment.", view["detail_parts_en"])
         self.assertEqual(
             view["note_text_en"],
-            "These numbers come from the selected synthesis and help estimate how much was captured that day.",
+            "These numbers combine the new memory policy with today's Token snapshot: general context enters host context, while project context stays bounded.",
         )
+
+    def test_daily_summary_stats_use_context_policy_counts(self):
+        view = build_overview.build_daily_summary_view(
+            {
+                "date": "2026-05-04",
+                "stage": "final",
+                "day_summary": "今天沉淀了新的记忆。",
+                "raw_window_count": 3,
+                "durable_memories": [
+                    {
+                        "title": "编辑文件默认优先用 apply_patch",
+                        "memory_type": "procedural",
+                        "priority": "high",
+                        "value_note": "文件修改的稳定偏好是优先用 apply_patch。",
+                        "source_window_ids": ["w1"],
+                        "keywords": ["apply_patch"],
+                    },
+                    {
+                        "title": "OpenRelix 的 worktree 与合并默认规则",
+                        "memory_type": "procedural",
+                        "priority": "high",
+                        "value_note": "做 bugfix/feature 时先起独立 worktree，只推 origin/main。",
+                        "source_window_ids": ["w1"],
+                        "keywords": ["worktree"],
+                    },
+                ],
+                "session_memories": [
+                    {
+                        "title": "当前任务已推进",
+                        "memory_type": "procedural",
+                        "priority": "high",
+                        "value_note": "项目任务继续在当前 worktree 验证。",
+                        "source_window_ids": ["w1"],
+                    }
+                ],
+                "low_priority_memories": [
+                    {
+                        "title": "低优先证据",
+                        "memory_type": "semantic",
+                        "priority": "low",
+                        "value_note": "仅作为本地证据保留。",
+                        "source_window_ids": ["w1"],
+                    }
+                ],
+            },
+            {"window_count": 3},
+            [],
+            token_usage={
+                "daily_rows": [
+                    {
+                        "date": "2026-05-04",
+                        "token_display": "5.3亿",
+                        "value": 533808705,
+                    }
+                ]
+            },
+        )
+
+        self.assertEqual(
+            view["stats"],
+            [
+                {"label": "工作窗口", "value": 3},
+                {"label": "通用上下文", "value": 1},
+                {"label": "项目上下文", "value": 2},
+                {"label": "今日 Token", "value": "5.34亿"},
+            ],
+        )
+
+    def test_daily_summary_token_metric_uses_short_three_digit_display(self):
+        view = build_overview.build_daily_summary_view(
+            {
+                "date": "2026-05-05",
+                "stage": "final",
+                "day_summary": "当天完成 Token 面板修复。",
+                "raw_window_count": 2,
+                "durable_memories": [],
+                "session_memories": [],
+                "low_priority_memories": [],
+            },
+            {"window_count": 2},
+            [],
+            token_usage={
+                "daily_rows": [
+                    {
+                        "date": "2026-05-05",
+                        "token_display": "9789.6万",
+                        "value": 97895744,
+                    }
+                ]
+            },
+        )
+
+        self.assertEqual(view["stats"][3], {"label": "今日 Token", "value": "0.98亿"})
+
+    def test_compact_token_zh_prefers_yi_and_wan_units(self):
+        self.assertEqual(build_overview.compact_token(97895744, language="zh"), "0.98亿")
+        self.assertEqual(build_overview.compact_token(99999999, language="zh"), "1亿")
+        self.assertEqual(build_overview.compact_token(9789574, language="zh"), "979万")
+        self.assertEqual(build_overview.compact_token(3600616, language="zh"), "360万")
+        self.assertEqual(build_overview.compact_token(360000, language="zh"), "36万")
 
     def test_build_html_daily_summary_payload_supports_english_switch_for_generated_fields(self):
         summary_view = build_overview.build_daily_summary_view(
@@ -10038,7 +10273,16 @@ Keep my own note.
                 "stage": "final",
                 "day_summary": "今天沉淀了新的记忆。",
                 "raw_window_count": 2,
-                "durable_memories": [1],
+                "durable_memories": [
+                    {
+                        "title": "编辑文件默认优先用 apply_patch",
+                        "memory_type": "procedural",
+                        "priority": "high",
+                        "value_note": "文件修改的稳定偏好是优先用 apply_patch。",
+                        "source_window_ids": ["w1"],
+                        "keywords": ["apply_patch"],
+                    }
+                ],
                 "session_memories": [],
                 "low_priority_memories": [],
             },
@@ -10096,7 +10340,7 @@ Keep my own note.
 
         self.assertIn('"context_labels_en": ["Personal assets system", "Codex local environment"]', html)
         self.assertIn(
-            '"note_text_en": "These numbers come from the selected synthesis and help estimate how much was captured that day."',
+            '"note_text_en": "These numbers combine the new memory policy with today\'s Token snapshot: general context enters host context, while project context stays bounded."',
             html,
         )
         self.assertIn('"lead_text_en": "2026-04-27 synthesis captured 2 work windows', html)
