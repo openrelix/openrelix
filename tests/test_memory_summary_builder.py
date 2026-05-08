@@ -181,7 +181,8 @@ class MemorySummaryBuilderTests(unittest.TestCase):
         self.assertNotEqual(result.status, "over_budget")
         self.assertIn("### Local personal memory registry", result.text)
         self.assertIn("Default integrated memory mode", result.text)
-        self.assertIn("[global/high]", result.text)
+        self.assertIn("Backfill command rollout", result.text)
+        self.assertIn("[global/medium]", result.text)
         self.assertNotIn("[durable/", result.text)
         personal_section = result.text.split("### Local personal memory registry", 1)[1].split("### ", 1)[0]
         self.assertNotIn("  - desc:", personal_section)
@@ -260,8 +261,8 @@ class MemorySummaryBuilderTests(unittest.TestCase):
             [item.title for item in host_context_items],
             ["Global policy-only memory", "Project policy-only memory"],
         )
-        self.assertIn("[global/high] Global policy-only memory", result.text)
-        self.assertIn("[project/high/OpenRelix] Project policy-only memory", result.text)
+        self.assertIn("Global policy-only memory - This enters global context from policy metadata.", result.text)
+        self.assertIn("Project policy-only memory - This enters project context from policy metadata.", result.text)
         self.assertNotIn("[durable", result.text.lower())
 
     def test_personal_memory_registry_prefers_hotter_items_without_bucket_bias(self):
@@ -405,7 +406,41 @@ class MemorySummaryBuilderTests(unittest.TestCase):
 
         self.assertIn("### Local personal memory registry", result.text)
         self.assertIn("Project-only Gradle cleanup", result.text)
-        self.assertIn("[project/high/Android App]", result.text)
+        self.assertIn("Project-only Gradle cleanup - Only use this cleanup inside the Android project.", result.text)
+
+    def test_top_summary_items_are_not_repeated_in_personal_registry(self):
+        budget = build_codex_memory_summary.SummaryBudget(
+            target_tokens=700,
+            warn_tokens=760,
+            max_tokens=840,
+            profile_tokens=90,
+            preferences_tokens=120,
+            tips_tokens=80,
+            personal_memory_tokens=280,
+            global_memory_tokens=280,
+            project_memory_tokens=0,
+            max_preferences=1,
+            max_tips=0,
+            max_personal_memory_items=0,
+        )
+        personal_items = build_codex_memory_summary.parse_personal_memory_registry(
+            """
+{"date":"2026-05-08","source":"canonical","bucket":"durable","title":"Apply patch by default","memory_type":"preference","priority":"high","scope":"global","injection_policy":"global_context","value_note":"Use apply_patch for file edits before shell rewrites.","keywords":["patch"]}
+{"date":"2026-05-08","source":"canonical","bucket":"durable","title":"Keep runtime state outside repos","memory_type":"semantic","priority":"high","scope":"global","injection_policy":"global_context","value_note":"Runtime data belongs in the external state root.","keywords":["state"]}
+"""
+        )
+
+        result = build_codex_memory_summary.build_memory_summary(
+            SAMPLE_MEMORY_INDEX,
+            SAMPLE_EXISTING_SUMMARY,
+            budget,
+            personal_memory_items=personal_items,
+        )
+
+        personal_section = result.text.split("### Local personal memory registry", 1)[1]
+        self.assertIn("- Apply patch by default - Use apply_patch for file edits before shell rewrites.", result.text)
+        self.assertNotIn("Apply patch by default", personal_section)
+        self.assertIn("Keep runtime state outside repos", personal_section)
 
     def test_personal_memory_context_lines_stay_compact_and_keep_metadata(self):
         item = build_codex_memory_summary.PersonalMemoryItem(

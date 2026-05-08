@@ -542,6 +542,13 @@ def personal_memory_item_match_text(item):
     return collapse_whitespace("{} {}".format(item.title, item.value_note))
 
 
+def rendered_summary_line_match_text(line):
+    text = collapse_whitespace(str(line or ""))
+    if text.startswith("- "):
+        return text[2:].strip()
+    return text
+
+
 def personal_memory_item_is_similar_to_texts(item, texts, threshold):
     item_text = personal_memory_item_match_text(item)
     return any(summary_text_similarity(item_text, text) >= threshold for text in texts or [])
@@ -813,7 +820,11 @@ def render_with_budgets(personal_memory_items, budget):
         budget,
         bool(project_memory_items),
     )
-    selected_personal_match_texts = []
+    selected_personal_match_texts = [
+        rendered_summary_line_match_text(line)
+        for line in (preference_lines + tip_lines)
+        if rendered_summary_line_match_text(line)
+    ]
     global_personal_memory_lines, _, _ = build_personal_memory_lines(
         global_memory_items,
         global_memory_tokens,
