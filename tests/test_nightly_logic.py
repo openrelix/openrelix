@@ -5654,7 +5654,7 @@ Keep my own note.
                         {"label": "项目上下文", "value": 1},
                         {"label": "今日 Token", "value": "1.4亿"},
                     ],
-                    "note_text": "这些数字按新记忆策略和今日 Token 快照展示：通用会进 host context，项目按边界注入。",
+                    "note_text": "这些数字按新记忆策略和今日 Token 快照展示：通用和项目都会进 host context，并分别受预算控制。",
                     "badges": [],
                 }
             ],
@@ -10499,7 +10499,7 @@ Keep my own note.
         self.assertIn("Related contexts: Personal assets system, Codex local environment.", view["detail_parts_en"])
         self.assertEqual(
             view["note_text_en"],
-            "These numbers combine the new memory policy with today's Token snapshot: general context enters host context, while project context stays bounded.",
+            "These numbers combine the new memory policy with today's Token snapshot: general and project context both enter host context under separate budgets.",
         )
 
     def test_daily_summary_stats_use_context_policy_counts(self):
@@ -10676,7 +10676,7 @@ Keep my own note.
 
         self.assertIn('"context_labels_en": ["Personal assets system", "Codex local environment"]', html)
         self.assertIn(
-            '"note_text_en": "These numbers combine the new memory policy with today\'s Token snapshot: general context enters host context, while project context stays bounded."',
+            '"note_text_en": "These numbers combine the new memory policy with today\'s Token snapshot: general and project context both enter host context under separate budgets."',
             html,
         )
         self.assertIn('"lead_text_en": "2026-04-27 synthesis captured 2 work windows', html)

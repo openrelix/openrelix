@@ -28,7 +28,7 @@ function printHelp() {
   npx openrelix tokens [--provider all|codex|cc]
   npx openrelix models [--json | --bundled | --all]
   npx openrelix memory-migration status|ensure|run|complete
-  npx openrelix context sync [--cwd <project>]
+  npx openrelix context sync
   npx openrelix index status|rebuild|search-memory|search-window
   npx openrelix recall <query>
   npx openrelix open panel
@@ -57,7 +57,7 @@ Examples:
   npx openrelix models
   npx openrelix tokens --provider all
   npx openrelix memory-migration status
-  npx openrelix context sync --cwd "$PWD"
+  npx openrelix context sync
   npx openrelix index status
   npx openrelix index search-memory sqlite
   npx openrelix recall worktree

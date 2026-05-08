@@ -1051,8 +1051,8 @@ PANEL_I18N_EN = {
         "Window count, general context, project context, and today Token."
     ),
     "最近相关的上下文标签。": "Recently related context labels.",
-    "这些数字按新记忆策略和今日 Token 快照展示：通用会进 host context，项目按边界注入。": (
-        "These numbers combine the new memory policy with today's Token snapshot: general context enters host context, while project context stays bounded."
+    "这些数字按新记忆策略和今日 Token 快照展示：通用和项目都会进 host context，并分别受预算控制。": (
+        "These numbers combine the new memory policy with today's Token snapshot: general and project context both enter host context under separate budgets."
     ),
     "当前登记册中 bucket = durable 的长期记忆，按近 7 日热度排序。": (
         "Long-term memories where bucket = durable in the current registry, sorted by 7-day heat."
@@ -1884,11 +1884,14 @@ def estimate_memory_row_tokens(row):
         row.get("display_value_note") or row.get("value_note", ""),
         limit=PERSONAL_MEMORY_NOTE_LIMIT,
     )
-    meta = "{}/{}/{}".format(
-        row.get("bucket") or "unknown",
-        row.get("memory_type") or "semantic",
-        row.get("priority") or "medium",
-    )
+    policy = overview_memory_context.host_context_injection_policy_from_record(row)
+    if policy == overview_memory_context.INJECTION_GLOBAL_CONTEXT:
+        context_kind = "global"
+    elif policy == overview_memory_context.INJECTION_PROJECT_CONTEXT:
+        context_kind = "project"
+    else:
+        context_kind = row.get("scope") or policy or "context"
+    meta = "{}/{}".format(context_kind, row.get("priority") or "medium")
     line = "- [{}] {}".format(meta, title)
     if value_note:
         line = "{} - {}".format(line, value_note)
@@ -1898,15 +1901,13 @@ def estimate_memory_row_tokens(row):
 
 def sort_memory_summary_context_rows(context_rows):
     priority_rank = {"high": 0, "medium": 1, "low": 2}
-    bucket_rank = {"durable": 0, "session": 1}
 
     def sort_key(row):
         return (
             -memory_feedback_sort_rank(row),
-            bucket_rank.get(row.get("bucket", ""), 2),
             priority_rank.get(row.get("priority", "medium"), 1),
-            memory_summary_reverse_date_sort_key(row.get("updated_at") or row.get("date") or row.get("created_at")),
             -safe_int(row.get("occurrence_count", 0)),
+            memory_summary_reverse_date_sort_key(row.get("updated_at") or row.get("date") or row.get("created_at")),
             row.get("title", "") or row.get("display_title", ""),
         )
 
@@ -2160,7 +2161,7 @@ def build_personal_memory_token_usage(
 
     method_note_zh = (
         "面板展示的是 bounded summary 预算状态，不是完整登记册体积；"
-        "默认上限 8K；当前 target {}、warn {}、max {} 会随配置的 max 自动派生，全局记忆 {}、当前项目记忆 {}。"
+        "默认上限 8K；当前 target {}、warn {}、max {} 会随配置的 max 自动派生，全局记忆 {}、项目记忆 {}。"
     ).format(
         target_tokens_display,
         warn_tokens_display,
@@ -2170,7 +2171,7 @@ def build_personal_memory_token_usage(
     )
     method_note_en = (
         "This card shows bounded-summary budget status, not the full registry footprint; "
-        "the default max is 8K; current target {}, warning {}, and max {} are derived from the configured max, with {} for global memory and {} for the active project."
+        "the default max is 8K; current target {}, warning {}, and max {} are derived from the configured max, with {} for global memory and {} for project memory."
     ).format(
         target_tokens_display,
         warn_tokens_display,
@@ -11703,8 +11704,8 @@ def make_memory_context_compiler_body(policy_views):
                 "项目上下文",
                 "Project Context",
                 project_count,
-                "按项目、仓库或工作区边界召回",
-                "Recalled by project, repo, or workspace boundary",
+                "按热度和项目预算进入 host context",
+                "Enters host context by heat within the project budget",
             ),
             stat_card(
                 "本地保留",
@@ -13212,8 +13213,8 @@ def build_daily_summary_view(nightly, window_overview=None, project_contexts=Non
         },
     ]
 
-    note_text_zh = "这些数字按新记忆策略和今日 Token 快照展示：通用会进 host context，项目按边界注入。"
-    note_text_en = "These numbers combine the new memory policy with today's Token snapshot: general context enters host context, while project context stays bounded."
+    note_text_zh = "这些数字按新记忆策略和今日 Token 快照展示：通用和项目都会进 host context，并分别受预算控制。"
+    note_text_en = "These numbers combine the new memory policy with today's Token snapshot: general and project context both enter host context under separate budgets."
     if stage == "preliminary":
         if is_current_local_date(nightly.get("date", "")):
             note_text_zh = "今天仍在进行中，当前是快速回溯结果；只保留窗口摘要和快速索引，次日完整回溯会再生成记忆。"
@@ -27142,7 +27143,7 @@ def build_html(data):
         ),
         project_memory_header=make_panel_header(
             "项目上下文",
-            "按项目、仓库或工作区隔离，也会参与 bounded host context 注入",
+            "带项目标签，按热度和预算参与 bounded host context 注入",
             project_memory_help,
         ),
         local_memory_header=make_panel_header(

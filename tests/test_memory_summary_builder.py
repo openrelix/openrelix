@@ -103,11 +103,8 @@ class MemorySummaryBuilderTests(unittest.TestCase):
             profile_tokens=90,
             preferences_tokens=120,
             tips_tokens=120,
-            routes_tokens=180,
             max_preferences=4,
             max_tips=4,
-            max_route_items=4,
-            max_route_keywords=3,
         )
 
         result = build_codex_memory_summary.build_memory_summary(
@@ -131,9 +128,11 @@ class MemorySummaryBuilderTests(unittest.TestCase):
 
         self.assertGreater(parsed["counts"]["user_preferences"], 0)
         self.assertGreater(parsed["counts"]["general_tips"], 0)
-        self.assertGreater(len(parsed["rows"]), 0)
+        self.assertEqual(len(parsed["rows"]), 0)
+        self.assertIn("No OpenRelix canonical memory entries were selected", result.text)
+        self.assertNotIn("Local Codex personal asset system", result.text)
 
-    def test_preference_rules_keep_action_side_of_arrow(self):
+    def test_memory_index_preferences_do_not_enter_host_summary(self):
         budget = build_codex_memory_summary.SummaryBudget(
             target_tokens=420,
             warn_tokens=460,
@@ -141,11 +140,8 @@ class MemorySummaryBuilderTests(unittest.TestCase):
             profile_tokens=80,
             preferences_tokens=140,
             tips_tokens=100,
-            routes_tokens=120,
             max_preferences=3,
             max_tips=3,
-            max_route_items=2,
-            max_route_keywords=2,
         )
 
         result = build_codex_memory_summary.build_memory_summary(
@@ -154,7 +150,8 @@ class MemorySummaryBuilderTests(unittest.TestCase):
             budget,
         )
 
-        self.assertIn("- Answer with the exact value first", result.text)
+        self.assertIn("- Prefer exact runtime evidence and concise action-oriented answers.", result.text)
+        self.assertNotIn("- Answer with the exact value first", result.text)
         self.assertNotIn("when the user asks for a concrete config/runtime value", result.text)
 
     def test_personal_memory_registry_is_bounded_and_included(self):
@@ -165,12 +162,9 @@ class MemorySummaryBuilderTests(unittest.TestCase):
             profile_tokens=90,
             preferences_tokens=100,
             tips_tokens=100,
-            routes_tokens=120,
             personal_memory_tokens=220,
             max_preferences=2,
             max_tips=2,
-            max_route_items=2,
-            max_route_keywords=2,
             max_personal_memory_items=2,
         )
         personal_items = build_codex_memory_summary.parse_personal_memory_registry(
@@ -187,7 +181,8 @@ class MemorySummaryBuilderTests(unittest.TestCase):
         self.assertNotEqual(result.status, "over_budget")
         self.assertIn("### Local personal memory registry", result.text)
         self.assertIn("Default integrated memory mode", result.text)
-        self.assertIn("[durable/procedural/high]", result.text)
+        self.assertIn("[global/high]", result.text)
+        self.assertNotIn("[durable/", result.text)
         personal_section = result.text.split("### Local personal memory registry", 1)[1].split("### ", 1)[0]
         self.assertNotIn("  - desc:", personal_section)
         self.assertNotIn("  - learnings:", personal_section)
@@ -216,15 +211,9 @@ class MemorySummaryBuilderTests(unittest.TestCase):
         self.assertEqual(chinese_items[0].title, "默认中文标题")
         self.assertEqual(chinese_items[0].value_note, "默认中文说明")
 
-    def test_personal_memory_registry_injects_global_only_without_active_project(self):
+    def test_personal_memory_registry_injects_global_and_project_context(self):
         host_context_items = build_codex_memory_summary.parse_personal_memory_registry(
             SCOPED_PERSONAL_MEMORY_REGISTRY
-        )
-        active_project_items = build_codex_memory_summary.parse_personal_memory_registry(
-            SCOPED_PERSONAL_MEMORY_REGISTRY,
-            project_filter=build_codex_memory_summary.build_project_context_filter(
-                project_label="Android App",
-            ),
         )
         all_items = build_codex_memory_summary.parse_personal_memory_registry(
             SCOPED_PERSONAL_MEMORY_REGISTRY,
@@ -233,10 +222,6 @@ class MemorySummaryBuilderTests(unittest.TestCase):
 
         self.assertEqual(
             [item.title for item in host_context_items],
-            ["Global patch preference"],
-        )
-        self.assertEqual(
-            [item.title for item in active_project_items],
             ["Global patch preference", "Project-only Gradle cleanup"],
         )
         self.assertEqual(len(all_items), 4)
@@ -245,33 +230,62 @@ class MemorySummaryBuilderTests(unittest.TestCase):
         self.assertEqual(policies["Domain-only bridge diagnosis"], "on_demand")
         self.assertEqual(policies["Local follow-up"], "local_only")
 
-    def test_project_filter_keeps_global_and_matching_project_context(self):
+    def test_personal_memory_registry_uses_injection_policy_without_bucket(self):
         registry = (
-            SCOPED_PERSONAL_MEMORY_REGISTRY
-            + '\n{"date":"2026-05-06","source":"canonical","bucket":"durable",'
-            '"title":"OpenRelix worktree delivery","memory_type":"procedural","priority":"high",'
+            '{"date":"2026-05-06","source":"canonical",'
+            '"title":"Global policy-only memory","memory_type":"procedural","priority":"high",'
+            '"scope":"global","injection_policy":"global_context",'
+            '"value_note":"This enters global context from policy metadata.","keywords":["global"]}\n'
+            '{"date":"2026-05-06","source":"canonical",'
+            '"title":"Project policy-only memory","memory_type":"procedural","priority":"high",'
             '"scope":"project","injection_policy":"project_context","project_label":"OpenRelix",'
-            '"project_key":"openrelix","value_note":"Use an isolated worktree for OpenRelix changes.",'
-            '"keywords":["openrelix","worktree"]}\n'
-        )
-        project_filter = build_codex_memory_summary.build_project_context_filter(
-            project_cwd="/tmp/OpenRelix"
+            '"value_note":"This enters project context from policy metadata.","keywords":["project"]}\n'
         )
 
-        active_items = build_codex_memory_summary.parse_personal_memory_registry(
-            registry,
-            project_filter=project_filter,
+        host_context_items = build_codex_memory_summary.parse_personal_memory_registry(registry)
+        result = build_codex_memory_summary.build_memory_summary(
+            SAMPLE_MEMORY_INDEX,
+            SAMPLE_EXISTING_SUMMARY,
+            build_codex_memory_summary.SummaryBudget(
+                target_tokens=700,
+                warn_tokens=760,
+                max_tokens=840,
+                personal_memory_tokens=320,
+                max_personal_memory_items=0,
+            ),
+            personal_memory_items=host_context_items,
         )
 
         self.assertEqual(
-            [item.title for item in active_items],
-            ["Global patch preference", "OpenRelix worktree delivery"],
+            [item.title for item in host_context_items],
+            ["Global policy-only memory", "Project policy-only memory"],
+        )
+        self.assertIn("[global/high] Global policy-only memory", result.text)
+        self.assertIn("[project/high/OpenRelix] Project policy-only memory", result.text)
+        self.assertNotIn("[durable", result.text.lower())
+
+    def test_personal_memory_registry_prefers_hotter_items_without_bucket_bias(self):
+        registry = (
+            '{"date":"2026-05-06","source":"canonical","bucket":"durable",'
+            '"title":"Single high item","memory_type":"procedural","priority":"high",'
+            '"scope":"global","injection_policy":"global_context",'
+            '"value_note":"Seen once.","keywords":["once"]}\n'
+            '{"date":"2026-05-01","source":"canonical","bucket":"session",'
+            '"title":"Repeated high item","memory_type":"procedural","priority":"high",'
+            '"scope":"project","injection_policy":"project_context","project_label":"OpenRelix",'
+            '"value_note":"Older but hotter.","keywords":["hot"]}\n'
+            '{"date":"2026-05-02","source":"canonical","bucket":"session",'
+            '"title":"Repeated high item","memory_type":"procedural","priority":"high",'
+            '"scope":"project","injection_policy":"project_context","project_label":"OpenRelix",'
+            '"value_note":"Newer repeat.","keywords":["hot"]}\n'
         )
 
-    def test_project_summary_filters_other_project_routes_and_memories(self):
-        project_filter = build_codex_memory_summary.build_project_context_filter(
-            project_cwd="/tmp/OpenRelix"
-        )
+        items = build_codex_memory_summary.parse_personal_memory_registry(registry)
+
+        self.assertEqual([item.title for item in items], ["Repeated high item", "Single high item"])
+        self.assertEqual(items[0].occurrence_count, 2)
+
+    def test_unified_summary_includes_global_and_project_context_without_task_groups(self):
         personal_items = build_codex_memory_summary.parse_personal_memory_registry(
             (
                 '{"date":"2026-05-06","source":"canonical","bucket":"durable",'
@@ -287,7 +301,6 @@ class MemorySummaryBuilderTests(unittest.TestCase):
                 '"scope":"project","injection_policy":"project_context","project_label":"Douyin",'
                 '"value_note":"Use Douyin search workflow for Android search tasks.","keywords":["douyin"]}\n'
             ),
-            project_filter=project_filter,
         )
         budget = build_codex_memory_summary.SummaryBudget(
             target_tokens=900,
@@ -296,12 +309,9 @@ class MemorySummaryBuilderTests(unittest.TestCase):
             profile_tokens=90,
             preferences_tokens=100,
             tips_tokens=100,
-            routes_tokens=240,
             personal_memory_tokens=360,
             max_preferences=2,
             max_tips=2,
-            max_route_items=4,
-            max_route_keywords=2,
             max_personal_memory_items=0,
         )
 
@@ -310,13 +320,12 @@ class MemorySummaryBuilderTests(unittest.TestCase):
             SAMPLE_EXISTING_SUMMARY,
             budget,
             personal_memory_items=personal_items,
-            project_filter=project_filter,
         )
 
         self.assertIn("Global patch preference", result.text)
         self.assertIn("OpenRelix worktree delivery", result.text)
-        self.assertIn("Local Codex personal asset system", result.text)
-        self.assertNotIn("Douyin search workflow", result.text)
+        self.assertIn("Douyin search workflow", result.text)
+        self.assertNotIn("Local Codex personal asset system", result.text)
         self.assertNotIn("Android scan QR-only cleanup", result.text)
 
     def test_legacy_source_window_memory_stays_out_of_global_host_context(self):
@@ -338,7 +347,7 @@ class MemorySummaryBuilderTests(unittest.TestCase):
         self.assertEqual(policies["Project-only legacy item"], "on_demand")
         self.assertEqual(policies["Global legacy item"], "on_demand")
 
-    def test_memory_summary_prefers_cli_native_memory_over_similar_openrelix_memory(self):
+    def test_memory_summary_rebuild_does_not_let_existing_summary_suppress_canonical_items(self):
         budget = build_codex_memory_summary.SummaryBudget(
             target_tokens=620,
             warn_tokens=680,
@@ -346,12 +355,9 @@ class MemorySummaryBuilderTests(unittest.TestCase):
             profile_tokens=90,
             preferences_tokens=100,
             tips_tokens=100,
-            routes_tokens=120,
             personal_memory_tokens=220,
             max_preferences=2,
             max_tips=2,
-            max_route_items=2,
-            max_route_keywords=2,
             max_personal_memory_items=0,
         )
         existing_summary = SAMPLE_EXISTING_SUMMARY + "\n## General Tips\n\n- Use apply_patch first for file edits.\n"
@@ -369,7 +375,7 @@ class MemorySummaryBuilderTests(unittest.TestCase):
             personal_memory_items=personal_items,
         )
 
-        self.assertNotIn("Apply patch first", result.text)
+        self.assertIn("Apply patch first", result.text)
         self.assertIn("Keep runtime state outside repos", result.text)
 
     def test_memory_summary_dedupes_personal_memory_already_in_host_summary(self):
@@ -380,20 +386,14 @@ class MemorySummaryBuilderTests(unittest.TestCase):
             profile_tokens=90,
             preferences_tokens=100,
             tips_tokens=100,
-            routes_tokens=120,
             personal_memory_tokens=220,
             max_preferences=2,
             max_tips=2,
-            max_route_items=2,
-            max_route_keywords=2,
             max_personal_memory_items=0,
         )
         existing_summary = SAMPLE_EXISTING_SUMMARY + "\n## What's in Memory\n\n- Global patch preference\n"
         personal_items = build_codex_memory_summary.parse_personal_memory_registry(
             SCOPED_PERSONAL_MEMORY_REGISTRY,
-            project_filter=build_codex_memory_summary.build_project_context_filter(
-                project_label="Android App",
-            ),
         )
 
         result = build_codex_memory_summary.build_memory_summary(
@@ -405,7 +405,7 @@ class MemorySummaryBuilderTests(unittest.TestCase):
 
         self.assertIn("### Local personal memory registry", result.text)
         self.assertIn("Project-only Gradle cleanup", result.text)
-        self.assertIn("[durable/procedural/high/Android App]", result.text)
+        self.assertIn("[project/high/Android App]", result.text)
 
     def test_personal_memory_context_lines_stay_compact_and_keep_metadata(self):
         item = build_codex_memory_summary.PersonalMemoryItem(
@@ -425,7 +425,8 @@ class MemorySummaryBuilderTests(unittest.TestCase):
         text = "\n".join(lines)
 
         self.assertGreater(used_tokens, 0)
-        self.assertIn("[durable/procedural/high]", text)
+        self.assertIn("[global/high]", text)
+        self.assertNotIn("[durable/", text)
         self.assertIn("(seen 3x)", text)
         self.assertIn("…", text)
         self.assertLess(len(text), 260)

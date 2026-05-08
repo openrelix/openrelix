@@ -232,7 +232,7 @@ scripts/cleanup_smoke_temp.sh --yes
 
 个人记忆系统默认开启，并且默认模式是 `integrated`：一份完整的本地资产记忆记录到本项目的 state root，同时把压缩后的 bounded summary 同步进当前 host native context。用户可以按需要显式选择只本地记录，或关闭本系统本地记忆写入。
 
-bounded summary 的压缩策略保持轻量：同签名记忆跨天归并，durable / session 优先进入上下文，low-priority 默认只留本地；默认 token budget 是 target 6.7K、warn 7.4K、max 8K，避免把原始窗口或完整 registry 塞进 host context。
+bounded summary 的压缩策略保持轻量：同签名记忆跨天归并，只让 effective `injection_policy=global_context/project_context` 的条目参与注入，low-priority 默认只留本地；默认 token budget 是 target 6.7K、warn 7.4K、max 8K，避免把原始窗口或完整 registry 塞进 host context。
 
 ```bash
 ./install/install.sh --profile integrated

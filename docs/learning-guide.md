@@ -421,7 +421,7 @@ python3 scripts/build_overview.py
 
 ### 为什么默认只写 bounded summary
 
-默认会接入 host native context，但只写压缩后的 bounded summary。完整 registry、reviews、raw windows 和 consolidated summaries 仍留在 state root；压缩策略会合并重复记忆，优先 durable / session，low-priority 默认只留本地，并把摘要控制在 6.7K target / 8K max token 左右。
+默认会接入 host native context，但只写压缩后的 bounded summary。完整 registry、reviews、raw windows 和 consolidated summaries 仍留在 state root；压缩策略会合并重复记忆，只让 effective `injection_policy=global_context/project_context` 的条目参与注入，low-priority 默认只留本地，并把摘要控制在 6.7K target / 8K max token 左右。
 
 如果要严格隔离，不往 host context 注入摘要，用：
 

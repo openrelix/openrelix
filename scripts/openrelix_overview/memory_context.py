@@ -337,9 +337,15 @@ def memory_record_text_blob(item):
         item.get("title", ""),
         item.get("title_zh", ""),
         item.get("title_en", ""),
+        item.get("display_title", ""),
+        item.get("display_title_zh", ""),
+        item.get("display_title_en", ""),
         item.get("value_note", ""),
         item.get("value_note_zh", ""),
         item.get("value_note_en", ""),
+        item.get("display_value_note", ""),
+        item.get("display_value_note_zh", ""),
+        item.get("display_value_note_en", ""),
     ]
     keywords = item.get("keywords") or []
     if isinstance(keywords, (list, tuple, set)):
@@ -347,6 +353,18 @@ def memory_record_text_blob(item):
     else:
         parts.append(keywords)
     return collapse_whitespace(" ".join(str(part or "") for part in parts))
+
+
+def memory_record_has_context_signal(item):
+    if not isinstance(item, dict):
+        return False
+    if memory_record_text_blob(item):
+        return True
+    if first_record_value(item, MEMORY_SCOPE_KEYS) or first_record_value(item, INJECTION_POLICY_KEYS):
+        return True
+    if memory_record_project_labels(item) or has_source_window_refs(item):
+        return True
+    return False
 
 
 def regex_any(patterns, text):
@@ -540,9 +558,8 @@ def normalize_injection_policy(value):
 
 
 def default_injection_policy_for_scope(scope, bucket="", priority=""):
-    bucket = str(bucket or "").strip()
     priority = str(priority or "").strip().lower()
-    if bucket == "low_priority" or priority == "low":
+    if priority == "low":
         return INJECTION_LOCAL_ONLY
     if scope == MEMORY_SCOPE_GLOBAL:
         return INJECTION_GLOBAL_CONTEXT
@@ -577,7 +594,7 @@ def host_context_injection_policy_from_record(item):
 def memory_record_is_global_context(item):
     if not isinstance(item, dict):
         return False
-    if str(item.get("bucket") or "").strip() not in {"durable", "session"}:
+    if not memory_record_has_context_signal(item):
         return False
     return host_context_injection_policy_from_record(item) == INJECTION_GLOBAL_CONTEXT
 
@@ -585,7 +602,7 @@ def memory_record_is_global_context(item):
 def memory_record_is_host_context_candidate(item):
     if not isinstance(item, dict):
         return False
-    if str(item.get("bucket") or "").strip() not in {"durable", "session"}:
+    if not memory_record_has_context_signal(item):
         return False
     return host_context_injection_policy_from_record(item) in {
         INJECTION_GLOBAL_CONTEXT,

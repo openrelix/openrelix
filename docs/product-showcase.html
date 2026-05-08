@@ -3571,7 +3571,7 @@
               <li>默认 integrated：完整登记册留在状态目录，压缩摘要进入当前 host 原生上下文。</li>
               <li>`--use-integrated`：显式选择 host 上下文注入模式。</li>
               <li>`--record-memory-only`：只做本地记录和可视化，不注入模型上下文。</li>
-              <li>压缩策略：同签名记忆跨天归并，优先长期和任务记忆，低优先级只留本地；摘要目标 6.7K、上限 8K token。</li>
+              <li>压缩策略：同签名记忆跨天归并，按注入策略、优先级和热度选择上下文，低优先级只留本地；摘要目标 6.7K、上限 8K token。</li>
             </ul>
           </div>
           <figure class="shot context-distribution-shot" aria-label="OpenRelix 项目上下文分布预览">
@@ -3849,7 +3849,7 @@
           <div class="grid">
             <div class="callout">
               <h3>默认轻量注入，不塞原始窗口。</h3>
-              <p>默认上下文模式只写压缩摘要：合并重复记忆，优先长期和任务记忆，低优先只留本地，目标 6.7K、上限 8K token。</p>
+              <p>默认上下文模式只写压缩摘要：合并重复记忆，按注入策略、优先级和热度选择上下文，低优先只留本地，目标 6.7K、上限 8K token。</p>
             </div>
             <article class="tile">
               <h3>把“反复出现的做法”升级成技能</h3>
@@ -4235,7 +4235,7 @@
         "`--record-memory-only`：只做本地记录和可视化，不注入模型上下文。": "`--record-memory-only`: only record and visualize locally, without injecting model context.",
         "`--use-integrated`：显式选择 host 上下文注入模式。": "`--use-integrated`: explicitly select host-context injection mode.",
         "`--disable-personal-memory`：关闭本系统本地 memory registry 写入。": "`--disable-personal-memory`: disable this system's local memory-registry writes.",
-        "压缩策略：同签名记忆跨天归并，优先长期和任务记忆，低优先级只留本地；摘要目标 6.7K、上限 8K token。": "Compression strategy: merge same-signature memories across days, prioritize durable / session, keep low-priority local only, and cap the summary at a 6.7K target / 8K max token budget.",
+        "压缩策略：同签名记忆跨天归并，按注入策略、优先级和热度选择上下文，低优先级只留本地；摘要目标 6.7K、上限 8K token。": "Compression strategy: merge same-signature memories across days, select context by injection policy, priority, and heat, keep low-priority local only, and cap the summary at a 6.7K target / 8K max token budget.",
         "低优先级内容只留本地；长期规则和工作记忆分开归档，避免上下文噪声。": "Low-priority content stays local; long-term rules and work memories are archived separately to reduce context noise.",
         "窗口二次归类": "Second-level window grouping",
         "多窗口先按项目归并，再按上下文主题展示，避免把历史窗口一次性铺满。": "Many windows are first grouped by project, then by context topic, so history does not flood the page at once.",
@@ -4381,7 +4381,7 @@
         "已复制": "Copied",
         "复制失败": "Failed",
         "默认轻量注入，不塞原始窗口。": "Lightweight injection by default, without raw windows.",
-        "默认上下文模式只写压缩摘要：合并重复记忆，优先长期和任务记忆，低优先只留本地，目标 6.7K、上限 8K token。": "Default context mode writes only a compressed summary: merge duplicates, prioritize durable / session, keep low-priority local only, with a 6.7K target and 8K token max.",
+        "默认上下文模式只写压缩摘要：合并重复记忆，按注入策略、优先级和热度选择上下文，低优先只留本地，目标 6.7K、上限 8K token。": "Default context mode writes only a compressed summary: merge duplicates, select context by injection policy, priority, and heat, keep low-priority local only, with a 6.7K target and 8K token max.",
         "把“反复出现的做法”升级成技能": "Promote repeated practices into skills",
         "当同类复盘、排障或发布动作重复出现时，把步骤固化到 `.agents/skills/`，比继续写长提示词更稳定。": "When the same review, debugging, or release actions repeat, capture the steps in `.agents/skills/` instead of writing another long prompt.",
         "把“固定格式输出”升级成模板": "Promote fixed-format output into templates",

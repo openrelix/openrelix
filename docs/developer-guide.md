@@ -194,7 +194,7 @@ scripts/build_overview.py
 1. 优先更新 `templates/` 中的 schema 或示例。
 2. 明确字段是否进入 state root、host summary、overview-data 或面板。
 3. 如果字段会被注入 host context，确认 `injection_policy`、scope 和去重逻辑。
-4. 更新 `scripts/build_codex_memory_summary.py`、`scripts/sync_host_memory_summary.py` 或 overview builder 的读取逻辑；项目记忆要同时验证共享摘要和 `openrelix context sync --cwd <project>` 的 active summary 过滤。
+4. 更新 `scripts/build_codex_memory_summary.py`、`scripts/sync_host_memory_summary.py` 或 overview builder 的读取逻辑；项目记忆要验证统一 summary 中 global / project 两类预算是否分别生效。
 5. 增加兼容旧 JSONL 的 fallback，不要让旧 state root 直接崩溃。
 
 ### 修改 host adapter

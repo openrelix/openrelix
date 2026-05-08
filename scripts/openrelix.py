@@ -680,8 +680,8 @@ def build_parser():
     context = subparsers.add_parser(
         "context",
         help=localized(
-            "同步当前项目的 active host context 摘要。",
-            "Sync the active host-context summary for the current project.",
+            "同步统一 host context 摘要。",
+            "Sync the unified host-context summary.",
         ),
     )
     context.add_argument(
@@ -690,24 +690,6 @@ def build_parser():
         default="sync",
         choices=["sync"],
         help=localized("context 操作。", "Context action."),
-    )
-    context.add_argument(
-        "--cwd",
-        default=os.getcwd(),
-        help=localized(
-            "当前项目目录；默认使用执行 openrelix 时的工作目录。",
-            "Current project directory; defaults to the directory where openrelix is run.",
-        ),
-    )
-    context.add_argument(
-        "--project-key",
-        default="",
-        help=localized("可选项目 key，用于匹配项目记忆。", "Optional project key for matching project memories."),
-    )
-    context.add_argument(
-        "--project-label",
-        default="",
-        help=localized("可选项目展示名，用于匹配和面板展示。", "Optional project label for matching and display."),
     )
     context.add_argument(
         "--json",
@@ -3765,26 +3747,15 @@ def command_context(args):
     cmd = [
         sys.executable,
         str(SYNC_HOST_MEMORY_SUMMARY_SCRIPT),
-        "--project-cwd",
-        str(args.cwd),
         "--print-json",
     ]
-    if args.project_key:
-        cmd.extend(["--project-key", str(args.project_key)])
-    if args.project_label:
-        cmd.extend(["--project-label", str(args.project_label)])
     result = run_checked_quiet(cmd)
     payload = json.loads(result.stdout or "{}")
     if args.json:
         print_json(payload)
         return
 
-    active_project = payload.get("active_project") or {}
-    label = active_project.get("project_label") or active_project.get("project_key") or Path(args.cwd).expanduser().name
-    print(localized("OpenRelix 项目上下文已同步", "OpenRelix project context synced"))
-    print("- project: {}".format(label))
-    if active_project.get("cwd"):
-        print("- cwd: {}".format(active_project["cwd"]))
+    print(localized("OpenRelix host context 已同步", "OpenRelix host context synced"))
     print("- summary: {}".format(payload.get("summary_path") or ""))
     synced = payload.get("synced") or []
     skipped = payload.get("skipped") or []
@@ -3793,8 +3764,8 @@ def command_context(args):
     if skipped:
         print("- skipped: {}".format(", ".join("{}:{}".format(item.get("host"), item.get("status")) for item in skipped)))
     print(localized(
-        "- 下次启动 Codex / Claude Code 时会读取这份 active summary；已打开的窗口通常需要新开或重启后才稳定生效。",
-        "- The next Codex / Claude Code start reads this active summary; already-open windows usually need a new session or restart for stable effect.",
+        "- 下次启动 Codex / Claude Code 时会读取这份 unified summary；已打开的窗口通常需要新开或重启后才稳定生效。",
+        "- The next Codex / Claude Code start reads this unified summary; already-open windows usually need a new session or restart for stable effect.",
     ))
 
 
