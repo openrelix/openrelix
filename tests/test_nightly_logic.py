@@ -8936,7 +8936,7 @@ Native Codex profile.
         self.assertIn("Started 05-07 19:19:28", collector.text)
         self.assertIn("Ended 05-07 19:20:53", collector.text)
 
-    def test_pipeline_recent_runs_offer_expand_to_latest_thirty(self):
+    def test_pipeline_recent_runs_offer_expand_to_latest_twenty_four(self):
         html = build_overview.make_pipeline_recent_runs(
             [
                 {
@@ -8955,8 +8955,8 @@ Native Codex profile.
         self.assertIn("run-3", collector.text)
         self.assertNotIn("run-4", collector.text)
         self.assertIn("展开更多", collector.text)
-        self.assertIn("查看最近 30 条记录", collector.text)
-        self.assertIn("View latest 30 runs", collector.text)
+        self.assertIn("查看最近 24 条记录", collector.text)
+        self.assertIn("View latest 24 runs", collector.text)
 
     def test_pipeline_status_panel_localizes_stage_labels(self):
         html = build_overview.make_pipeline_status_panel(

@@ -64,7 +64,7 @@ class PipelineStatusTests(unittest.TestCase):
             self.assertEqual(saved["run_id"], payload["run_id"])
             self.assertEqual(saved["recent_runs"][0]["target_date"], "2026-05-06")
 
-    def test_recent_runs_keep_latest_thirty_entries(self):
+    def test_recent_runs_keep_latest_twenty_four_entries(self):
         rows = [
             {
                 "run_id": "run-{}".format(index),
@@ -76,9 +76,9 @@ class PipelineStatusTests(unittest.TestCase):
 
         sanitized = pipeline_status._sanitize_recent_runs(rows)
 
-        self.assertEqual(len(sanitized), 30)
+        self.assertEqual(len(sanitized), 24)
         self.assertEqual(sanitized[0]["run_id"], "run-0")
-        self.assertEqual(sanitized[-1]["run_id"], "run-29")
+        self.assertEqual(sanitized[-1]["run_id"], "run-23")
 
     def test_failed_status_includes_safe_failure_hint(self):
         with TemporaryDirectory() as tmpdir:
