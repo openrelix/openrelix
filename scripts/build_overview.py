@@ -46,6 +46,7 @@ from openrelix_overview import asset_discovery as overview_asset_discovery
 from openrelix_overview import claude_desktop as overview_claude_desktop
 from openrelix_overview import codex_profiles as overview_codex_profiles
 from openrelix_overview import codex_desktop as overview_codex_desktop
+from openrelix_overview import curated_memory as overview_curated_memory
 from openrelix_overview import finder as overview_finder
 from openrelix_overview import i18n as overview_i18n
 from openrelix_overview import labels as overview_labels
@@ -115,6 +116,8 @@ MEMORY_BRIEF_FULL_TEXT_LIMIT = 520
 PANEL_PATH_LABEL = render_path(REPORTS_DIR / "panel.html")
 OVERVIEW_JSON_PATH_LABEL = render_path(REPORTS_DIR / "overview-data.json")
 PERSONAL_REDACTION_LABEL = overview_redaction.PERSONAL_REDACTION_LABEL
+CURATED_MEMORY_PACK_PATH = REGISTRY_DIR / "curated_memory_pack.json"
+CURATED_MEMORY_SUMMARY_PATH = PATHS.runtime_dir / "host-context" / "curated-personal-memory-summary.md"
 
 
 def _load_brand_icon_data_uri():
@@ -937,6 +940,10 @@ PANEL_I18N_EN = {
     "对照“Codex 原生记忆”和“个人资产记忆”看：前者偏模型长期记忆，后者偏夜间整理和来源追踪。": (
         "Compare Codex Native Memory with Personal Asset Memory: the former is closer to long-term model memory, "
         "while the latter is nightly synthesis with source tracing."
+    ),
+    "整理后记忆": "Curated Memory",
+    "旁路生成的高质量记忆包预览；当前不改变 Codex / Claude Code 的 host context 注入": (
+        "Preview of the sidecar high-quality memory pack; it does not change Codex / Claude Code host-context injection."
     ),
     "统计口径": "Counting rule",
     "对应项目 / 条目": "Related projects / items",
@@ -1783,6 +1790,116 @@ def load_memory_registry_items():
         )
         if row is not None
     ]
+
+
+def curated_memory_state_root():
+    registry_dir = Path(REGISTRY_DIR)
+    if registry_dir.name == "registry":
+        return registry_dir.parent
+    return PATHS.state_root
+
+
+def curated_memory_path_label(path):
+    path = Path(path)
+    try:
+        return str(path.resolve().relative_to(curated_memory_state_root().resolve()))
+    except (OSError, ValueError):
+        return path.name
+
+
+def curated_memory_source_metadata():
+    candidates = [
+        (REGISTRY_DIR / "memory_entries.jsonl", overview_curated_memory.DEFAULT_SOURCE_LABEL),
+        (REGISTRY_DIR / "memory_items.jsonl", "registry/memory_items.jsonl"),
+    ]
+    first_path, first_label = candidates[0]
+    for path, source_label in candidates:
+        try:
+            exists = path.exists()
+            size = path.stat().st_size if exists else 0
+        except OSError as exc:
+            return {
+                "source_label": source_label,
+                "source_path_label": curated_memory_path_label(path),
+                "source_exists": True,
+                "source_readable": False,
+                "source_error": exc.__class__.__name__,
+            }
+        if not exists:
+            continue
+        if size > 0:
+            return {
+                "source_label": source_label,
+                "source_path_label": curated_memory_path_label(path),
+                "source_exists": True,
+                "source_readable": True,
+                "source_error": "",
+            }
+    return {
+        "source_label": first_label,
+        "source_exists": first_path.exists(),
+        "source_path_label": curated_memory_path_label(first_path),
+        "source_readable": True,
+        "source_error": "",
+    }
+
+
+def curated_memory_entries_from_rows(memory_items, source_label):
+    entries = []
+    for line_number, row in enumerate(memory_items or [], start=1):
+        if not isinstance(row, dict):
+            continue
+        current = dict(row)
+        current.setdefault(
+            "_source_entry_id",
+            overview_curated_memory.source_entry_id(current, source_label, line_number),
+        )
+        current.setdefault("_source_line", line_number)
+        entries.append(current)
+    return entries
+
+
+def build_curated_memory_pack_preview(memory_items=None):
+    source = curated_memory_source_metadata()
+    entries = curated_memory_entries_from_rows(
+        load_memory_registry_items() if memory_items is None else memory_items,
+        source["source_label"],
+    )
+    pack = overview_curated_memory.build_curated_memory_pack(
+        entries,
+        parse_diagnostics={"malformed_lines": []},
+    )
+    pack["source"] = source["source_label"]
+    pack = dict(pack)
+    pack["source_path_label"] = source["source_path_label"]
+    pack["source_exists"] = bool(source.get("source_exists"))
+    pack["source_readable"] = bool(source.get("source_readable"))
+    pack["source_error"] = source.get("source_error", "")
+    pack["artifact"] = {
+        "json_path_label": curated_memory_path_label(CURATED_MEMORY_PACK_PATH),
+        "json_exists": CURATED_MEMORY_PACK_PATH.exists(),
+        "markdown_path_label": curated_memory_path_label(CURATED_MEMORY_SUMMARY_PATH),
+        "markdown_exists": CURATED_MEMORY_SUMMARY_PATH.exists(),
+    }
+    return pack
+
+
+def empty_curated_memory_pack():
+    pack = overview_curated_memory.build_curated_memory_pack_from_text(
+        "",
+        source_label=overview_curated_memory.DEFAULT_SOURCE_LABEL,
+    )
+    pack["source_path_label"] = curated_memory_path_label(REGISTRY_DIR / "memory_entries.jsonl")
+    pack["source_exists"] = False
+    pack["source_readable"] = True
+    pack["source_error"] = ""
+    pack["artifact"] = {
+        "json_path_label": curated_memory_path_label(CURATED_MEMORY_PACK_PATH),
+        "json_exists": False,
+        "markdown_path_label": curated_memory_path_label(CURATED_MEMORY_SUMMARY_PATH),
+        "markdown_exists": False,
+    }
+    return pack
 
 
 def load_asset_stats_snapshot(path=ASSET_STATS_LATEST_PATH):
@@ -8360,6 +8477,7 @@ def build_data(assets, usage_events, reviews, language=None):
         selected_global_rows=context_memory_preview,
         token_usage=personal_memory_token_usage,
     )
+    curated_memory_pack = build_curated_memory_pack_preview(memory_registry["rows"])
     known_project_names = collect_known_project_names(window_overview)
     codex_memory_summary_path_label = render_path(codex_memory_summary_path)
     codex_memory_index_path_label = render_path(codex_memory_index_path)
@@ -8899,6 +9017,7 @@ def build_data(assets, usage_events, reviews, language=None):
         "memory_items": memory_items,
         "memory_registry": memory_registry["rows"],
         "memory_policy_views": memory_policy_views,
+        "curated_memory_pack": curated_memory_pack,
         "personal_memory_token_usage": personal_memory_token_usage,
         "context_memory_preview": context_memory_preview,
         "codex_native_memory": codex_native_memory["rows"],
@@ -11482,6 +11601,7 @@ def make_side_nav():
         ("group", "记忆层", "Memory Layer"),
         ("link", "memory-section", "个人资产记忆", "Personal Asset Memory", "个人资产记忆", "Personal Asset Memory"),
         ("child", "personal-memory-compiler-section", "总览", "Overview", "个人资产记忆-总览", "Personal Asset Memory - Overview"),
+        ("child", "personal-memory-curated-section", "整理后记忆", "Curated", "个人资产记忆-整理后记忆", "Personal Asset Memory - Curated"),
         ("child", "personal-memory-global-section", "通用上下文", "General Context", "个人资产记忆-通用上下文", "Personal Asset Memory - General Context"),
         ("child", "personal-memory-project-section", "项目上下文", "Project Context", "个人资产记忆-项目上下文", "Personal Asset Memory - Project Context"),
         ("child", "personal-memory-local-section", "本地保留", "Local Only", "个人资产记忆-本地保留", "Personal Asset Memory - Local Only"),
@@ -11799,6 +11919,236 @@ def make_memory_context_compiler_body(policy_views):
         meter_percent=meter_percent,
         mode_note=mode_note or panel_language_text_html("当前没有可注入的个人资产记忆。", "No personal asset memory is currently injectable."),
         stats=stats,
+    )
+
+
+CURATED_MEMORY_SECTION_LABELS = {
+    overview_curated_memory.SECTION_USER_PROFILE: ("用户画像", "User Profile"),
+    overview_curated_memory.SECTION_STABLE_PREFERENCES: ("稳定偏好", "Stable Preferences"),
+    overview_curated_memory.SECTION_OPERATING_RULES: ("操作规则", "Operating Rules"),
+    overview_curated_memory.SECTION_PROJECT_PLAYBOOKS: ("项目 Playbooks", "Project Playbooks"),
+    overview_curated_memory.SECTION_TASK_GROUPS: ("任务簇", "Task Groups"),
+    overview_curated_memory.SECTION_LOCAL_VOLATILE: ("本地 / 时效", "Local / Volatile"),
+}
+
+
+def curated_memory_section_label(section):
+    return CURATED_MEMORY_SECTION_LABELS.get(section, (section.replace("_", " "), section.replace("_", " ").title()))
+
+
+def curated_memory_total_items(pack):
+    sections = (pack or {}).get("sections") or {}
+    return sum(len(items or []) for items in sections.values())
+
+
+def make_curated_memory_panel_body(pack):
+    pack = pack or empty_curated_memory_pack()
+    sections = pack.get("sections") or {}
+    diagnostics = pack.get("diagnostics") or {}
+    artifact = pack.get("artifact") or {}
+    total_items = curated_memory_total_items(pack)
+    diagnostic_counts = {
+        "duplicate_clusters": len(diagnostics.get("duplicate_clusters") or []),
+        "timeline_like_entries": len(diagnostics.get("timeline_like_entries") or []),
+        "local_privacy_like_entries": len(diagnostics.get("local_privacy_like_entries") or []),
+        "possible_cross_project_leakage": len(diagnostics.get("possible_cross_project_leakage") or []),
+        "truncation_markers": len(diagnostics.get("truncation_markers") or []),
+        "malformed_lines": len(diagnostics.get("malformed_lines") or []),
+    }
+    quality_signal_count = sum(diagnostic_counts.values())
+
+    def stat_card(label_zh, label_en, value, note_zh, note_en):
+        return """
+          <article class="memory-compiler-stat">
+            <span>{label}</span>
+            <strong>{value}</strong>
+            <small>{note}</small>
+          </article>
+        """.format(
+            label=panel_language_text_html(label_zh, label_en),
+            value=escape(str(value)),
+            note=panel_language_text_html(note_zh, note_en),
+        )
+
+    source_label = pack.get("source_path_label") or pack.get("source") or overview_curated_memory.DEFAULT_SOURCE_LABEL
+    source_line = panel_language_variant_html(
+        "来源：<code>{}</code>".format(escape(source_label)),
+        "Source: <code>{}</code>".format(escape(source_label)),
+    )
+    artifact_label = artifact.get("markdown_path_label") or render_path(CURATED_MEMORY_SUMMARY_PATH)
+    artifact_state_zh = "已生成" if artifact.get("markdown_exists") else "待生成"
+    artifact_state_en = "Generated" if artifact.get("markdown_exists") else "Not generated yet"
+    artifact_line = panel_language_variant_html(
+        "旁路 Markdown：<code>{}</code> · {}".format(escape(artifact_label), escape(artifact_state_zh)),
+        "Sidecar Markdown: <code>{}</code> · {}".format(escape(artifact_label), escape(artifact_state_en)),
+    )
+    error_line = ""
+    if pack.get("source_error"):
+        error_line = '<p class="curated-memory-source-error">{}</p>'.format(
+            panel_language_text_html(
+                "来源读取失败：{}".format(pack.get("source_error")),
+                "Source read failed: {}".format(pack.get("source_error")),
+            )
+        )
+
+    stats = "".join(
+        [
+            stat_card(
+                "输入条目",
+                "Input Entries",
+                safe_int(pack.get("entry_count", 0)),
+                "来自当前记忆登记册的原始行数",
+                "Raw rows from the current memory registry",
+            ),
+            stat_card(
+                "整理后条目",
+                "Curated Items",
+                total_items,
+                "按可复用语义归并后的条目数",
+                "Items after reusable semantic grouping",
+            ),
+            stat_card(
+                "模型调用",
+                "Model Calls",
+                safe_int(pack.get("model_calls", 0)),
+                "当前为确定性旁路编译",
+                "Deterministic sidecar compilation for now",
+            ),
+            stat_card(
+                "质量信号",
+                "Quality Signals",
+                quality_signal_count,
+                "重复、时效、本地隐私、跨项目等提示",
+                "Duplicate, timeline, local/privacy, and cross-project hints",
+            ),
+        ]
+    )
+
+    diagnostic_specs = [
+        ("duplicate_clusters", "重复聚合", "Duplicate Groups", "同义或重复条目已归并", "Merged equivalent or repeated entries"),
+        ("timeline_like_entries", "时效条目", "Timeline-like", "可能不适合长期注入", "May be unsuitable for long-term injection"),
+        ("local_privacy_like_entries", "本地 / 隐私", "Local / Privacy", "需要本地保留或脱敏", "Should stay local or be redacted"),
+        ("possible_cross_project_leakage", "跨项目疑似", "Cross-project Hint", "全局记忆里出现项目强信号", "Project-specific signal in global memory"),
+        ("truncation_markers", "截断文本", "Truncation", "可能需要补全原始表达", "May need a fuller source expression"),
+        ("malformed_lines", "坏行", "Malformed Lines", "JSONL 解析跳过的行", "Skipped JSONL lines"),
+    ]
+    diagnostic_cards = []
+    for key, label_zh, label_en, note_zh, note_en in diagnostic_specs:
+        diagnostic_cards.append(
+            """
+              <article class="curated-memory-diagnostic-card">
+                <div class="memory-card-label">{label}</div>
+                <strong>{value}</strong>
+                <p>{note}</p>
+              </article>
+            """.format(
+                label=panel_language_text_html(label_zh, label_en),
+                value=escape(str(diagnostic_counts.get(key, 0))),
+                note=panel_language_text_html(note_zh, note_en),
+            )
+        )
+
+    section_cards = []
+    for section in overview_curated_memory.SECTION_ORDER:
+        label_zh, label_en = curated_memory_section_label(section)
+        items = sections.get(section) or []
+        preview_items = items[:3]
+        item_rows = []
+        for item in preview_items:
+            project_label = item.get("project_label") or ""
+            tag_html = ""
+            if project_label:
+                tag_html = '<span class="memory-card-tag">{}</span>'.format(escape(project_label))
+            item_rows.append(
+                """
+                  <div class="curated-memory-item">
+                    <div class="curated-memory-item-title">
+                      <span>{title}</span>
+                      {tag_html}
+                    </div>
+                    <p>{note}</p>
+                  </div>
+                """.format(
+                    title=escape(item.get("title") or "Untitled memory"),
+                    tag_html=tag_html,
+                    note=escape(item.get("value_note") or ""),
+                )
+            )
+        if len(items) > len(preview_items):
+            item_rows.append(
+                """
+                  <div class="curated-memory-more">{more}</div>
+                """.format(
+                    more=panel_language_text_html(
+                        "还有 {} 条未展开".format(len(items) - len(preview_items)),
+                        "{} more not expanded".format(len(items) - len(preview_items)),
+                    )
+                )
+            )
+        if not item_rows:
+            item_rows.append(
+                """
+                  <div class="curated-memory-empty">{empty}</div>
+                """.format(
+                    empty=panel_language_text_html("暂无整理条目", "No curated entries yet")
+                )
+            )
+        section_cards.append(
+            """
+              <article class="native-brief-card curated-memory-section-card">
+                <div class="native-brief-topline">
+                  <span>{label}</span>
+                  <span class="native-brief-source-label">{count}</span>
+                </div>
+                <div class="curated-memory-item-list">
+                  {items}
+                </div>
+              </article>
+            """.format(
+                label=panel_language_text_html(label_zh, label_en),
+                count=panel_language_variant_html(
+                    "{} 条".format(escape(str(len(items)))),
+                    "{} items".format(escape(str(len(items)))),
+                ),
+                items="".join(item_rows),
+            )
+        )
+
+    return """
+      <div class="memory-compiler-body curated-memory-body">
+        <div class="memory-compiler-meter curated-memory-meter">
+          <div class="memory-compiler-meter-topline">
+            <span>{meter_label}</span>
+            <b>{meter_value}</b>
+            <em>{meter_status}</em>
+          </div>
+          <p>{source_line}</p>
+          <p>{artifact_line}</p>
+          {error_line}
+        </div>
+        <div class="memory-compiler-grid">
+          {stats}
+        </div>
+        <div class="curated-memory-diagnostic-grid">
+          {diagnostic_cards}
+        </div>
+        <div class="curated-memory-section-grid">
+          {section_cards}
+        </div>
+      </div>
+    """.format(
+        meter_label=panel_language_text_html("旁路整理预览", "Sidecar Curated Preview"),
+        meter_value=panel_language_variant_html(
+            "{} 条".format(escape(str(total_items))),
+            "{} items".format(escape(str(total_items))),
+        ),
+        meter_status=panel_language_text_html("不改变注入", "No Injection Change"),
+        source_line=source_line,
+        artifact_line=artifact_line,
+        error_line=error_line,
+        stats=stats,
+        diagnostic_cards="".join(diagnostic_cards),
+        section_cards="".join(section_cards),
     )
 
 
@@ -15101,6 +15451,7 @@ def build_html(data):
         selected_global_rows=data.get("context_memory_preview", []),
         token_usage=data.get("personal_memory_token_usage", {}),
     )
+    curated_memory_pack = data.get("curated_memory_pack") or empty_curated_memory_pack()
     codex_native_memory = data.get("codex_native_memory") or []
     codex_native_profile_rows = data.get("codex_native_profile_rows") or []
     codex_native_preference_rows = data.get("codex_native_preference_rows") or []
@@ -15426,6 +15777,19 @@ def build_html(data):
             {
                 "label": "怎么算",
                 "body": "先按 scope 和 injection_policy 归一化；通用上下文和高价值项目上下文会进入 bounded summary 候选。",
+            },
+        ],
+    )
+    curated_memory_help = make_help_popover(
+        "整理后记忆",
+        [
+            {
+                "label": "统计什么",
+                "body": "从已归一化的个人记忆登记册生成旁路预览，展示分层结果和质量信号；它不会改变当前 host context 注入。",
+            },
+            {
+                "label": "怎么看",
+                "body": "重点看整理后条目、质量信号和六个分层卡；时效、本地隐私、跨项目疑似和截断提示都应先评估，再考虑进入注入链路。",
             },
         ],
     )
@@ -17174,6 +17538,109 @@ def build_html(data):
       color: var(--muted);
       font-size: 12px;
       line-height: 1.35;
+    }}
+
+    .curated-memory-meter code {{
+      color: var(--ink);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      font-size: 11px;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }}
+
+    .curated-memory-source-error {{
+      color: #a12a2a;
+    }}
+
+    .curated-memory-diagnostic-grid,
+    .curated-memory-section-grid {{
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+    }}
+
+    .curated-memory-section-grid {{
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }}
+
+    .curated-memory-diagnostic-card {{
+      min-width: 0;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: var(--control);
+    }}
+
+    .curated-memory-diagnostic-card strong {{
+      display: block;
+      margin-top: 8px;
+      color: var(--ink);
+      font-size: 24px;
+      font-weight: 820;
+      line-height: 1;
+      font-variant-numeric: tabular-nums;
+    }}
+
+    .curated-memory-diagnostic-card p {{
+      margin: 8px 0 0;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.35;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }}
+
+    .curated-memory-section-card {{
+      align-content: start;
+    }}
+
+    .curated-memory-item-list {{
+      display: grid;
+      gap: 10px;
+      min-width: 0;
+    }}
+
+    .curated-memory-item {{
+      display: grid;
+      gap: 5px;
+      min-width: 0;
+      padding-top: 10px;
+      border-top: 1px solid var(--line);
+    }}
+
+    .curated-memory-item:first-child {{
+      padding-top: 0;
+      border-top: 0;
+    }}
+
+    .curated-memory-item-title {{
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+    }}
+
+    .curated-memory-item-title > span:first-child {{
+      min-width: 0;
+      color: var(--ink);
+      font-size: 14px;
+      font-weight: 760;
+      line-height: 1.35;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }}
+
+    .curated-memory-item p,
+    .curated-memory-more,
+    .curated-memory-empty {{
+      margin: 0;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.5;
+      overflow-wrap: anywhere;
+      word-break: break-word;
     }}
 
     .memory-token-topline {{
@@ -21783,6 +22250,11 @@ def build_html(data):
         grid-template-columns: repeat(2, minmax(0, 1fr));
       }}
 
+      .curated-memory-diagnostic-grid,
+      .curated-memory-section-grid {{
+        grid-template-columns: 1fr;
+      }}
+
       .memory-compiler-meter-topline {{
         grid-template-columns: 1fr;
         gap: 8px;
@@ -22026,6 +22498,11 @@ def build_html(data):
       <section class="panel memory-compiler-panel" id="personal-memory-compiler-section">
         {memory_compiler_header}
         {memory_compiler_body}
+      </section>
+
+      <section class="panel memory-compiler-panel" id="personal-memory-curated-section">
+        {curated_memory_header}
+        {curated_memory_body}
       </section>
 
       <section class="panel" id="personal-memory-global-section">
@@ -27486,6 +27963,12 @@ def build_html(data):
             memory_compiler_help,
         ),
         memory_compiler_body=make_memory_context_compiler_body(memory_policy_views),
+        curated_memory_header=make_panel_header(
+            "整理后记忆",
+            "旁路生成的高质量记忆包预览；当前不改变 Codex / Claude Code 的 host context 注入",
+            curated_memory_help,
+        ),
+        curated_memory_body=make_curated_memory_panel_body(curated_memory_pack),
         global_memory_header=make_panel_header(
             "通用上下文",
             "会进入 host context 的通用个人资产记忆",

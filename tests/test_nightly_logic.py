@@ -272,6 +272,122 @@ class NightlyLogicTests(unittest.TestCase):
 
             self.assertTrue(result["ok"], result["errors"])
 
+    def test_overview_contract_validates_curated_pack_shape_when_present(self):
+        data = {
+            "schema_version": overview_contract.SCHEMA_VERSION,
+            "language": "zh",
+            "generated_at": "2026-05-04 12:00:00",
+            "summary": {"total_assets": 0, "active_assets": 0, "daily_window_count": 0},
+            "metrics": [],
+            "mix": {},
+            "assets": {},
+            "reviews": [],
+            "usage_events": [],
+            "summary_terms": [],
+            "summary_term_views": [],
+            "pipeline_status": {},
+            "token_usage": {"available": False, "daily_rows": [], "today_breakdown": []},
+            "window_overview": {},
+            "window_overview_views": [],
+            "memory_registry": [],
+            "memory_policy_views": {},
+            "nightly_memory_views": {},
+            "codex_native_memory": [],
+            "codex_native_memory_counts": {},
+            "claude_native_memory": [],
+            "claude_native_memory_counts": {},
+            "curated_memory_pack": {
+                "schema_version": 1,
+                "source": "registry/memory_entries.jsonl",
+                "model_calls": 0,
+                "entry_count": 0,
+                "sections": {},
+                "diagnostics": {},
+                "artifact": {},
+            },
+        }
+
+        self.assertEqual(overview_contract.validate_overview_data(data), [])
+
+    def test_curated_memory_preview_builds_without_writing_sidecar(self):
+        with TemporaryDirectory() as tmpdir:
+            state_dir = Path(tmpdir) / "state"
+            registry_dir = state_dir / "registry"
+            host_dir = state_dir / "runtime" / "host-context"
+            registry_dir.mkdir(parents=True)
+            host_dir.mkdir(parents=True)
+            (registry_dir / "memory_entries.jsonl").write_text(
+                json.dumps(
+                    {
+                        "source": "canonical",
+                        "scope": "global",
+                        "injection_policy": "global_context",
+                        "memory_type": "workflow",
+                        "priority": "high",
+                        "title": "文件修改默认优先 apply_patch",
+                        "value_note": "修改文件时先使用 apply_patch。",
+                    },
+                    ensure_ascii=False,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            json_path = registry_dir / "curated_memory_pack.json"
+            markdown_path = host_dir / "curated-personal-memory-summary.md"
+
+            with mock.patch.object(build_overview, "REGISTRY_DIR", registry_dir):
+                with mock.patch.object(build_overview, "CURATED_MEMORY_PACK_PATH", json_path):
+                    with mock.patch.object(build_overview, "CURATED_MEMORY_SUMMARY_PATH", markdown_path):
+                        pack = build_overview.build_curated_memory_pack_preview()
+
+            self.assertEqual(pack["entry_count"], 1)
+            self.assertEqual(pack["model_calls"], 0)
+            self.assertFalse(json_path.exists())
+            self.assertFalse(markdown_path.exists())
+            self.assertIn("registry/memory_entries.jsonl", pack["source"])
+            self.assertNotIn("source_path", pack)
+            self.assertNotIn("json_path", pack["artifact"])
+            self.assertNotIn("markdown_path", pack["artifact"])
+            labels = [
+                pack.get("source_path_label", ""),
+                pack["artifact"].get("json_path_label", ""),
+                pack["artifact"].get("markdown_path_label", ""),
+            ]
+            self.assertEqual(labels[0], "registry/memory_entries.jsonl")
+            self.assertEqual(labels[1], "registry/curated_memory_pack.json")
+            self.assertEqual(labels[2], "runtime/host-context/curated-personal-memory-summary.md")
+            for label in labels:
+                self.assertNotIn(str(state_dir), label)
+                self.assertNotIn("/Users/", label)
+
+    def test_curated_memory_preview_respects_normalized_memory_policy(self):
+        pack = build_overview.build_curated_memory_pack_preview(
+            [
+                {
+                    "source": "canonical",
+                    "bucket": "low_priority",
+                    "scope": "local",
+                    "injection_policy": "local_only",
+                    "memory_type": "preference",
+                    "priority": "low",
+                    "title": "不要把这条放进全局记忆",
+                    "value_note": "用户已标记无用，应只作为本地低优先记录。",
+                    "user_feedback": overview_memory_feedback.FEEDBACK_DOWNVOTED,
+                }
+            ]
+        )
+
+        stable_titles = [
+            item["title"]
+            for item in pack["sections"].get("stable_preferences", [])
+        ]
+        local_titles = [
+            item["title"]
+            for item in pack["sections"].get("local_volatile_notes", [])
+        ]
+        self.assertNotIn("不要把这条放进全局记忆", stable_titles)
+        self.assertIn("不要把这条放进全局记忆", local_titles)
+
     def test_runtime_language_config_persists_and_normalizes(self):
         self.assertEqual(asset_runtime.normalize_language("zh-CN"), "zh")
         self.assertEqual(asset_runtime.normalize_language("english"), "en")
@@ -5260,6 +5376,9 @@ Native Codex profile.
         self.assertIn("window.localStorage", html)
         self.assertNotIn("side-nav-sublabel", html)
         self.assertIn("personal-memory-compiler-section", html)
+        self.assertIn("personal-memory-curated-section", html)
+        self.assertIn("旁路整理预览", html)
+        self.assertIn("不改变注入", html)
         self.assertIn("总览", html)
         self.assertIn("personal-memory-global-section", html)
         self.assertIn("personal-memory-project-section", html)

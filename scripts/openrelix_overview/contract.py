@@ -106,6 +106,26 @@ def validate_overview_data(data):
             type_names = " or ".join(expected_type.__name__ for expected_type in expected_types)
             errors.append("{} must be {}".format(key, type_names))
 
+    if "curated_memory_pack" in data:
+        curated_pack = data.get("curated_memory_pack")
+        if not isinstance(curated_pack, dict):
+            errors.append("curated_memory_pack must be dict")
+        else:
+            curated_type_checks = {
+                "schema_version": int,
+                "source": str,
+                "model_calls": int,
+                "entry_count": int,
+                "sections": dict,
+                "diagnostics": dict,
+                "artifact": dict,
+            }
+            for key, expected_type in curated_type_checks.items():
+                if key not in curated_pack:
+                    errors.append("curated_memory_pack missing key: {}".format(key))
+                elif not isinstance(curated_pack.get(key), expected_type):
+                    errors.append("curated_memory_pack.{} must be {}".format(key, expected_type.__name__))
+
     token_usage = data.get("token_usage")
     if isinstance(token_usage, dict):
         for key in ("available", "daily_rows", "today_breakdown"):
