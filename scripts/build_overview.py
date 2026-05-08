@@ -11312,7 +11312,6 @@ def make_side_nav():
         ("child", "personal-memory-compiler-section", "总览", "Overview", "个人资产记忆-总览", "Personal Asset Memory - Overview"),
         ("child", "personal-memory-global-section", "通用上下文", "General Context", "个人资产记忆-通用上下文", "Personal Asset Memory - General Context"),
         ("child", "personal-memory-project-section", "项目上下文", "Project Context", "个人资产记忆-项目上下文", "Personal Asset Memory - Project Context"),
-        ("child", "personal-memory-on-demand-section", "按需召回", "On-demand Recall", "个人资产记忆-按需召回", "Personal Asset Memory - On-demand Recall"),
         ("child", "personal-memory-local-section", "本地保留", "Local Only", "个人资产记忆-本地保留", "Personal Asset Memory - Local Only"),
         ("link", "codex-native-section", "Codex 原生记忆", "Codex Native Memory", "Codex 原生记忆", "Codex Native Memory"),
         ("link", "claude-native-section", "Claude 原生记忆", "Claude Native Memory", "Claude Code 原生记忆", "Claude Code Native Memory"),
@@ -11487,14 +11486,20 @@ def make_memory_policy_count_widget(policy_views):
         if host_candidates and selected_host != host_candidates
         else str(selected_host)
     )
+    local_retention_value = safe_int(
+        compiler.get(
+            "local_retention_count",
+            safe_int(compiler.get("on_demand_count", 0)) + safe_int(compiler.get("local_count", 0)),
+        )
+    )
     total_html = panel_language_variant_html(
         "共 {} 条".format(escape(str(total_memories))),
         "{} total".format(escape(str(total_memories))),
     )
     items = [
         ("注入", "Injected", host_value),
-        ("通用", "General", safe_int(compiler.get("project_context_count", 0))),
-        ("按需", "On-demand", safe_int(compiler.get("on_demand_count", 0))),
+        ("项目", "Project", safe_int(compiler.get("project_context_count", 0))),
+        ("本地", "Local", local_retention_value),
     ]
     cards = []
     for label_zh, label_en, value in items:
@@ -11533,7 +11538,12 @@ def make_memory_context_compiler_body(policy_views):
     total_count = safe_int(compiler.get("total_count", 0))
     global_context_count = safe_int(compiler.get("global_candidate_count", 0))
     project_count = safe_int(compiler.get("project_context_count", 0))
-    on_demand_count = safe_int(compiler.get("on_demand_count", 0))
+    local_retention_count = safe_int(
+        compiler.get(
+            "local_retention_count",
+            safe_int(compiler.get("on_demand_count", 0)) + safe_int(compiler.get("local_count", 0)),
+        )
+    )
     meter_percent = max(0, min(100, safe_int(compiler.get("meter_percent", 0))))
     value_display = panel_language_variant_html(
         escape(compiler.get("value_display_zh") or ""),
@@ -11585,11 +11595,11 @@ def make_memory_context_compiler_body(policy_views):
                 "Recalled by project, repo, or workspace boundary",
             ),
             stat_card(
-                "按需召回",
-                "On-demand",
-                on_demand_count,
-                "保留索引，需要时再检索",
-                "Indexed and retrieved only when needed",
+                "本地保留",
+                "Local Only",
+                local_retention_count,
+                "不常驻 host context 的本地条目",
+                "Local items that do not stay in host context",
             ),
         ]
     )
@@ -12194,6 +12204,27 @@ def make_policy_memory_card_meta(item):
     )
 
 
+def make_local_retention_memory_card_meta(item):
+    meta_parts_zh = [
+        localized("本地保留", "Local Only", "zh"),
+        context_memory_type_label(item, language="zh"),
+        context_memory_priority_label(item, language="zh"),
+        context_memory_heat_label(item, language="zh"),
+    ]
+    meta_parts_en = [
+        localized("本地保留", "Local Only", "en"),
+        context_memory_type_label(item, language="en"),
+        context_memory_priority_label(item, language="en"),
+        context_memory_heat_label(item, language="en"),
+    ]
+    tags = []
+    for zh_label, en_label in zip(meta_parts_zh, meta_parts_en):
+        tags.append(memory_card_tag_html(zh_label, en_label))
+    return '<div class="memory-card-tag-row">{}</div>'.format(
+        "".join(tag for tag in tags if tag)
+    )
+
+
 def make_memory_type_grouped_cards(items, include_bucket_meta=False, meta_renderer=None):
     if not items:
         return '<p class="empty">暂无。</p>'
@@ -12277,6 +12308,16 @@ def make_policy_memory_cards(items):
         include_bucket_meta=False,
         visible_count=4,
         meta_renderer=make_policy_memory_card_meta,
+        primary_container_class="native-brief-grid memory-grid content-more-grid",
+    )
+
+
+def make_local_retention_memory_cards(items):
+    return make_memory_cards(
+        sort_memory_rows_by_usage(items or []),
+        include_bucket_meta=False,
+        visible_count=4,
+        meta_renderer=make_local_retention_memory_card_meta,
         primary_container_class="native-brief-grid memory-grid content-more-grid",
     )
 
@@ -15157,7 +15198,7 @@ def build_html(data):
         [
             {
                 "label": "统计什么",
-                "body": "把 OpenRelix 独立登记册按注入策略拆分，展示哪些条目会进入 host context，哪些用于按需召回或本地保留。",
+                "body": "把 OpenRelix 独立登记册按上下文去向展示：通用和项目可以进入 host context，其余不常驻上下文的条目统一归入本地保留。",
             },
             {
                 "label": "怎么算",
@@ -15197,29 +15238,16 @@ def build_html(data):
             },
         ],
     )
-    on_demand_memory_help = make_help_popover(
-        "按需召回",
-        [
-            {
-                "label": "统计什么",
-                "body": "领域型或检索型记忆，默认不进入 host context，需要任务命中时再召回。",
-            },
-            {
-                "label": "价值",
-                "body": "把有用但不应常驻上下文的信息留在独立系统里，降低 token 和错误注入风险。",
-            },
-        ],
-    )
     local_memory_help = make_help_popover(
         "本地保留",
         [
             {
                 "label": "统计什么",
-                "body": "低优先、本地私有或明确禁止注入的记忆；只作为资产证据保留。",
+                "body": "不常驻上下文、低优先、本地私有或明确禁止注入的记忆；统一作为本地资产证据保留。",
             },
             {
                 "label": "含义",
-                "body": "这些条目不会进入 Codex 或 Claude Code 的上下文，主要用于审阅、回溯和后续人工提升。",
+                "body": "默认展示热度最高的 4 条，更多内容可以点击展开；这些条目不会常驻 Codex 或 Claude Code 上下文。",
             },
         ],
     )
@@ -21508,13 +21536,6 @@ def build_html(data):
             {project_memory_cards}
           </div>
         </section>
-
-        <section class="panel" id="personal-memory-on-demand-section">
-          {on_demand_memory_header}
-          <div class="memory-group-list">
-            {on_demand_memory_cards}
-          </div>
-        </section>
       </section>
 
       <section class="panel" id="personal-memory-local-section">
@@ -25942,14 +25963,9 @@ def build_html(data):
             "按项目、仓库或工作区隔离，也会参与 bounded host context 注入",
             project_memory_help,
         ),
-        on_demand_memory_header=make_panel_header(
-            "按需召回",
-            "适合检索命中后再使用的领域记忆",
-            on_demand_memory_help,
-        ),
         local_memory_header=make_panel_header(
             "本地保留",
-            "低优先或禁止注入的本地证据",
+            "不常驻上下文、低优先或禁止注入的本地证据",
             local_memory_help,
         ),
         top_assets_header=make_panel_header(
@@ -25985,11 +26001,14 @@ def build_html(data):
         project_memory_cards=make_policy_memory_cards(
             memory_policy_views.get("project_context", {}).get("rows", []),
         ),
-        on_demand_memory_cards=make_policy_memory_type_grouped_cards(
-            memory_policy_views.get("on_demand", {}).get("rows", []),
-        ),
-        local_memory_cards=make_policy_memory_type_grouped_cards(
-            memory_policy_views.get("local_only", {}).get("rows", []),
+        local_memory_cards=make_local_retention_memory_cards(
+            memory_policy_views.get("local_retention", {}).get(
+                "rows",
+                (
+                    memory_policy_views.get("on_demand", {}).get("rows", [])
+                    + memory_policy_views.get("local_only", {}).get("rows", [])
+                ),
+            ),
         ),
         memory_registry_cards=make_memory_cards(memory_registry),
         codex_native_topic_header=make_panel_header(

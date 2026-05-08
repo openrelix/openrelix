@@ -662,6 +662,10 @@ def build_memory_policy_views(memory_rows, selected_global_rows=None, token_usag
         policy_rows[INJECTION_LOCAL_ONLY] + policy_rows[INJECTION_NEVER],
         key=lambda row: str(row.get("user_feedback") or "").strip() == "downvoted",
     )
+    local_retention_rows = sorted(
+        policy_rows[INJECTION_ON_DEMAND] + local_rows,
+        key=lambda row: str(row.get("user_feedback") or "").strip() == "downvoted",
+    )
     token_usage = token_usage or {}
     selected_host_count = len(host_rows)
     if "estimated_context_item_count" in token_usage:
@@ -685,6 +689,7 @@ def build_memory_policy_views(memory_rows, selected_global_rows=None, token_usag
         "project_context_count": policy_counts.get(INJECTION_PROJECT_CONTEXT, 0),
         "on_demand_count": policy_counts.get(INJECTION_ON_DEMAND, 0),
         "local_count": _policy_count(policy_counts, INJECTION_LOCAL_ONLY, INJECTION_NEVER),
+        "local_retention_count": len(local_retention_rows),
         "never_count": policy_counts.get(INJECTION_NEVER, 0),
         "estimated_tokens": token_usage.get("estimated_tokens", 0),
         "max_tokens": token_usage.get("max_tokens", 0),
@@ -730,6 +735,10 @@ def build_memory_policy_views(memory_rows, selected_global_rows=None, token_usag
         "local_only": {
             "rows": local_rows,
             "count": len(local_rows),
+        },
+        "local_retention": {
+            "rows": local_retention_rows,
+            "count": len(local_retention_rows),
         },
         "rows_by_policy": policy_rows,
     }

@@ -4750,6 +4750,58 @@ Keep my own note.
         self.assertNotIn("长期记忆", cards_html)
         self.assertNotIn("Long-term Memory", cards_html)
 
+    def test_local_retention_memory_cards_merge_on_demand_without_type_groups(self):
+        cards_html = build_overview.make_local_retention_memory_cards(
+            [
+                {
+                    "title": "On demand item",
+                    "display_title": "按需条目",
+                    "value_note": "On demand note.",
+                    "display_value_note": "按需摘要。",
+                    "bucket": "session",
+                    "scope": "domain",
+                    "injection_policy": "on_demand",
+                    "memory_type": "semantic",
+                    "priority": "medium",
+                    "usage_frequency_sort_key": 9,
+                },
+                {
+                    "title": "Local item",
+                    "display_title": "本地条目",
+                    "value_note": "Local note.",
+                    "display_value_note": "本地摘要。",
+                    "bucket": "low_priority",
+                    "scope": "local",
+                    "injection_policy": "local_only",
+                    "memory_type": "episodic",
+                    "priority": "low",
+                    "usage_frequency_sort_key": 8,
+                },
+            ]
+            + [
+                {
+                    "title": "Extra retained {}".format(index),
+                    "display_title": "额外保留 {}".format(index),
+                    "value_note": "Extra note.",
+                    "display_value_note": "额外摘要。",
+                    "bucket": "session",
+                    "scope": "local",
+                    "injection_policy": "never",
+                    "memory_type": "task",
+                    "priority": "medium",
+                    "usage_frequency_sort_key": 0.5,
+                }
+                for index in range(3)
+            ]
+        )
+
+        self.assertNotIn('class="memory-type-group"', cards_html)
+        self.assertIn("本地保留", cards_html)
+        self.assertNotIn("按需召回", cards_html)
+        self.assertLess(cards_html.index("按需条目"), cards_html.index("本地条目"))
+        self.assertIn("查看更多 1 条", cards_html)
+        self.assertEqual(cards_html.count("native-brief-grid memory-grid content-more-grid"), 2)
+
     def test_memory_feedback_adjusts_host_context_policy(self):
         base = {
             "memory_key": "feedback-policy-demo",
@@ -5016,7 +5068,7 @@ Keep my own note.
         self.assertIn("总览", html)
         self.assertIn("personal-memory-global-section", html)
         self.assertIn("personal-memory-project-section", html)
-        self.assertIn("personal-memory-on-demand-section", html)
+        self.assertNotIn("personal-memory-on-demand-section", html)
         self.assertIn("personal-memory-local-section", html)
         self.assertIn("codex-native-topic-section", html)
         self.assertNotIn('data-nav-target="codex-native-topic-section"', html)
@@ -5412,7 +5464,7 @@ Keep my own note.
         ]
 
         self.assertIn("{project_memory_header}", memory_stack)
-        self.assertIn("{on_demand_memory_header}", memory_stack)
+        self.assertNotIn("{on_demand_memory_header}", memory_stack)
         self.assertNotIn('class="grid two-up"', memory_stack)
         self.assertIn('class="memory-group-list"', memory_stack)
         self.assertNotIn('class="review-grid memory-grid"', memory_stack)

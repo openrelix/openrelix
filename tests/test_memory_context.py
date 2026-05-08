@@ -186,11 +186,13 @@ class MemoryContextPolicyTests(unittest.TestCase):
         self.assertEqual(views["compiler"]["project_context_count"], 1)
         self.assertEqual(views["compiler"]["on_demand_count"], 1)
         self.assertEqual(views["compiler"]["local_count"], 2)
+        self.assertEqual(views["compiler"]["local_retention_count"], 3)
         self.assertEqual([row["title"] for row in views["global_context"]["rows"]], ["Global"])
         self.assertEqual([row["title"] for row in views["host_context"]["rows"]], ["Global", "Project"])
         self.assertEqual([row["title"] for row in views["project_context"]["rows"]], ["Project"])
         self.assertEqual([row["title"] for row in views["on_demand"]["rows"]], ["Domain"])
         self.assertEqual([row["title"] for row in views["local_only"]["rows"]], ["Local", "Never"])
+        self.assertEqual([row["title"] for row in views["local_retention"]["rows"]], ["Domain", "Local", "Never"])
 
     def test_legacy_global_rows_require_explicit_approval(self):
         row = {
