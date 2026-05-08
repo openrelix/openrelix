@@ -14440,10 +14440,10 @@ def build_html(data):
     project_context_views_zh = data.get("project_context_views_zh") or project_context_views
     project_context_views_en = data.get("project_context_views_en") or project_context_views
     project_context_default_days = data.get("project_context_default_days", PROJECT_CONTEXT_DEFAULT_DAYS)
-    project_context_note = "项目脉络先于窗口明细展示；可切换最近 1-{} 天".format(
+    project_context_note = "项目脉络紧贴窗口明细前展示；可切换最近 1-{} 天".format(
         PROJECT_CONTEXT_MAX_DAYS
     )
-    project_context_note_en = "Context map sits before window details; switch last 1-{} days".format(
+    project_context_note_en = "Context map sits directly before window details; switch last 1-{} days".format(
         PROJECT_CONTEXT_MAX_DAYS
     )
     window_overview_heading, window_overview_note = build_window_overview_heading_note(

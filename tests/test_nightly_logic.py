@@ -5166,8 +5166,6 @@ Keep my own note.
         self.assertLess(main_template.index("{token_metric_cards}"), main_template.index("{daily_token_panel}"))
         self.assertLess(main_template.index("{token_overview_panel}"), main_template.index("{daily_token_panel}"))
         self.assertLess(main_template.index("{daily_token_panel}"), main_template.index("{insight_section_html}"))
-        self.assertLess(main_template.index("{project_context_body}"), main_template.index("{asset_metric_cards}"))
-        self.assertLess(main_template.index("{project_context_body}"), main_template.index("{memory_compiler_header}"))
         self.assertLess(main_template.index("{memory_compiler_header}"), main_template.index("{asset_metric_cards}"))
         for header in (
             "{codex_native_topic_header}",
@@ -5186,7 +5184,12 @@ Keep my own note.
         self.assertLess(main_template.index("{mcp_usage_panel}"), main_template.index("{discovered_assets_section}"))
         self.assertNotIn("{scope_panel}", main_template)
         self.assertNotIn("{domain_panel}", main_template)
+        self.assertLess(main_template.index("{memory_compiler_header}"), main_template.index("{project_context_body}"))
+        self.assertLess(main_template.index("{discovered_assets_section}"), main_template.index("{project_context_body}"))
+        self.assertLess(main_template.index("{reviews_header}"), main_template.index("{project_context_body}"))
         self.assertLess(main_template.index("{usage_rows}"), main_template.index("{window_overview_header}"))
+        self.assertLess(main_template.index("{usage_rows}"), main_template.index("{project_context_body}"))
+        self.assertLess(main_template.index("{project_context_body}"), main_template.index("{window_overview_header}"))
 
     def test_build_html_routes_skill_file_opens_through_finder_endpoint(self):
         source = (ROOT / "scripts" / "build_overview.py").read_text(encoding="utf-8")
@@ -8509,6 +8512,9 @@ Keep my own note.
         self.assertIn('runPythonCli(["recall", ...args.slice(1)])', npm_bin)
         self.assertIn("npx openrelix recall", npm_bin)
         self.assertIn("scripts/openrelix_index.py", package_json["files"])
+        self.assertIn("npx openrelix refresh", npm_bin)
+        self.assertIn("npx openrelix tokens --provider all", npm_bin)
+        self.assertIn("runPythonCli(args)", npm_bin)
         self.assertIn('command === "models"', npm_bin)
         self.assertIn('runPythonCli(["models", ...args.slice(1)])', npm_bin)
         self.assertIn("npx openrelix models", npm_bin)

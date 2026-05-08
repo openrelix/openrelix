@@ -23,11 +23,15 @@ function printHelp() {
   npx openrelix update [--check | --recommended | --force | --print-command]
   npx openrelix uninstall [--delete-local-memory | --keep-local-memory]
   npx openrelix app [--build | --no-open]
+  npx openrelix refresh [--learn-memory | --date <YYYY-MM-DD>]
+  npx openrelix review [--date <YYYY-MM-DD>]
+  npx openrelix tokens [--provider all|codex|cc]
   npx openrelix models [--json | --bundled | --all]
   npx openrelix memory-migration status|ensure|run|complete
   npx openrelix context sync [--cwd <project>]
   npx openrelix index status|rebuild|search-memory|search-window
   npx openrelix recall <query>
+  npx openrelix open panel
   openrelix install [install-options]
   openrelix uninstall [--delete-local-memory | --keep-local-memory]
   openrelix --version
@@ -48,7 +52,10 @@ Examples:
   npx openrelix update --print-command
   npx openrelix update --yes --force
   npx openrelix app
+  npx openrelix refresh
+  npx openrelix refresh --learn-memory --learn-window-days 7
   npx openrelix models
+  npx openrelix tokens --provider all
   npx openrelix memory-migration status
   npx openrelix context sync --cwd "$PWD"
   npx openrelix index status
@@ -283,9 +290,10 @@ function main() {
     return;
   }
 
-  console.error(`Unknown command: ${command}`);
-  printHelp();
-  process.exit(1);
+  // Keep the npm entrypoint thin: installer/update stay here, and the Python
+  // CLI owns all operational subcommands such as refresh, review, tokens, and
+  // asset-stats.
+  runPythonCli(args);
 }
 
 main();
