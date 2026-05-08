@@ -95,8 +95,11 @@ BRAND_DISPLAY_REPLACEMENTS = (
 BRAND_DISPLAY_NAME = overview_redaction.BRAND_DISPLAY_NAME
 LEGACY_BRAND_PHRASES = overview_redaction.LEGACY_BRAND_PHRASES
 PROJECT_CONTEXT_VISIBLE_COUNT = 4
-PROJECT_CONTEXT_DEFAULT_DAYS = 1
-PROJECT_CONTEXT_MAX_DAYS = 7
+PROJECT_CONTEXT_DEFAULT_DAYS = 3
+PROJECT_CONTEXT_MAX_DAYS = 30
+WINDOW_FILTER_DEFAULT_DAYS = 3
+WINDOW_FILTER_MAX_DAYS = 30
+WINDOW_DETAIL_VISIBLE_COUNT = 20
 SUMMARY_TERM_DEFAULT_DAYS = 1
 SUMMARY_TERM_RANGE_DAYS = (1, 7)
 MEMORY_USAGE_WINDOW_DAYS = 7
@@ -7271,6 +7274,7 @@ def build_window_items_from_daily_capture(daily_capture, latest_nightly=None, la
                 "keywords": [normalize_brand_display_text(keyword) for keyword in nightly_item.get("keywords", [])],
                 "latest_activity_at": latest_activity.isoformat() if latest_activity else "",
                 "latest_activity_display": display_short_local_datetime(latest_activity) if latest_activity else localized("时间未知", "Unknown time", language),
+                "started_at": raw_window.get("started_at", ""),
                 "started_at_display": display_short_local_datetime(raw_window.get("started_at", "")) or localized("时间未知", "Unknown time", language),
                 "recent_prompts": make_window_preview_items(
                     prompts,
@@ -7366,6 +7370,7 @@ def build_window_overview(latest_nightly, language=None, target_date=""):
                     "keywords": [normalize_brand_display_text(keyword) for keyword in item.get("keywords", [])],
                     "latest_activity_at": "",
                     "latest_activity_display": localized("时间未知", "Unknown time", language),
+                    "started_at": item.get("started_at", ""),
                     "started_at_display": localized("时间未知", "Unknown time", language),
                     "recent_prompts": [{"time": "", "text": localized("未找到原始问题记录。", "Raw question records were not found.", language)}],
                     "recent_conclusions": [{"time": "", "text": localized("未找到原始结论记录。", "Raw conclusion records were not found.", language)}],
@@ -7425,6 +7430,39 @@ def date_strings_ending_at(anchor_date, days):
         (parsed - timedelta(days=offset)).isoformat()
         for offset in range(max(days, 0))
     ]
+
+
+def date_range_start_for_days(anchor_date, days):
+    dates = date_strings_ending_at(anchor_date, days)
+    return dates[-1] if dates else ""
+
+
+def filter_window_overview_by_date_range(window_overview, start_date="", end_date=""):
+    window_overview = dict(window_overview or {})
+    windows = []
+    for item in window_overview.get("windows", []) or []:
+        item_date = str(item.get("date", "") or "")
+        if start_date and item_date and item_date < start_date:
+            continue
+        if end_date and item_date and item_date > end_date:
+            continue
+        windows.append(dict(item))
+    assign_window_display_indices(windows)
+    source_dates = sorted(
+        {
+            str(item.get("date", "") or "")
+            for item in windows
+            if str(item.get("date", "") or "")
+        },
+        reverse=True,
+    )
+    window_overview["windows"] = windows
+    window_overview["window_count"] = len(windows)
+    window_overview["source_dates"] = source_dates
+    window_overview["source_date_count"] = len(source_dates)
+    window_overview["range_start"] = start_date
+    window_overview["range_end"] = end_date
+    return window_overview
 
 
 def build_context_window_overview_for_days(anchor_date, days, latest_nightly=None, language=None):
@@ -8426,6 +8464,22 @@ def build_data(assets, usage_events, reviews, language=None):
         or (window_anchor_nightly or {}).get("date")
         or current_local_datetime().date().isoformat()
     )
+    window_filter_end_date = project_context_anchor_date
+    window_filter_start_date = date_range_start_for_days(
+        window_filter_end_date,
+        WINDOW_FILTER_DEFAULT_DAYS,
+    )
+    window_filter_overview = build_context_window_overview_for_days(
+        window_filter_end_date,
+        WINDOW_FILTER_MAX_DAYS,
+        latest_nightly=window_anchor_nightly,
+        language=language,
+    )
+    window_filter_default_overview = filter_window_overview_by_date_range(
+        window_filter_overview,
+        window_filter_start_date,
+        window_filter_end_date,
+    )
     project_context_views_zh = build_project_context_views(
         project_context_anchor_date,
         latest_nightly=window_anchor_nightly,
@@ -8437,11 +8491,7 @@ def build_data(assets, usage_events, reviews, language=None):
         language="en",
     )
     project_context_views = project_context_views_en if is_english(language) else project_context_views_zh
-    selected_project_context_view = (
-        project_context_views.get(str(PROJECT_CONTEXT_DEFAULT_DAYS))
-        or next(iter(project_context_views.values()), {})
-    )
-    project_contexts = selected_project_context_view.get("project_contexts", [])
+    project_contexts = build_project_contexts(window_filter_default_overview, language=language)
     asset_type_guide = build_asset_type_guide(enriched_assets)
     summary_term_views = build_summary_term_views(
         enriched_assets,
@@ -8825,6 +8875,13 @@ def build_data(assets, usage_events, reviews, language=None):
         "project_context_views_zh": project_context_views_zh,
         "project_context_views_en": project_context_views_en,
         "project_context_default_days": PROJECT_CONTEXT_DEFAULT_DAYS,
+        "window_filter_start_date": window_filter_start_date,
+        "window_filter_end_date": window_filter_end_date,
+        "window_filter_default_days": WINDOW_FILTER_DEFAULT_DAYS,
+        "window_filter_max_days": WINDOW_FILTER_MAX_DAYS,
+        "window_detail_visible_count": WINDOW_DETAIL_VISIBLE_COUNT,
+        "window_filter_overview": window_filter_overview,
+        "window_filter_default_overview": window_filter_default_overview,
         "window_overview": window_overview,
         "memory_items": memory_items,
         "memory_registry": memory_registry["rows"],
@@ -9923,6 +9980,64 @@ def make_token_filter_panel(token_usage):
     )
 
 
+def make_window_filter_panel(default_start_date, default_end_date):
+    quick_ranges = [
+        (1, "近一天", "Last day"),
+        (3, "近三天", "Last 3 days"),
+        (7, "近一周", "Last week"),
+        (30, "近一个月", "Last month"),
+    ]
+    buttons = []
+    for days, label_zh, label_en in quick_ranges:
+        pressed = str(days == WINDOW_FILTER_DEFAULT_DAYS).lower()
+        active_attr = ' data-active="true"' if days == WINDOW_FILTER_DEFAULT_DAYS else ""
+        buttons.append(
+            """
+          <button class="token-segment-button" type="button" data-window-range-days="{days}" aria-pressed="{pressed}"{active_attr}>
+            {label}
+          </button>
+            """.format(
+                days=escape(str(days), quote=True),
+                pressed=pressed,
+                active_attr=active_attr,
+                label=panel_language_text_html(label_zh, label_en),
+            )
+        )
+    return """
+    <section class="token-filter-panel window-filter-panel" id="window-filter-panel">
+      <div class="token-filter-head">
+        <h2>{title}</h2>
+        <span class="token-filter-summary" id="window-filter-summary"></span>
+      </div>
+      <div class="token-filter-grid window-filter-grid">
+        <div class="token-filter-field window-filter-presets">
+          <span class="token-filter-label">{quick_label}</span>
+          <div class="token-segment-group" role="group" aria-label="{quick_aria}">
+            {buttons}
+          </div>
+        </div>
+        <div class="token-filter-field token-filter-range" data-window-date-field="start">
+          <label class="token-filter-label" for="window-start-date">{start_label}</label>
+          <input id="window-start-date" class="token-date-input" type="date" value="{start_date}">
+        </div>
+        <div class="token-filter-field token-filter-range" data-window-date-field="end">
+          <label class="token-filter-label" for="window-end-date">{end_label}</label>
+          <input id="window-end-date" class="token-date-input" type="date" value="{end_date}">
+        </div>
+      </div>
+    </section>
+    """.format(
+        title=panel_language_text_html("窗口筛选", "Window Filters"),
+        quick_label=panel_language_text_html("快捷范围", "Quick Range"),
+        quick_aria=escape("窗口快捷范围", quote=True),
+        buttons="".join(buttons),
+        start_label=panel_language_text_html("起始日期", "Start Date"),
+        end_label=panel_language_text_html("结束日期", "End Date"),
+        start_date=escape(default_start_date, quote=True),
+        end_date=escape(default_end_date, quote=True),
+    )
+
+
 def wrap_expandable_block(
     primary_html,
     extra_html,
@@ -10649,7 +10764,7 @@ def make_project_context_cards(items, language=None):
     language = current_language(language)
     if not items:
         return '<p class="empty">{}</p>'.format(
-            escape(localized("暂无可归纳的项目上下文。", "No project context available.", language))
+            escape(localized("暂无可归纳的窗口总览。", "No window overview available.", language))
         )
     max_window_count = max([safe_int(item.get("window_count", 0)) for item in items] or [0])
 
@@ -10847,9 +10962,11 @@ def make_project_context_cards(items, language=None):
         primary_cards,
         extra_cards,
         len(items) - visible_count,
-        localized("组上下文", "contexts", language),
+        localized("组窗口总览", "window overviews", language),
         "project-context-list content-more-grid",
-        expanded_label=localized("收起更多上下文", "Collapse more contexts", language),
+        expanded_label=localized("收起更多窗口总览", "Collapse more window overviews", language),
+        item_label_en="window overviews",
+        expanded_label_en="Collapse more window overviews",
     )
 
 
@@ -10890,13 +11007,11 @@ def make_project_context_overview(view, contexts, days, view_meta, language=None
         for value, label in stat_rows
     )
     note = localized(
-        "最近 {} 天共 {} 个窗口、{} 次讨论；项目按讨论数排序，可追溯到窗口明细。".format(
-            days,
+        "当前筛选范围共 {} 个窗口、{} 次讨论；项目按讨论数排序，可追溯到窗口明细。".format(
             window_count,
             discussion_count,
         ),
-        "Last {}: {} and {}; projects sorted by discussion count with links back to window details.".format(
-            plural_en(days, "day"),
+        "Current filter: {} and {}; projects sorted by discussion count with links back to window details.".format(
             plural_en(window_count, "window"),
             plural_en(discussion_count, "discussion"),
         ),
@@ -10915,7 +11030,7 @@ def make_project_context_overview(view, contexts, days, view_meta, language=None
         </div>
       </div>
     """.format(
-        kicker=escape(localized("上下文地图", "Context Map", language)),
+        kicker=escape(localized("窗口地图", "Window Map", language)),
         headline=escape(headline),
         note=escape(note),
         view_meta=escape(view_meta),
@@ -10927,7 +11042,7 @@ def make_project_context_body(project_context_views, default_days=PROJECT_CONTEX
     language = current_language(language)
     if not project_context_views:
         return '<p class="empty">{}</p>'.format(
-            escape(localized("暂无可归纳的项目上下文。", "No project context available.", language))
+            escape(localized("暂无可归纳的窗口总览。", "No window overview available.", language))
         )
 
     ordered_days = sorted(
@@ -10938,85 +11053,55 @@ def make_project_context_body(project_context_views, default_days=PROJECT_CONTEX
     default_days = safe_int(default_days) or PROJECT_CONTEXT_DEFAULT_DAYS
     if str(default_days) not in project_context_views and ordered_days:
         default_days = ordered_days[0]
-
-    controls = "".join(
-        """
-        <button class="context-range-button{active}" type="button" data-context-days="{days}" aria-pressed="{pressed}">
-          {label}
-        </button>
-            """.format(
-                days=escape(str(days)),
-                label=escape(localized("最近 {} 天".format(days), "Last {}".format(plural_en(days, "day")), language)),
-                active=" is-active" if days == default_days else "",
-                pressed="true" if days == default_days else "false",
-            )
-        for days in ordered_days
-    )
-
-    views = []
-    for days in ordered_days:
-        view = project_context_views.get(str(days), {})
-        source_dates = view.get("source_dates", [])
-        source_joiner = ", " if is_english(language) else "、"
-        source_label = source_joiner.join(source_dates[:3])
-        if len(source_dates) > 3:
-            source_label = localized(
-                "{} 等 {} 天".format(source_label, len(source_dates)),
-                "{}, and {}".format(source_label, plural_en(len(source_dates), "source date")),
-                language,
-            )
-        if not source_label:
-            source_label = localized("暂无有窗口日期", "No source dates", language)
-        view_meta = localized(
-            "扫描 {} 天 · 有窗口日期 {} 天 · {} 个窗口 · {}".format(
-                view.get("scanned_date_count", days),
-                view.get("source_date_count", 0),
-                view.get("window_count", 0),
-                source_label,
-            ),
-            "Scanned {} · {} · {} · {}".format(
-                plural_en(view.get("scanned_date_count", days), "day"),
-                plural_en(view.get("source_date_count", 0), "source date"),
-                plural_en(view.get("window_count", 0), "window"),
-                source_label,
-            ),
+    view = project_context_views.get(str(default_days), {})
+    source_dates = view.get("source_dates", [])
+    source_joiner = ", " if is_english(language) else "、"
+    source_label = source_joiner.join(source_dates[:3])
+    if len(source_dates) > 3:
+        source_label = localized(
+            "{} 等 {} 天".format(source_label, len(source_dates)),
+            "{}, and {}".format(source_label, plural_en(len(source_dates), "source date")),
             language,
         )
-        project_contexts = view.get("project_contexts", [])
-        views.append(
-            """
-            <div class="project-context-view{active}" data-context-view="{days}"{hidden}>
-              {overview}
-              <div class="project-context-list">
-                {cards}
-              </div>
-            </div>
-            """.format(
-                active=" is-active" if days == default_days else "",
-                days=escape(str(days)),
-                hidden="" if days == default_days else " hidden",
-                overview=make_project_context_overview(
-                    view,
-                    project_contexts,
-                    days,
-                    view_meta,
-                    language=language,
-                ),
-                cards=make_project_context_cards(project_contexts, language=language),
-            )
-        )
+    if not source_label:
+        source_label = localized("暂无有窗口日期", "No source dates", language)
+    view_meta = localized(
+        "扫描 {} 天 · 有窗口日期 {} 天 · {} 个窗口 · {}".format(
+            view.get("scanned_date_count", default_days),
+            view.get("source_date_count", 0),
+            view.get("window_count", 0),
+            source_label,
+        ),
+        "Scanned {} · {} · {} · {}".format(
+            plural_en(view.get("scanned_date_count", default_days), "day"),
+            plural_en(view.get("source_date_count", 0), "source date"),
+            plural_en(view.get("window_count", 0), "window"),
+            source_label,
+        ),
+        language,
+    )
+    project_contexts = view.get("project_contexts", [])
 
     return """
-      <div class="context-range-control" role="group" aria-label="{aria_label}">
-        {controls}
-      </div>
-      <div class="project-context-views">
-        {views}
+      <div class="project-context-views" id="window-overview-summary">
+        <div class="project-context-view is-active" id="window-overview-context-view">
+          <div id="window-overview-map">
+            {overview}
+          </div>
+          <div class="project-context-list" id="window-overview-context-list">
+            {cards}
+          </div>
+        </div>
       </div>
     """.format(
-        controls=controls,
-        views="".join(views),
-        aria_label=escape(localized("项目上下文时间范围", "Project context date range", language), quote=True),
+        overview=make_project_context_overview(
+            view,
+            project_contexts,
+            default_days,
+            view_meta,
+            language=language,
+        ),
+        cards=make_project_context_cards(project_contexts, language=language),
     )
 
 
@@ -11319,7 +11404,7 @@ def make_side_nav():
         ("link", "asset-overview-section", "总览", "Overview", "资产层总览", "Asset Layer Overview"),
         ("link", "top-assets-section", "skills 热度", "Skill Hotness", "近 30 天高频 skills 热度", "Skill Hotness"),
         ("link", "reviews-section", "复盘记录", "Reviews", "复盘记录", "Reviews"),
-        ("link", "project-context-section", "项目上下文", "Context", "项目上下文", "Context"),
+        ("link", "project-context-section", "窗口总览", "Window Overview", "窗口总览", "Window Overview"),
         ("link", "window-overview-section", "窗口明细", "Windows", "窗口明细", "Windows"),
     ]
     links = []
@@ -13240,16 +13325,6 @@ def make_daily_summary_date_control(summary_views, selected_date, selectable_dat
     )
 
 
-def make_window_overview_date_control(window_views, selected_date):
-    dates = [view.get("date", "") for view in window_views if view.get("date")]
-    return make_date_select_control(
-        "window-overview-date-input",
-        "选择窗口日期",
-        dates,
-        selected_date,
-    )
-
-
 def make_nightly_summary_panel(
     nightly_title,
     nightly_note,
@@ -13486,13 +13561,33 @@ def make_nightly_summary_panel(
     )
 
 
-def make_window_summary_cards(window_overview, language=None):
+def make_window_summary_cards(
+    window_overview,
+    language=None,
+    initial_start_date="",
+    initial_end_date="",
+    initial_visible_count=None,
+):
     language = current_language(language)
     if not window_overview or not window_overview.get("windows"):
         return '<p class="empty">{}</p>'.format(
             escape(localized("暂无窗口整理结果。", "No window synthesis results.", language))
         )
     window_date = window_overview.get("date", "")
+    initial_visible_count = (
+        safe_int(initial_visible_count)
+        if initial_visible_count is not None
+        else None
+    )
+    initial_visible_seen = 0
+
+    def in_initial_range(item):
+        item_date = str(item.get("date", "") or "")
+        if initial_start_date and item_date and item_date < initial_start_date:
+            return False
+        if initial_end_date and item_date and item_date > initial_end_date:
+            return False
+        return True
 
     def render_keyword_chips(keywords):
         if not keywords:
@@ -13976,6 +14071,7 @@ def make_window_summary_cards(window_overview, language=None):
 
     cards = []
     for card_index, item in enumerate(window_overview.get("windows", []), 1):
+        item_window_date = item.get("date", window_date)
         cwd_raw = item.get("cwd", "")
         window_id = item.get("window_id", "")
         ai_host = str(item.get("ai_host") or "codex").strip().lower()
@@ -14070,6 +14166,7 @@ def make_window_summary_cards(window_overview, language=None):
                 or item.get("title", "")
                 or localized("未捕获窗口摘要", "No captured window summary", language)
             )
+        topic_label = infer_context_topic_label(item, language=language)
         resume_id = item.get("resume_id", "") or window_id
         resume_command = item.get("resume_command", "") or window_resume_command(
             ai_host,
@@ -14084,7 +14181,7 @@ def make_window_summary_cards(window_overview, language=None):
             review_prompt = build_window_review_prompt(
                 project_label,
                 ai_host_label,
-                window_date,
+                item_window_date,
                 window_id,
                 cwd_raw,
                 cwd_display,
@@ -14112,6 +14209,34 @@ def make_window_summary_cards(window_overview, language=None):
         question_count = safe_int(item.get("question_count", len(summary_pairs)))
         if question_count <= 0:
             question_count = len([pair for pair in summary_pairs if str(pair.get("question", "") or "").strip()])
+        conclusion_count = safe_int(item.get("conclusion_count", 0))
+        item_in_initial_range = in_initial_range(item)
+        initial_visible_seen = initial_visible_seen + 1 if item_in_initial_range else initial_visible_seen
+        hidden_attr = ""
+        if not item_in_initial_range or (
+            initial_visible_count is not None and initial_visible_seen > initial_visible_count
+        ):
+            hidden_attr = " hidden"
+        data_attrs = {
+            "data-window-card": "true",
+            "data-window-date": item_window_date,
+            "data-window-started-at": item.get("started_at", ""),
+            "data-window-started-display": item.get("started_at_display", ""),
+            "data-window-latest-at": item.get("latest_activity_at", ""),
+            "data-window-latest-display": item.get("latest_activity_display", ""),
+            "data-window-project": project_label,
+            "data-window-cwd": cwd_display,
+            "data-window-task": window_summary,
+            "data-window-topic": topic_label,
+            "data-window-anchor": card_dom_id,
+            "data-window-display-label": item.get("display_label", card_index),
+            "data-window-question-count": str(question_count),
+            "data-window-conclusion-count": str(conclusion_count),
+        }
+        data_attr_html = " ".join(
+            '{}="{}"'.format(name, escape(str(value or ""), quote=True))
+            for name, value in data_attrs.items()
+        )
         hide_single_summary_question = (
             summary_status == "summarized"
             and question_count == 1
@@ -14134,7 +14259,7 @@ def make_window_summary_cards(window_overview, language=None):
         summary_mode_panels_html = render_summary_mode_panel(summary_pairs, initial_summary_mode)
         if show_raw_toggle:
             summary_mode_panels_html += render_summary_mode_panel(raw_summary_pairs, "raw")
-        raw_window = load_window_record(window_date, window_id)
+        raw_window = load_window_record(item_window_date, window_id)
         raw_window_html = escape(localized("暂无", "None", language))
         raw_window_link_html = ""
         if raw_window and raw_window.get("_path"):
@@ -14155,7 +14280,7 @@ def make_window_summary_cards(window_overview, language=None):
             )
         cards.append(
             """
-            <details class="window-card" id="{anchor_id}">
+            <details class="window-card" id="{anchor_id}" {data_attrs}{hidden_attr}>
               <summary class="window-card-trigger">
                 <div class="window-card-head">
                   <div class="window-card-copy">
@@ -14182,6 +14307,7 @@ def make_window_summary_cards(window_overview, language=None):
                   {main_takeaway_preview}
                 </div>
                 <div class="window-card-meta">
+                  <span class="window-card-time">{created_at_label} {started_at}</span>
                   <span class="window-card-time">{recent_activity} {latest_activity}</span>
                   {resume_actions}
                   <span class="window-card-action">
@@ -14210,6 +14336,8 @@ def make_window_summary_cards(window_overview, language=None):
             </details>
             """.format(
                 anchor_id=escape(card_dom_id, quote=True),
+                data_attrs=data_attr_html,
+                hidden_attr=hidden_attr,
                 window_summary=escape(window_summary),
                 window_label=escape(localized("原始窗口 ID", "Raw Window ID", language)),
                 window_id_separator=escape(localized("：", ": ", language)),
@@ -14219,10 +14347,11 @@ def make_window_summary_cards(window_overview, language=None):
                 activity_source_label=escape(activity_source_label),
                 cwd_detail_html=cwd_detail_html,
                 summary_status_html=summary_status_html,
-                question_count=escape(str(item.get("question_count", 0))),
-                conclusion_count=escape(str(item.get("conclusion_count", 0))),
+                question_count=escape(str(question_count)),
+                conclusion_count=escape(str(conclusion_count)),
                 questions_label=escape(localized("问题", "Questions", language)),
                 conclusions_label=escape(localized("结论", "Conclusions", language)),
+                created_at_label=escape(localized("窗口创建", "Created", language)),
                 recent_activity=escape(localized("最近活动", "Recent activity", language)),
                 latest_activity=escape(item.get("latest_activity_display", localized("时间未知", "Unknown time", language))),
                 started_at=escape(item.get("started_at_display", localized("时间未知", "Unknown time", language))),
@@ -14832,6 +14961,13 @@ def build_html(data):
 
     token_usage = data["token_usage"]
     window_overview = data.get("window_overview") or {}
+    window_filter_overview = data.get("window_filter_overview") or window_overview
+    window_filter_default_overview = data.get("window_filter_default_overview") or window_filter_overview
+    window_filter_start_date = data.get("window_filter_start_date", "")
+    window_filter_end_date = data.get("window_filter_end_date", "")
+    window_detail_visible_count = safe_int(
+        data.get("window_detail_visible_count", WINDOW_DETAIL_VISIBLE_COUNT)
+    ) or WINDOW_DETAIL_VISIBLE_COUNT
     window_overview_default_date = data.get("window_overview_default_date", "")
     window_overview_views = ensure_window_overview_view(
         data.get("window_overview_views", []),
@@ -14851,6 +14987,11 @@ def build_html(data):
             "backfill": data.get("backfill", {}),
             "window_overviews": window_overview_views,
             "window_overview_default_date": window_overview_default_date,
+            "window_filter_start_date": window_filter_start_date,
+            "window_filter_end_date": window_filter_end_date,
+            "window_filter_default_days": data.get("window_filter_default_days", WINDOW_FILTER_DEFAULT_DAYS),
+            "window_filter_max_days": data.get("window_filter_max_days", WINDOW_FILTER_MAX_DAYS),
+            "window_detail_visible_count": window_detail_visible_count,
             "pipeline_status": data.get("pipeline_status", {}),
         },
         ensure_ascii=False,
@@ -14902,22 +15043,15 @@ def build_html(data):
     project_context_views_zh = data.get("project_context_views_zh") or project_context_views
     project_context_views_en = data.get("project_context_views_en") or project_context_views
     project_context_default_days = data.get("project_context_default_days", PROJECT_CONTEXT_DEFAULT_DAYS)
-    project_context_note = "项目脉络紧贴窗口明细前展示；可切换最近 1-{} 天".format(
-        PROJECT_CONTEXT_MAX_DAYS
-    )
-    project_context_note_en = "Context map sits directly before window details; switch last 1-{} days".format(
-        PROJECT_CONTEXT_MAX_DAYS
-    )
+    project_context_note = "按同一窗口筛选范围聚合；追溯入口会联动到下方窗口明细"
+    project_context_note_en = "Grouped by the same window filters; trace links sync with window details"
     window_overview_heading, window_overview_note = build_window_overview_heading_note(
-        window_overview,
-        nightly_window_title,
+        window_filter_default_overview,
+        localized("窗口明细", "Window Details", language),
         language=language,
     )
     daily_summary_title = localized("今天哪些工作能复用？", "What work can be reused today?", language)
-    window_overview_date_control = make_window_overview_date_control(
-        window_overview_views,
-        window_overview_default_date or (window_overview or {}).get("date", ""),
-    )
+    window_filter_panel = make_window_filter_panel(window_filter_start_date, window_filter_end_date)
     insight_section_html = """
     <section class="grid">
       <section class="panel">
@@ -15152,11 +15286,11 @@ def build_html(data):
         ],
     )
     project_context_help = make_help_popover(
-        "当前项目上下文",
+        "窗口总览",
         [
             {
                 "label": "统计什么",
-                "body": "最近捕获到的窗口，会先按项目 / 上下文聚合，只保留项目数、并行任务数、窗口数、讨论数和最近活动。",
+                "body": "当前窗口筛选范围内捕获到的窗口，会按项目 / 上下文聚合，只保留项目数、并行任务数、窗口数、讨论数和最近活动。",
             },
             {
                 "label": "怎么算",
@@ -15168,7 +15302,7 @@ def build_html(data):
             },
             {
                 "label": "怎么看",
-                "body": "顶部地图看总量；项目行看每个项目下有几条任务在并行；追溯入口会锚到下方窗口明细。",
+                "body": "顶部地图看总量；项目行看每个项目下有几条任务在并行；追溯入口会锚到下方窗口明细，必要时会先展开更多窗口。",
             },
         ],
     )
@@ -15486,7 +15620,7 @@ def build_html(data):
         [
             {
                 "label": "统计什么",
-                "body": "最近一次窗口整理里的窗口级明细。每张卡对应一个窗口，而不是一个资产。",
+                "body": "当前窗口筛选范围内的窗口级明细。每张卡对应一个窗口，而不是一个资产。",
             },
             {
                 "label": "包含什么",
@@ -15495,6 +15629,10 @@ def build_html(data):
                     "通俗标题、问题结论对、关键词。",
                     "已整理窗口可一键切换智能整理与原始信息。",
                 ],
+            },
+            {
+                "label": "排序方式",
+                "body": "按最近活动倒序展示；卡片里同时展示窗口创建时间和最近活动时间。",
             },
             {
                 "label": "当前来源",
@@ -18314,6 +18452,15 @@ def build_html(data):
       align-items: end;
     }}
 
+    .window-filter-panel {{
+      margin-top: 16px;
+      box-shadow: none;
+    }}
+
+    .window-filter-grid {{
+      grid-template-columns: minmax(360px, 1.3fr) repeat(2, minmax(160px, 0.72fr));
+    }}
+
     .token-filter-field {{
       min-width: 0;
       display: grid;
@@ -19808,6 +19955,10 @@ def build_html(data):
       grid-template-columns: 1fr;
     }}
 
+    .window-detail-more-row {{
+      margin-top: 14px;
+    }}
+
     .window-summary-pair-list {{
       display: grid;
       gap: 0;
@@ -20954,7 +21105,8 @@ def build_html(data):
       }}
 
       .token-filter-source,
-      .token-filter-grain {{
+      .token-filter-grain,
+      .window-filter-presets {{
         grid-column: span 2;
       }}
 
@@ -21122,7 +21274,8 @@ def build_html(data):
       }}
 
       .token-filter-source,
-      .token-filter-grain {{
+      .token-filter-grain,
+      .window-filter-presets {{
         grid-column: auto;
       }}
 
@@ -21677,6 +21830,7 @@ def build_html(data):
 
     <section class="panel" id="project-context-section">
       {project_context_header}
+      {window_filter_panel}
       {project_context_body}
     </section>
 
@@ -21685,6 +21839,9 @@ def build_html(data):
         {window_overview_header}
         <div class="window-summary-list" id="window-summary-list">
           {nightly_window_cards}
+        </div>
+        <div class="window-detail-more-row" id="window-detail-more-row" hidden>
+          <button class="content-more-button" type="button" id="window-detail-more-button" aria-expanded="false"></button>
         </div>
       </section>
     </section>
@@ -21734,6 +21891,8 @@ def build_html(data):
       }}
 
       const defaultTokenDateRange = tokenDefaultDateRange(7);
+      const defaultWindowFilterStart = String(snapshot.window_filter_start_date || "");
+      const defaultWindowFilterEnd = String(snapshot.window_filter_end_date || "");
       const state = {{
         tokenUsage: snapshot.token_usage || null,
         tokenRefreshedAt: (snapshot.token_usage && snapshot.token_usage.refreshed_at) || "",
@@ -21746,6 +21905,12 @@ def build_html(data):
           groupBy: (snapshot.token_usage && snapshot.token_usage.group_by) || "day",
         }},
         defaultTokenFilters: null,
+        windowFilters: {{
+          startDate: defaultWindowFilterStart,
+          endDate: defaultWindowFilterEnd,
+        }},
+        defaultWindowFilters: null,
+        windowDetailsExpanded: false,
         selectedNightlyDate: snapshot.daily_summary_default_date || "",
         selectedWindowOverviewDate: snapshot.window_overview_default_date || "",
         pipelineStatus: snapshot.pipeline_status || null,
@@ -21754,13 +21919,22 @@ def build_html(data):
         refreshStatusMessageKey: "",
       }};
       state.defaultTokenFilters = Object.assign({{}}, state.tokenFilters);
+      state.defaultWindowFilters = Object.assign({{}}, state.windowFilters);
       const elements = {{
         snapshotAge: document.getElementById("snapshot-generated-age"),
         nightlyDateInput: document.getElementById("nightly-date-input"),
-        windowOverviewDateInput: document.getElementById("window-overview-date-input"),
         windowOverviewTitle: document.getElementById("window-overview-title"),
         windowOverviewNote: document.getElementById("window-overview-note"),
         windowSummaryList: document.getElementById("window-summary-list"),
+        windowFilterPanel: document.getElementById("window-filter-panel"),
+        windowFilterSummary: document.getElementById("window-filter-summary"),
+        windowStartDateInput: document.getElementById("window-start-date"),
+        windowEndDateInput: document.getElementById("window-end-date"),
+        windowRangeButtons: Array.from(document.querySelectorAll("[data-window-range-days]")),
+        windowDetailMoreRow: document.getElementById("window-detail-more-row"),
+        windowDetailMoreButton: document.getElementById("window-detail-more-button"),
+        windowOverviewMap: document.getElementById("window-overview-map"),
+        windowOverviewContextList: document.getElementById("window-overview-context-list"),
         nightlyBadgeRow: document.getElementById("nightly-badge-row"),
         nightlyLead: document.getElementById("nightly-lead"),
         nightlyDetailList: document.getElementById("nightly-detail-list"),
@@ -22377,21 +22551,6 @@ def build_html(data):
         return /token/i.test(label) ? "nightly-stat-card is-token-metric" : "nightly-stat-card";
       }}
 
-      function findWindowOverview(dateValue) {{
-        const views = Array.isArray(snapshot.window_overviews) ? snapshot.window_overviews : [];
-        return views.find(function (view) {{
-          return view && view.date === dateValue;
-        }}) || null;
-      }}
-
-      function getLocalizedWindowOverviewText(view, key) {{
-        if (!view) {{
-          return "";
-        }}
-        const localizedKey = currentLanguage === "en" ? key + "_en" : key + "_zh";
-        return view[localizedKey] || view[key] || "";
-      }}
-
       function syncDateControlValue(select) {{
         if (!select) {{
           return;
@@ -22414,35 +22573,504 @@ def build_html(data):
         document.querySelectorAll(".nightly-date-input").forEach(syncDateControlValue);
       }}
 
-      function renderWindowOverview(dateValue) {{
-        const view = findWindowOverview(dateValue);
-        state.selectedWindowOverviewDate = dateValue || state.selectedWindowOverviewDate;
-        if (elements.windowOverviewDateInput && elements.windowOverviewDateInput.value !== dateValue) {{
-          elements.windowOverviewDateInput.value = dateValue || "";
+      function parseWindowDateValue(value) {{
+        const text = String(value || "").slice(0, 10);
+        if (!text) {{
+          return null;
         }}
-        syncDateControlValue(elements.windowOverviewDateInput);
-        if (!view) {{
-          if (elements.windowOverviewTitle) {{
-            elements.windowOverviewTitle.textContent = t("当日窗口概览");
+        const parsed = new Date(text + "T00:00:00");
+        return Number.isNaN(parsed.getTime()) ? null : parsed;
+      }}
+
+      function windowFilterDateRange(days, endDateValue) {{
+        const resolvedDays = Math.max(Number(days) || Number(snapshot.window_filter_default_days) || 3, 1);
+        const fallbackEnd = defaultWindowFilterEnd || tokenDateInputValue(new Date());
+        const end = parseWindowDateValue(endDateValue || fallbackEnd) || new Date();
+        end.setHours(0, 0, 0, 0);
+        const start = new Date(end);
+        start.setDate(start.getDate() - resolvedDays + 1);
+        return {{
+          startDate: tokenDateInputValue(start),
+          endDate: tokenDateInputValue(end),
+        }};
+      }}
+
+      function normalizeWindowFilters(nextFilters) {{
+        const source = nextFilters || {{}};
+        let startDate = String(source.startDate || defaultWindowFilterStart || "").slice(0, 10);
+        let endDate = String(source.endDate || defaultWindowFilterEnd || "").slice(0, 10);
+        if (startDate && endDate && startDate > endDate) {{
+          const swap = startDate;
+          startDate = endDate;
+          endDate = swap;
+        }}
+        return {{
+          startDate: startDate,
+          endDate: endDate,
+        }};
+      }}
+
+      function windowCardList() {{
+        return Array.from(document.querySelectorAll('[data-window-card="true"]')).filter(function (card) {{
+          return card && card.classList && card.classList.contains("window-card");
+        }});
+      }}
+
+      function windowCardDate(card) {{
+        return String((card && card.getAttribute("data-window-date")) || "").slice(0, 10);
+      }}
+
+      function windowCardMatchesFilter(card, filters) {{
+        const dateValue = windowCardDate(card);
+        const activeFilters = normalizeWindowFilters(filters || state.windowFilters);
+        if (!dateValue) {{
+          return !activeFilters.startDate && !activeFilters.endDate;
+        }}
+        if (activeFilters.startDate && dateValue < activeFilters.startDate) {{
+          return false;
+        }}
+        if (activeFilters.endDate && dateValue > activeFilters.endDate) {{
+          return false;
+        }}
+        return true;
+      }}
+
+      function windowCardSortValue(card) {{
+        const candidates = [
+          card && card.getAttribute("data-window-latest-at"),
+          card && card.getAttribute("data-window-started-at"),
+          card && card.getAttribute("data-window-date"),
+        ];
+        for (let index = 0; index < candidates.length; index += 1) {{
+          const text = String(candidates[index] || "").trim();
+          if (!text) {{
+            continue;
           }}
-          if (elements.windowOverviewNote) {{
-            elements.windowOverviewNote.textContent = t("该日期暂无窗口整理结果。");
+          const normalized = text.length === 10 ? text + "T00:00:00" : text;
+          const parsed = new Date(normalized);
+          if (!Number.isNaN(parsed.getTime())) {{
+            return parsed.getTime();
           }}
-          if (elements.windowSummaryList) {{
-            elements.windowSummaryList.innerHTML = '<p class="empty">' + escapeHtml(t("暂无窗口整理结果。")) + '</p>';
+        }}
+        return 0;
+      }}
+
+      function readWindowCardMeta(card, fallbackIndex) {{
+        const questionCount = Number(card.getAttribute("data-window-question-count")) || 0;
+        const conclusionCount = Number(card.getAttribute("data-window-conclusion-count")) || 0;
+        const task = String(card.getAttribute("data-window-task") || "").trim() || localizeValue("未命名任务", "Untitled task");
+        const topic = String(card.getAttribute("data-window-topic") || "").trim() || task;
+        return {{
+          project: String(card.getAttribute("data-window-project") || "").trim() || localizeValue("未知项目", "Unknown Project"),
+          cwd: String(card.getAttribute("data-window-cwd") || "").trim() || localizeValue("暂无工作目录", "No working directory"),
+          task: task,
+          topic: topic,
+          anchor: card.getAttribute("id") || card.getAttribute("data-window-anchor") || "",
+          displayLabel: String(card.getAttribute("data-window-display-label") || fallbackIndex || "").trim(),
+          latestAt: card.getAttribute("data-window-latest-at") || "",
+          latestDisplay: card.getAttribute("data-window-latest-display") || "",
+          questionCount: questionCount,
+          conclusionCount: conclusionCount,
+          discussionCount: questionCount + conclusionCount,
+        }};
+      }}
+
+      function compactWindowLabel(value, limit) {{
+        const text = String(value || "").trim();
+        const resolvedLimit = Math.max(Number(limit) || 24, 8);
+        if (text.length <= resolvedLimit) {{
+          return text;
+        }}
+        return text.slice(0, resolvedLimit - 3) + "...";
+      }}
+
+      function renderDynamicContextStat(value, label, extraClass) {{
+        return (
+          '<div class="context-stat' + (extraClass || "") + '">' +
+            '<strong>' + escapeHtml(String(value || 0)) + '</strong>' +
+            '<span>' + escapeHtml(label || "") + '</span>' +
+          '</div>'
+        );
+      }}
+
+      function renderDynamicContextWindowLinks(topic) {{
+        const windows = (topic.sourceWindows || []).slice().sort(function (left, right) {{
+          return (right.sortValue || 0) - (left.sortValue || 0);
+        }});
+        if (!windows.length) {{
+          return "";
+        }}
+        const links = windows.map(function (sourceWindow, index) {{
+          const anchor = String(sourceWindow.anchor || "");
+          if (!anchor) {{
+            return "";
+          }}
+          const displayLabel = sourceWindow.displayLabel || String(index + 1);
+          const label = localizeValue("窗口 " + displayLabel, "Window " + displayLabel);
+          const title = [sourceWindow.latestDisplay || "", sourceWindow.task || ""].filter(Boolean).join(" · ") || label;
+          return (
+            '<a class="context-window-link" href="#' + escapeHtml(anchor) + '" data-window-target="' + escapeHtml(anchor) + '" title="' + escapeHtml(title) + '">' +
+              escapeHtml(label) +
+            '</a>'
+          );
+        }}).join("");
+        if (!links) {{
+          return "";
+        }}
+        return (
+          '<div class="context-window-links">' +
+            '<span>' + escapeHtml(localizeValue("追溯", "Trace")) + '</span>' +
+            '<div>' + links + '</div>' +
+          '</div>'
+        );
+      }}
+
+      function renderDynamicContextTaskRow(topic) {{
+        const label = compactWindowLabel(topic.label, 26) || localizeValue("未命名任务", "Untitled task");
+        const windowLabel = currentLanguage === "en"
+          ? pluralEn(topic.windowCount, "window")
+          : topic.windowCount + " 窗口";
+        const discussionLabel = currentLanguage === "en"
+          ? pluralEn(topic.discussionCount, "discussion")
+          : topic.discussionCount + " 讨论";
+        return (
+          '<div class="context-task-row">' +
+            '<div class="context-task-main">' +
+              '<span class="context-task-name">' + escapeHtml(label) + '</span>' +
+              '<span class="context-task-count">' + escapeHtml(windowLabel) + '</span>' +
+              '<span class="context-task-count is-muted">' + escapeHtml(discussionLabel) + '</span>' +
+            '</div>' +
+            renderDynamicContextWindowLinks(topic) +
+          '</div>'
+        );
+      }}
+
+      function buildWindowOverviewGroups(cards) {{
+        const projectsByKey = new Map();
+        cards.forEach(function (card, index) {{
+          const meta = readWindowCardMeta(card, index + 1);
+          const projectKey = meta.project + "\\u0000" + meta.cwd;
+          if (!projectsByKey.has(projectKey)) {{
+            projectsByKey.set(projectKey, {{
+              label: meta.project,
+              cwd: meta.cwd,
+              windowCount: 0,
+              questionCount: 0,
+              conclusionCount: 0,
+              discussionCount: 0,
+              latestAt: "",
+              latestDisplay: "",
+              latestSortValue: 0,
+              topicsByKey: new Map(),
+            }});
+          }}
+          const project = projectsByKey.get(projectKey);
+          const sortValue = windowCardSortValue(card);
+          project.windowCount += 1;
+          project.questionCount += meta.questionCount;
+          project.conclusionCount += meta.conclusionCount;
+          project.discussionCount += meta.discussionCount;
+          if (sortValue >= project.latestSortValue) {{
+            project.latestSortValue = sortValue;
+            project.latestAt = meta.latestAt;
+            project.latestDisplay = meta.latestDisplay;
+          }}
+          const topicKey = meta.topic || meta.task || localizeValue("未命名任务", "Untitled task");
+          if (!project.topicsByKey.has(topicKey)) {{
+            project.topicsByKey.set(topicKey, {{
+              label: topicKey,
+              windowCount: 0,
+              questionCount: 0,
+              conclusionCount: 0,
+              discussionCount: 0,
+              latestSortValue: 0,
+              sourceWindows: [],
+            }});
+          }}
+          const topic = project.topicsByKey.get(topicKey);
+          topic.windowCount += 1;
+          topic.questionCount += meta.questionCount;
+          topic.conclusionCount += meta.conclusionCount;
+          topic.discussionCount += meta.discussionCount;
+          topic.latestSortValue = Math.max(topic.latestSortValue, sortValue);
+          topic.sourceWindows.push({{
+            anchor: meta.anchor,
+            displayLabel: meta.displayLabel,
+            latestDisplay: meta.latestDisplay,
+            task: meta.task,
+            sortValue: sortValue,
+          }});
+        }});
+        return Array.from(projectsByKey.values()).map(function (project) {{
+          project.topics = Array.from(project.topicsByKey.values()).sort(function (left, right) {{
+            return (right.windowCount - left.windowCount) ||
+              (right.discussionCount - left.discussionCount) ||
+              (right.latestSortValue - left.latestSortValue) ||
+              String(left.label || "").localeCompare(String(right.label || ""));
+          }});
+          return project;
+        }}).sort(function (left, right) {{
+          return (right.discussionCount - left.discussionCount) ||
+            (right.windowCount - left.windowCount) ||
+            (right.latestSortValue - left.latestSortValue) ||
+            String(left.label || "").localeCompare(String(right.label || ""));
+        }});
+      }}
+
+      function renderDynamicContextCard(project, index, maxWindowCount) {{
+        const weight = maxWindowCount > 0 && project.windowCount > 0
+          ? Math.max(12, Math.min(100, Math.round((project.windowCount / maxWindowCount) * 100)))
+          : 0;
+        const topicRows = project.topics.length
+          ? project.topics.map(renderDynamicContextTaskRow).join("")
+          : '<span class="context-task-empty">' + escapeHtml(localizeValue("暂无并行任务", "No parallel tasks")) + '</span>';
+        return (
+          '<article class="context-card" style="--context-weight: ' + escapeHtml(String(weight)) + '%;">' +
+            '<div class="context-card-rail" aria-hidden="true"><span></span></div>' +
+            '<div class="context-project-row">' +
+              '<div class="context-card-copy">' +
+                '<div class="context-card-meta">' +
+                  '<span class="context-rank">#' + escapeHtml(String(index)) + '</span>' +
+                  '<span>' + escapeHtml(localizeValue("最近活动", "Recent activity") + " " + (project.latestDisplay || localizeValue("时间未知", "Unknown time"))) + '</span>' +
+                '</div>' +
+                '<h3>' + escapeHtml(project.label || "") + '</h3>' +
+                '<p class="context-card-cwd">' + escapeHtml(project.cwd || localizeValue("暂无工作目录", "No working directory")) + '</p>' +
+              '</div>' +
+              '<div class="context-card-stats">' +
+                renderDynamicContextStat(project.topics.length, localizeValue("并行任务", "Tasks")) +
+                renderDynamicContextStat(project.windowCount, localizeValue("窗口", "Windows")) +
+                renderDynamicContextStat(project.discussionCount, localizeValue("讨论", "Discussions")) +
+                renderDynamicContextStat(project.latestDisplay || localizeValue("未知", "Unknown"), localizeValue("最近", "Latest"), " is-time") +
+              '</div>' +
+            '</div>' +
+            '<div class="context-project-subrow">' +
+              '<div class="context-task-strip">' +
+                '<span>' + escapeHtml(localizeValue("并行任务", "Parallel Tasks")) + '</span>' +
+                '<div class="context-task-list">' + topicRows + '</div>' +
+              '</div>' +
+            '</div>' +
+          '</article>'
+        );
+      }}
+
+      function windowFilterRangeLabel(filters, windowCount) {{
+        const activeFilters = normalizeWindowFilters(filters);
+        const countLabel = currentLanguage === "en"
+          ? pluralEn(windowCount, "window")
+          : windowCount + " 个窗口";
+        if (!activeFilters.startDate && !activeFilters.endDate) {{
+          return localizeValue("全部窗口", "All windows") + " · " + countLabel;
+        }}
+        if (activeFilters.startDate && activeFilters.endDate) {{
+          return activeFilters.startDate + " " + localizeValue("至", "to") + " " + activeFilters.endDate + " · " + countLabel;
+        }}
+        if (activeFilters.startDate) {{
+          return localizeValue("自", "From") + " " + activeFilters.startDate + " · " + countLabel;
+        }}
+        return localizeValue("截至", "Until") + " " + activeFilters.endDate + " · " + countLabel;
+      }}
+
+      function renderWindowOverviewFromCards(cards) {{
+        if (!elements.windowOverviewMap || !elements.windowOverviewContextList) {{
+          return;
+        }}
+        if (!cards.length) {{
+          elements.windowOverviewMap.innerHTML = '<p class="empty">' + escapeHtml(localizeValue("筛选范围内暂无窗口总览。", "No window overview in this range.")) + '</p>';
+          elements.windowOverviewContextList.innerHTML = "";
+          return;
+        }}
+        const projects = buildWindowOverviewGroups(cards);
+        const projectCount = projects.length;
+        const taskCount = projects.reduce(function (total, project) {{
+          return total + project.topics.length;
+        }}, 0);
+        const discussionCount = projects.reduce(function (total, project) {{
+          return total + project.discussionCount;
+        }}, 0);
+        const maxWindowCount = Math.max.apply(null, projects.map(function (project) {{
+          return project.windowCount;
+        }}).concat([0]));
+        const headline = currentLanguage === "en"
+          ? pluralEn(projectCount, "context") + " with " + pluralEn(taskCount, "task") + " in parallel"
+          : projectCount + " 个项目，" + taskCount + " 条任务并行";
+        const note = currentLanguage === "en"
+          ? "Current filter: " + pluralEn(cards.length, "window") + " and " + pluralEn(discussionCount, "discussion") + "; projects sorted by discussion count with links back to window details."
+          : "当前筛选范围共 " + cards.length + " 个窗口、" + discussionCount + " 次讨论；项目按讨论数排序，可追溯到窗口明细。";
+        const meta = localizeValue("窗口筛选", "Window filter") + " · " + windowFilterRangeLabel(state.windowFilters, cards.length);
+        const statsHtml = [
+          [projectCount, localizeValue("项目", "Contexts")],
+          [taskCount, localizeValue("并行任务", "Tasks")],
+          [cards.length, localizeValue("窗口", "Windows")],
+          [discussionCount, localizeValue("讨论", "Discussions")],
+        ].map(function (item) {{
+          return (
+            '<div class="context-map-stat">' +
+              '<strong>' + escapeHtml(String(item[0])) + '</strong>' +
+              '<span>' + escapeHtml(item[1]) + '</span>' +
+            '</div>'
+          );
+        }}).join("");
+        elements.windowOverviewMap.innerHTML = (
+          '<div class="context-map">' +
+            '<div class="context-map-copy">' +
+              '<div class="context-map-kicker">' + escapeHtml(localizeValue("窗口地图", "Window Map")) + '</div>' +
+              '<h3>' + escapeHtml(headline) + '</h3>' +
+              '<p>' + escapeHtml(note) + '</p>' +
+              '<div class="context-map-meta">' + escapeHtml(meta) + '</div>' +
+            '</div>' +
+            '<div class="context-map-signals">' + statsHtml + '</div>' +
+          '</div>'
+        );
+        elements.windowOverviewContextList.innerHTML = projects.map(function (project, index) {{
+          return renderDynamicContextCard(project, index + 1, maxWindowCount);
+        }}).join("");
+      }}
+
+      function syncWindowFilterControls(matchedCount) {{
+        const filters = normalizeWindowFilters(state.windowFilters);
+        if (elements.windowStartDateInput && elements.windowStartDateInput.value !== filters.startDate) {{
+          elements.windowStartDateInput.value = filters.startDate;
+        }}
+        if (elements.windowEndDateInput && elements.windowEndDateInput.value !== filters.endDate) {{
+          elements.windowEndDateInput.value = filters.endDate;
+        }}
+        const start = parseWindowDateValue(filters.startDate);
+        const end = parseWindowDateValue(filters.endDate);
+        const rangeDays = start && end ? Math.round((end.getTime() - start.getTime()) / (24 * 60 * 60 * 1000)) + 1 : 0;
+        elements.windowRangeButtons.forEach(function (button) {{
+          const isActive = rangeDays > 0 && Number(button.getAttribute("data-window-range-days")) === rangeDays;
+          button.classList.toggle("is-active", isActive);
+          button.setAttribute("aria-pressed", isActive ? "true" : "false");
+          if (isActive) {{
+            button.setAttribute("data-active", "true");
+          }} else {{
+            button.removeAttribute("data-active");
+          }}
+        }});
+        if (elements.windowFilterSummary) {{
+          elements.windowFilterSummary.textContent = windowFilterRangeLabel(filters, matchedCount || 0);
+        }}
+      }}
+
+      function syncWindowDetailEmpty(hasMatches) {{
+        if (!elements.windowSummaryList) {{
+          return;
+        }}
+        let emptyNode = document.getElementById("window-detail-empty");
+        if (hasMatches) {{
+          if (emptyNode) {{
+            emptyNode.remove();
           }}
           return;
         }}
+        if (!emptyNode) {{
+          emptyNode = document.createElement("p");
+          emptyNode.className = "empty";
+          emptyNode.id = "window-detail-empty";
+          elements.windowSummaryList.appendChild(emptyNode);
+        }}
+        emptyNode.textContent = localizeValue("筛选范围内暂无窗口明细。", "No window details in this range.");
+      }}
+
+      function applyWindowFilters() {{
+        const allCards = windowCardList();
+        const filters = normalizeWindowFilters(state.windowFilters);
+        state.windowFilters = filters;
+        const sortedCards = allCards.slice().sort(function (left, right) {{
+          return windowCardSortValue(right) - windowCardSortValue(left);
+        }});
+        if (elements.windowSummaryList) {{
+          sortedCards.forEach(function (card) {{
+            elements.windowSummaryList.appendChild(card);
+          }});
+        }}
+        const matchedCards = sortedCards.filter(function (card) {{
+          return windowCardMatchesFilter(card, filters);
+        }});
+        const matchedSet = new Set(matchedCards);
+        const visibleLimit = Math.max(Number(snapshot.window_detail_visible_count) || 20, 1);
+        sortedCards.forEach(function (card) {{
+          if (!matchedSet.has(card)) {{
+            card.hidden = true;
+            return;
+          }}
+          const visibleIndex = matchedCards.indexOf(card);
+          card.hidden = !state.windowDetailsExpanded && visibleIndex >= visibleLimit;
+        }});
+        syncWindowDetailEmpty(matchedCards.length > 0);
         if (elements.windowOverviewTitle) {{
-          elements.windowOverviewTitle.textContent = getLocalizedWindowOverviewText(view, "heading");
+          elements.windowOverviewTitle.textContent = localizeValue("窗口明细", "Window Details") + " · " + matchedCards.length;
         }}
         if (elements.windowOverviewNote) {{
-          elements.windowOverviewNote.textContent = getLocalizedWindowOverviewText(view, "note");
+          elements.windowOverviewNote.textContent = currentLanguage === "en"
+            ? "Filtered to " + windowFilterRangeLabel(filters, matchedCards.length) + ", sorted by recent activity."
+            : "筛选 " + windowFilterRangeLabel(filters, matchedCards.length) + "，按最近活动排序，可点开看详情。";
         }}
-        if (elements.windowSummaryList) {{
-          elements.windowSummaryList.innerHTML = currentLanguage === "en"
-            ? (view.cards_html_en || view.cards_html || "")
-            : (view.cards_html_zh || view.cards_html || "");
+        const hiddenCount = Math.max(matchedCards.length - visibleLimit, 0);
+        if (elements.windowDetailMoreRow && elements.windowDetailMoreButton) {{
+          elements.windowDetailMoreRow.hidden = hiddenCount <= 0;
+          elements.windowDetailMoreButton.setAttribute("aria-expanded", state.windowDetailsExpanded ? "true" : "false");
+          elements.windowDetailMoreButton.textContent = state.windowDetailsExpanded
+            ? localizeValue("收起窗口明细", "Collapse window details")
+            : (currentLanguage === "en"
+              ? "Show " + hiddenCount + " more windows"
+              : "查看更多 " + hiddenCount + " 个窗口");
+        }}
+        syncWindowFilterControls(matchedCards.length);
+        renderWindowOverviewFromCards(matchedCards);
+      }}
+
+      function setWindowFilterState(nextFilters) {{
+        state.windowFilters = normalizeWindowFilters(nextFilters);
+        state.windowDetailsExpanded = false;
+        applyWindowFilters();
+      }}
+
+      function wireWindowFilters() {{
+        if (!elements.windowFilterPanel) {{
+          return;
+        }}
+        const onDateChange = function () {{
+          setWindowFilterState({{
+            startDate: elements.windowStartDateInput ? elements.windowStartDateInput.value : state.windowFilters.startDate,
+            endDate: elements.windowEndDateInput ? elements.windowEndDateInput.value : state.windowFilters.endDate,
+          }});
+        }};
+        [elements.windowStartDateInput, elements.windowEndDateInput].forEach(function (input) {{
+          if (!input) {{
+            return;
+          }}
+          ["change", "input"].forEach(function (eventName) {{
+            input.addEventListener(eventName, onDateChange);
+          }});
+        }});
+        document.querySelectorAll("[data-window-date-field]").forEach(function (field) {{
+          const input = field.querySelector(".token-date-input");
+          if (!input) {{
+            return;
+          }}
+          field.addEventListener("click", function (event) {{
+            if (event.target && event.target.closest && event.target.closest(".token-date-input")) {{
+              return;
+            }}
+            openTokenDatePicker(input);
+          }});
+          input.addEventListener("click", function () {{
+            openTokenDatePicker(input);
+          }});
+        }});
+        elements.windowRangeButtons.forEach(function (button) {{
+          button.addEventListener("click", function () {{
+            const days = Number(button.getAttribute("data-window-range-days")) || Number(snapshot.window_filter_default_days) || 3;
+            const endDate = state.windowFilters.endDate || defaultWindowFilterEnd || tokenDateInputValue(new Date());
+            setWindowFilterState(windowFilterDateRange(days, endDate));
+          }});
+        }});
+        if (elements.windowDetailMoreButton) {{
+          elements.windowDetailMoreButton.addEventListener("click", function () {{
+            state.windowDetailsExpanded = !state.windowDetailsExpanded;
+            applyWindowFilters();
+          }});
         }}
       }}
 
@@ -22692,9 +23320,7 @@ def build_html(data):
         if (state.selectedNightlyDate) {{
           renderNightlySummary(state.selectedNightlyDate);
         }}
-        if (state.selectedWindowOverviewDate) {{
-          renderWindowOverview(state.selectedWindowOverviewDate);
-        }}
+        applyWindowFilters();
         if (state.pipelineStatus) {{
           updatePipelineStatus(state.pipelineStatus);
         }}
@@ -22781,18 +23407,6 @@ def build_html(data):
         ["input", "change"].forEach(function (eventName) {{
           elements.nightlyDateInput.addEventListener(eventName, function () {{
             renderNightlySummary(elements.nightlyDateInput.value || "");
-          }});
-        }});
-      }}
-
-      function wireWindowOverviewDateInput() {{
-        if (!elements.windowOverviewDateInput) {{
-          return;
-        }}
-        ["input", "change"].forEach(function (eventName) {{
-          elements.windowOverviewDateInput.addEventListener(eventName, function () {{
-            renderWindowOverview(elements.windowOverviewDateInput.value || "");
-            translateStaticText();
           }});
         }});
       }}
@@ -23519,8 +24133,28 @@ def build_html(data):
         if (!targetId) {{
           return false;
         }}
-        const target = document.getElementById(targetId);
+        let target = document.getElementById(targetId);
         if (!target || !target.classList || !target.classList.contains("window-card")) {{
+          return false;
+        }}
+        if (target.hidden && !windowCardMatchesFilter(target, state.windowFilters)) {{
+          const targetDate = windowCardDate(target);
+          if (targetDate) {{
+            state.windowFilters = normalizeWindowFilters({{
+              startDate: targetDate,
+              endDate: targetDate,
+            }});
+            state.windowDetailsExpanded = true;
+            applyWindowFilters();
+            target = document.getElementById(targetId);
+          }}
+        }}
+        if (target && target.hidden) {{
+          state.windowDetailsExpanded = true;
+          applyWindowFilters();
+          target = document.getElementById(targetId);
+        }}
+        if (!target || target.hidden) {{
           return false;
         }}
         target.open = true;
@@ -25238,12 +25872,11 @@ def build_html(data):
         );
       }}
       wireContentMoreButtons();
-      wireProjectContextRangeButtons();
+      wireWindowFilters();
       wireProjectContextWindowLinks();
       wireThemeButtons();
       wireLanguageButtons();
       wireNightlyDateInput();
-      wireWindowOverviewDateInput();
       wireBackfillCopyButtons();
       wireFinderOpenActions();
       wireMemoryFeedbackActions();
@@ -25938,25 +26571,19 @@ def build_html(data):
         ),
         pipeline_status_panel=pipeline_status_panel,
         nightly_summary_panel=nightly_summary_panel,
+        window_filter_panel=window_filter_panel,
         project_context_header=make_panel_header(
-            "当前项目上下文",
+            "窗口总览",
             help_html=project_context_help,
             note_content_html=panel_language_text_html(
                 project_context_note,
                 project_context_note_en,
             ),
         ),
-        project_context_body=panel_language_block_html(
-            make_project_context_body(
-                project_context_views_zh,
-                project_context_default_days,
-                language="zh",
-            ),
-            make_project_context_body(
-                project_context_views_en,
-                project_context_default_days,
-                language="en",
-            ),
+        project_context_body=make_project_context_body(
+            project_context_views,
+            project_context_default_days,
+            language=language,
         ),
         personal_asset_memory_family_header=make_memory_family_header(
             "个人资产记忆",
@@ -26021,9 +26648,13 @@ def build_html(data):
             window_overview_help,
             note_id="window-overview-note",
             title_id="window-overview-title",
-            extra_meta_html=window_overview_date_control,
         ),
-        nightly_window_cards=make_window_summary_cards(window_overview),
+        nightly_window_cards=make_window_summary_cards(
+            window_filter_overview,
+            initial_start_date=window_filter_start_date,
+            initial_end_date=window_filter_end_date,
+            initial_visible_count=window_detail_visible_count,
+        ),
         global_memory_cards=make_policy_memory_type_grouped_cards(
             global_context_display_rows,
         ),

@@ -5647,29 +5647,43 @@ Keep my own note.
         self.assertLess(html.index('id="nightly-summary-title"'), html.index('id="nightly-date-input"'))
         self.assertLess(html.index('id="nightly-date-input"'), html.index('id="nightly-lead"'))
 
-    def test_window_overview_date_control_reuses_daily_summary_style(self):
-        html = build_overview.make_window_overview_date_control(
-            [
-                {"date": "2026-04-27"},
-                {"date": "2026-04-26"},
-            ],
-            "2026-04-26",
+    def test_window_filter_panel_reuses_token_filter_style(self):
+        html = build_overview.make_window_filter_panel("2026-05-06", "2026-05-08")
+
+        self.assertIn('id="window-filter-panel"', html)
+        self.assertIn('class="token-filter-panel window-filter-panel"', html)
+        self.assertIn('id="window-filter-summary"', html)
+        self.assertIn('id="window-start-date"', html)
+        self.assertIn('value="2026-05-06"', html)
+        self.assertIn('id="window-end-date"', html)
+        self.assertIn('value="2026-05-08"', html)
+        self.assertIn('data-window-range-days="1"', html)
+        self.assertIn('data-window-range-days="3" aria-pressed="true" data-active="true"', html)
+        self.assertIn('data-window-range-days="7"', html)
+        self.assertIn('data-window-range-days="30"', html)
+        self.assertNotIn('id="window-overview-date-input"', html)
+        self.assertNotIn('class="nightly-date-control"', html)
+
+    def test_filter_window_overview_by_date_range_updates_counts(self):
+        overview = {
+            "windows": [
+                {"date": "2026-05-08", "window_id": "w3"},
+                {"date": "2026-05-07", "window_id": "w2"},
+                {"date": "2026-05-05", "window_id": "w1"},
+            ]
+        }
+
+        filtered = build_overview.filter_window_overview_by_date_range(
+            overview,
+            "2026-05-07",
+            "2026-05-08",
         )
 
-        self.assertIn('class="nightly-date-control"', html)
-        self.assertIn('class="nightly-date-input"', html)
-        self.assertIn('id="window-overview-date-input"', html)
-        self.assertIn('aria-label="选择窗口日期"', html)
-        self.assertIn('class="nightly-date-value" data-date-select-value>2026/04/26</span>', html)
-        self.assertIn('value="2026-04-26" selected>2026/04/26</option>', html)
-
-    def test_window_overview_date_control_keeps_selected_empty_state_clickable(self):
-        html = build_overview.make_window_overview_date_control([], "2026-04-30")
-
-        self.assertIn('id="window-overview-date-input"', html)
-        self.assertIn('data-date-select-value>2026/04/30</span>', html)
-        self.assertIn('value="2026-04-30" selected>2026/04/30</option>', html)
-        self.assertNotIn(" disabled", html)
+        self.assertEqual(filtered["window_count"], 2)
+        self.assertEqual(filtered["source_dates"], ["2026-05-08", "2026-05-07"])
+        self.assertEqual(filtered["source_date_count"], 2)
+        self.assertEqual([item["window_id"] for item in filtered["windows"]], ["w3", "w2"])
+        self.assertEqual([item["display_index"] for item in filtered["windows"]], [2, 1])
 
     def test_window_cards_show_activity_source_instead_of_repeating_workspace(self):
         thread_id = "019dcefe-37f1-7a83-a8a6-720bd6b79d7f"
@@ -5721,7 +5735,7 @@ Keep my own note.
         self.assertIn("OpenRelix · Codex · 原始窗口 ID：{}".format(thread_id), html)
         self.assertLess(
             html.index("OpenRelix · Codex · 原始窗口 ID：{}".format(thread_id)),
-            html.index("问题"),
+            html.index('class="window-card-takeaway window-markdown"'),
         )
         self.assertNotIn('class="window-card-title-label"', html)
         self.assertNotIn("OpenRelix · 窗口 1", html)
@@ -5767,10 +5781,55 @@ Keep my own note.
         self.assertIn("大模型已做智能整理", html)
         self.assertIn("原始记录见", html)
         self.assertIn("原始窗口 JSON", html)
+        self.assertIn("窗口创建 刚刚", html)
+        self.assertLess(html.index("窗口创建 刚刚"), html.index("最近活动 刚刚"))
+        self.assertIn('data-window-started-display="刚刚"', html)
+        self.assertIn('data-window-topic=', html)
         self.assertIn('class="window-summary-pair-list"', html)
         self.assertIn('class="window-summary-pair-item"', html)
         self.assertNotIn("会话文件", html)
         self.assertNotIn("会话 JSONL", html)
+
+    def test_window_cards_default_to_twenty_visible_items(self):
+        windows = []
+        for index in range(21):
+            windows.append(
+                {
+                    "date": "2026-05-08",
+                    "window_id": "w{}".format(index),
+                    "cwd": "/tmp/openrelix",
+                    "cwd_display": "openrelix",
+                    "project_label": "OpenRelix",
+                    "activity_source": "history",
+                    "window_summary": "窗口 {}".format(index),
+                    "question_count": 1,
+                    "conclusion_count": 1,
+                    "question_summary": "问题 {}".format(index),
+                    "main_takeaway": "结论 {}".format(index),
+                    "keywords": ["窗口"],
+                    "latest_activity_at": "2026-05-08T10:{:02d}:00+08:00".format(index),
+                    "latest_activity_display": "05-08 10:{:02d}".format(index),
+                    "started_at": "2026-05-08T09:{:02d}:00+08:00".format(index),
+                    "started_at_display": "05-08 09:{:02d}".format(index),
+                    "recent_prompts": [],
+                    "recent_conclusions": [],
+                }
+            )
+
+        html = build_overview.make_window_summary_cards(
+            {"date": "2026-05-08", "windows": windows},
+            initial_start_date="2026-05-08",
+            initial_end_date="2026-05-08",
+            initial_visible_count=20,
+        )
+
+        self.assertEqual(html.count('data-window-card="true"'), 21)
+        visible_start = html.index('id="window-w19"')
+        self.assertNotIn(" hidden>", html[visible_start : visible_start + 800])
+        hidden_start = html.index('id="window-w20"')
+        self.assertIn(" hidden>", html[hidden_start : hidden_start + 800])
+        self.assertIn('data-window-date="2026-05-08"', html)
+        self.assertIn('data-window-display-label="21"', html)
 
     def test_window_cards_show_multiple_summary_pairs(self):
         html = build_overview.make_window_summary_cards(
@@ -10185,7 +10244,33 @@ Keep my own note.
         self.assertNotIn("建议深度回溯", html)
         self.assertNotIn("openrelix backfill --from 2026-05-06 --to 2026-05-06 --stage final", html)
 
-    def test_build_html_wires_window_overview_date_views(self):
+    def test_build_html_wires_window_filter_views(self):
+        window_item = {
+            "date": "2026-04-26",
+            "window_id": "w1",
+            "cwd": "/tmp/openrelix",
+            "cwd_display": "openrelix",
+            "project_label": "OpenRelix",
+            "activity_source": "history",
+            "window_summary": "窗口筛选联动",
+            "question_count": 1,
+            "conclusion_count": 1,
+            "question_summary": "如何联动窗口筛选？",
+            "main_takeaway": "窗口总览和窗口明细共用同一筛选。",
+            "keywords": ["窗口"],
+            "latest_activity_at": "2026-04-26T10:30:00+08:00",
+            "latest_activity_display": "04-26 10:30",
+            "started_at": "2026-04-26T09:00:00+08:00",
+            "started_at_display": "04-26 09:00",
+            "recent_prompts": [],
+            "recent_conclusions": [],
+        }
+        window_filter_overview = {
+            "date": "2026-04-26",
+            "window_count": 1,
+            "source_kind": "daily_capture",
+            "windows": [window_item],
+        }
         html = build_overview.build_html(
             {
                 "generated_at": "2026-04-27 15:00",
@@ -10203,12 +10288,56 @@ Keep my own note.
                 "metrics": [],
                 "mix": {"type": [], "context": [], "month": [], "scope": []},
                 "project_contexts": [],
+                "project_context_default_days": 3,
+                "project_context_views": {
+                    "3": {
+                        "window_count": 1,
+                        "source_dates": ["2026-04-26"],
+                        "source_date_count": 1,
+                        "scanned_date_count": 3,
+                        "project_contexts": [
+                            {
+                                "label": "OpenRelix",
+                                "cwd_preview": "openrelix",
+                                "window_count": 1,
+                                "topic_count": 1,
+                                "question_count": 1,
+                                "conclusion_count": 1,
+                                "latest_activity_display": "04-26 10:30",
+                                "topics": [
+                                    {
+                                        "label": "窗口筛选联动",
+                                        "window_count": 1,
+                                        "question_count": 1,
+                                        "conclusion_count": 1,
+                                        "source_windows": [
+                                            {
+                                                "window_id": "w1",
+                                                "anchor_id": "window-w1",
+                                                "display_label": "1",
+                                                "latest_activity_display": "04-26 10:30",
+                                                "title": "窗口筛选联动",
+                                            }
+                                        ],
+                                    }
+                                ],
+                            }
+                        ],
+                    }
+                },
                 "window_overview": {
                     "date": "2026-04-26",
                     "window_count": 1,
                     "source_kind": "daily_capture",
                     "windows": [],
                 },
+                "window_filter_start_date": "2026-04-24",
+                "window_filter_end_date": "2026-04-26",
+                "window_filter_default_days": 3,
+                "window_filter_max_days": 30,
+                "window_detail_visible_count": 20,
+                "window_filter_overview": window_filter_overview,
+                "window_filter_default_overview": window_filter_overview,
                 "window_overview_views": [
                     {
                         "date": "2026-04-26",
@@ -10252,16 +10381,32 @@ Keep my own note.
             }
         )
 
-        self.assertIn('id="window-overview-date-input"', html)
+        self.assertNotIn('id="window-overview-date-input"', html)
+        self.assertIn('id="window-filter-panel"', html)
+        self.assertIn('id="window-start-date"', html)
+        self.assertIn('value="2026-04-24"', html)
+        self.assertIn('id="window-end-date"', html)
+        self.assertIn('value="2026-04-26"', html)
+        self.assertIn('data-window-range-days="3" aria-pressed="true" data-active="true"', html)
         self.assertIn('id="window-overview-title"', html)
         self.assertIn('id="window-overview-note"', html)
+        self.assertIn('id="window-overview-map"', html)
+        self.assertIn('id="window-overview-context-list"', html)
         self.assertIn('id="window-summary-list"', html)
+        self.assertIn('id="window-detail-more-button"', html)
+        self.assertIn('data-window-card="true"', html)
+        self.assertIn('data-window-date="2026-04-26"', html)
+        self.assertIn('data-window-started-at="2026-04-26T09:00:00+08:00"', html)
+        self.assertIn("窗口创建 04-26 09:00", html)
         self.assertIn('"window_overview_default_date": "2026-04-26"', html)
-        self.assertIn('"cards_html_zh"', html)
-        self.assertIn("旧窗口", html)
-        self.assertIn("function renderWindowOverview(dateValue)", html)
+        self.assertIn('"window_filter_start_date": "2026-04-24"', html)
+        self.assertIn('"window_filter_end_date": "2026-04-26"', html)
+        self.assertIn('"window_detail_visible_count": 20', html)
+        self.assertIn("function applyWindowFilters()", html)
+        self.assertIn("function wireWindowFilters()", html)
+        self.assertIn("wireWindowFilters();", html)
         self.assertIn("function syncDateControlValue(select)", html)
-        self.assertIn("wireWindowOverviewDateInput();", html)
+        self.assertNotIn("wireWindowOverviewDateInput();", html)
         self.assertIn("function wireExternalPanelLinks()", html)
         self.assertIn("openrelixOpenExternal", html)
         self.assertIn("wireExternalPanelLinks();", html)
