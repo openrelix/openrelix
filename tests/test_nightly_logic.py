@@ -1958,6 +1958,18 @@ The user prefers concrete runtime evidence before broad explanations.
         self.assertNotIn("偏好：", preference["display_title"])
         self.assertNotIn("通用 tips：", tip["display_title"])
 
+    def test_global_context_panel_uses_personal_memory_not_codex_native_summary(self):
+        source = (ROOT / "scripts" / "build_overview.py").read_text(encoding="utf-8")
+
+        self.assertIn(
+            'global_context_display_rows = list(memory_policy_views.get("global_context", {}).get("rows", []))',
+            source,
+        )
+        self.assertNotIn(
+            "global_context_display_rows = merge_global_context_display_rows(\n        memory_policy_views.get(\"global_context\", {}).get(\"rows\", []),",
+            source,
+        )
+
     def test_codex_native_display_cache_prompt_uses_entries_contract(self):
         prompt = build_codex_native_display_cache.build_safe_display_prompt(
             build_codex_native_display_cache.build_prompt(
@@ -11008,6 +11020,13 @@ Keep my own note.
         self.assertEqual(len(learning["batch_summaries"]), 2)
         self.assertEqual(sum(batch["window_count"] for batch in learning["batch_summaries"]), 25)
         self.assertEqual(len(learning["window_samples"]), nightly_consolidate.LEARNING_WINDOW_SAMPLE_LIMIT)
+        self.assertIn("window_id", learning["window_samples"][0])
+        self.assertTrue(learning["batch_summaries"][0]["sample_window_ids"])
+        self.assertTrue(learning["context_patterns"][0]["sample_window_ids"])
+        self.assertLessEqual(
+            len(learning["batch_summaries"][0]["sample_window_ids"]),
+            nightly_consolidate.LEARNING_WINDOW_BATCH_ID_LIMIT,
+        )
 
         digest = nightly_consolidate.build_learning_context_digest(
             {"recent_window_learning": learning},
@@ -11587,6 +11606,159 @@ Keep my own note.
                 self.assertEqual(
                     summary["selection_decision"]["compact_payload_source"],
                     "daily_artifact",
+                )
+        finally:
+            nightly_consolidate.RAW_DIR = old_raw_dir
+            nightly_consolidate.CONSOLIDATED_DIR = old_consolidated_dir
+            nightly_consolidate.REGISTRY_DIR = old_registry_dir
+            nightly_consolidate.RUNTIME_DIR = old_runtime_dir
+            nightly_consolidate.LANGUAGE = old_language
+            nightly_consolidate.MEMORY_MODE = old_memory_mode
+            nightly_consolidate.PERSONAL_MEMORY_ENABLED = old_personal_memory_enabled
+            nightly_consolidate.MODEL_CLI = old_model_cli
+
+    def test_final_consolidate_stores_historical_global_context_memories(self):
+        old_raw_dir = nightly_consolidate.RAW_DIR
+        old_consolidated_dir = nightly_consolidate.CONSOLIDATED_DIR
+        old_registry_dir = nightly_consolidate.REGISTRY_DIR
+        old_runtime_dir = nightly_consolidate.RUNTIME_DIR
+        old_language = nightly_consolidate.LANGUAGE
+        old_memory_mode = nightly_consolidate.MEMORY_MODE
+        old_personal_memory_enabled = nightly_consolidate.PERSONAL_MEMORY_ENABLED
+        old_model_cli = nightly_consolidate.MODEL_CLI
+        try:
+            nightly_consolidate._RECENT_WINDOW_LEARNING_CACHE.clear()
+            self.addCleanup(nightly_consolidate._RECENT_WINDOW_LEARNING_CACHE.clear)
+            with TemporaryDirectory() as tmpdir:
+                tmp = Path(tmpdir)
+                nightly_consolidate.RAW_DIR = tmp / "raw"
+                nightly_consolidate.CONSOLIDATED_DIR = tmp / "consolidated" / "daily"
+                nightly_consolidate.REGISTRY_DIR = tmp / "registry"
+                nightly_consolidate.RUNTIME_DIR = tmp / "runtime"
+                nightly_consolidate.LANGUAGE = "zh"
+                nightly_consolidate.MEMORY_MODE = "integrated"
+                nightly_consolidate.PERSONAL_MEMORY_ENABLED = True
+                nightly_consolidate.MODEL_CLI = "codex"
+
+                raw_daily_dir = nightly_consolidate.RAW_DIR / "daily"
+                raw_daily_dir.mkdir(parents=True)
+                (raw_daily_dir / "2026-04-27.json").write_text(
+                    json.dumps(
+                        {
+                            "date": "2026-04-27",
+                            "window_count": 2,
+                            "prompt_count": 2,
+                            "conclusion_count": 2,
+                            "windows": [
+                                {
+                                    "window_id": "hist-a",
+                                    "cwd": "/tmp/openrelix",
+                                    "prompt_count": 1,
+                                    "conclusion_count": 1,
+                                    "prompts": [{"text": "需求不清时先讨论契约"}],
+                                    "conclusions": [{"text": "先确认契约和运行证据，再改代码"}],
+                                },
+                                {
+                                    "window_id": "hist-b",
+                                    "cwd": "/tmp/another-repo",
+                                    "prompt_count": 1,
+                                    "conclusion_count": 1,
+                                    "prompts": [{"text": "改动前先说明判断依据"}],
+                                    "conclusions": [{"text": "历史窗口显示用户偏好先给证据再执行"}],
+                                },
+                            ],
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+                (raw_daily_dir / "2026-04-28.json").write_text(
+                    json.dumps(
+                        {
+                            "date": "2026-04-28",
+                            "window_count": 0,
+                            "prompt_count": 0,
+                            "conclusion_count": 0,
+                            "windows": [],
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+
+                def fake_run_model(prompt, output_path, language=None, timeout_seconds=None):
+                    self.assertIn("recent_window_learning", prompt)
+                    self.assertIn("global_context_memories", prompt)
+                    self.assertIn("hist-a", prompt)
+                    output_path.write_text(
+                        json.dumps(
+                            {
+                                "date": "2026-04-28",
+                                "day_summary": "当日无新窗口，但已从历史窗口学习通用上下文。",
+                                "window_summaries": [],
+                                "durable_memories": [],
+                                "session_memories": [],
+                                "low_priority_memories": [],
+                                "global_context_memories": [
+                                    {
+                                        "title": "用户习惯：先确认契约再改代码",
+                                        "memory_type": "preference",
+                                        "priority": "high",
+                                        "value_note": "跨多个历史窗口反复出现：需求不清时先确认契约和运行证据，再做代码修改。",
+                                        "source_window_ids": ["hist-a", "hist-b"],
+                                        "keywords": ["用户习惯", "契约确认", "运行证据"],
+                                        "occurrence_count": 2,
+                                        "evidence_contexts": ["OpenRelix", "another repo"],
+                                        "source_dates": ["2026-04-27"],
+                                    }
+                                ],
+                                "keywords": ["通用上下文"],
+                                "next_actions": [],
+                            }
+                        ),
+                        encoding="utf-8",
+                    )
+
+                with mock.patch.object(nightly_consolidate, "ensure_state_layout"), mock.patch.object(
+                    nightly_consolidate,
+                    "run_codex_consolidation",
+                    side_effect=fake_run_model,
+                ), mock.patch.object(
+                    sys,
+                    "argv",
+                    [
+                        "nightly_consolidate.py",
+                        "--date",
+                        "2026-04-28",
+                        "--stage",
+                        "final",
+                        "--learn-window-days",
+                        "1",
+                    ],
+                ):
+                    nightly_consolidate.main()
+
+                summary = json.loads(
+                    (nightly_consolidate.CONSOLIDATED_DIR / "2026-04-28" / "summary.json").read_text(
+                        encoding="utf-8"
+                    )
+                )
+                registry_rows = [
+                    json.loads(line)
+                    for line in (nightly_consolidate.REGISTRY_DIR / "memory_entries.jsonl")
+                    .read_text(encoding="utf-8")
+                    .splitlines()
+                    if line.strip()
+                ]
+
+                self.assertEqual(len(summary["global_context_memories"]), 1)
+                self.assertEqual(summary["global_context_memories"][0]["source_window_ids"], ["hist-a", "hist-b"])
+                self.assertEqual(len(registry_rows), 1)
+                self.assertEqual(registry_rows[0]["scope"], "global")
+                self.assertEqual(registry_rows[0]["injection_policy"], "global_context")
+                self.assertEqual(registry_rows[0]["source_systems"], ["historical_window_learning"])
+                self.assertEqual(registry_rows[0]["source_window_ids"], ["hist-a", "hist-b"])
+                self.assertEqual(
+                    overview_memory_context.host_context_injection_policy_from_record(registry_rows[0]),
+                    "global_context",
                 )
         finally:
             nightly_consolidate.RAW_DIR = old_raw_dir

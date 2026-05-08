@@ -78,11 +78,33 @@ class MemoryContextPolicyTests(unittest.TestCase):
         }
 
         self.assertEqual(memory_context.memory_scope_from_record(row), "global")
+
         self.assertEqual(
             memory_context.host_context_injection_policy_from_record(row),
             "global_context",
         )
         self.assertTrue(memory_context.memory_record_is_global_context(row))
+
+    def test_quality_gated_nightly_global_rows_can_enter_general_context(self):
+        row = {
+            "bucket": "durable",
+            "priority": "high",
+            "source": "nightly_codex",
+            "scope": "global",
+            "injection_policy": "global_context",
+            "storage_quality_score": 7,
+            "storage_quality_reason": "type,priority,strong_signal",
+            "title": "用户习惯：先确认契约再改代码",
+            "value_note": "跨多个历史窗口反复出现：需求不清时先确认契约和运行证据，再做代码修改。",
+            "source_window_ids": ["w-a", "w-b"],
+        }
+
+        self.assertEqual(
+            memory_context.host_context_injection_policy_from_record(row),
+            "global_context",
+        )
+        self.assertTrue(memory_context.memory_record_is_global_context(row))
+        self.assertTrue(memory_context.memory_record_is_host_context_candidate(row))
 
     def test_generated_project_rules_keep_project_context(self):
         row = {

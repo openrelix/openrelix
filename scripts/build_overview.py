@@ -8335,10 +8335,6 @@ def build_data(assets, usage_events, reviews, language=None):
         }
     for item in codex_native_memory["rows"]:
         item.setdefault("source_files", []).append(index_source_file)
-    codex_native_global_context_rows = make_codex_native_global_context_rows(
-        codex_native_memory,
-        language=language,
-    )
     codex_native_memory_comparison_zh = build_codex_native_memory_comparison(
         codex_native_memory["rows"],
         memory_registry["rows"],
@@ -8839,7 +8835,7 @@ def build_data(assets, usage_events, reviews, language=None):
         "codex_native_profile_rows": codex_native_memory.get("profile_rows", []),
         "codex_native_preference_rows": codex_native_memory.get("preference_rows", []),
         "codex_native_tip_rows": codex_native_memory.get("tip_rows", []),
-        "codex_native_global_context_rows": codex_native_global_context_rows,
+        "codex_native_global_context_rows": [],
         "codex_native_task_groups": codex_memory_index_stats.get("task_groups", []),
         "codex_native_memory_counts": codex_native_memory["counts"],
         "codex_native_memory_comparison": codex_native_memory_comparison,
@@ -14839,21 +14835,7 @@ def build_html(data):
     codex_native_preference_rows = data.get("codex_native_preference_rows") or []
     codex_native_tip_rows = data.get("codex_native_tip_rows") or []
     codex_native_task_groups = data.get("codex_native_task_groups") or []
-    codex_native_global_context_rows = data.get("codex_native_global_context_rows")
-    if codex_native_global_context_rows is None:
-        codex_native_global_context_rows = make_codex_native_global_context_rows(
-            {
-                "rows": codex_native_memory,
-                "profile_rows": codex_native_profile_rows,
-                "preference_rows": codex_native_preference_rows,
-                "tip_rows": codex_native_tip_rows,
-            },
-            language=language,
-        )
-    global_context_display_rows = merge_global_context_display_rows(
-        memory_policy_views.get("global_context", {}).get("rows", []),
-        codex_native_global_context_rows,
-    )
+    global_context_display_rows = list(memory_policy_views.get("global_context", {}).get("rows", []))
     codex_native_memory_counts = data.get("codex_native_memory_counts") or {}
     codex_native_memory_comparison = data.get("codex_native_memory_comparison") or {}
     claude_native_memory = data.get("claude_native_memory") or []

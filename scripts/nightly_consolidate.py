@@ -68,6 +68,7 @@ LEARNING_WINDOW_PATTERN_LIMIT = 6
 LEARNING_WINDOW_BATCH_SIZE = 20
 LEARNING_WINDOW_BATCH_KEYWORD_LIMIT = 8
 LEARNING_WINDOW_BATCH_TAKEAWAY_LIMIT = 5
+LEARNING_WINDOW_BATCH_ID_LIMIT = 8
 QUALITY_REPLACE_THRESHOLD = 8
 SPARSE_WINDOW_THRESHOLD = 3
 SPARSE_PROMPT_THRESHOLD = 12
@@ -81,6 +82,7 @@ LIGHTWEIGHT_SUMMARY_VERSION = 8
 MAX_DAILY_DURABLE_MEMORY_ITEMS = 4
 MAX_DAILY_SESSION_MEMORY_ITEMS = 6
 MAX_DAILY_LOW_PRIORITY_MEMORY_ITEMS = 3
+MAX_DAILY_GLOBAL_CONTEXT_ITEMS = 4
 DAILY_MEMORY_STORAGE_LIMITS = {
     "durable": MAX_DAILY_DURABLE_MEMORY_ITEMS,
     "session": MAX_DAILY_SESSION_MEMORY_ITEMS,
@@ -88,7 +90,7 @@ DAILY_MEMORY_STORAGE_LIMITS = {
 }
 LIGHTWEIGHT_WINDOW_KEYWORD_LIMIT = 8
 LIGHTWEIGHT_DAILY_KEYWORD_LIMIT = 16
-RECENT_WINDOW_LEARNING_CACHE_VERSION = 1
+RECENT_WINDOW_LEARNING_CACHE_VERSION = 2
 _COMPACT_PAYLOAD_CACHE = {}
 _RECENT_WINDOW_LEARNING_CACHE = {}
 
@@ -726,12 +728,13 @@ Organization principles:
 6. Write every generated summary, memory title, value_note, keyword, and next action in English. Preserve source identifiers, file paths, code symbols, command names, and user-provided proper nouns exactly.
 7. Do not invent facts. Only organize information from the input prompt and conclusion fields.
 8. source_window_ids must only use window_id values that appear in the input.
-9. learning_context is only for learning granularity, stability judgement, and avoiding regressions. Do not copy facts from learning_context back into today's result unless they also appear in today's input.
+9. learning_context is only for learning granularity, stability judgement, and avoiding regressions. Do not copy facts from learning_context back into today's day_summary, window_summaries, durable_memories, session_memories, or low_priority_memories unless they also appear in today's input.
 10. Prefer fewer, denser memories over many low-value cards. If today's input signal is rich but you produce too few long-term or work memories, first reconsider whether reusable rules, preferences, or debugging paths are being missed.
-11. If learning_context contains recent_window_learning, it represents recent batch summaries and patterns. Use it only to learn which window types deserve durable or session memories; do not import that historical content into today's output.
+11. If learning_context contains recent_window_learning, it represents recent batch summaries and patterns. Use it for two things only: learn which window types deserve durable or session memories, and fill global_context_memories with stable cross-window user habits, general tips, or reusable lessons. Do not import project-specific historical facts into today's daily sections.
 12. recent_window_learning.coverage / batch_summaries represent full historical-window coverage; window_samples are only representative samples, not the complete historical set.
 13. For each window summary, write window_title as a plain-language title under 100 characters. Do not reuse raw window IDs, paths, Markdown, or numbered question labels as the title. Then populate summary_pairs with 1 to many readable question/conclusion pairs. If a window contains multiple distinct questions and conclusions, aggregate related turns but keep each pair one-to-one and ordered from oldest to newest.
 14. If learning_context contains memory_feedback_examples, treat liked examples as the user's preferred memory granularity and downvoted examples as noise patterns to avoid. Do not copy their historical facts unless they also appear in today's input.
+15. global_context_memories is optional. Use it only when recent_window_learning shows a stable cross-context pattern about the user's working style, preferences, general tips, or lessons. Keep these entries repo-agnostic, avoid private raw details, and cite only source_window_ids that appear in recent_window_learning.window_samples, context_patterns.sample_window_ids, or batch_summaries.sample_window_ids. Leave it empty when the evidence is weak.
 
 Input data follows. This is a compact same-day view: each window conservatively clusters near-duplicate or variant prompt / conclusion text before it is shown to you.
 - In prompt_samples / conclusion_samples, a `[merged N similar items]` prefix means the sample represents N similar items.
@@ -759,12 +762,13 @@ Strictly base your output on these clusters. You may learn abstraction granulari
 6. 所有输出都使用中文。
 7. 不要编造信息；仅根据输入里的 prompt 和 conclusion 整理。
 8. source_window_ids 必须只使用输入中出现过的 window_id。
-9. learning_context 只用于学习粒度、稳定性判断和避免回归，不能把其中未在当日输入里出现的事实抄回今天的结果。
+9. learning_context 只用于学习粒度、稳定性判断和避免回归；不能把其中未在当日输入里出现的事实抄回今天的 day_summary、window_summaries、durable_memories、session_memories 或 low_priority_memories。
 10. 宁可少而密，不要多而散。如果当日输入信号已经很丰富，但你给出的长期 / 工作记忆过少，要先反思是否漏掉了可复用规则、偏好或排障路径。
-11. 如果 learning_context 里出现 recent_window_learning，它代表近几天窗口的批次摘要与模式，仅用于学习哪些窗口类型更适合抽象成 durable / session 记忆，不代表这些窗口内容应该直接进入今天的输出。
+11. 如果 learning_context 里出现 recent_window_learning，它代表近几天窗口的批次摘要与模式，只能用于两件事：学习哪些窗口类型更适合抽象成 durable / session 记忆；以及在 global_context_memories 中沉淀稳定、跨窗口的用户习惯、通用 tips 或可复用经验。不要把项目专属的历史事实写进今天的每日输出。
 12. recent_window_learning.coverage / batch_summaries 代表历史窗口的全量覆盖；window_samples 只是少量代表样本，不是历史窗口全集。
 13. 每个 window_summaries 项都要填写 window_title 和 summary_pairs。window_title 要用通俗易懂的话概括窗口主题，最好不超过 100 字；不要直接复用原始窗口 ID、路径、Markdown 或“问题1/问题2”这类编号标签当标题。summary_pairs 要聚合成 1 到多个可读的问题/结论对，同一组问题和结论必须一一对应，并按从旧到新的顺序排列。
 14. 如果 learning_context 里出现 memory_feedback_examples，把“有用”样例当作用户偏好的记忆粒度和风格，把“无用”样例当作噪声模式规避；不能把这些历史事实抄进今天的结果，除非当日输入也明确出现。
+15. global_context_memories 是可选字段。只有当 recent_window_learning 显示出稳定、跨上下文的用户工作方式、偏好、通用 tips 或经验时才填写；这些条目必须尽量仓库无关、避免私有原文细节，并且 source_window_ids 只能引用 recent_window_learning.window_samples、context_patterns.sample_window_ids 或 batch_summaries.sample_window_ids 中出现过的窗口 ID。证据不足就留空。
 
 输入数据如下。注意：这是已经压缩过的当日视图；每个窗口会先把近重复、同类变体的 prompt / conclusion 做保守聚类，再提供给你。
 - prompt_samples / conclusion_samples 里，如果样本带有 `[合并N条同类项]` 前缀，表示这一条代表了 N 条相近内容。
@@ -858,6 +862,13 @@ def summarize_window_learning_batch(batch_id, date_str, samples):
             takeaways.append(takeaway)
         if len(takeaways) >= LEARNING_WINDOW_BATCH_TAKEAWAY_LIMIT:
             break
+    sample_window_ids = []
+    for sample in ranked_samples:
+        window_id = str(sample.get("window_id") or "").strip()
+        if window_id and window_id not in sample_window_ids:
+            sample_window_ids.append(window_id)
+        if len(sample_window_ids) >= LEARNING_WINDOW_BATCH_ID_LIMIT:
+            break
 
     return {
         "batch_id": batch_id,
@@ -874,6 +885,7 @@ def summarize_window_learning_batch(batch_id, date_str, samples):
             for keyword, _ in keyword_counter.most_common(LEARNING_WINDOW_BATCH_KEYWORD_LIMIT)
         ],
         "sample_takeaways": takeaways,
+        "sample_window_ids": sample_window_ids,
     }
 
 
@@ -940,6 +952,7 @@ def recent_window_learning_fingerprint(date_str, lookback_days, language=None):
             "batch_size": LEARNING_WINDOW_BATCH_SIZE,
             "batch_keyword_limit": LEARNING_WINDOW_BATCH_KEYWORD_LIMIT,
             "batch_takeaway_limit": LEARNING_WINDOW_BATCH_TAKEAWAY_LIMIT,
+            "batch_id_limit": LEARNING_WINDOW_BATCH_ID_LIMIT,
         },
         "source_files": source_files,
     }
@@ -1042,9 +1055,16 @@ def is_valid_recent_window_learning(payload, lookback_days=None):
             or batch.get("window_count", 0) > payload.get("batch_size", 0)
         ):
             return False
-        for key in ("contexts", "top_keywords", "sample_takeaways"):
+        for key in ("contexts", "top_keywords", "sample_takeaways", "sample_window_ids"):
             if not isinstance(batch.get(key), list):
                 return False
+        if len(batch.get("sample_window_ids", [])) > min(
+            batch.get("window_count", 0),
+            LEARNING_WINDOW_BATCH_ID_LIMIT,
+        ):
+            return False
+        if not all(isinstance(window_id, str) for window_id in batch.get("sample_window_ids", [])):
+            return False
         batch_window_count += batch.get("window_count", 0)
     if batch_window_count != payload.get("raw_window_count"):
         return False
@@ -1053,7 +1073,7 @@ def is_valid_recent_window_learning(payload, lookback_days=None):
             return False
         if sample.get("date") not in source_date_set:
             return False
-        for key in ("context", "cwd", "question_summary", "main_takeaway"):
+        for key in ("window_id", "context", "cwd", "question_summary", "main_takeaway"):
             if not isinstance(sample.get(key), str):
                 return False
         for key in ("prompt_count", "conclusion_count"):
@@ -1073,9 +1093,16 @@ def is_valid_recent_window_learning(payload, lookback_days=None):
         for key in ("window_count", "prompt_count", "conclusion_count"):
             if not isinstance(pattern.get(key), int) or pattern.get(key) < 0:
                 return False
-        for key in ("top_keywords", "sample_takeaways"):
+        for key in ("top_keywords", "sample_takeaways", "sample_window_ids"):
             if not isinstance(pattern.get(key), list):
                 return False
+        if len(pattern.get("sample_window_ids", [])) > min(
+            pattern.get("window_count", 0),
+            LEARNING_WINDOW_BATCH_ID_LIMIT,
+        ):
+            return False
+        if not all(isinstance(window_id, str) for window_id in pattern.get("sample_window_ids", [])):
+            return False
     return True
 
 
@@ -1161,6 +1188,7 @@ def build_recent_window_learning(date_str, lookback_days, cache_dir=None):
             keywords = summary_item.get("keywords", [])[:6]
             signal_score = raw_window.get("prompt_count", 0) * 2 + raw_window.get("conclusion_count", 0) * 3
             sample = {
+                "window_id": raw_window.get("window_id", ""),
                 "date": candidate_date,
                 "context": context_label,
                 "cwd": raw_window.get("cwd", ""),
@@ -1183,6 +1211,7 @@ def build_recent_window_learning(date_str, lookback_days, cache_dir=None):
                     "dates": [],
                     "keyword_counter": Counter(),
                     "takeaway_samples": [],
+                    "sample_window_ids": [],
                 },
             )
             group["window_count"] += 1
@@ -1194,6 +1223,9 @@ def build_recent_window_learning(date_str, lookback_days, cache_dir=None):
             takeaway = clip_text(main_takeaway, 120)
             if takeaway and takeaway not in group["takeaway_samples"]:
                 group["takeaway_samples"].append(takeaway)
+            window_id = str(raw_window.get("window_id") or "").strip()
+            if window_id and window_id not in group["sample_window_ids"]:
+                group["sample_window_ids"].append(window_id)
 
     batches = build_window_learning_batches(samples)
 
@@ -1226,6 +1258,7 @@ def build_recent_window_learning(date_str, lookback_days, cache_dir=None):
                     if keyword
                 ],
                 "sample_takeaways": group["takeaway_samples"][:2],
+                "sample_window_ids": group["sample_window_ids"][:LEARNING_WINDOW_BATCH_ID_LIMIT],
             }
         )
     patterns.sort(
@@ -1334,10 +1367,12 @@ def is_sparse_memory_summary(summary, raw_payload):
 
 def compute_summary_quality(summary, raw_payload):
     counts = summary_memory_counts(summary)
+    global_context_count = len(summary.get("global_context_memories", []))
     score = (
         counts["durable"] * 28
         + counts["session"] * 16
         + counts["low_priority"] * 6
+        + global_context_count * 24
     )
     score += min(len(summary.get("keywords", [])), 8) * 2
     score += min(len(summary.get("next_actions", [])), 5) * 2
@@ -1357,6 +1392,8 @@ def compute_summary_quality(summary, raw_payload):
         reasons.append("has_session_memories")
     if counts["low_priority"]:
         reasons.append("has_low_priority_memories")
+    if global_context_count:
+        reasons.append("has_global_context_memories")
     if summary.get("keywords"):
         reasons.append("has_keywords")
     if summary.get("next_actions"):
@@ -1696,6 +1733,14 @@ def build_learning_context_digest(learning_context, learn_window_days):
     }
 
 
+def learning_context_has_recent_windows(learning_context):
+    learning = (learning_context or {}).get("recent_window_learning") or {}
+    try:
+        return int(learning.get("raw_window_count") or 0) > 0
+    except (TypeError, ValueError):
+        return False
+
+
 def build_learning_input_fingerprint(
     raw_payload,
     learning_context,
@@ -1871,6 +1916,7 @@ SUMMARY_PAYLOAD_MARKER_KEYS = {
     "durable_memories",
     "session_memories",
     "low_priority_memories",
+    "global_context_memories",
     "keywords",
     "next_actions",
 }
@@ -2550,7 +2596,47 @@ def lightweight_window_keywords(window, context_label, question_summary="", main
     return candidates[:LIGHTWEIGHT_WINDOW_KEYWORD_LIMIT]
 
 
-def normalize_summary(raw_payload, summary, language=None):
+def append_unique_text(values, value, limit=None):
+    text = str(value or "").strip()
+    if not text or text in values:
+        return
+    values.append(text)
+    if limit is not None and len(values) > limit:
+        del values[limit:]
+
+
+def collect_recent_learning_window_ids(learning_context):
+    learning = (learning_context or {}).get("recent_window_learning") or {}
+    ids = []
+    for sample in learning.get("window_samples", []):
+        if isinstance(sample, dict):
+            append_unique_text(ids, sample.get("window_id"))
+    for group_key in ("context_patterns", "batch_summaries"):
+        for item in learning.get(group_key, []):
+            if not isinstance(item, dict):
+                continue
+            for window_id in item.get("sample_window_ids", []):
+                append_unique_text(ids, window_id)
+    return set(ids)
+
+
+def normalize_text_list(value, limit=8):
+    normalized = []
+    if not isinstance(value, (list, tuple, set)):
+        return normalized
+    for item in value:
+        append_unique_text(normalized, item, limit=limit)
+    return normalized[:limit]
+
+
+def positive_int(value, default=0):
+    try:
+        return max(int(value), 0)
+    except (TypeError, ValueError):
+        return default
+
+
+def normalize_summary(raw_payload, summary, language=None, learning_context=None):
     raw_windows = raw_payload["windows"]
     raw_by_id = {window["window_id"]: window for window in raw_windows}
     provided = {
@@ -2597,7 +2683,9 @@ def normalize_summary(raw_payload, summary, language=None):
 
     def normalize_memory_items(items):
         normalized = []
-        for item in items:
+        for item in items or []:
+            if not isinstance(item, dict):
+                continue
             valid_sources = [window_id for window_id in item.get("source_window_ids", []) if window_id in valid_window_ids]
             if not valid_sources:
                 continue
@@ -2613,10 +2701,55 @@ def normalize_summary(raw_payload, summary, language=None):
             )
         return normalized
 
+    valid_recent_learning_ids = collect_recent_learning_window_ids(learning_context)
+
+    def normalize_global_context_memory_items(items):
+        normalized = []
+        if not valid_recent_learning_ids:
+            return normalized
+        for item in items or []:
+            if not isinstance(item, dict):
+                continue
+            valid_sources = [
+                window_id
+                for window_id in normalize_text_list(item.get("source_window_ids", []), limit=12)
+                if window_id in valid_recent_learning_ids
+            ]
+            occurrence_count = positive_int(item.get("occurrence_count")) or len(valid_sources)
+            if len(valid_sources) < 2 and occurrence_count < 2:
+                continue
+            priority = str(item.get("priority") or "medium").strip().lower()
+            if priority not in {"high", "medium"}:
+                priority = "medium"
+            memory_type = str(item.get("memory_type") or "semantic").strip().lower()
+            if memory_type not in {"preference", "procedural", "semantic", "rule", "workflow"}:
+                memory_type = "semantic"
+            title = clip_text(item.get("title", ""), 120)
+            value_note = clip_text(item.get("value_note", ""), 260)
+            if not title and not value_note:
+                continue
+            normalized.append(
+                {
+                    "title": title,
+                    "memory_type": memory_type,
+                    "priority": priority,
+                    "value_note": value_note,
+                    "source_window_ids": valid_sources,
+                    "keywords": normalize_text_list(item.get("keywords", []), limit=8),
+                    "occurrence_count": max(occurrence_count, len(valid_sources), 2),
+                    "evidence_contexts": normalize_text_list(item.get("evidence_contexts", []), limit=6),
+                    "source_dates": normalize_text_list(item.get("source_dates", []), limit=8),
+                }
+            )
+        return normalized
+
     summary["window_summaries"] = normalized_windows
     summary["durable_memories"] = normalize_memory_items(summary.get("durable_memories", []))
     summary["session_memories"] = normalize_memory_items(summary.get("session_memories", []))
     summary["low_priority_memories"] = normalize_memory_items(summary.get("low_priority_memories", []))
+    summary["global_context_memories"] = normalize_global_context_memory_items(
+        summary.get("global_context_memories", [])
+    )
     summary["raw_window_count"] = raw_payload["window_count"]
     summary["review_like_window_count"] = raw_payload.get("review_like_window_count", 0)
     return summary
@@ -2660,6 +2793,7 @@ def build_fallback_summary(raw_payload, language=None, model_error=None, model_e
         "durable_memories": [],
         "session_memories": [],
         "low_priority_memories": [],
+        "global_context_memories": [],
         "keywords": [],
         "next_actions": [],
         "raw_window_count": raw_payload["window_count"],
@@ -2934,6 +3068,7 @@ def build_lightweight_summary(raw_payload, compact_payload, language=None):
         "durable_memories": durable_memories,
         "session_memories": session_memories,
         "low_priority_memories": low_priority_memories,
+        "global_context_memories": [],
         "keywords": top_keywords,
         "next_actions": [
             localized(
@@ -3031,6 +3166,7 @@ def render_markdown(summary, language=None):
                     )
                 )
 
+        extend_memory_section("General Context Memories", summary.get("global_context_memories", []))
         extend_memory_section("Long-term Reusable Memories", summary["durable_memories"])
         extend_memory_section("Work Memories", summary["session_memories"])
         extend_memory_section("Low-priority Memories", summary["low_priority_memories"])
@@ -3107,6 +3243,7 @@ def render_markdown(summary, language=None):
                 )
             )
 
+    extend_memory_section("通用上下文记忆", summary.get("global_context_memories", []))
     extend_memory_section("长期可复用记忆", summary["durable_memories"])
     extend_memory_section("工作记忆", summary["session_memories"])
     extend_memory_section("低优先级记忆", summary["low_priority_memories"])
@@ -3267,12 +3404,54 @@ def upsert_memory_items(date_str, summary):
                 )
             return rows
 
+        def rows_for_global_context(items):
+            rows = []
+            for item in items or []:
+                quality_input = {**item, "bucket": "durable", "scope": "global", "injection_policy": "global_context"}
+                quality = overview_memory_context.memory_storage_quality(quality_input, bucket="durable")
+                if quality["disposition"] != "keep":
+                    continue
+                rows.append(
+                    {
+                        "date": date_str,
+                        "language": summary.get("language", current_language()),
+                        "source": "nightly_codex",
+                        "source_systems": ["historical_window_learning"],
+                        "bucket": "durable",
+                        "scope": "global",
+                        "injection_policy": "global_context",
+                        "global_context_confidence": "high",
+                        "title": item.get("title", ""),
+                        "memory_type": item.get("memory_type", "semantic"),
+                        "priority": item.get("priority", "medium"),
+                        "value_note": item.get("value_note", ""),
+                        "source_window_ids": item.get("source_window_ids", []),
+                        "source_dates": item.get("source_dates", []),
+                        "evidence_contexts": item.get("evidence_contexts", []),
+                        "keywords": item.get("keywords", []),
+                        "occurrence_count": max(
+                            positive_int(item.get("occurrence_count"), default=0),
+                            len(item.get("source_window_ids", []) or []),
+                            2,
+                        ),
+                        "storage_quality_score": quality["score"],
+                        "storage_quality_reason": quality["reason"],
+                        "memory_algorithm_version": PERSONAL_MEMORY_ALGORITHM_VERSION,
+                    }
+                )
+            rows.sort(key=memory_storage_sort_key, reverse=True)
+            return rows[:MAX_DAILY_GLOBAL_CONTEXT_ITEMS]
+
         generated_rows = (
             rows_for("durable", summary["durable_memories"])
             + rows_for("session", summary["session_memories"])
             + rows_for("low_priority", summary["low_priority_memories"])
         )
-        all_rows = existing + select_daily_memory_rows_for_storage(generated_rows)
+        all_rows = (
+            existing
+            + select_daily_memory_rows_for_storage(generated_rows)
+            + rows_for_global_context(summary.get("global_context_memories", []))
+        )
         memory_path.parent.mkdir(parents=True, exist_ok=True)
         if all_rows:
             atomic_write_text(
@@ -3292,6 +3471,7 @@ def apply_memory_mode(summary):
     summary["durable_memories"] = []
     summary["session_memories"] = []
     summary["low_priority_memories"] = []
+    summary["global_context_memories"] = []
     return summary
 
 
@@ -3452,7 +3632,7 @@ def main():
         )
         return
 
-    if raw_payload["window_count"] == 0:
+    if raw_payload["window_count"] == 0 and not learning_context_has_recent_windows(learning_context):
         empty_summary = {
             "date": date_str,
             "language": language,
@@ -3469,6 +3649,7 @@ def main():
             "durable_memories": [],
             "session_memories": [],
             "low_priority_memories": [],
+            "global_context_memories": [],
             "keywords": [],
             "next_actions": [],
             "generated_at": datetime.now().astimezone().isoformat(),
@@ -3524,7 +3705,12 @@ def main():
             timeout_seconds=max(args.model_timeout_seconds, 0),
         )
         candidate_summary = load_json(output_json_path)
-        candidate_summary = normalize_summary(raw_payload, candidate_summary, language=language)
+        candidate_summary = normalize_summary(
+            raw_payload,
+            candidate_summary,
+            language=language,
+            learning_context=learning_context,
+        )
         candidate_summary["model_status"] = "completed"
         candidate_summary["model_cli"] = MODEL_CLI
     except (CodexConsolidationError, subprocess.CalledProcessError) as exc:

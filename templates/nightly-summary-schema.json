@@ -80,6 +80,12 @@
         "$ref": "#/$defs/memoryItem"
       }
     },
+    "global_context_memories": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/memoryItem"
+      }
+    },
     "keywords": {
       "type": "array",
       "items": { "type": "string" }
@@ -105,7 +111,7 @@
         "title": { "type": "string" },
         "memory_type": {
           "type": "string",
-          "enum": ["procedural", "semantic", "episodic", "task"]
+          "enum": ["preference", "procedural", "semantic", "episodic", "task", "rule", "workflow"]
         },
         "priority": {
           "type": "string",
@@ -117,6 +123,17 @@
           "items": { "type": "string" }
         },
         "keywords": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "occurrence_count": {
+          "type": "integer"
+        },
+        "evidence_contexts": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "source_dates": {
           "type": "array",
           "items": { "type": "string" }
         }
