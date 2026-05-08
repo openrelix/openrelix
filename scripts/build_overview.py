@@ -23074,10 +23074,10 @@ def build_html(data):
       function memoryFeedbackStatusMessage(feedback) {{
         const state = String(feedback || "");
         if (state === "liked" || state === "pinned") {{
-          return currentLanguage === "en" ? "Saved. Refreshing in background." : "已保存，后台刷新中";
+          return currentLanguage === "en" ? "Marked useful; moved to the top." : "已标记有用，并置顶展示";
         }}
         if (state === "downvoted") {{
-          return currentLanguage === "en" ? "Saved to local-only. Refreshing in background." : "已保存到本地保留，后台刷新中";
+          return currentLanguage === "en" ? "Removed from this view." : "已从当前视图移除";
         }}
         return currentLanguage === "en" ? "Feedback cleared" : "已取消标记";
       }}
@@ -23103,15 +23103,50 @@ def build_html(data):
         setMemoryFeedbackStatus(row, memoryFeedbackStatusMessage(state));
       }}
 
+      function findMemoryFeedbackTopGrid(card) {{
+        const currentGrid = card ? card.closest(".native-brief-grid") : null;
+        if (!card || !currentGrid) {{
+          return null;
+        }}
+        const expandable = currentGrid.closest("details.content-more");
+        if (expandable && expandable.previousElementSibling && expandable.previousElementSibling.matches(".native-brief-grid")) {{
+          return expandable.previousElementSibling;
+        }}
+        const section = card.closest(".memory-type-group");
+        const primaryGrid = section ? section.querySelector(".native-brief-grid.content-more-grid") : null;
+        return primaryGrid || currentGrid;
+      }}
+
+      function removeEmptyMemoryFeedbackExpander(expandable) {{
+        const extraGrid = expandable ? expandable.querySelector(".native-brief-grid") : null;
+        if (expandable && extraGrid && !extraGrid.querySelector(".memory-brief-card")) {{
+          expandable.remove();
+        }}
+      }}
+
+      function removeMemoryFeedbackCard(row) {{
+        const card = row ? row.closest(".memory-brief-card") : null;
+        if (!card) {{
+          return;
+        }}
+        const sourceExpandable = card.closest("details.content-more");
+        card.remove();
+        removeEmptyMemoryFeedbackExpander(sourceExpandable);
+      }}
+
       function moveMemoryFeedbackCard(row, feedback) {{
         if (!row) return;
         const card = row.closest(".memory-brief-card");
-        const grid = card ? card.closest(".native-brief-grid") : null;
-        if (!card || !grid) return;
-        if (feedback === "liked" && grid.firstElementChild !== card) {{
-          grid.insertBefore(card, grid.firstElementChild);
+        if (!card) return;
+        if (feedback === "liked") {{
+          const targetGrid = findMemoryFeedbackTopGrid(card);
+          const sourceExpandable = card.closest("details.content-more");
+          if (targetGrid && targetGrid.firstElementChild !== card) {{
+            targetGrid.insertBefore(card, targetGrid.firstElementChild);
+          }}
+          removeEmptyMemoryFeedbackExpander(sourceExpandable);
         }} else if (feedback === "downvoted") {{
-          grid.appendChild(card);
+          removeMemoryFeedbackCard(row);
         }}
       }}
 
@@ -23164,12 +23199,6 @@ def build_html(data):
             const savedFeedback = payload && payload.feedback ? payload.feedback.feedback : feedback;
             updateMemoryFeedbackRow(row, savedFeedback);
             moveMemoryFeedbackCard(row, savedFeedback);
-            const reloadAfterMs = Number((payload && payload.reload_after_ms) || 0);
-            if (reloadAfterMs > 0) {{
-              window.setTimeout(function () {{
-                window.location.reload();
-              }}, Math.max(reloadAfterMs, 1200));
-            }}
           }})
           .catch(function () {{
             setMemoryFeedbackStatus(

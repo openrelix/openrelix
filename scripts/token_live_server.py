@@ -419,6 +419,16 @@ def start_memory_feedback_refresh_async():
     return True, snapshot
 
 
+def memory_feedback_accepted_payload(feedback, refresh_snapshot, refresh_started):
+    return {
+        "ok": True,
+        "status": "accepted",
+        "feedback": feedback,
+        "refresh": refresh_snapshot,
+        "refresh_started_now": refresh_started,
+    }
+
+
 def start_manual_pipeline_refresh(target_date=None):
     target_date = str(target_date or current_local_datetime().date().isoformat())
     current = load_pipeline_status(PATHS)
@@ -827,14 +837,7 @@ class TokenLiveHandler(BaseHTTPRequestHandler):
             refresh_started, refresh_snapshot = start_memory_feedback_refresh_async()
             self._send_json(
                 202 if refresh_started else 200,
-                {
-                    "ok": True,
-                    "status": "accepted",
-                    "feedback": feedback,
-                    "refresh": refresh_snapshot,
-                    "refresh_started_now": refresh_started,
-                    "reload_after_ms": 3000,
-                },
+                memory_feedback_accepted_payload(feedback, refresh_snapshot, refresh_started),
                 allow_origin=origin or None,
             )
             return

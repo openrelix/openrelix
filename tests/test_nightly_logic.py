@@ -5034,6 +5034,10 @@ Keep my own note.
         self.assertIn('data-language-option="en" aria-pressed="false"', html)
         self.assertIn("data-memory-feedback-endpoint=", html)
         self.assertIn("wireMemoryFeedbackActions();", html)
+        self.assertIn("findMemoryFeedbackTopGrid", html)
+        self.assertIn("removeMemoryFeedbackCard(row);", html)
+        self.assertIn("已标记有用，并置顶展示", html)
+        self.assertNotIn("const reloadAfterMs = Number((payload && payload.reload_after_ms) || 0);", html)
         self.assertIn('"OpenRelix 工作台": "OpenRelix Workbench"', html)
         self.assertIn(
             '<span class="hero-brand-line"><span data-lang-only="zh">你的专属AI记忆珍藏</span><span data-lang-only="en">Your personal AI memory relics</span></span>',
@@ -7210,6 +7214,17 @@ Keep my own note.
         finally:
             token_live_server.MEMORY_FEEDBACK_REFRESH_STATE.clear()
             token_live_server.MEMORY_FEEDBACK_REFRESH_STATE.update(old_state)
+
+    def test_memory_feedback_response_does_not_request_panel_reload(self):
+        payload = token_live_server.memory_feedback_accepted_payload(
+            {"memory_key": "demo", "feedback": "liked"},
+            {"status": "running"},
+            True,
+        )
+
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["feedback"]["feedback"], "liked")
+        self.assertNotIn("reload_after_ms", payload)
 
     def test_panel_update_starts_detached_worker_and_persists_status(self):
         with TemporaryDirectory() as tmpdir:
