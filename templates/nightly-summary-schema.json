@@ -8,6 +8,7 @@
     "durable_memories",
     "session_memories",
     "low_priority_memories",
+    "global_context_memories",
     "keywords",
     "next_actions"
   ],
@@ -83,7 +84,7 @@
     "global_context_memories": {
       "type": "array",
       "items": {
-        "$ref": "#/$defs/memoryItem"
+        "$ref": "#/$defs/globalContextMemoryItem"
       }
     },
     "keywords": {
@@ -106,6 +107,41 @@
         "value_note",
         "source_window_ids",
         "keywords"
+      ],
+      "properties": {
+        "title": { "type": "string" },
+        "memory_type": {
+          "type": "string",
+          "enum": ["preference", "procedural", "semantic", "episodic", "task", "rule", "workflow"]
+        },
+        "priority": {
+          "type": "string",
+          "enum": ["high", "medium", "low"]
+        },
+        "value_note": { "type": "string" },
+        "source_window_ids": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "keywords": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "globalContextMemoryItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "title",
+        "memory_type",
+        "priority",
+        "value_note",
+        "source_window_ids",
+        "keywords",
+        "occurrence_count",
+        "evidence_contexts",
+        "source_dates"
       ],
       "properties": {
         "title": { "type": "string" },

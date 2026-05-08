@@ -739,7 +739,13 @@ class NightlyLogicTests(unittest.TestCase):
                     'model = "gpt-5.4"\n'
                     "\n"
                     "[model_providers.DySearchTeam]\n"
-                    'base_url = "https://proxy.example/api/modelhub/online/"\n',
+                    'base_url = "https://proxy.example/api/modelhub/online/"\n'
+                    "\n"
+                    "[mcp_servers.notion]\n"
+                    'url = "https://mcp.notion.com/mcp"\n'
+                    "\n"
+                    "[plugins.\"browser-use@openai-bundled\"]\n"
+                    "enabled = true\n",
                     encoding="utf-8",
                 )
                 (nightly_codex_home / "auth.json").symlink_to(root / "missing-auth.json")
@@ -766,7 +772,10 @@ class NightlyLogicTests(unittest.TestCase):
                 self.assertEqual(Path(os.readlink(auth_link)), main_codex_home / "auth.json")
                 nightly_config = nightly_codex_home / "config.toml"
                 self.assertFalse(nightly_config.is_symlink())
-                self.assertIn("DySearchTeam", nightly_config.read_text(encoding="utf-8"))
+                nightly_config_text = nightly_config.read_text(encoding="utf-8")
+                self.assertIn("DySearchTeam", nightly_config_text)
+                self.assertNotIn("mcp_servers", nightly_config_text)
+                self.assertNotIn("[plugins", nightly_config_text)
                 command = run.call_args.args[0]
                 self.assertIn("--sandbox", command)
                 self.assertIn("read-only", command)
@@ -919,6 +928,59 @@ class NightlyLogicTests(unittest.TestCase):
             auth_link = nightly_codex_home / "auth.json"
             self.assertTrue(auth_link.is_symlink())
             self.assertEqual(Path(os.readlink(auth_link)), source)
+
+    def test_sanitize_codex_exec_config_drops_interactive_extensions(self):
+        source_config = """
+model_provider = "DySearchTeam"
+model = "gpt-5.5"
+notify = ["/tmp/notifier"]
+
+[model_providers.DySearchTeam]
+name = "DySearchTeam"
+base_url = "https://proxy.example/api/modelhub/online/"
+wire_api = "responses"
+
+[mcp_servers.notion]
+url = "https://mcp.notion.com/mcp"
+
+[features]
+memories = true
+codex_hooks = true
+
+[plugins."browser-use@openai-bundled"]
+enabled = true
+
+[projects."/tmp/demo"]
+trust_level = "trusted"
+"""
+
+        sanitized = asset_runtime.sanitize_codex_exec_config(source_config)
+
+        self.assertIn('model_provider = "DySearchTeam"', sanitized)
+        self.assertIn("[model_providers.DySearchTeam]", sanitized)
+        self.assertIn('base_url = "https://proxy.example/api/modelhub/online/"', sanitized)
+        self.assertNotIn("mcp_servers", sanitized)
+        self.assertNotIn("notify", sanitized)
+        self.assertNotIn("[features]", sanitized)
+        self.assertNotIn("[plugins", sanitized)
+        self.assertNotIn("[projects", sanitized)
+
+    def test_nightly_output_schema_is_strict_for_codex_exec(self):
+        schema = json.loads((ROOT / "templates" / "nightly-summary-schema.json").read_text(encoding="utf-8"))
+
+        def walk(node, path="$"):
+            if isinstance(node, dict):
+                if node.get("type") == "object" and node.get("additionalProperties") is False:
+                    properties = set((node.get("properties") or {}).keys())
+                    required = set(node.get("required") or [])
+                    self.assertEqual(required, properties, path)
+                for key, value in node.items():
+                    walk(value, "{}.{}".format(path, key))
+            elif isinstance(node, list):
+                for index, value in enumerate(node):
+                    walk(value, "{}[{}]".format(path, index))
+
+        walk(schema)
 
     def test_run_codex_consolidation_converts_timeout_to_model_error(self):
         old_main_codex_home = nightly_consolidate.MAIN_CODEX_HOME

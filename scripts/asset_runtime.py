@@ -153,6 +153,14 @@ LEGACY_STATE_DIR_NAMES = (
     "log",
 )
 LEGACY_STATE_MARKERS = tuple(REPO_ROOT / name for name in LEGACY_STATE_DIR_NAMES)
+CODEX_EXEC_CONFIG_TOP_LEVEL_KEYS = frozenset(
+    {
+        "model_provider",
+    }
+)
+CODEX_EXEC_CONFIG_SECTION_PREFIXES = (
+    "model_providers",
+)
 
 
 def _expand_path(value: str) -> Path:
@@ -677,6 +685,85 @@ def _sync_runtime_text_file(source: Path, target: Path) -> None:
         pass
 
 
+def _toml_section_name(stripped_line: str) -> Optional[str]:
+    if not stripped_line.startswith("["):
+        return None
+    if stripped_line.startswith("[["):
+        if not stripped_line.endswith("]]"):
+            return None
+        return stripped_line[2:-2].strip()
+    if not stripped_line.endswith("]"):
+        return None
+    return stripped_line[1:-1].strip()
+
+
+def _toml_assignment_key(stripped_line: str) -> str:
+    if "=" not in stripped_line:
+        return ""
+    key = stripped_line.split("=", 1)[0].strip()
+    if key.startswith(("'", '"')) and len(key) >= 2 and key[0] == key[-1]:
+        key = key[1:-1]
+    return key
+
+
+def _codex_exec_config_section_allowed(section_name: str) -> bool:
+    return any(
+        section_name == prefix or section_name.startswith(prefix + ".")
+        for prefix in CODEX_EXEC_CONFIG_SECTION_PREFIXES
+    )
+
+
+def sanitize_codex_exec_config(text: str) -> str:
+    """Keep only config needed for isolated non-interactive Codex exec runs."""
+    kept_lines = []
+    current_section_allowed = False
+    for raw_line in str(text or "").splitlines():
+        stripped = raw_line.strip()
+        if not stripped or stripped.startswith("#"):
+            if kept_lines and kept_lines[-1] != "":
+                kept_lines.append("")
+            continue
+
+        section_name = _toml_section_name(stripped)
+        if section_name is not None:
+            current_section_allowed = _codex_exec_config_section_allowed(section_name)
+            if current_section_allowed:
+                if kept_lines and kept_lines[-1] != "":
+                    kept_lines.append("")
+                kept_lines.append(raw_line)
+            continue
+
+        if current_section_allowed:
+            kept_lines.append(raw_line)
+            continue
+
+        if not stripped.startswith("[") and _toml_assignment_key(stripped) in CODEX_EXEC_CONFIG_TOP_LEVEL_KEYS:
+            kept_lines.append(raw_line)
+
+    while kept_lines and kept_lines[-1] == "":
+        kept_lines.pop()
+    if not kept_lines:
+        return ""
+    return "\n".join(kept_lines) + "\n"
+
+
+def _sync_codex_exec_config(source: Path, target: Path) -> None:
+    try:
+        if target.is_symlink():
+            target.unlink()
+        elif target.exists() and target.is_dir():
+            raise IsADirectoryError(str(target))
+    except FileNotFoundError:
+        pass
+    if target.exists() and target.is_dir():
+        raise IsADirectoryError(str(target))
+    atomic_write_text(target, sanitize_codex_exec_config(source.read_text(encoding="utf-8")))
+    try:
+        os.chmod(target, 0o600)
+    except OSError:
+        pass
+
+
 def sync_codex_exec_home(main_codex_home: Path, exec_codex_home: Path) -> None:
     """Prepare an isolated CODEX_HOME for non-interactive Codex exec runs."""
     exec_codex_home.mkdir(parents=True, exist_ok=True)
@@ -686,6 +773,8 @@ def sync_codex_exec_home(main_codex_home: Path, exec_codex_home: Path) -> None:
         if source.exists():
             if mode == "symlink":
                 _ensure_runtime_symlink(source, target)
+            elif name == "config.toml":
+                _sync_codex_exec_config(source, target)
             else:
                 _sync_runtime_text_file(source, target)
             continue
