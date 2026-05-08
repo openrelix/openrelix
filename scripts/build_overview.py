@@ -10016,14 +10016,33 @@ def make_window_filter_panel(default_start_date, default_end_date):
             {buttons}
           </div>
         </div>
-        <div class="token-filter-field token-filter-range" data-window-date-field="start">
-          <label class="token-filter-label" for="window-start-date">{start_label}</label>
-          <input id="window-start-date" class="token-date-input" type="date" value="{start_date}">
+        <div class="token-filter-field token-filter-range window-date-field" data-window-date-field="start">
+          <span class="token-filter-label" id="window-start-date-label">{start_label}</span>
+          <button class="apple-date-button" type="button" data-window-date-button="start" aria-labelledby="window-start-date-label">
+            <span class="apple-date-value" data-window-date-display="start">{start_display}</span>
+            <span class="apple-date-chevron" aria-hidden="true">⌄</span>
+          </button>
+          <input id="window-start-date" class="token-date-input window-date-input" type="hidden" value="{start_date}">
         </div>
-        <div class="token-filter-field token-filter-range" data-window-date-field="end">
-          <label class="token-filter-label" for="window-end-date">{end_label}</label>
-          <input id="window-end-date" class="token-date-input" type="date" value="{end_date}">
+        <div class="token-filter-field token-filter-range window-date-field" data-window-date-field="end">
+          <span class="token-filter-label" id="window-end-date-label">{end_label}</span>
+          <button class="apple-date-button" type="button" data-window-date-button="end" aria-labelledby="window-end-date-label">
+            <span class="apple-date-value" data-window-date-display="end">{end_display}</span>
+            <span class="apple-date-chevron" aria-hidden="true">⌄</span>
+          </button>
+          <input id="window-end-date" class="token-date-input window-date-input" type="hidden" value="{end_date}">
         </div>
+      </div>
+      <div class="apple-date-popover" id="window-date-popover" hidden>
+        <div class="apple-date-popover-head">
+          <button class="apple-date-nav-button" type="button" data-window-date-nav="prev" aria-label="{prev_aria}">‹</button>
+          <strong id="window-date-month-label"></strong>
+          <button class="apple-date-nav-button" type="button" data-window-date-nav="next" aria-label="{next_aria}">›</button>
+        </div>
+        <div class="apple-date-weekdays" aria-hidden="true">
+          {weekdays}
+        </div>
+        <div class="apple-date-grid" id="window-date-grid" role="grid" aria-labelledby="window-date-month-label"></div>
       </div>
     </section>
     """.format(
@@ -10035,6 +10054,14 @@ def make_window_filter_panel(default_start_date, default_end_date):
         end_label=panel_language_text_html("结束日期", "End Date"),
         start_date=escape(default_start_date, quote=True),
         end_date=escape(default_end_date, quote=True),
+        start_display=escape(str(default_start_date).replace("-", "/") if default_start_date else "—"),
+        end_display=escape(str(default_end_date).replace("-", "/") if default_end_date else "—"),
+        prev_aria=escape("上个月", quote=True),
+        next_aria=escape("下个月", quote=True),
+        weekdays="".join(
+            '<span>{}</span>'.format(escape(label))
+            for label in ["日", "一", "二", "三", "四", "五", "六"]
+        ),
     )
 
 
@@ -18454,6 +18481,8 @@ def build_html(data):
 
     .window-filter-panel {{
       margin-top: 16px;
+      position: relative;
+      overflow: visible;
       box-shadow: none;
     }}
 
@@ -18469,6 +18498,11 @@ def build_html(data):
 
     .token-filter-range {{
       cursor: pointer;
+    }}
+
+    .window-date-field {{
+      position: relative;
+      cursor: default;
     }}
 
     .token-filter-label {{
@@ -18539,10 +18573,169 @@ def build_html(data):
     }}
 
     .token-date-input:focus,
+    .apple-date-button:focus-visible,
+    .apple-date-nav-button:focus-visible,
+    .apple-date-day:focus-visible,
     .token-segment-button:focus-visible,
     .token-reset-button:focus-visible {{
       outline: 2px solid rgba(0, 113, 227, 0.38);
       outline-offset: 2px;
+    }}
+
+    .apple-date-button {{
+      width: 100%;
+      min-width: 0;
+      height: 40px;
+      padding: 0 12px 0 14px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: linear-gradient(180deg, var(--panel), var(--soft));
+      color: var(--ink);
+      font: inherit;
+      font-size: 13px;
+      font-weight: 760;
+      letter-spacing: 0;
+      display: inline-flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      cursor: pointer;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.64), 0 1px 2px rgba(0, 0, 0, 0.04);
+      transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease, background 160ms ease;
+    }}
+
+    .apple-date-button:hover,
+    .apple-date-button.is-open {{
+      border-color: rgba(0, 113, 227, 0.34);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72), 0 8px 22px rgba(0, 113, 227, 0.10);
+      transform: translateY(-1px);
+    }}
+
+    .apple-date-value {{
+      font-variant-numeric: tabular-nums;
+    }}
+
+    .apple-date-chevron {{
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      display: inline-grid;
+      place-items: center;
+      color: var(--muted);
+      background: rgba(118, 118, 128, 0.12);
+      font-size: 12px;
+      line-height: 1;
+      flex: none;
+    }}
+
+    .apple-date-popover {{
+      position: absolute;
+      z-index: 80;
+      width: min(292px, calc(100vw - 40px));
+      padding: 12px;
+      border: 1px solid rgba(210, 210, 215, 0.72);
+      border-radius: 18px;
+      background: var(--panel);
+      background: color-mix(in srgb, var(--panel) 92%, transparent);
+      box-shadow: 0 24px 60px rgba(15, 23, 42, 0.18), 0 3px 12px rgba(15, 23, 42, 0.08);
+      backdrop-filter: saturate(180%) blur(28px);
+    }}
+
+    .apple-date-popover[hidden] {{
+      display: none;
+    }}
+
+    .apple-date-popover-head {{
+      display: grid;
+      grid-template-columns: 30px 1fr 30px;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 10px;
+    }}
+
+    .apple-date-popover-head strong {{
+      color: var(--ink);
+      font-size: 14px;
+      font-weight: 780;
+      text-align: center;
+      font-variant-numeric: tabular-nums;
+    }}
+
+    .apple-date-nav-button {{
+      width: 30px;
+      height: 30px;
+      border: 1px solid var(--line);
+      border-radius: 50%;
+      background: var(--soft);
+      color: var(--muted);
+      font: inherit;
+      font-size: 18px;
+      line-height: 1;
+      display: inline-grid;
+      place-items: center;
+      cursor: pointer;
+      transition: background 160ms ease, color 160ms ease, border-color 160ms ease, transform 160ms ease;
+    }}
+
+    .apple-date-nav-button:hover {{
+      color: var(--ink);
+      border-color: rgba(0, 113, 227, 0.28);
+      transform: translateY(-1px);
+    }}
+
+    .apple-date-weekdays,
+    .apple-date-grid {{
+      display: grid;
+      grid-template-columns: repeat(7, minmax(0, 1fr));
+      gap: 4px;
+    }}
+
+    .apple-date-weekdays {{
+      margin-bottom: 6px;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 760;
+      text-align: center;
+    }}
+
+    .apple-date-day {{
+      width: 100%;
+      aspect-ratio: 1 / 1;
+      min-height: 32px;
+      border: 1px solid transparent;
+      border-radius: 10px;
+      background: transparent;
+      color: var(--ink);
+      font: inherit;
+      font-size: 12px;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      cursor: pointer;
+      transition: background 140ms ease, color 140ms ease, border-color 140ms ease, transform 140ms ease;
+    }}
+
+    .apple-date-day:hover {{
+      background: rgba(0, 113, 227, 0.10);
+      color: var(--accent);
+    }}
+
+    .apple-date-day.is-muted {{
+      color: color-mix(in srgb, var(--muted) 58%, transparent);
+    }}
+
+    .apple-date-day.is-in-range {{
+      background: rgba(0, 113, 227, 0.10);
+      color: var(--accent);
+    }}
+
+    .apple-date-day.is-today {{
+      border-color: rgba(0, 113, 227, 0.34);
+    }}
+
+    .apple-date-day.is-selected {{
+      background: linear-gradient(135deg, #0071e3, #4da2ff);
+      color: #fff;
+      box-shadow: 0 8px 18px rgba(0, 113, 227, 0.20);
     }}
 
     .token-reset-button {{
@@ -21911,6 +22104,8 @@ def build_html(data):
         }},
         defaultWindowFilters: null,
         windowDetailsExpanded: false,
+        activeWindowDateField: "",
+        windowDatePickerMonth: null,
         selectedNightlyDate: snapshot.daily_summary_default_date || "",
         selectedWindowOverviewDate: snapshot.window_overview_default_date || "",
         pipelineStatus: snapshot.pipeline_status || null,
@@ -21931,6 +22126,12 @@ def build_html(data):
         windowStartDateInput: document.getElementById("window-start-date"),
         windowEndDateInput: document.getElementById("window-end-date"),
         windowRangeButtons: Array.from(document.querySelectorAll("[data-window-range-days]")),
+        windowDateButtons: Array.from(document.querySelectorAll("[data-window-date-button]")),
+        windowDateDisplays: Array.from(document.querySelectorAll("[data-window-date-display]")),
+        windowDatePopover: document.getElementById("window-date-popover"),
+        windowDateMonthLabel: document.getElementById("window-date-month-label"),
+        windowDateGrid: document.getElementById("window-date-grid"),
+        windowDateNavButtons: Array.from(document.querySelectorAll("[data-window-date-nav]")),
         windowDetailMoreRow: document.getElementById("window-detail-more-row"),
         windowDetailMoreButton: document.getElementById("window-detail-more-button"),
         windowOverviewMap: document.getElementById("window-overview-map"),
@@ -22582,6 +22783,127 @@ def build_html(data):
         return Number.isNaN(parsed.getTime()) ? null : parsed;
       }}
 
+      function displayWindowDateValue(value) {{
+        const text = String(value || "").slice(0, 10);
+        return text ? text.replace(/-/g, "/") : "—";
+      }}
+
+      function windowDateInputForField(fieldKey) {{
+        return fieldKey === "end" ? elements.windowEndDateInput : elements.windowStartDateInput;
+      }}
+
+      function windowDateButtonForField(fieldKey) {{
+        return elements.windowDateButtons.find(function (button) {{
+          return button.getAttribute("data-window-date-button") === fieldKey;
+        }}) || null;
+      }}
+
+      function windowDateMonthLabel(date) {{
+        const month = date.getMonth() + 1;
+        const year = date.getFullYear();
+        if (currentLanguage === "en") {{
+          const names = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+          return names[date.getMonth()] + " " + year;
+        }}
+        return year + "年" + month + "月";
+      }}
+
+      function updateWindowDateDisplays() {{
+        elements.windowDateDisplays.forEach(function (display) {{
+          const fieldKey = display.getAttribute("data-window-date-display") || "start";
+          const input = windowDateInputForField(fieldKey);
+          display.textContent = displayWindowDateValue(input ? input.value : "");
+        }});
+      }}
+
+      function positionWindowDatePopover(button) {{
+        if (!elements.windowDatePopover || !elements.windowFilterPanel || !button) {{
+          return;
+        }}
+        const panelRect = elements.windowFilterPanel.getBoundingClientRect();
+        const buttonRect = button.getBoundingClientRect();
+        const popoverWidth = Math.min(292, Math.max(240, window.innerWidth - 40));
+        const left = Math.max(
+          12,
+          Math.min(buttonRect.left - panelRect.left, panelRect.width - popoverWidth - 12)
+        );
+        const top = buttonRect.bottom - panelRect.top + 8;
+        elements.windowDatePopover.style.left = left + "px";
+        elements.windowDatePopover.style.top = top + "px";
+      }}
+
+      function renderWindowDatePicker() {{
+        if (!elements.windowDatePopover || !elements.windowDateGrid || !elements.windowDateMonthLabel) {{
+          return;
+        }}
+        const activeField = state.activeWindowDateField || "start";
+        const selectedValue = windowDateInputForField(activeField) ? windowDateInputForField(activeField).value : "";
+        const selectedDate = parseWindowDateValue(selectedValue);
+        const monthDate = state.windowDatePickerMonth || selectedDate || parseWindowDateValue(state.windowFilters.endDate) || new Date();
+        const monthStart = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1);
+        const gridStart = new Date(monthStart);
+        gridStart.setDate(1 - monthStart.getDay());
+        const todayValue = tokenDateInputValue(new Date());
+        const rangeStart = state.windowFilters.startDate || "";
+        const rangeEnd = state.windowFilters.endDate || "";
+        elements.windowDateMonthLabel.textContent = windowDateMonthLabel(monthStart);
+        const cells = [];
+        for (let offset = 0; offset < 42; offset += 1) {{
+          const day = new Date(gridStart);
+          day.setDate(gridStart.getDate() + offset);
+          const dateValue = tokenDateInputValue(day);
+          const classNames = ["apple-date-day"];
+          if (day.getMonth() !== monthStart.getMonth()) {{
+            classNames.push("is-muted");
+          }}
+          if (dateValue === todayValue) {{
+            classNames.push("is-today");
+          }}
+          if (rangeStart && rangeEnd && dateValue >= rangeStart && dateValue <= rangeEnd) {{
+            classNames.push("is-in-range");
+          }}
+          if (dateValue === selectedValue) {{
+            classNames.push("is-selected");
+          }}
+          cells.push(
+            '<button class="' + classNames.join(" ") + '" type="button" role="gridcell" data-window-date-option="' + dateValue + '" aria-label="' + displayWindowDateValue(dateValue) + '">' +
+              String(day.getDate()) +
+            '</button>'
+          );
+        }}
+        elements.windowDateGrid.innerHTML = cells.join("");
+      }}
+
+      function closeWindowDatePicker() {{
+        if (elements.windowDatePopover) {{
+          elements.windowDatePopover.hidden = true;
+        }}
+        elements.windowDateButtons.forEach(function (button) {{
+          button.classList.remove("is-open");
+          button.setAttribute("aria-expanded", "false");
+        }});
+        state.activeWindowDateField = "";
+      }}
+
+      function openWindowDatePicker(fieldKey) {{
+        const resolvedField = fieldKey === "end" ? "end" : "start";
+        const button = windowDateButtonForField(resolvedField);
+        const input = windowDateInputForField(resolvedField);
+        if (!button || !input || !elements.windowDatePopover) {{
+          return;
+        }}
+        state.activeWindowDateField = resolvedField;
+        state.windowDatePickerMonth = parseWindowDateValue(input.value) || parseWindowDateValue(state.windowFilters.endDate) || new Date();
+        elements.windowDateButtons.forEach(function (candidate) {{
+          const isOpen = candidate === button;
+          candidate.classList.toggle("is-open", isOpen);
+          candidate.setAttribute("aria-expanded", isOpen ? "true" : "false");
+        }});
+        renderWindowDatePicker();
+        elements.windowDatePopover.hidden = false;
+        positionWindowDatePopover(button);
+      }}
+
       function windowFilterDateRange(days, endDateValue) {{
         const resolvedDays = Math.max(Number(days) || Number(snapshot.window_filter_default_days) || 3, 1);
         const fallbackEnd = defaultWindowFilterEnd || tokenDateInputValue(new Date());
@@ -22934,6 +23256,7 @@ def build_html(data):
         if (elements.windowEndDateInput && elements.windowEndDateInput.value !== filters.endDate) {{
           elements.windowEndDateInput.value = filters.endDate;
         }}
+        updateWindowDateDisplays();
         const start = parseWindowDateValue(filters.startDate);
         const end = parseWindowDateValue(filters.endDate);
         const rangeDays = start && end ? Math.round((end.getTime() - start.getTime()) / (24 * 60 * 60 * 1000)) + 1 : 0;
@@ -22949,6 +23272,10 @@ def build_html(data):
         }});
         if (elements.windowFilterSummary) {{
           elements.windowFilterSummary.textContent = windowFilterRangeLabel(filters, matchedCount || 0);
+        }}
+        if (elements.windowDatePopover && !elements.windowDatePopover.hidden) {{
+          renderWindowDatePicker();
+          positionWindowDatePopover(windowDateButtonForField(state.activeWindowDateField || "start"));
         }}
       }}
 
@@ -23044,23 +23371,79 @@ def build_html(data):
             input.addEventListener(eventName, onDateChange);
           }});
         }});
-        document.querySelectorAll("[data-window-date-field]").forEach(function (field) {{
-          const input = field.querySelector(".token-date-input");
-          if (!input) {{
-            return;
-          }}
-          field.addEventListener("click", function (event) {{
-            if (event.target && event.target.closest && event.target.closest(".token-date-input")) {{
+        elements.windowDateButtons.forEach(function (button) {{
+          button.setAttribute("aria-haspopup", "dialog");
+          button.setAttribute("aria-expanded", "false");
+          button.addEventListener("click", function (event) {{
+            event.preventDefault();
+            event.stopPropagation();
+            const fieldKey = button.getAttribute("data-window-date-button") || "start";
+            if (state.activeWindowDateField === fieldKey && elements.windowDatePopover && !elements.windowDatePopover.hidden) {{
+              closeWindowDatePicker();
               return;
             }}
-            openTokenDatePicker(input);
+            openWindowDatePicker(fieldKey);
           }});
-          input.addEventListener("click", function () {{
-            openTokenDatePicker(input);
+        }});
+        if (elements.windowDateNavButtons.length) {{
+          elements.windowDateNavButtons.forEach(function (button) {{
+            button.addEventListener("click", function (event) {{
+              event.preventDefault();
+              event.stopPropagation();
+              const direction = button.getAttribute("data-window-date-nav") === "next" ? 1 : -1;
+              const currentMonth = state.windowDatePickerMonth || new Date();
+              state.windowDatePickerMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + direction, 1);
+              renderWindowDatePicker();
+            }});
           }});
+        }}
+        if (elements.windowDateGrid) {{
+          elements.windowDateGrid.addEventListener("click", function (event) {{
+            const option = event.target && event.target.closest
+              ? event.target.closest("[data-window-date-option]")
+              : null;
+            if (!option) {{
+              return;
+            }}
+            event.preventDefault();
+            event.stopPropagation();
+            const dateValue = option.getAttribute("data-window-date-option") || "";
+            const nextFilters = Object.assign({{}}, state.windowFilters);
+            if (state.activeWindowDateField === "end") {{
+              nextFilters.endDate = dateValue;
+            }} else {{
+              nextFilters.startDate = dateValue;
+            }}
+            closeWindowDatePicker();
+            setWindowFilterState(nextFilters);
+          }});
+        }}
+        document.addEventListener("click", function (event) {{
+          if (!elements.windowDatePopover || elements.windowDatePopover.hidden) {{
+            return;
+          }}
+          const target = event.target;
+          if (
+            elements.windowDatePopover.contains(target) ||
+            (target && target.closest && target.closest("[data-window-date-button]"))
+          ) {{
+            return;
+          }}
+          closeWindowDatePicker();
+        }});
+        document.addEventListener("keydown", function (event) {{
+          if (event.key === "Escape") {{
+            closeWindowDatePicker();
+          }}
+        }});
+        window.addEventListener("resize", function () {{
+          if (elements.windowDatePopover && !elements.windowDatePopover.hidden) {{
+            positionWindowDatePopover(windowDateButtonForField(state.activeWindowDateField || "start"));
+          }}
         }});
         elements.windowRangeButtons.forEach(function (button) {{
           button.addEventListener("click", function () {{
+            closeWindowDatePicker();
             const days = Number(button.getAttribute("data-window-range-days")) || Number(snapshot.window_filter_default_days) || 3;
             const endDate = state.windowFilters.endDate || defaultWindowFilterEnd || tokenDateInputValue(new Date());
             setWindowFilterState(windowFilterDateRange(days, endDate));
