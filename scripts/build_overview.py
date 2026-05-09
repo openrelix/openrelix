@@ -11611,8 +11611,6 @@ def make_side_nav():
         ("link", "pipeline-section", "后台运行监控", "Background Monitor", "后台运行监控", "Background Monitor"),
         ("group", "记忆层", "Memory Layer"),
         ("link", "memory-section", "个人资产记忆", "Personal Asset Memory", "个人资产记忆", "Personal Asset Memory"),
-        ("child", "personal-memory-compiler-section", "总览", "Overview", "个人资产记忆-总览", "Personal Asset Memory - Overview"),
-        ("child", "personal-memory-curated-section", "整理后记忆", "Curated", "个人资产记忆-整理后记忆", "Personal Asset Memory - Curated"),
         ("link", "codex-native-section", "Codex 原生记忆", "Codex Native Memory", "Codex 原生记忆", "Codex Native Memory"),
         ("link", "claude-native-section", "Claude 原生记忆", "Claude Native Memory", "Claude Code 原生记忆", "Claude Code Native Memory"),
         ("group", "资产层", "Asset Layer"),
@@ -11841,17 +11839,55 @@ def make_memory_policy_count_widget(policy_views):
     )
 
 
-def make_memory_context_compiler_body(policy_views):
-    compiler = (policy_views or {}).get("compiler", {})
-    total_count = safe_int(compiler.get("total_count", 0))
-    global_context_count = safe_int(compiler.get("global_candidate_count", 0))
-    project_count = safe_int(compiler.get("project_context_count", 0))
-    local_retention_count = safe_int(
-        compiler.get(
-            "local_retention_count",
-            safe_int(compiler.get("on_demand_count", 0)) + safe_int(compiler.get("local_count", 0)),
-        )
+def curated_memory_all_items(pack):
+    sections = (pack or {}).get("sections") or {}
+    items = []
+    for section, section_items in sections.items():
+        for item in section_items or []:
+            current = dict(item)
+            current.setdefault("section", section)
+            items.append(current)
+    return items
+
+
+def curated_memory_has_attention_signal(item):
+    diagnostics = set(item.get("diagnostics") or [])
+    return bool(
+        diagnostics
+        & {
+            "timeline_like",
+            "local_privacy_like",
+            "possible_cross_project_leakage",
+            "truncation_marker",
+        }
     )
+
+
+def curated_memory_overview_metrics(pack):
+    pack = pack or empty_curated_memory_pack()
+    sections = pack.get("sections") or {}
+    diagnostics = pack.get("diagnostics") or {}
+    items = curated_memory_all_items(pack)
+    total_items = len(items)
+    attention_items = [
+        item
+        for item in items
+        if item.get("section") == overview_curated_memory.SECTION_LOCAL_VOLATILE
+        or curated_memory_has_attention_signal(item)
+    ]
+    attention_count = len(attention_items)
+    stable_count = max(0, total_items - attention_count)
+    return {
+        "total_items": total_items,
+        "stable_count": stable_count,
+        "attention_count": attention_count,
+        "duplicate_group_count": len(diagnostics.get("duplicate_clusters") or []),
+    }
+
+
+def make_memory_context_compiler_body(policy_views, curated_pack=None):
+    compiler = (policy_views or {}).get("compiler", {})
+    curated_metrics = curated_memory_overview_metrics(curated_pack)
     meter_percent = max(0, min(100, safe_int(compiler.get("meter_percent", 0))))
     value_display = panel_language_variant_html(
         escape(compiler.get("value_display_zh") or ""),
@@ -11882,32 +11918,32 @@ def make_memory_context_compiler_body(policy_views):
     stats = "".join(
         [
             stat_card(
-                "登记册总量",
-                "Registry Total",
-                total_count,
-                "OpenRelix 独立存储的 canonical 条目",
-                "Canonical entries stored by OpenRelix",
+                "整理后记忆",
+                "Curated Memories",
+                curated_metrics["total_items"],
+                "去重归并后的可读条目",
+                "Readable entries after cleanup and merging",
             ),
             stat_card(
-                "通用上下文",
-                "General Context",
-                global_context_count,
-                "会进入通用 host context 的候选",
-                "Candidates for the general host context",
+                "稳定可用",
+                "Ready To Use",
+                curated_metrics["stable_count"],
+                "偏好、规则和项目打法",
+                "Preferences, rules, and project playbooks",
             ),
             stat_card(
-                "项目上下文",
-                "Project Context",
-                project_count,
-                "按热度和项目预算进入 host context",
-                "Enters host context by heat within the project budget",
+                "待确认",
+                "Needs Review",
+                curated_metrics["attention_count"],
+                "时效、本地或跨项目内容",
+                "Timeline, local, or cross-project items",
             ),
             stat_card(
-                "本地保留",
-                "Local Only",
-                local_retention_count,
-                "不常驻 host context 的本地条目",
-                "Local items that do not stay in host context",
+                "已合并重复",
+                "Merged Duplicates",
+                curated_metrics["duplicate_group_count"],
+                "相似记忆已收拢成组",
+                "Similar memories grouped together",
             ),
         ]
     )
@@ -11952,115 +11988,15 @@ def curated_memory_section_label(section):
     return CURATED_MEMORY_SECTION_LABELS.get(section, (section.replace("_", " "), section.replace("_", " ").title()))
 
 
-def curated_memory_total_items(pack):
-    sections = (pack or {}).get("sections") or {}
-    return sum(len(items or []) for items in sections.values())
-
-
 def make_curated_memory_panel_body(pack):
     pack = pack or empty_curated_memory_pack()
     sections = pack.get("sections") or {}
-    diagnostics = pack.get("diagnostics") or {}
-    artifact = pack.get("artifact") or {}
-    total_items = curated_memory_total_items(pack)
-    diagnostic_counts = {
-        "duplicate_clusters": len(diagnostics.get("duplicate_clusters") or []),
-        "timeline_like_entries": len(diagnostics.get("timeline_like_entries") or []),
-        "local_privacy_like_entries": len(diagnostics.get("local_privacy_like_entries") or []),
-        "possible_cross_project_leakage": len(diagnostics.get("possible_cross_project_leakage") or []),
-        "truncation_markers": len(diagnostics.get("truncation_markers") or []),
-        "malformed_lines": len(diagnostics.get("malformed_lines") or []),
-    }
-    quality_signal_count = sum(diagnostic_counts.values())
-
-    def stat_card(label_zh, label_en, value, note_zh, note_en):
-        return """
-          <article class="memory-compiler-stat">
-            <span>{label}</span>
-            <strong>{value}</strong>
-            <small>{note}</small>
-          </article>
-        """.format(
-            label=panel_language_text_html(label_zh, label_en),
-            value=escape(str(value)),
-            note=panel_language_text_html(note_zh, note_en),
-        )
-
-    source_label = pack.get("source_path_label") or pack.get("source") or overview_curated_memory.DEFAULT_SOURCE_LABEL
-    source_line = panel_language_variant_html(
-        "来源：<code>{}</code>".format(escape(source_label)),
-        "Source: <code>{}</code>".format(escape(source_label)),
-    )
-    artifact_label = artifact.get("markdown_path_label") or render_path(CURATED_MEMORY_SUMMARY_PATH)
-    artifact_state_zh = "已生成" if artifact.get("markdown_exists") else "待生成"
-    artifact_state_en = "Generated" if artifact.get("markdown_exists") else "Not generated yet"
-    artifact_line = panel_language_variant_html(
-        "旁路 Markdown：<code>{}</code> · {}".format(escape(artifact_label), escape(artifact_state_zh)),
-        "Sidecar Markdown: <code>{}</code> · {}".format(escape(artifact_label), escape(artifact_state_en)),
-    )
     error_line = ""
     if pack.get("source_error"):
         error_line = '<p class="curated-memory-source-error">{}</p>'.format(
             panel_language_text_html(
                 "来源读取失败：{}".format(pack.get("source_error")),
                 "Source read failed: {}".format(pack.get("source_error")),
-            )
-        )
-
-    stats = "".join(
-        [
-            stat_card(
-                "输入条目",
-                "Input Entries",
-                safe_int(pack.get("entry_count", 0)),
-                "来自当前记忆登记册的原始行数",
-                "Raw rows from the current memory registry",
-            ),
-            stat_card(
-                "整理后条目",
-                "Curated Items",
-                total_items,
-                "按可复用语义归并后的条目数",
-                "Items after reusable semantic grouping",
-            ),
-            stat_card(
-                "模型调用",
-                "Model Calls",
-                safe_int(pack.get("model_calls", 0)),
-                "当前为确定性旁路编译",
-                "Deterministic sidecar compilation for now",
-            ),
-            stat_card(
-                "质量信号",
-                "Quality Signals",
-                quality_signal_count,
-                "重复、时效、本地隐私、跨项目等提示",
-                "Duplicate, timeline, local/privacy, and cross-project hints",
-            ),
-        ]
-    )
-
-    diagnostic_specs = [
-        ("duplicate_clusters", "重复聚合", "Duplicate Groups", "同义或重复条目已归并", "Merged equivalent or repeated entries"),
-        ("timeline_like_entries", "时效条目", "Timeline-like", "可能不适合长期注入", "May be unsuitable for long-term injection"),
-        ("local_privacy_like_entries", "本地 / 隐私", "Local / Privacy", "需要本地保留或脱敏", "Should stay local or be redacted"),
-        ("possible_cross_project_leakage", "跨项目疑似", "Cross-project Hint", "全局记忆里出现项目强信号", "Project-specific signal in global memory"),
-        ("truncation_markers", "截断文本", "Truncation", "可能需要补全原始表达", "May need a fuller source expression"),
-        ("malformed_lines", "坏行", "Malformed Lines", "JSONL 解析跳过的行", "Skipped JSONL lines"),
-    ]
-    diagnostic_cards = []
-    for key, label_zh, label_en, note_zh, note_en in diagnostic_specs:
-        diagnostic_cards.append(
-            """
-              <article class="curated-memory-diagnostic-card">
-                <div class="memory-card-label">{label}</div>
-                <strong>{value}</strong>
-                <p>{note}</p>
-              </article>
-            """.format(
-                label=panel_language_text_html(label_zh, label_en),
-                value=escape(str(diagnostic_counts.get(key, 0))),
-                note=panel_language_text_html(note_zh, note_en),
             )
         )
 
@@ -12172,38 +12108,13 @@ def make_curated_memory_panel_body(pack):
 
     return """
       <div class="memory-compiler-body curated-memory-body">
-        <div class="memory-compiler-meter curated-memory-meter">
-          <div class="memory-compiler-meter-topline">
-            <span>{meter_label}</span>
-            <b>{meter_value}</b>
-            <em>{meter_status}</em>
-          </div>
-          <p>{source_line}</p>
-          <p>{artifact_line}</p>
-          {error_line}
-        </div>
-        <div class="memory-compiler-grid">
-          {stats}
-        </div>
-        <div class="curated-memory-diagnostic-grid">
-          {diagnostic_cards}
-        </div>
+        {error_line}
         <div class="curated-memory-section-grid">
           {section_cards}
         </div>
       </div>
     """.format(
-        meter_label=panel_language_text_html("旁路整理预览", "Sidecar Curated Preview"),
-        meter_value=panel_language_variant_html(
-            "{} 条".format(escape(str(total_items))),
-            "{} items".format(escape(str(total_items))),
-        ),
-        meter_status=panel_language_text_html("不改变注入", "No Injection Change"),
-        source_line=source_line,
-        artifact_line=artifact_line,
         error_line=error_line,
-        stats=stats,
-        diagnostic_cards="".join(diagnostic_cards),
         section_cards="".join(section_cards),
     )
 
@@ -15843,11 +15754,11 @@ def build_html(data):
         [
             {
                 "label": "统计什么",
-                "body": "把 OpenRelix 独立登记册按上下文去向展示：通用和项目可以进入 host context，其余不常驻上下文的条目统一归入本地保留。",
+                "body": "展示整理后的记忆数量、稳定可用内容、待确认内容和已合并重复。",
             },
             {
                 "label": "怎么算",
-                "body": "先按 scope 和 injection_policy 归一化；通用上下文和高价值项目上下文会进入 bounded summary 候选。",
+                "body": "先把登记册按可复用语义去重归并，再把时效、本地隐私和跨项目信号归为待确认。",
             },
         ],
     )
@@ -15856,11 +15767,11 @@ def build_html(data):
         [
             {
                 "label": "统计什么",
-                "body": "从已归一化的个人记忆登记册生成旁路预览，展示分层结果和质量信号；它不会改变当前 host context 注入。",
+                "body": "从已归一化的个人记忆登记册生成旁路预览，展示整理后的分层结果；它不会改变当前 host context 注入。",
             },
             {
                 "label": "怎么看",
-                "body": "重点看整理后条目、质量信号和六个分层卡；时效、本地隐私、跨项目疑似和截断提示都应先评估，再考虑进入注入链路。",
+                "body": "直接看六个分层卡：用户画像、稳定偏好、操作规则、项目工作手册、任务簇和本地时效内容。",
             },
         ],
     )
@@ -28111,7 +28022,7 @@ def build_html(data):
             "OpenRelix canonical memory -> host context 的策略预览",
             memory_compiler_help,
         ),
-        memory_compiler_body=make_memory_context_compiler_body(memory_policy_views),
+        memory_compiler_body=make_memory_context_compiler_body(memory_policy_views, curated_memory_pack),
         curated_memory_header=make_panel_header(
             "整理后记忆",
             "旁路生成的高质量记忆包预览；当前不改变 Codex / Claude Code 的 host context 注入",
