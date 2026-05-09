@@ -754,7 +754,9 @@ class AssetDiscoveryTests(unittest.TestCase):
         first_identifier = re.search(r'<tr data-asset-identifier="([^"]+)"', html).group(1)
 
         self.assertEqual(first_identifier, "beta")
-        self.assertIn("<td>9</td>", html)
+        self.assertIn('class="asset-hotness-calls">9</td>', html)
+        self.assertIn("hotness-description-bubble", html)
+        self.assertIn("mini-trend", html)
 
     def test_top_skill_rows_expand_beyond_default_top_ten(self):
         rows = [
@@ -840,6 +842,8 @@ class AssetDiscoveryTests(unittest.TestCase):
         self.assertEqual(view["active_servers"], 2)
         self.assertEqual(view["tools"][0]["label"], "figma/get_design_context")
         self.assertEqual(view["tools"][0]["sessions"], 1)
+        self.assertEqual(view["tools"][0]["daily_calls"], [{"date": "2026-05-05", "value": 1}])
+        self.assertEqual(view["tools"][0]["daily_sessions"], [{"date": "2026-05-05", "value": 1}])
         self.assertIn("Figma", view["tools"][0]["description"])
         self.assertIn("design context", view["tools"][0]["description_en"])
 
@@ -874,7 +878,7 @@ class AssetDiscoveryTests(unittest.TestCase):
         self.assertEqual(view["total_calls"], 1)
         self.assertEqual(view["tools"][0]["label"], "node_repl/js")
 
-    def test_mcp_usage_panel_renders_tool_descriptions_as_table(self):
+    def test_mcp_usage_panel_renders_tool_descriptions_as_hover_bubbles(self):
         html = build_overview.make_mcp_usage_panel(
             {
                 "lookback_days": 30,
@@ -891,6 +895,8 @@ class AssetDiscoveryTests(unittest.TestCase):
                         "calls": 3,
                         "sessions": 2,
                         "last_seen": "2026-05-06",
+                        "daily_calls": [{"date": "2026-05-06", "value": 3}],
+                        "daily_sessions": [{"date": "2026-05-06", "value": 2}],
                     }
                 ],
             }
@@ -899,9 +905,13 @@ class AssetDiscoveryTests(unittest.TestCase):
         self.assertIn("mcp-usage-table", html)
         self.assertIn("playwright/browser_navigate", html)
         self.assertIn("在本地浏览器打开或跳转到指定 URL。", html)
+        self.assertIn("hotness-description-bubble", html)
+        self.assertIn("mini-trend", html)
+        self.assertIn("top-skills-trend-col", html)
         self.assertIn("<th", html)
         self.assertIn("调用", html)
         self.assertIn("会话", html)
+        self.assertNotIn(">描述<", html)
 
     def test_single_asset_stats_snapshot_anchors_frequency_to_requested_date(self):
         manifest = self.write_skill(self.paths.codex_home / "skills", "foo", name="Foo")
@@ -927,6 +937,20 @@ class AssetDiscoveryTests(unittest.TestCase):
         self.assertEqual(snapshot["top_skills"][0]["identifier"], "foo")
         self.assertEqual(snapshot["top_skills"][0]["windows_30d"], 2)
         self.assertEqual(snapshot["top_skills"][0]["read_events_30d"], 2)
+        self.assertEqual(
+            snapshot["top_skills"][0]["daily_read_events"],
+            [
+                {"date": "2026-04-27", "value": 1},
+                {"date": "2026-05-05", "value": 1},
+            ],
+        )
+        self.assertEqual(
+            snapshot["top_skills"][0]["daily_windows"],
+            [
+                {"date": "2026-04-27", "value": 1},
+                {"date": "2026-05-05", "value": 1},
+            ],
+        )
         self.assertEqual(
             {row["label"]: row["value"] for row in snapshot["monthly_activity"]},
             {"2026-04": 1, "2026-05": 1},

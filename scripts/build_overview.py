@@ -101,6 +101,8 @@ PROJECT_CONTEXT_MAX_DAYS = 30
 WINDOW_FILTER_DEFAULT_DAYS = 3
 WINDOW_FILTER_MAX_DAYS = 30
 WINDOW_DETAIL_VISIBLE_COUNT = 20
+ASSET_FILTER_DEFAULT_DAYS = 30
+ASSET_HOTNESS_VISIBLE_COUNT = 10
 SUMMARY_TERM_DEFAULT_DAYS = 1
 SUMMARY_TERM_RANGE_DAYS = (1, 7)
 MEMORY_USAGE_WINDOW_DAYS = 7
@@ -685,8 +687,12 @@ PANEL_I18N_EN = {
     "运行视图": "Runtime View",
     "记忆层": "Memory Layer",
     "资产层": "Asset Layer",
+    "窗口层": "Window Layer",
     "资产记忆": "Asset Memory",
     "资产层总览": "Asset Layer Overview",
+    "资产筛选": "Asset Filters",
+    "MCP 热度": "MCP Hotness",
+    "趋势": "Trend",
     "这里合并展示本机发现资产、登记册条目、复盘和复用记录，不是注入 host context 的记忆摘要。": (
         "This merges discovered local assets, registry entries, reviews, and reuse records; it is not the memory summary injected into host context."
     ),
@@ -722,6 +728,7 @@ PANEL_I18N_EN = {
     "近 30 天高频技能热度": "Skill Hotness (last 30 days)",
     "近 30 天高频 skills Top 10": "Top 10 Skills (last 30 days)",
     "近 30 天高频 skills 热度": "Skill Hotness (last 30 days)",
+    "高频 skills 热度": "Skill Hotness",
     "最近复盘": "Recent Reviews",
     "最近复用记录": "Recent Usage Events",
     "最近形成的脱敏任务复盘": "Recent sanitized task reviews",
@@ -8413,6 +8420,11 @@ def build_data(assets, usage_events, reviews, language=None):
     display_nightly = select_display_nightly(primary_nightly, active_nightly)
     today = current_local_datetime().date()
     today_date_str = today.isoformat()
+    asset_filter_end_date = today_date_str
+    asset_filter_start_date = date_range_start_for_days(
+        asset_filter_end_date,
+        ASSET_FILTER_DEFAULT_DAYS,
+    )
     installed_assets = overview_asset_discovery.discover_installed_assets(PATHS, codex_homes=codex_homes)
     discovered_snapshot = overview_asset_discovery.compute_activation_snapshot(
         PATHS,
@@ -8981,6 +8993,9 @@ def build_data(assets, usage_events, reviews, language=None):
         "today_date": today_date_str,
         "backfill": backfill,
         "asset_stats_snapshot": asset_stats_snapshot,
+        "asset_filter_start_date": asset_filter_start_date,
+        "asset_filter_end_date": asset_filter_end_date,
+        "asset_filter_default_days": ASSET_FILTER_DEFAULT_DAYS,
         "window_overview_views": window_overview_views,
         "window_overview_default_date": window_overview_default_date,
         "memory_usage_window_days": MEMORY_USAGE_WINDOW_DAYS,
@@ -10198,6 +10213,64 @@ def make_window_filter_panel(default_start_date, default_end_date):
     )
 
 
+def make_asset_filter_panel(default_start_date, default_end_date):
+    quick_ranges = [
+        (1, "近一天", "Last day"),
+        (3, "近三天", "Last 3 days"),
+        (7, "近一周", "Last week"),
+        (30, "近一个月", "Last month"),
+    ]
+    buttons = []
+    for days, label_zh, label_en in quick_ranges:
+        pressed = str(days == ASSET_FILTER_DEFAULT_DAYS).lower()
+        active_attr = ' data-active="true"' if days == ASSET_FILTER_DEFAULT_DAYS else ""
+        buttons.append(
+            """
+          <button class="token-segment-button" type="button" data-asset-range-days="{days}" aria-pressed="{pressed}"{active_attr}>
+            {label}
+          </button>
+            """.format(
+                days=escape(str(days), quote=True),
+                pressed=pressed,
+                active_attr=active_attr,
+                label=panel_language_text_html(label_zh, label_en),
+            )
+        )
+    return """
+    <section class="token-filter-panel asset-filter-panel" id="asset-filter-panel">
+      <div class="token-filter-head">
+        <h2>{title}</h2>
+        <span class="token-filter-summary" id="asset-filter-summary"></span>
+      </div>
+      <div class="token-filter-grid asset-filter-grid">
+        <div class="token-filter-field asset-filter-presets">
+          <span class="token-filter-label">{quick_label}</span>
+          <div class="token-segment-group" role="group" aria-label="{quick_aria}">
+            {buttons}
+          </div>
+        </div>
+        <div class="token-filter-field token-filter-range" data-asset-date-field>
+          <label class="token-filter-label" for="asset-start-date">{start_label}</label>
+          <input id="asset-start-date" class="token-date-input" type="date" value="{start_date}">
+        </div>
+        <div class="token-filter-field token-filter-range" data-asset-date-field>
+          <label class="token-filter-label" for="asset-end-date">{end_label}</label>
+          <input id="asset-end-date" class="token-date-input" type="date" value="{end_date}">
+        </div>
+      </div>
+    </section>
+    """.format(
+        title=panel_language_text_html("资产筛选", "Asset Filters"),
+        quick_label=panel_language_text_html("快捷范围", "Quick Range"),
+        quick_aria=escape("资产快捷范围", quote=True),
+        buttons="".join(buttons),
+        start_label=panel_language_text_html("起始日期", "Start Date"),
+        end_label=panel_language_text_html("结束日期", "End Date"),
+        start_date=escape(default_start_date, quote=True),
+        end_date=escape(default_end_date, quote=True),
+    )
+
+
 def wrap_expandable_block(
     primary_html,
     extra_html,
@@ -10269,6 +10342,86 @@ def make_discovered_description_html(row, limit=60):
     return '<span class="asset-discovery-description" title="{title}">{display}</span>'.format(
         title=escape(raw_description, quote=True),
         display=escape(display_description),
+    )
+
+
+def normalize_daily_count_rows(rows, fallback_date="", fallback_value=0):
+    normalized = []
+    for row in rows or []:
+        if not isinstance(row, dict):
+            continue
+        date_value = str(row.get("date") or "").strip()[:10]
+        value = safe_int(row.get("value", 0))
+        if not date_value or value <= 0:
+            continue
+        normalized.append({"date": date_value, "value": value})
+    if not normalized and fallback_date and safe_int(fallback_value) > 0:
+        normalized.append({"date": str(fallback_date)[:10], "value": safe_int(fallback_value)})
+    return sorted(normalized, key=lambda item: item["date"])
+
+
+def daily_count_attr(rows, fallback_date="", fallback_value=0):
+    normalized = normalize_daily_count_rows(rows, fallback_date=fallback_date, fallback_value=fallback_value)
+    return escape(json.dumps(normalized, ensure_ascii=False, separators=(",", ":")), quote=True)
+
+
+def daily_count_total(rows):
+    return sum(safe_int(row.get("value", 0)) for row in rows or [] if isinstance(row, dict))
+
+
+def make_mini_trend_html(rows, label="", empty_label="暂无调用趋势"):
+    series = normalize_daily_count_rows(rows)
+    if not series:
+        return """
+          <div class="mini-trend is-empty" aria-label="{label}">
+            <span class="mini-trend-axis" aria-hidden="true"></span>
+            <span class="mini-trend-empty">{empty}</span>
+          </div>
+        """.format(
+            label=escape(label or empty_label, quote=True),
+            empty=panel_language_text_html("暂无", "None"),
+        )
+    max_value = max([safe_int(row.get("value", 0)) for row in series] + [1])
+    bars = []
+    for row in series:
+        value = safe_int(row.get("value", 0))
+        height = max(6, min(100, round(value / max_value * 100))) if value > 0 else 2
+        title = "{} · {}".format(row.get("date", ""), value)
+        bars.append(
+            '<span class="mini-trend-bar" style="--trend-height: {}%;" title="{}"></span>'.format(
+                escape(str(height), quote=True),
+                escape(title, quote=True),
+            )
+        )
+    return """
+      <div class="mini-trend" aria-label="{label}">
+        <span class="mini-trend-axis" aria-hidden="true"></span>
+        <span class="mini-trend-bars" aria-hidden="true">{bars}</span>
+      </div>
+    """.format(
+        label=escape(label or "每日调用趋势", quote=True),
+        bars="".join(bars),
+    )
+
+
+def make_hotness_name_with_description(name_html, description, description_en=""):
+    raw_description = normalize_brand_display_text(description or "")
+    raw_description_en = normalize_brand_display_text(description_en or description or "")
+    if not raw_description:
+        raw_description = "暂无描述"
+    if not raw_description_en:
+        raw_description_en = raw_description
+    return """
+      <div class="asset-discovery-name hotness-name-cell" tabindex="0" title="{title}">
+        <span class="hotness-name-label">{name}</span>
+        <span class="hotness-description-bubble" role="tooltip">
+          {description}
+        </span>
+      </div>
+    """.format(
+        name=name_html,
+        title=escape("{} / {}".format(raw_description, raw_description_en), quote=True),
+        description=panel_language_text_html(raw_description, raw_description_en),
     )
 
 
@@ -10715,6 +10868,22 @@ def make_top_skill_rows(rows, group_id="top-skill-rows"):
         attrs = [
             'data-asset-identifier="{}"'.format(escape(str(row.get("identifier") or ""), quote=True)),
             'data-asset-type="skill"',
+            'data-hotness-row="skills"',
+            'data-hotness-label="{}"'.format(escape(str(row.get("name") or row.get("identifier") or ""), quote=True)),
+            'data-daily-calls="{}"'.format(
+                daily_count_attr(
+                    row.get("daily_read_events"),
+                    fallback_date=row.get("last_seen", ""),
+                    fallback_value=row.get("read_events_30d", row.get("windows_30d", 0)),
+                )
+            ),
+            'data-daily-sessions="{}"'.format(
+                daily_count_attr(
+                    row.get("daily_windows"),
+                    fallback_date=row.get("last_seen", ""),
+                    fallback_value=row.get("windows_30d", 0),
+                )
+            ),
         ]
         if row_class:
             attrs.append('class="{}"'.format(escape(row_class, quote=True)))
@@ -10722,20 +10891,30 @@ def make_top_skill_rows(rows, group_id="top-skill-rows"):
             attrs.append('data-expand-group="{}"'.format(escape(group_id, quote=True)))
         if hidden_attr:
             attrs.append("hidden")
+        description = normalize_brand_display_text(row.get("description", "") or "暂无描述")
+        calls_series = normalize_daily_count_rows(
+            row.get("daily_read_events"),
+            fallback_date=row.get("last_seen", ""),
+            fallback_value=row.get("read_events_30d", row.get("windows_30d", 0)),
+        )
         return (
             """
             <tr {row_attrs}>
               <td>
-                <div class="asset-discovery-name">{name}</div>
+                {name}
               </td>
-              <td>{description}</td>
-              <td>{reads_30d}</td>
-              <td>{sessions_30d}</td>
+              <td class="asset-hotness-trend-cell">{trend}</td>
+              <td class="asset-hotness-calls">{reads_30d}</td>
+              <td class="asset-hotness-sessions">{sessions_30d}</td>
             </tr>
             """.format(
                 row_attrs=" ".join(attrs),
-                name=make_discovered_asset_name_html(row),
-                description=make_discovered_description_html(row),
+                name=make_hotness_name_with_description(
+                    make_discovered_asset_name_html(row),
+                    description,
+                    english_freeform_text(description, fallback_label="Description") if description else "",
+                ),
+                trend=make_mini_trend_html(calls_series, label="{} daily reads".format(row.get("name") or row.get("identifier") or "")),
                 reads_30d=escape(str(safe_int(row.get("read_events_30d", row.get("windows_30d", 0))))),
                 sessions_30d=escape(str(safe_int(row.get("windows_30d", 0)))),
             )
@@ -10759,13 +10938,29 @@ def make_mcp_usage_panel(mcp_usage, help_html=""):
     total_calls = safe_int(mcp_usage.get("total_calls", 0))
     active_tools = safe_int(mcp_usage.get("active_tools", 0))
     note_html = panel_language_text_html(
-        "近 {} 天，共 {} 次 MCP 调用，{} 个工具有活动".format(lookback_days, total_calls, active_tools),
-        "Last {} days, {} MCP calls across {} active tools".format(lookback_days, total_calls, active_tools),
+        "默认近 {} 天，共 {} 次 MCP 调用，{} 个工具有活动；可用资产筛选切换范围".format(lookback_days, total_calls, active_tools),
+        "Default last {} days, {} MCP calls across {} active tools; use asset filters to change range".format(lookback_days, total_calls, active_tools),
     )
 
     def render_row(tool, row_class="", group_id="", hidden_attr=""):
         attrs = [
             'data-mcp-name="{}"'.format(escape(str(tool.get("name") or ""), quote=True)),
+            'data-hotness-row="mcp"',
+            'data-hotness-label="{}"'.format(escape(str(tool.get("label") or tool.get("name") or ""), quote=True)),
+            'data-daily-calls="{}"'.format(
+                daily_count_attr(
+                    tool.get("daily_calls"),
+                    fallback_date=tool.get("last_seen", ""),
+                    fallback_value=tool.get("calls", 0),
+                )
+            ),
+            'data-daily-sessions="{}"'.format(
+                daily_count_attr(
+                    tool.get("daily_sessions"),
+                    fallback_date=tool.get("last_seen", ""),
+                    fallback_value=tool.get("sessions", 0),
+                )
+            ),
         ]
         if row_class:
             attrs.append('class="{}"'.format(escape(row_class, quote=True)))
@@ -10777,21 +10972,28 @@ def make_mcp_usage_panel(mcp_usage, help_html=""):
             tool.get("server") or "MCP"
         )
         description_en = tool.get("description_en") or tool.get("description") or "MCP tool call."
+        calls_series = normalize_daily_count_rows(
+            tool.get("daily_calls"),
+            fallback_date=tool.get("last_seen", ""),
+            fallback_value=tool.get("calls", 0),
+        )
         return """
             <tr {row_attrs}>
               <td>
-                <div class="asset-discovery-name">{name}</div>
+                {name}
               </td>
-              <td>
-                <span class="asset-discovery-description">{description}</span>
-              </td>
-              <td>{calls}</td>
-              <td>{sessions}</td>
+              <td class="asset-hotness-trend-cell">{trend}</td>
+              <td class="asset-hotness-calls">{calls}</td>
+              <td class="asset-hotness-sessions">{sessions}</td>
             </tr>
             """.format(
             row_attrs=" ".join(attrs),
-            name=escape(str(tool.get("label") or tool.get("name") or "")),
-            description=panel_language_text_html(description, description_en),
+            name=make_hotness_name_with_description(
+                escape(str(tool.get("label") or tool.get("name") or "")),
+                description,
+                description_en,
+            ),
+            trend=make_mini_trend_html(calls_series, label="{} daily calls".format(tool.get("label") or tool.get("name") or "")),
             calls=escape(str(safe_int(tool.get("calls", 0)))),
             sessions=escape(str(safe_int(tool.get("sessions", 0)))),
         )
@@ -10817,14 +11019,14 @@ def make_mcp_usage_panel(mcp_usage, help_html=""):
         <table class="asset-discovery-table top-skills-table mcp-usage-table">
           <colgroup>
             <col class="top-skills-name-col">
-            <col class="top-skills-description-col">
+            <col class="top-skills-trend-col">
             <col class="top-skills-count-col">
             <col class="top-skills-count-col">
           </colgroup>
           <thead>
             <tr>
               <th>{name_header}</th>
-              <th>{description_header}</th>
+              <th>{trend_header}</th>
               <th>{calls_header}</th>
               <th>{sessions_header}</th>
             </tr>
@@ -10842,7 +11044,7 @@ def make_mcp_usage_panel(mcp_usage, help_html=""):
             note_content_html=note_html,
         ),
         name_header=panel_language_text_html("名称", "Name"),
-        description_header=panel_language_text_html("描述", "Description"),
+        trend_header=panel_language_text_html("趋势", "Trend"),
         calls_header=panel_language_text_html("调用", "Calls"),
         sessions_header=panel_language_text_html("会话", "Sessions"),
         rows_html=rows_html,
@@ -11608,7 +11810,9 @@ def make_side_nav():
         ("group", "资产层", "Asset Layer"),
         ("link", "asset-overview-section", "总览", "Overview", "资产层总览", "Asset Layer Overview"),
         ("link", "top-assets-section", "skills 热度", "Skill Hotness", "近 30 天高频 skills 热度", "Skill Hotness"),
+        ("link", "mcp-usage-section", "MCP 热度", "MCP Hotness", "MCP 使用热度", "MCP Tool Usage"),
         ("link", "reviews-section", "复盘记录", "Reviews", "复盘记录", "Reviews"),
+        ("group", "窗口层", "Window Layer"),
         ("link", "project-context-section", "窗口总览", "Window Overview", "窗口总览", "Window Overview"),
         ("link", "window-overview-section", "窗口明细", "Windows", "窗口明细", "Windows"),
     ]
@@ -15489,6 +15693,9 @@ def build_html(data):
             "window_filter_end_date": window_filter_end_date,
             "window_filter_default_days": data.get("window_filter_default_days", WINDOW_FILTER_DEFAULT_DAYS),
             "window_filter_max_days": data.get("window_filter_max_days", WINDOW_FILTER_MAX_DAYS),
+            "asset_filter_start_date": data.get("asset_filter_start_date", ""),
+            "asset_filter_end_date": data.get("asset_filter_end_date", ""),
+            "asset_filter_default_days": data.get("asset_filter_default_days", ASSET_FILTER_DEFAULT_DAYS),
             "window_detail_visible_count": window_detail_visible_count,
             "window_overview_project_visible_count": PROJECT_CONTEXT_VISIBLE_COUNT,
             "pipeline_status": data.get("pipeline_status", {}),
@@ -15552,6 +15759,10 @@ def build_html(data):
     )
     daily_summary_title = localized("今天哪些工作能复用？", "What work can be reused today?", language)
     window_filter_panel = make_window_filter_panel(window_filter_start_date, window_filter_end_date)
+    asset_filter_panel = make_asset_filter_panel(
+        data.get("asset_filter_start_date", ""),
+        data.get("asset_filter_end_date", ""),
+    )
     insight_section_html = """
     <section class="grid">
       <section class="panel">
@@ -15695,8 +15906,8 @@ def build_html(data):
             {
                 "label": "怎么看",
                 "body": {
-                    "zh": "例如 playwright/browser_navigate 表示 Codex 调过 Playwright 的浏览器导航工具；次数越高，说明这类外部工具在近期任务里越常被用到。",
-                    "en": "For example, playwright/browser_navigate means Codex called Playwright's browser navigation tool; higher counts mean that external tool was used more often recently.",
+                    "zh": "例如 playwright/browser_navigate 表示 Codex 调过 Playwright 的浏览器导航工具；次数越高，说明这类外部工具在近期任务里越常被用到。移动到名称可看工具说明。",
+                    "en": "For example, playwright/browser_navigate means Codex called Playwright's browser navigation tool; higher counts mean that external tool was used more often recently. Hover the name for the tool description.",
                 },
             },
             {
@@ -16082,19 +16293,19 @@ def build_html(data):
         language=language,
     )
     top_assets_help = make_help_popover(
-        "近 30 天高频 skills 热度",
+        "高频 skills 热度",
         [
             {
                 "label": "排序方式",
-                "body": "按近 30 天模型读取 SKILL.md 的工具调用次数倒序；默认展示 Top 10，可点击查看更多 skills 热度。",
+                "body": "按当前资产筛选范围内模型读取 SKILL.md 的工具调用次数倒序；默认展示 Top 10，可点击查看更多 skills 热度。",
             },
             {
                 "label": "数据来源",
-                "body": "skills 来源来自本机扫描和近 30 天项目内 / 跨仓库读取记录；同名 skills 跨来源会合并计数。",
+                "body": "skills 来源来自本机扫描和近 30 天项目内 / 跨仓库读取记录；同名 skills 跨来源会合并计数，筛选只影响热度和趋势。",
             },
             {
                 "label": "点击名称",
-                "body": "可点击的 skills 名会打开该行优先来源的 SKILL.md。",
+                "body": "可点击的 skills 名会打开该行优先来源的 SKILL.md；鼠标移动到名称上可查看描述。",
             },
         ],
     )
@@ -17143,6 +17354,11 @@ def build_html(data):
       gap: 18px;
     }}
 
+    .window-layer-section {{
+      display: grid;
+      gap: 18px;
+    }}
+
     .memory-family-head.asset-ledger-head {{
       display: flex;
       align-items: flex-start;
@@ -17284,12 +17500,17 @@ def build_html(data):
       min-width: 860px;
     }}
 
-    .top-skills-name-col {{
-      width: 23%;
+    .top-skills-table-wrap,
+    .mcp-usage-table-wrap {{
+      overflow: visible;
     }}
 
-    .top-skills-description-col {{
-      width: auto;
+    .top-skills-name-col {{
+      width: 46%;
+    }}
+
+    .top-skills-trend-col {{
+      width: 220px;
     }}
 
     .top-skills-count-col {{
@@ -17298,8 +17519,8 @@ def build_html(data):
 
     .top-skills-table th:nth-child(2),
     .top-skills-table td:nth-child(2) {{
-      width: auto;
-      max-width: none;
+      width: 220px;
+      max-width: 220px;
     }}
 
     .top-skills-table th:nth-child(3),
@@ -17318,6 +17539,117 @@ def build_html(data):
 
     .mcp-usage-table .asset-discovery-name {{
       overflow-wrap: anywhere;
+    }}
+
+    .hotness-name-cell {{
+      position: relative;
+      display: inline-grid;
+      max-width: 100%;
+      outline: none;
+      cursor: help;
+    }}
+
+    .hotness-name-label {{
+      min-width: 0;
+      overflow-wrap: anywhere;
+    }}
+
+    .hotness-description-bubble {{
+      position: absolute;
+      z-index: 45;
+      left: 0;
+      bottom: calc(100% + 10px);
+      width: min(360px, calc(100vw - 52px));
+      padding: 10px 12px;
+      border: 1px solid rgba(148, 163, 184, 0.34);
+      border-radius: 12px;
+      background: color-mix(in srgb, var(--card) 96%, transparent);
+      color: var(--ink);
+      box-shadow: 0 18px 42px rgba(15, 23, 42, 0.18);
+      font-size: 12px;
+      font-weight: 600;
+      line-height: 1.5;
+      white-space: normal;
+      overflow-wrap: anywhere;
+      opacity: 0;
+      pointer-events: none;
+      transform: translateY(4px);
+      transition: opacity 120ms ease, transform 120ms ease;
+    }}
+
+    .hotness-description-bubble::after {{
+      content: "";
+      position: absolute;
+      left: 18px;
+      bottom: -6px;
+      width: 10px;
+      height: 10px;
+      border-right: 1px solid rgba(148, 163, 184, 0.34);
+      border-bottom: 1px solid rgba(148, 163, 184, 0.34);
+      background: color-mix(in srgb, var(--card) 96%, transparent);
+      transform: rotate(45deg);
+    }}
+
+    .hotness-name-cell:hover .hotness-description-bubble,
+    .hotness-name-cell:focus .hotness-description-bubble,
+    .hotness-name-cell:focus-within .hotness-description-bubble {{
+      opacity: 1;
+      transform: translateY(0);
+    }}
+
+    .asset-hotness-trend-cell {{
+      min-width: 180px;
+    }}
+
+    .mini-trend {{
+      position: relative;
+      height: 34px;
+      min-width: 160px;
+      display: grid;
+      align-items: end;
+      padding: 3px 4px 6px 9px;
+    }}
+
+    .mini-trend-axis {{
+      position: absolute;
+      left: 7px;
+      right: 2px;
+      bottom: 5px;
+      top: 4px;
+      border-left: 1px solid rgba(94, 103, 109, 0.34);
+      border-bottom: 1px solid rgba(94, 103, 109, 0.34);
+      pointer-events: none;
+    }}
+
+    .mini-trend-bars {{
+      position: relative;
+      z-index: 1;
+      display: flex;
+      align-items: end;
+      gap: 2px;
+      height: 100%;
+      padding-left: 3px;
+    }}
+
+    .mini-trend-bar {{
+      flex: 1 1 0;
+      min-width: 2px;
+      height: var(--trend-height, 4%);
+      border-radius: 2px 2px 0 0;
+      background: linear-gradient(180deg, rgba(0, 113, 227, 0.86), rgba(0, 113, 227, 0.38));
+    }}
+
+    .mini-trend.is-empty {{
+      align-items: center;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 650;
+    }}
+
+    .mini-trend-empty {{
+      position: relative;
+      z-index: 1;
+      padding-left: 8px;
     }}
 
     .asset-discovery-name {{
@@ -19110,6 +19442,11 @@ def build_html(data):
       box-shadow: none;
     }}
 
+    .asset-filter-panel {{
+      margin-top: 0;
+      box-shadow: none;
+    }}
+
     .window-filter-panel.is-sticky {{
       position: fixed;
       top: var(--window-filter-sticky-top, 12px);
@@ -19128,6 +19465,10 @@ def build_html(data):
     }}
 
     .window-filter-grid {{
+      grid-template-columns: minmax(360px, 1.3fr) repeat(2, minmax(160px, 0.72fr));
+    }}
+
+    .asset-filter-grid {{
       grid-template-columns: minmax(360px, 1.3fr) repeat(2, minmax(160px, 0.72fr));
     }}
 
@@ -22026,7 +22367,8 @@ def build_html(data):
 
       .token-filter-source,
       .token-filter-grain,
-      .window-filter-presets {{
+      .window-filter-presets,
+      .asset-filter-presets {{
         grid-column: span 2;
       }}
 
@@ -22117,6 +22459,11 @@ def build_html(data):
 
       .panel {{
         padding: 18px;
+      }}
+
+      .top-skills-table-wrap,
+      .mcp-usage-table-wrap {{
+        overflow-x: auto;
       }}
 
       .panel h2 {{
@@ -22676,25 +23023,22 @@ def build_html(data):
       <section class="grid metrics-grid asset-metrics-grid">
         {asset_metric_cards}
       </section>
+      {asset_filter_panel}
       {asset_stats_snapshot_panel}
-      <section class="grid two-up">
-        {type_panel}
-        {month_panel}
-      </section>
       <section class="panel" id="top-assets-section">
         {top_assets_header}
         <div class="table-wrap asset-discovery-table-wrap top-skills-table-wrap">
           <table class="asset-discovery-table top-skills-table">
             <colgroup>
               <col class="top-skills-name-col">
-              <col class="top-skills-description-col">
+              <col class="top-skills-trend-col">
               <col class="top-skills-count-col">
               <col class="top-skills-count-col">
             </colgroup>
             <thead>
               <tr>
                 <th>{asset_header}</th>
-                <th>{description_header}</th>
+                <th>{trend_header}</th>
                 <th>{skill_reads_30d_header}</th>
                 <th>{skill_sessions_30d_header}</th>
               </tr>
@@ -22735,22 +23079,32 @@ def build_html(data):
       </div>
     </section>
 
-    <section class="panel" id="project-context-section">
-      {project_context_header}
-      {window_filter_panel}
-      <div class="window-filter-sticky-placeholder" id="window-filter-sticky-placeholder" hidden></div>
-      {project_context_body}
-    </section>
+    <section class="window-layer-section" id="window-layer-section">
+      <div class="memory-family-head window-layer-head">
+        <div class="memory-family-title-copy">
+          <p class="section-kicker">{window_layer_kicker}</p>
+          <h2>{window_layer_title}</h2>
+          <p class="memory-family-note">{window_layer_note}</p>
+        </div>
+      </div>
 
-    <section class="grid" id="window-overview-section">
-      <section class="panel window-overview-panel" id="window-overview-panel">
-        {window_overview_header}
-        <div class="window-summary-list" id="window-summary-list">
-          {nightly_window_cards}
-        </div>
-        <div class="window-detail-more-row" id="window-detail-more-row" hidden>
-          <button class="content-more-button" type="button" id="window-detail-more-button" aria-expanded="false"></button>
-        </div>
+      <section class="panel" id="project-context-section">
+        {project_context_header}
+        {window_filter_panel}
+        <div class="window-filter-sticky-placeholder" id="window-filter-sticky-placeholder" hidden></div>
+        {project_context_body}
+      </section>
+
+      <section class="grid" id="window-overview-section">
+        <section class="panel window-overview-panel" id="window-overview-panel">
+          {window_overview_header}
+          <div class="window-summary-list" id="window-summary-list">
+            {nightly_window_cards}
+          </div>
+          <div class="window-detail-more-row" id="window-detail-more-row" hidden>
+            <button class="content-more-button" type="button" id="window-detail-more-button" aria-expanded="false"></button>
+          </div>
+        </section>
       </section>
     </section>
 
@@ -22801,6 +23155,8 @@ def build_html(data):
       const defaultTokenDateRange = tokenDefaultDateRange(7);
       const defaultWindowFilterStart = String(snapshot.window_filter_start_date || "");
       const defaultWindowFilterEnd = String(snapshot.window_filter_end_date || "");
+      const defaultAssetFilterStart = String(snapshot.asset_filter_start_date || "");
+      const defaultAssetFilterEnd = String(snapshot.asset_filter_end_date || "");
       const windowOverviewProjectVisibleCount = Math.max(Number(snapshot.window_overview_project_visible_count) || 3, 1);
       const state = {{
         tokenUsage: snapshot.token_usage || null,
@@ -22818,8 +23174,17 @@ def build_html(data):
           startDate: defaultWindowFilterStart,
           endDate: defaultWindowFilterEnd,
         }},
+        assetFilters: {{
+          startDate: defaultAssetFilterStart,
+          endDate: defaultAssetFilterEnd,
+        }},
         defaultWindowFilters: null,
+        defaultAssetFilters: null,
         windowDetailsExpanded: false,
+        assetHotnessExpanded: {{
+          skills: false,
+          mcp: false,
+        }},
         windowOverviewProjectsExpanded: false,
         activeWindowDateField: "",
         windowDatePickerMonth: null,
@@ -22832,6 +23197,7 @@ def build_html(data):
       }};
       state.defaultTokenFilters = Object.assign({{}}, state.tokenFilters);
       state.defaultWindowFilters = Object.assign({{}}, state.windowFilters);
+      state.defaultAssetFilters = Object.assign({{}}, state.assetFilters);
       const elements = {{
         snapshotAge: document.getElementById("snapshot-generated-age"),
         nightlyDateInput: document.getElementById("nightly-date-input"),
@@ -22901,6 +23267,11 @@ def build_html(data):
         tokenOverviewPanel: document.getElementById("token-overview-panel"),
         tokenOverviewNote: document.getElementById("token-overview-note"),
         tokenSummaryCards: document.getElementById("token-summary-cards"),
+        assetFilterPanel: document.getElementById("asset-filter-panel"),
+        assetFilterSummary: document.getElementById("asset-filter-summary"),
+        assetStartDateInput: document.getElementById("asset-start-date"),
+        assetEndDateInput: document.getElementById("asset-end-date"),
+        assetRangeButtons: Array.from(document.querySelectorAll("[data-asset-range-days]")),
         dailyTokenPanel: document.getElementById("daily-token-panel"),
         dailyTokenNote: document.getElementById("daily-token-note"),
         dailyTokenRows: document.getElementById("daily-token-rows"),
@@ -23712,6 +24083,273 @@ def build_html(data):
           startDate: startDate,
           endDate: endDate,
         }};
+      }}
+
+      function normalizeAssetFilters(nextFilters) {{
+        const source = nextFilters || {{}};
+        let startDate = String(source.startDate || defaultAssetFilterStart || "").slice(0, 10);
+        let endDate = String(source.endDate || defaultAssetFilterEnd || "").slice(0, 10);
+        if (startDate && endDate && startDate > endDate) {{
+          const swap = startDate;
+          startDate = endDate;
+          endDate = swap;
+        }}
+        return {{
+          startDate: startDate,
+          endDate: endDate,
+        }};
+      }}
+
+      function assetFilterDateRange(days, endDateValue) {{
+        const resolvedDays = Math.max(Number(days) || Number(snapshot.asset_filter_default_days) || 30, 1);
+        const fallbackEnd = defaultAssetFilterEnd || tokenDateInputValue(new Date());
+        const end = parseWindowDateValue(endDateValue || fallbackEnd) || new Date();
+        end.setHours(0, 0, 0, 0);
+        const start = new Date(end);
+        start.setDate(start.getDate() - resolvedDays + 1);
+        return {{
+          startDate: tokenDateInputValue(start),
+          endDate: tokenDateInputValue(end),
+        }};
+      }}
+
+      function readDailySeries(row, attrName) {{
+        if (!row) {{
+          return [];
+        }}
+        try {{
+          const parsed = JSON.parse(row.getAttribute(attrName) || "[]");
+          return Array.isArray(parsed) ? parsed : [];
+        }} catch (error) {{
+          return [];
+        }}
+      }}
+
+      function dailySeriesForFilter(series, filters) {{
+        const activeFilters = normalizeAssetFilters(filters || state.assetFilters);
+        const byDate = new Map();
+        (Array.isArray(series) ? series : []).forEach(function (row) {{
+          const dateValue = String((row && row.date) || "").slice(0, 10);
+          if (!dateValue) return;
+          if (activeFilters.startDate && dateValue < activeFilters.startDate) return;
+          if (activeFilters.endDate && dateValue > activeFilters.endDate) return;
+          byDate.set(dateValue, (Number(byDate.get(dateValue)) || 0) + (Number(row.value) || 0));
+        }});
+        const rows = [];
+        if (activeFilters.startDate && activeFilters.endDate) {{
+          const cursor = parseWindowDateValue(activeFilters.startDate);
+          const end = parseWindowDateValue(activeFilters.endDate);
+          if (cursor && end) {{
+            while (cursor.getTime() <= end.getTime()) {{
+              const dateValue = tokenDateInputValue(cursor);
+              rows.push({{ date: dateValue, value: Number(byDate.get(dateValue)) || 0 }});
+              cursor.setDate(cursor.getDate() + 1);
+            }}
+            return rows;
+          }}
+        }}
+        return Array.from(byDate.entries()).sort(function (left, right) {{
+          return String(left[0]).localeCompare(String(right[0]));
+        }}).map(function (entry) {{
+          return {{ date: entry[0], value: Number(entry[1]) || 0 }};
+        }});
+      }}
+
+      function dailySeriesTotal(series) {{
+        return (Array.isArray(series) ? series : []).reduce(function (total, row) {{
+          return total + (Number(row && row.value) || 0);
+        }}, 0);
+      }}
+
+      function renderMiniTrend(series, label) {{
+        const rows = Array.isArray(series) ? series : [];
+        const maxValue = rows.reduce(function (peak, row) {{
+          return Math.max(peak, Number(row && row.value) || 0);
+        }}, 0);
+        if (maxValue <= 0) {{
+          return (
+            '<div class="mini-trend is-empty" aria-label="' + escapeHtml(label || "") + '">' +
+              '<span class="mini-trend-axis" aria-hidden="true"></span>' +
+              '<span class="mini-trend-empty">' + escapeHtml(localizeValue("暂无", "None")) + '</span>' +
+            '</div>'
+          );
+        }}
+        const bars = rows.map(function (row) {{
+          const value = Number(row && row.value) || 0;
+          const height = value > 0 ? Math.max(6, Math.min(100, Math.round(value / maxValue * 100))) : 2;
+          const title = String((row && row.date) || "") + " · " + value;
+          return '<span class="mini-trend-bar" style="--trend-height: ' + height + '%;" title="' + escapeHtml(title) + '"></span>';
+        }}).join("");
+        return (
+          '<div class="mini-trend" aria-label="' + escapeHtml(label || "") + '">' +
+            '<span class="mini-trend-axis" aria-hidden="true"></span>' +
+            '<span class="mini-trend-bars" aria-hidden="true">' + bars + '</span>' +
+          '</div>'
+        );
+      }}
+
+      function assetFilterRangeLabel(filters, skillCount, mcpCount) {{
+        const activeFilters = normalizeAssetFilters(filters);
+        const rangeLabel = activeFilters.startDate && activeFilters.endDate
+          ? activeFilters.startDate + " " + localizeValue("至", "to") + " " + activeFilters.endDate
+          : (activeFilters.startDate
+            ? localizeValue("自", "From") + " " + activeFilters.startDate
+            : (activeFilters.endDate ? localizeValue("截至", "Until") + " " + activeFilters.endDate : localizeValue("全部时间", "All time")));
+        return rangeLabel + " · " +
+          (currentLanguage === "en"
+            ? skillCount + " active skills · " + mcpCount + " active MCP tools"
+            : skillCount + " 个活跃 skills · " + mcpCount + " 个活跃 MCP 工具");
+      }}
+
+      function updateHotnessTable(groupName, filters) {{
+        const groupId = groupName === "mcp" ? "mcp-usage-rows" : "top-skill-rows";
+        const rows = Array.from(document.querySelectorAll('[data-hotness-row="' + groupName + '"]'));
+        if (!rows.length) {{
+          return 0;
+        }}
+        const tableBody = rows[0].parentElement;
+        const toggleRow = tableBody ? tableBody.querySelector('.content-more-row') : null;
+        const expanded = Boolean(state.assetHotnessExpanded && state.assetHotnessExpanded[groupName]);
+        const rowsWithStats = rows.map(function (row) {{
+          const callsSeries = dailySeriesForFilter(readDailySeries(row, "data-daily-calls"), filters);
+          const sessionsSeries = dailySeriesForFilter(readDailySeries(row, "data-daily-sessions"), filters);
+          const calls = dailySeriesTotal(callsSeries);
+          const sessions = dailySeriesTotal(sessionsSeries);
+          return {{
+            row: row,
+            calls: calls,
+            sessions: sessions,
+            callsSeries: callsSeries,
+            label: String(row.getAttribute("data-hotness-label") || ""),
+          }};
+        }}).sort(function (left, right) {{
+          return (right.calls - left.calls) ||
+            (right.sessions - left.sessions) ||
+            left.label.localeCompare(right.label);
+        }});
+        if (tableBody) {{
+          rowsWithStats.forEach(function (entry) {{
+            tableBody.insertBefore(entry.row, toggleRow || null);
+          }});
+        }}
+        const activeRows = rowsWithStats.filter(function (entry) {{
+          return entry.calls > 0 || entry.sessions > 0;
+        }});
+        rowsWithStats.forEach(function (entry) {{
+          const visibleIndex = activeRows.indexOf(entry);
+          const shouldShow = visibleIndex >= 0 && (expanded || visibleIndex < {asset_hotness_visible_count});
+          entry.row.hidden = !shouldShow;
+          const callsCell = entry.row.querySelector(".asset-hotness-calls");
+          const sessionsCell = entry.row.querySelector(".asset-hotness-sessions");
+          const trendCell = entry.row.querySelector(".asset-hotness-trend-cell");
+          if (callsCell) callsCell.textContent = String(entry.calls);
+          if (sessionsCell) sessionsCell.textContent = String(entry.sessions);
+          if (trendCell) {{
+            trendCell.innerHTML = renderMiniTrend(
+              entry.callsSeries,
+              entry.label + " " + localizeValue("每日调用趋势", "daily calls trend")
+            );
+          }}
+        }});
+        const hiddenCount = Math.max(activeRows.length - {asset_hotness_visible_count}, 0);
+        const toggleButton = toggleRow ? toggleRow.querySelector(".content-more-button") : null;
+        if (toggleRow) {{
+          toggleRow.hidden = hiddenCount <= 0;
+        }}
+        if (toggleButton) {{
+          toggleButton.setAttribute("aria-expanded", expanded ? "true" : "false");
+          toggleButton.textContent = expanded
+            ? localizeValue(groupName === "mcp" ? "收起 MCP 工具" : "收起 skills 热度", groupName === "mcp" ? "Collapse MCP tools" : "Collapse skill hotness")
+            : (currentLanguage === "en"
+              ? "Show " + hiddenCount + " more " + (groupName === "mcp" ? "MCP tools" : "skills")
+              : "查看更多 " + hiddenCount + " " + (groupName === "mcp" ? "个 MCP 工具" : "个 skills 热度"));
+          toggleButton.setAttribute("data-hotness-group", groupName);
+          toggleButton.removeAttribute("data-expand-group");
+        }}
+        return activeRows.length;
+      }}
+
+      function syncAssetFilterControls(skillCount, mcpCount) {{
+        const filters = normalizeAssetFilters(state.assetFilters);
+        if (elements.assetStartDateInput && elements.assetStartDateInput.value !== filters.startDate) {{
+          elements.assetStartDateInput.value = filters.startDate;
+        }}
+        if (elements.assetEndDateInput && elements.assetEndDateInput.value !== filters.endDate) {{
+          elements.assetEndDateInput.value = filters.endDate;
+        }}
+        const start = parseWindowDateValue(filters.startDate);
+        const end = parseWindowDateValue(filters.endDate);
+        const rangeDays = start && end ? Math.round((end.getTime() - start.getTime()) / (24 * 60 * 60 * 1000)) + 1 : 0;
+        elements.assetRangeButtons.forEach(function (button) {{
+          const isActive = rangeDays > 0 && Number(button.getAttribute("data-asset-range-days")) === rangeDays;
+          button.classList.toggle("is-active", isActive);
+          button.setAttribute("aria-pressed", isActive ? "true" : "false");
+          if (isActive) {{
+            button.setAttribute("data-active", "true");
+          }} else {{
+            button.removeAttribute("data-active");
+          }}
+        }});
+        if (elements.assetFilterSummary) {{
+          elements.assetFilterSummary.textContent = assetFilterRangeLabel(filters, skillCount || 0, mcpCount || 0);
+        }}
+      }}
+
+      function applyAssetFilters() {{
+        state.assetFilters = normalizeAssetFilters(state.assetFilters);
+        const skillCount = updateHotnessTable("skills", state.assetFilters);
+        const mcpCount = updateHotnessTable("mcp", state.assetFilters);
+        syncAssetFilterControls(skillCount, mcpCount);
+      }}
+
+      function setAssetFilterState(nextFilters) {{
+        state.assetFilters = normalizeAssetFilters(nextFilters);
+        state.assetHotnessExpanded = {{ skills: false, mcp: false }};
+        applyAssetFilters();
+      }}
+
+      function wireAssetFilters() {{
+        if (!elements.assetFilterPanel) {{
+          return;
+        }}
+        const onDateChange = function () {{
+          setAssetFilterState({{
+            startDate: elements.assetStartDateInput ? elements.assetStartDateInput.value : state.assetFilters.startDate,
+            endDate: elements.assetEndDateInput ? elements.assetEndDateInput.value : state.assetFilters.endDate,
+          }});
+        }};
+        [elements.assetStartDateInput, elements.assetEndDateInput].forEach(function (input) {{
+          if (!input) return;
+          input.addEventListener("change", onDateChange);
+        }});
+        elements.assetRangeButtons.forEach(function (button) {{
+          button.addEventListener("click", function () {{
+            const days = Number(button.getAttribute("data-asset-range-days")) || Number(snapshot.asset_filter_default_days) || 30;
+            const endDate = state.assetFilters.endDate || defaultAssetFilterEnd || tokenDateInputValue(new Date());
+            setAssetFilterState(assetFilterDateRange(days, endDate));
+          }});
+        }});
+        document.querySelectorAll("[data-asset-date-field]").forEach(function (field) {{
+          const input = field.querySelector(".token-date-input");
+          if (!input) return;
+          field.addEventListener("click", function (event) {{
+            if (event.target && event.target.closest && event.target.closest(".token-date-input")) return;
+            openTokenDatePicker(input);
+          }});
+        }});
+        document.addEventListener("click", function (event) {{
+          const button = event.target && event.target.closest
+            ? event.target.closest("[data-hotness-group]")
+            : null;
+          if (!button) return;
+          const groupName = button.getAttribute("data-hotness-group") || "";
+          if (!state.assetHotnessExpanded) {{
+            state.assetHotnessExpanded = {{ skills: false, mcp: false }};
+          }}
+          state.assetHotnessExpanded[groupName] = !state.assetHotnessExpanded[groupName];
+          applyAssetFilters();
+        }});
+        applyAssetFilters();
       }}
 
       function windowCardList() {{
@@ -24566,6 +25204,7 @@ def build_html(data):
           renderNightlySummary(state.selectedNightlyDate);
         }}
         applyWindowFilters();
+        applyAssetFilters();
         if (state.pipelineStatus) {{
           updatePipelineStatus(state.pipelineStatus);
         }}
@@ -25337,6 +25976,9 @@ def build_html(data):
           button.addEventListener("click", function () {{
             const group = button.getAttribute("data-expand-group");
             if (!group) {{
+              return;
+            }}
+            if (group === "top-skill-rows" || group === "mcp-usage-rows") {{
               return;
             }}
             const rows = Array.from(document.querySelectorAll('.content-more-extra-row[data-expand-group="' + group + '"]'));
@@ -27306,6 +27948,7 @@ def build_html(data):
       }}
       wireContentMoreButtons();
       wireWindowFilters();
+      wireAssetFilters();
       wireWindowOverviewProjectMore();
       wireWindowFilterSticky();
       wireProjectContextWindowLinks();
@@ -27941,6 +28584,7 @@ def build_html(data):
         live_token_poll_ms=LIVE_TOKEN_POLL_SECONDS * 1000,
         live_token_timeout_ms=LIVE_TOKEN_TIMEOUT_MS,
         window_days=token_usage.get("window_days", CCUSAGE_WINDOW_DAYS),
+        asset_hotness_visible_count=ASSET_HOTNESS_VISIBLE_COUNT,
         token_daily_display_days=CCUSAGE_WINDOW_DAYS,
         token_metric_cards="".join(token_metric_cards),
         asset_metric_cards="".join(asset_metric_cards),
@@ -27955,6 +28599,7 @@ def build_html(data):
             "这里合并展示本机发现资产、登记册条目、复盘和复用记录，不是注入 host context 的记忆摘要。",
             "This merges discovered local assets, registry entries, reviews, and reuse records; it is not the memory summary injected into host context.",
         ),
+        asset_filter_panel=asset_filter_panel,
         asset_stats_snapshot_panel=make_asset_stats_snapshot_panel(
             data.get("asset_stats_snapshot", {}),
             current_local_datetime().date().isoformat(),
@@ -28067,11 +28712,11 @@ def build_html(data):
             local_memory_help,
         ),
         top_assets_header=make_panel_header(
-            "近 30 天高频 skills 热度",
+            "高频 skills 热度",
             help_html=top_assets_help,
             note_content_html=panel_language_text_html(
-                "按模型读取 SKILL.md 的次数排序；默认展示 Top 10",
-                "Sorted by SKILL.md reads; Top 10 shown by default",
+                "按资产筛选范围内模型读取 SKILL.md 的次数排序；移动到名称查看描述",
+                "Sorted by SKILL.md reads in the asset filter range; hover names for descriptions",
             ),
         ),
         reviews_header=make_panel_header(
@@ -28083,6 +28728,12 @@ def build_html(data):
             "最近复用记录",
             "用于证明某个已有条目在任务里发挥了作用",
             usage_help,
+        ),
+        window_layer_kicker=panel_language_text_html("窗口层", "Window Layer"),
+        window_layer_title=panel_language_text_html("窗口层", "Window Layer"),
+        window_layer_note=panel_language_text_html(
+            "窗口总览和窗口明细独立展示当前工作上下文，不再混在资产层里。",
+            "Window overview and details show working context separately from the asset layer.",
         ),
         window_overview_header=make_panel_header(
             window_overview_heading,
@@ -28165,6 +28816,7 @@ def build_html(data):
         usage_rows=make_usage_rows(panel_views.get("usage_events", data["usage_events"]), "usage-events"),
         asset_header=panel_language_text_html("名称", "Name"),
         description_header=panel_language_text_html("描述", "Description"),
+        trend_header=panel_language_text_html("趋势", "Trend"),
         count_30d_header=panel_language_text_html("30 天", "30d"),
         skill_reads_30d_header=panel_language_text_html("读取", "Reads"),
         skill_sessions_30d_header=panel_language_text_html("会话", "Sessions"),

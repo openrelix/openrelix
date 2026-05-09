@@ -107,6 +107,8 @@ def zero_frequency():
         "windows_30d": 0,
         "read_events_7d": 0,
         "read_events_30d": 0,
+        "daily_windows": {},
+        "daily_read_events": {},
         "last_seen": None,
     }
 
@@ -965,6 +967,10 @@ def _record_activation(date_value, hits, assets_by_key, frequency_by_key, frontm
         read_events = max(int(hit.get("read_events") or 0), 1)
         stats["windows_30d"] += 1
         stats["read_events_30d"] = int(stats.get("read_events_30d") or 0) + read_events
+        daily_windows = stats.setdefault("daily_windows", {})
+        daily_read_events = stats.setdefault("daily_read_events", {})
+        daily_windows[date_text] = int(daily_windows.get(date_text) or 0) + 1
+        daily_read_events[date_text] = int(daily_read_events.get(date_text) or 0) + read_events
         if date_value >= seven_day_start:
             stats["windows_7d"] += 1
             stats["read_events_7d"] = int(stats.get("read_events_7d") or 0) + read_events
@@ -1100,8 +1106,33 @@ def _stats_for_asset(asset, frequency_by_key):
         "windows_30d": int(stats.get("windows_30d") or 0),
         "read_events_7d": int(read_events_7d if read_events_7d is not None else stats.get("windows_7d") or 0),
         "read_events_30d": int(read_events_30d if read_events_30d is not None else stats.get("windows_30d") or 0),
+        "daily_windows": _daily_count_rows(stats.get("daily_windows")),
+        "daily_read_events": _daily_count_rows(stats.get("daily_read_events")),
         "last_seen": stats.get("last_seen") or "",
     }
+
+
+def _daily_count_rows(counts):
+    if not isinstance(counts, dict):
+        return []
+    rows = []
+    for date_value in sorted(counts):
+        value = int(counts.get(date_value) or 0)
+        if value <= 0:
+            continue
+        rows.append({"date": str(date_value), "value": value})
+    return rows
+
+
+def _merge_daily_count_rows(sources, field):
+    counts = OrderedDict()
+    for source in sources or []:
+        for row in source.get(field, []) or []:
+            date_value = str(row.get("date") or "").strip()
+            if not date_value:
+                continue
+            counts[date_value] = int(counts.get(date_value) or 0) + int(row.get("value") or 0)
+    return _daily_count_rows(counts)
 
 
 def _source_tag_for_asset(asset):
@@ -1206,6 +1237,8 @@ def aggregate_renderable_assets(assets, frequency_by_key):
                 "windows_30d": stats["windows_30d"],
                 "read_events_7d": stats["read_events_7d"],
                 "read_events_30d": stats["read_events_30d"],
+                "daily_windows": stats["daily_windows"],
+                "daily_read_events": stats["daily_read_events"],
                 "last_seen": stats["last_seen"],
                 "click_target": asset.get("manifest_abspath", ""),
                 "sources": [],
@@ -1233,6 +1266,8 @@ def aggregate_renderable_assets(assets, frequency_by_key):
                 "windows_30d": sum(int(source.get("windows_30d") or 0) for source in sources),
                 "read_events_7d": sum(int(source.get("read_events_7d") or 0) for source in sources),
                 "read_events_30d": sum(int(source.get("read_events_30d") or 0) for source in sources),
+                "daily_windows": _merge_daily_count_rows(sources, "daily_windows"),
+                "daily_read_events": _merge_daily_count_rows(sources, "daily_read_events"),
                 "last_seen": _latest_seen(sources),
                 "click_target": openable.get("manifest_abspath", ""),
                 "sources": sources,
@@ -1280,6 +1315,8 @@ def manual_asset_render_row(asset):
         "windows_30d": 0,
         "read_events_7d": 0,
         "read_events_30d": 0,
+        "daily_windows": [],
+        "daily_read_events": [],
         "last_seen": "",
         "click_target": "",
         "sources": [],

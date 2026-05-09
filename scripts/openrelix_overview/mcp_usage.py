@@ -295,6 +295,32 @@ def _scan_codex_session(path):
     return calls
 
 
+def _increment_daily(counts, date_value, amount=1):
+    date_text = date_value.isoformat() if hasattr(date_value, "isoformat") else str(date_value or "")
+    if not date_text:
+        return
+    counts[date_text] = int(counts.get(date_text) or 0) + int(amount or 0)
+
+
+def _daily_rows(counts):
+    if not isinstance(counts, dict):
+        return []
+    rows = []
+    for date_value in sorted(counts):
+        value = int(counts.get(date_value) or 0)
+        if value <= 0:
+            continue
+        rows.append({"date": str(date_value), "value": value})
+    return rows
+
+
+def _finalize_daily_rows(rows):
+    for row in rows:
+        row["daily_calls"] = _daily_rows(row.pop("_daily_calls", {}))
+        row["daily_sessions"] = _daily_rows(row.pop("_daily_sessions", {}))
+    return rows
+
+
 def build_mcp_usage_view(paths, today, lookback_days=30, limit=10, codex_homes=None):
     """Build a sanitized MCP usage summary from recent Codex function calls."""
     anchor = _coerce_date(today)
@@ -324,10 +350,13 @@ def build_mcp_usage_view(paths, today, lookback_days=30, limit=10, codex_homes=N
                             "description_en": description_en,
                             "calls": 0,
                             "sessions": 0,
+                            "_daily_calls": {},
+                            "_daily_sessions": {},
                             "last_seen": "",
                         },
                     )
                     row["calls"] += 1
+                    _increment_daily(row["_daily_calls"], session_date)
                     if not row["last_seen"] or session_date.isoformat() > row["last_seen"]:
                         row["last_seen"] = session_date.isoformat()
                     session_tool_names.add(name)
@@ -339,24 +368,31 @@ def build_mcp_usage_view(paths, today, lookback_days=30, limit=10, codex_homes=N
                             "label": server,
                             "calls": 0,
                             "sessions": 0,
+                            "_daily_calls": {},
+                            "_daily_sessions": {},
                             "last_seen": "",
                         },
                     )
                     server_row["calls"] += 1
+                    _increment_daily(server_row["_daily_calls"], session_date)
                     if not server_row["last_seen"] or session_date.isoformat() > server_row["last_seen"]:
                         server_row["last_seen"] = session_date.isoformat()
                     session_server_names.add(server)
 
                 for name in session_tool_names:
                     tool_stats[name]["sessions"] += 1
+                    _increment_daily(tool_stats[name]["_daily_sessions"], session_date)
                 for server in session_server_names:
                     server_stats[server]["sessions"] += 1
+                    _increment_daily(server_stats[server]["_daily_sessions"], session_date)
 
     def sort_key(row):
         return (-int(row.get("calls") or 0), -int(row.get("sessions") or 0), str(row.get("label") or ""))
 
     tools = sorted(tool_stats.values(), key=sort_key)
     servers = sorted(server_stats.values(), key=sort_key)
+    tools = _finalize_daily_rows(tools)
+    servers = _finalize_daily_rows(servers)
     if limit is not None:
         capped = max(int(limit or 0), 0)
         tools = tools[:capped]
