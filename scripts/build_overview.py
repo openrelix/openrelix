@@ -10379,15 +10379,24 @@ def daily_count_total(rows):
     return sum(safe_int(row.get("value", 0)) for row in rows or [] if isinstance(row, dict))
 
 
+def short_trend_date_label(value):
+    text = str(value or "").strip()
+    if len(text) >= 10:
+        return text[5:10]
+    return text
+
+
 def make_mini_trend_html(rows, label="", empty_label="暂无调用趋势"):
     series = normalize_daily_count_rows(rows)
     if not series:
         return """
           <div class="mini-trend is-empty" aria-label="{label}">
-            <svg class="mini-trend-svg" viewBox="0 0 180 48" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
-              <line class="mini-trend-axis-x" x1="10" y1="39" x2="174" y2="39"></line>
-              <line class="mini-trend-axis-y" x1="10" y1="9" x2="10" y2="39"></line>
-            </svg>
+            <div class="mini-trend-scroll">
+              <svg class="mini-trend-svg" viewBox="0 0 320 82" style="width: 320px; min-width: 320px;" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
+                <line class="mini-trend-axis-x" x1="22" y1="58" x2="302" y2="58"></line>
+                <line class="mini-trend-axis-y" x1="22" y1="14" x2="22" y2="58"></line>
+              </svg>
+            </div>
             <span class="mini-trend-empty">{empty}</span>
           </div>
         """.format(
@@ -10395,20 +10404,22 @@ def make_mini_trend_html(rows, label="", empty_label="暂无调用趋势"):
             empty=panel_language_text_html("暂无", "None"),
         )
     max_value = max([safe_int(row.get("value", 0)) for row in series] + [1])
-    left = 10
-    plot_width = 164
-    baseline = 39
-    plot_height = 27
-    gap = 3
-    bar_width = max(2.4, min(12, (plot_width - gap * max(len(series) - 1, 0)) / max(len(series), 1)))
-    total_width = bar_width * len(series) + gap * max(len(series) - 1, 0)
-    start_x = left + max(0, (plot_width - total_width) / 2)
+    is_scrollable = len(series) > 7
+    slot_width = 40 if len(series) <= 7 else 32
+    chart_width = max(320, 44 + slot_width * len(series))
+    left = 22
+    right = chart_width - 18
+    baseline = 58
+    plot_height = 42
+    bar_width = 22 if len(series) <= 7 else 16
+    scroll_class = " is-scrollable" if is_scrollable else ""
     bars = []
     labels = []
+    date_labels = []
     for index, row in enumerate(series):
         value = safe_int(row.get("value", 0))
-        bar_height = max(2, value / max_value * plot_height) if value > 0 else 1
-        x = start_x + index * (bar_width + gap)
+        bar_height = max(4, value / max_value * plot_height) if value > 0 else 2
+        x = left + index * slot_width + (slot_width - bar_width) / 2
         y = baseline - bar_height
         title = "{} · {}".format(row.get("date", ""), value)
         x_text = "{:.2f}".format(x).rstrip("0").rstrip(".")
@@ -10425,9 +10436,15 @@ def make_mini_trend_html(rows, label="", empty_label="暂无调用趋势"):
                 escape(title, quote=True),
             )
         )
+        date_labels.append(
+            '<text class="mini-trend-date" x="{}" y="75">{}</text>'.format(
+                escape("{:.2f}".format(x + bar_width / 2).rstrip("0").rstrip("."), quote=True),
+                escape(short_trend_date_label(row.get("date", ""))),
+            )
+        )
         if value > 0:
             label_x = x + bar_width / 2
-            label_y = max(8, y - 4)
+            label_y = max(10, y - 5)
             labels.append(
                 '<text class="mini-trend-value" x="{}" y="{}">{}</text>'.format(
                     escape("{:.2f}".format(label_x).rstrip("0").rstrip("."), quote=True),
@@ -10437,36 +10454,86 @@ def make_mini_trend_html(rows, label="", empty_label="暂无调用趋势"):
             )
     return """
       <div class="mini-trend" aria-label="{label}">
-        <svg class="mini-trend-svg" viewBox="0 0 180 48" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
-          <line class="mini-trend-axis-x" x1="10" y1="39" x2="174" y2="39"></line>
-          <line class="mini-trend-axis-y" x1="10" y1="9" x2="10" y2="39"></line>
-          {bars}
-          {labels}
-        </svg>
+        <div class="mini-trend-scroll{scroll_class}" data-trend-scroll-latest="{scroll_latest}">
+          <svg class="mini-trend-svg" viewBox="0 0 {chart_width} 82" style="width: {chart_width}px; min-width: {chart_width}px;" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
+            <line class="mini-trend-axis-x" x1="22" y1="58" x2="{axis_right}" y2="58"></line>
+            <line class="mini-trend-axis-y" x1="22" y1="14" x2="22" y2="58"></line>
+            {bars}
+            {labels}
+            {date_labels}
+          </svg>
+        </div>
       </div>
     """.format(
         label=escape(label or "每日调用趋势", quote=True),
+        scroll_class=scroll_class,
+        scroll_latest="true" if is_scrollable else "false",
+        chart_width=escape(str(chart_width), quote=True),
+        axis_right=escape(str(right), quote=True),
         bars="".join(bars),
         labels="".join(labels),
+        date_labels="".join(date_labels),
     )
 
 
-def make_hotness_name_with_description(name_html, description, description_en=""):
+def make_hotness_tag_pills(tags):
+    rendered = []
+    for tag in tags or []:
+        if not tag:
+            continue
+        if isinstance(tag, (list, tuple)):
+            label_zh = str(tag[0] or "")
+            label_en = str(tag[1] or tag[0] or "")
+        else:
+            label_zh = str(tag)
+            label_en = str(tag)
+        if not label_zh and not label_en:
+            continue
+        rendered.append('<span class="hotness-name-tag">{}</span>'.format(panel_language_text_html(label_zh, label_en)))
+    if not rendered:
+        return ""
+    return '<span class="hotness-name-tags">{}</span>'.format("".join(rendered))
+
+
+def make_hotness_name_with_description(
+    name_html,
+    description,
+    description_en="",
+    subtitle="",
+    subtitle_en="",
+    tags=None,
+    icon_label="S",
+    kind="skill",
+):
     raw_description = normalize_brand_display_text(description or "")
     raw_description_en = normalize_brand_display_text(description_en or description or "")
     if not raw_description:
         raw_description = "暂无描述"
     if not raw_description_en:
         raw_description_en = raw_description
+    subtitle_html = ""
+    if subtitle or subtitle_en:
+        subtitle_html = '<span class="hotness-name-subtitle">{}</span>'.format(
+            panel_language_text_html(subtitle, subtitle_en or subtitle)
+        )
     return """
-      <div class="asset-discovery-name hotness-name-cell" tabindex="0" title="{title}" data-hotness-description-zh="{description_attr}" data-hotness-description-en="{description_en_attr}">
-        <span class="hotness-name-label">{name}</span>
+      <div class="asset-discovery-name hotness-name-cell hotness-name-card" tabindex="0" title="{title}" data-hotness-description-zh="{description_attr}" data-hotness-description-en="{description_en_attr}" data-hotness-kind="{kind}">
+        <span class="hotness-name-icon" aria-hidden="true">{icon}</span>
+        <span class="hotness-name-copy">
+          <span class="hotness-name-label">{name}</span>
+          {subtitle}
+          {tags}
+        </span>
       </div>
     """.format(
         name=name_html,
         title=escape("{} / {}".format(raw_description, raw_description_en), quote=True),
         description_attr=escape(raw_description, quote=True),
         description_en_attr=escape(raw_description_en, quote=True),
+        subtitle=subtitle_html,
+        tags=make_hotness_tag_pills(tags),
+        icon=escape(str(icon_label or "S")[:2].upper()),
+        kind=escape(str(kind or "skill"), quote=True),
     )
 
 
@@ -10662,13 +10729,6 @@ def make_asset_stats_snapshot_panel(snapshot, default_date):
     snapshot = snapshot if isinstance(snapshot, dict) else {}
     summary = snapshot.get("summary") if isinstance(snapshot.get("summary"), dict) else {}
     has_snapshot = bool(summary)
-    header = make_panel_header(
-        "资产基线统计",
-        note_content_html=panel_language_text_html(
-            "本地快照基线；筛选后的热度以列表中的读取、调用和趋势为准。",
-            "Local snapshot baseline; filtered hotness is reflected in the list reads, calls, and trends.",
-        ),
-    )
     skill_reads = summary.get("skill_reads_30d") if has_snapshot else None
     if skill_reads is None:
         skill_activity_stat = (
@@ -10722,14 +10782,21 @@ def make_asset_stats_snapshot_panel(snapshot, default_date):
         )
 
     return """
-      <section class="panel asset-stats-snapshot-panel" id="asset-stats-snapshot-section">
-        {header}
+      <section class="asset-stats-snapshot-panel asset-stats-strip" id="asset-stats-snapshot-section">
+        <div class="asset-stats-strip-head">
+          <span>{title}</span>
+          <small>{note}</small>
+        </div>
         <div class="asset-stats-summary-grid">
           {stats}
         </div>
       </section>
     """.format(
-        header=header,
+        title=panel_language_text_html("资产基线", "Asset Baseline"),
+        note=panel_language_text_html(
+            "筛选后的热度以列表中的读取、调用和趋势为准",
+            "Filtered hotness is shown in the list reads, calls, and trends",
+        ),
         stats="".join(stats_html),
     )
 
@@ -10948,6 +11015,18 @@ def make_top_skill_rows(rows, group_id="top-skill-rows"):
             fallback_date=row.get("last_seen", ""),
             fallback_value=row.get("read_events_30d", row.get("windows_30d", 0)),
         )
+        source_tags = []
+        for source in (row.get("source_labels") or [])[:2]:
+            if not isinstance(source, dict):
+                continue
+            label = source.get("label") or ""
+            if label:
+                source_tags.append((label, source.get("label_en") or label))
+        if not source_tags:
+            source_tags = [("技能", "Skill")]
+        last_seen = str(row.get("last_seen") or "").strip()
+        subtitle = "最近读取 {}".format(last_seen) if last_seen else "SKILL.md"
+        subtitle_en = "Last read {}".format(last_seen) if last_seen else "SKILL.md"
         return (
             """
             <tr {row_attrs}>
@@ -10964,6 +11043,11 @@ def make_top_skill_rows(rows, group_id="top-skill-rows"):
                     make_discovered_asset_name_html(row),
                     description,
                     english_freeform_text(description, fallback_label="Description") if description else "",
+                    subtitle=subtitle,
+                    subtitle_en=subtitle_en,
+                    tags=source_tags,
+                    icon_label="S",
+                    kind="skill",
                 ),
                 trend=make_mini_trend_html(calls_series, label="{} daily reads".format(row.get("name") or row.get("identifier") or "")),
                 reads_30d=escape(str(safe_int(row.get("read_events_30d", row.get("windows_30d", 0))))),
@@ -11028,6 +11112,9 @@ def make_mcp_usage_panel(mcp_usage, help_html=""):
             fallback_date=tool.get("last_seen", ""),
             fallback_value=tool.get("calls", 0),
         )
+        server = str(tool.get("server") or "MCP").strip()
+        tool_name = str(tool.get("tool") or "").strip()
+        icon_label = "".join(part[:1] for part in server.replace("-", "_").split("_") if part)[:2] or "M"
         return """
             <tr {row_attrs}>
               <td>
@@ -11043,6 +11130,11 @@ def make_mcp_usage_panel(mcp_usage, help_html=""):
                 escape(str(tool.get("label") or tool.get("name") or "")),
                 description,
                 description_en,
+                subtitle=server,
+                subtitle_en=server,
+                tags=[("MCP", "MCP"), (tool_name or server, tool_name or server)],
+                icon_label=icon_label,
+                kind="mcp",
             ),
             trend=make_mini_trend_html(calls_series, label="{} daily calls".format(tool.get("label") or tool.get("name") or "")),
             calls=escape(str(safe_int(tool.get("calls", 0)))),
@@ -11095,7 +11187,7 @@ def make_mcp_usage_panel(mcp_usage, help_html=""):
             note_content_html=note_html,
         ),
         name_header=panel_language_text_html("名称", "Name"),
-        trend_header=panel_language_text_html("趋势", "Trend"),
+        trend_header=panel_language_text_html("热度趋势（按天）", "Daily Trend"),
         calls_header=panel_language_text_html("调用", "Calls"),
         sessions_header=panel_language_text_html("会话", "Sessions"),
         rows_html=rows_html,
@@ -17378,21 +17470,54 @@ def build_html(data):
 
     .asset-stats-snapshot-panel {{
       display: grid;
+      gap: 12px;
+    }}
+
+    .asset-stats-strip {{
+      margin: -2px 0 18px;
+      padding: 12px 14px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: color-mix(in srgb, var(--panel) 78%, transparent);
+    }}
+
+    .asset-stats-strip-head {{
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
       gap: 14px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 720;
+    }}
+
+    .asset-stats-strip-head span {{
+      color: var(--ink);
+      font-size: 13px;
+      font-weight: 780;
+    }}
+
+    .asset-stats-strip-head small {{
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.35;
+      text-align: right;
     }}
 
     .asset-stats-summary-grid {{
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(min(156px, 100%), 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(min(190px, 100%), 1fr));
       gap: 10px;
     }}
 
     .asset-stats-summary-item {{
       display: grid;
-      gap: 4px;
-      padding: 12px;
+      grid-template-columns: 1fr auto;
+      align-items: end;
+      gap: 2px 12px;
+      padding: 10px 12px;
       border: 1px solid var(--line);
-      border-radius: 12px;
+      border-radius: 10px;
       background: var(--control);
     }}
 
@@ -17405,7 +17530,8 @@ def build_html(data):
 
     .asset-stats-summary-item strong {{
       color: var(--ink);
-      font-size: 25px;
+      grid-row: span 2;
+      font-size: 24px;
       line-height: 1;
     }}
 
@@ -17460,30 +17586,43 @@ def build_html(data):
 
     .top-skills-table {{
       table-layout: fixed;
-      min-width: 860px;
+      min-width: 1180px;
     }}
 
     .top-skills-table-wrap,
     .mcp-usage-table-wrap {{
-      overflow: visible;
+      overflow-x: auto;
+      overflow-y: visible;
     }}
 
     .top-skills-name-col {{
-      width: 46%;
+      width: 34%;
     }}
 
     .top-skills-trend-col {{
-      width: 300px;
+      width: 460px;
     }}
 
     .top-skills-count-col {{
-      width: 76px;
+      width: 92px;
     }}
 
     .top-skills-table th:nth-child(2),
     .top-skills-table td:nth-child(2) {{
-      width: 300px;
-      max-width: 300px;
+      width: 460px;
+      max-width: 460px;
+    }}
+
+    .top-skills-table th {{
+      padding-top: 12px;
+      padding-bottom: 12px;
+      background: color-mix(in srgb, var(--control) 82%, transparent);
+    }}
+
+    .top-skills-table td {{
+      padding-top: 14px;
+      padding-bottom: 14px;
+      vertical-align: middle;
     }}
 
     .top-skills-table th:nth-child(3),
@@ -17506,15 +17645,80 @@ def build_html(data):
 
     .hotness-name-cell {{
       position: relative;
-      display: inline-grid;
+      display: grid;
       max-width: 100%;
       outline: none;
       cursor: help;
     }}
 
+    .hotness-name-card {{
+      grid-template-columns: 40px minmax(0, 1fr);
+      gap: 12px;
+      align-items: center;
+    }}
+
+    .hotness-name-icon {{
+      display: inline-grid;
+      place-items: center;
+      width: 36px;
+      height: 36px;
+      border-radius: 9px;
+      background: linear-gradient(180deg, rgba(0, 113, 227, 0.88), rgba(0, 113, 227, 0.58));
+      color: white;
+      font-size: 13px;
+      font-weight: 820;
+      letter-spacing: 0;
+      box-shadow: 0 10px 22px rgba(0, 113, 227, 0.18);
+    }}
+
+    .hotness-name-card[data-hotness-kind="mcp"] .hotness-name-icon {{
+      background: linear-gradient(180deg, rgba(98, 94, 222, 0.9), rgba(50, 56, 168, 0.72));
+      box-shadow: 0 10px 22px rgba(50, 56, 168, 0.18);
+    }}
+
+    .hotness-name-copy {{
+      min-width: 0;
+      display: grid;
+      gap: 4px;
+      justify-items: start;
+    }}
+
     .hotness-name-label {{
       min-width: 0;
+      color: var(--ink);
+      font-size: 15px;
+      font-weight: 780;
+      line-height: 1.25;
       overflow-wrap: anywhere;
+    }}
+
+    .hotness-name-subtitle {{
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 650;
+      line-height: 1.2;
+    }}
+
+    .hotness-name-tags {{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      max-width: 100%;
+    }}
+
+    .hotness-name-tag {{
+      max-width: 128px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      padding: 2px 6px;
+      border: 1px solid rgba(148, 163, 184, 0.26);
+      border-radius: 999px;
+      background: color-mix(in srgb, var(--soft) 76%, transparent);
+      color: var(--muted);
+      font-size: 10px;
+      font-weight: 700;
+      line-height: 1.25;
     }}
 
     .hotness-description-bubble {{
@@ -17563,21 +17767,43 @@ def build_html(data):
     }}
 
     .asset-hotness-trend-cell {{
-      min-width: 250px;
+      min-width: 420px;
     }}
 
     .mini-trend {{
       position: relative;
-      height: 50px;
-      min-width: 240px;
+      height: 88px;
+      min-width: 420px;
       display: grid;
       align-items: center;
       padding: 0;
     }}
 
+    .mini-trend-scroll {{
+      max-width: 100%;
+      overflow-x: hidden;
+      overflow-y: visible;
+      padding: 4px 2px 2px;
+    }}
+
+    .mini-trend-scroll.is-scrollable {{
+      overflow-x: auto;
+      scrollbar-width: thin;
+      scrollbar-color: rgba(0, 113, 227, 0.36) transparent;
+    }}
+
+    .mini-trend-scroll.is-scrollable::-webkit-scrollbar {{
+      height: 6px;
+    }}
+
+    .mini-trend-scroll.is-scrollable::-webkit-scrollbar-thumb {{
+      border-radius: 999px;
+      background: rgba(0, 113, 227, 0.32);
+    }}
+
     .mini-trend-svg {{
-      width: 100%;
-      height: 50px;
+      display: block;
+      height: 82px;
       overflow: visible;
     }}
 
@@ -17589,17 +17815,28 @@ def build_html(data):
     }}
 
     .mini-trend-bar-rect {{
-      fill: rgba(0, 113, 227, 0.12);
+      fill: rgba(0, 113, 227, 0.1);
     }}
 
     .mini-trend-bar-rect.is-active {{
-      fill: rgba(0, 113, 227, 0.74);
+      fill: rgba(0, 113, 227, 0.78);
     }}
 
     .mini-trend-value {{
+      fill: var(--ink);
+      font-size: 10px;
+      font-weight: 800;
+      text-anchor: middle;
+      paint-order: stroke;
+      stroke: color-mix(in srgb, var(--panel) 92%, transparent);
+      stroke-width: 3px;
+      stroke-linejoin: round;
+    }}
+
+    .mini-trend-date {{
       fill: var(--muted);
-      font-size: 8.4px;
-      font-weight: 760;
+      font-size: 8.8px;
+      font-weight: 650;
       text-anchor: middle;
       paint-order: stroke;
       stroke: color-mix(in srgb, var(--panel) 92%, transparent);
@@ -17617,7 +17854,21 @@ def build_html(data):
     .mini-trend-empty {{
       position: relative;
       z-index: 1;
-      padding-left: 8px;
+      padding-left: 16px;
+    }}
+
+    .asset-hotness-calls {{
+      color: var(--ink);
+      font-size: 18px;
+      font-weight: 760;
+      line-height: 1.1;
+    }}
+
+    .asset-hotness-sessions {{
+      color: color-mix(in srgb, var(--ink) 82%, var(--muted));
+      font-size: 16px;
+      font-weight: 700;
+      line-height: 1.1;
     }}
 
     .asset-discovery-name {{
@@ -24232,49 +24483,68 @@ def build_html(data):
         if (maxValue <= 0) {{
           return (
             '<div class="mini-trend is-empty" aria-label="' + escapeHtml(label || "") + '">' +
-              '<svg class="mini-trend-svg" viewBox="0 0 180 48" preserveAspectRatio="xMidYMid meet" aria-hidden="true">' +
-                '<line class="mini-trend-axis-x" x1="10" y1="39" x2="174" y2="39"></line>' +
-                '<line class="mini-trend-axis-y" x1="10" y1="9" x2="10" y2="39"></line>' +
-              '</svg>' +
+              '<div class="mini-trend-scroll">' +
+                '<svg class="mini-trend-svg" viewBox="0 0 320 82" style="width: 320px; min-width: 320px;" preserveAspectRatio="xMidYMid meet" aria-hidden="true">' +
+                  '<line class="mini-trend-axis-x" x1="22" y1="58" x2="302" y2="58"></line>' +
+                  '<line class="mini-trend-axis-y" x1="22" y1="14" x2="22" y2="58"></line>' +
+                '</svg>' +
+              '</div>' +
               '<span class="mini-trend-empty">' + escapeHtml(localizeValue("暂无", "None")) + '</span>' +
             '</div>'
           );
         }}
-        const left = 10;
-        const plotWidth = 164;
-        const baseline = 39;
-        const plotHeight = 27;
-        const gap = 3;
-        const barWidth = Math.max(2.4, Math.min(12, (plotWidth - gap * Math.max(rows.length - 1, 0)) / Math.max(rows.length, 1)));
-        const totalWidth = barWidth * rows.length + gap * Math.max(rows.length - 1, 0);
-        const startX = left + Math.max(0, (plotWidth - totalWidth) / 2);
+        const isScrollable = rows.length > 7;
+        const slotWidth = rows.length <= 7 ? 40 : 32;
+        const chartWidth = Math.max(320, 44 + slotWidth * rows.length);
+        const left = 22;
+        const axisRight = chartWidth - 18;
+        const baseline = 58;
+        const plotHeight = 42;
+        const barWidth = rows.length <= 7 ? 22 : 16;
         const bars = [];
         const valueLabels = [];
+        const dateLabels = [];
         rows.forEach(function (row, index) {{
           const value = Number(row && row.value) || 0;
-          const barHeight = value > 0 ? Math.max(2, value / maxValue * plotHeight) : 1;
-          const x = startX + index * (barWidth + gap);
+          const barHeight = value > 0 ? Math.max(4, value / maxValue * plotHeight) : 2;
+          const x = left + index * slotWidth + (slotWidth - barWidth) / 2;
           const y = baseline - barHeight;
           const title = String((row && row.date) || "") + " · " + value;
           bars.push(
             '<rect class="mini-trend-bar-rect' + (value > 0 ? ' is-active' : '') + '" x="' + x.toFixed(2) + '" y="' + y.toFixed(2) + '" width="' + barWidth.toFixed(2) + '" height="' + barHeight.toFixed(2) + '" rx="1.8"><title>' + escapeHtml(title) + '</title></rect>'
           );
+          dateLabels.push(
+            '<text class="mini-trend-date" x="' + (x + barWidth / 2).toFixed(2) + '" y="75">' + escapeHtml(String((row && row.date) || "").slice(5, 10) || String((row && row.date) || "")) + '</text>'
+          );
           if (value > 0) {{
             valueLabels.push(
-              '<text class="mini-trend-value" x="' + (x + barWidth / 2).toFixed(2) + '" y="' + Math.max(8, y - 4).toFixed(2) + '">' + escapeHtml(String(value)) + '</text>'
+              '<text class="mini-trend-value" x="' + (x + barWidth / 2).toFixed(2) + '" y="' + Math.max(10, y - 5).toFixed(2) + '">' + escapeHtml(String(value)) + '</text>'
             );
           }}
         }});
         return (
           '<div class="mini-trend" aria-label="' + escapeHtml(label || "") + '">' +
-            '<svg class="mini-trend-svg" viewBox="0 0 180 48" preserveAspectRatio="xMidYMid meet" aria-hidden="true">' +
-              '<line class="mini-trend-axis-x" x1="10" y1="39" x2="174" y2="39"></line>' +
-              '<line class="mini-trend-axis-y" x1="10" y1="9" x2="10" y2="39"></line>' +
-              bars.join("") +
-              valueLabels.join("") +
-            '</svg>' +
+            '<div class="mini-trend-scroll' + (isScrollable ? ' is-scrollable' : '') + '" data-trend-scroll-latest="' + (isScrollable ? 'true' : 'false') + '">' +
+              '<svg class="mini-trend-svg" viewBox="0 0 ' + chartWidth + ' 82" style="width: ' + chartWidth + 'px; min-width: ' + chartWidth + 'px;" preserveAspectRatio="xMidYMid meet" aria-hidden="true">' +
+                '<line class="mini-trend-axis-x" x1="22" y1="58" x2="' + axisRight + '" y2="58"></line>' +
+                '<line class="mini-trend-axis-y" x1="22" y1="14" x2="22" y2="58"></line>' +
+                bars.join("") +
+                valueLabels.join("") +
+                dateLabels.join("") +
+              '</svg>' +
+            '</div>' +
           '</div>'
         );
+      }}
+
+      function syncTrendScrollPositions(root) {{
+        const scope = root && root.querySelectorAll ? root : document;
+        Array.from(scope.querySelectorAll(".mini-trend-scroll.is-scrollable")).forEach(function (scroller) {{
+          if (scroller.getAttribute("data-trend-scroll-latest") !== "true") {{
+            return;
+          }}
+          scroller.scrollLeft = scroller.scrollWidth;
+        }});
       }}
 
       let activeHotnessDescriptionTarget = null;
@@ -24474,6 +24744,9 @@ def build_html(data):
               : "查看更多 " + hiddenCount + " " + (groupName === "mcp" ? "个 MCP 工具" : "个 skills 热度"));
           toggleButton.setAttribute("data-hotness-group", groupName);
           toggleButton.removeAttribute("data-expand-group");
+        }}
+        if (tableBody) {{
+          syncTrendScrollPositions(tableBody);
         }}
         return activeRows.length;
       }}
@@ -29059,7 +29332,7 @@ def build_html(data):
         usage_rows=make_usage_rows(panel_views.get("usage_events", data["usage_events"]), "usage-events"),
         asset_header=panel_language_text_html("名称", "Name"),
         description_header=panel_language_text_html("描述", "Description"),
-        trend_header=panel_language_text_html("趋势", "Trend"),
+        trend_header=panel_language_text_html("热度趋势（按天）", "Daily Trend"),
         count_30d_header=panel_language_text_html("30 天", "30d"),
         skill_reads_30d_header=panel_language_text_html("读取", "Reads"),
         skill_sessions_30d_header=panel_language_text_html("会话", "Sessions"),
