@@ -4175,7 +4175,7 @@ Native Codex profile.
                 build_overview.REGISTRY_DIR = registry_dir
                 build_overview.CONSOLIDATED_DIR = consolidated_dir
                 build_overview.RAW_DAILY_DIR = raw_daily_dir
-                build_overview.resolve_ccusage_daily = lambda: {
+                build_overview.resolve_ccusage_daily = lambda *args, **kwargs: {
                     "available": False,
                     "payload": {"daily": [], "totals": {}},
                     "error": "",
@@ -4240,7 +4240,7 @@ Native Codex profile.
                 build_overview.REGISTRY_DIR = registry_dir
                 build_overview.CONSOLIDATED_DIR = consolidated_dir
                 build_overview.RAW_DAILY_DIR = raw_daily_dir
-                build_overview.resolve_ccusage_daily = lambda: {
+                build_overview.resolve_ccusage_daily = lambda *args, **kwargs: {
                     "available": False,
                     "payload": {"daily": [], "totals": {}},
                     "error": "",
@@ -5694,9 +5694,10 @@ Native Codex profile.
             }
         )
 
-        self.assertIn('const periodTokenValue = tokenTotalDisplay(preparedTokenUsage, "period_total_tokens", "period_total_tokens_display");', html)
-        self.assertIn("const periodCostValue = preparedTokenUsage.period_cost_display || formatUsdValue(preparedTokenUsage.period_cost_usd);", html)
+        self.assertIn("const todayTokenValue = preparedTokenUsage.today_total_tokens_display", html)
+        self.assertIn("const todayCostValue = preparedTokenUsage.today_cost_display", html)
         self.assertIn("function tokenRequestCacheKey(filters, windowDays)", html)
+        self.assertIn("function tokenDateRangeForDays(days, endDateValue)", html)
         self.assertIn("function tokenDefaultDateRange(days)", html)
         self.assertIn("const defaultTokenDateRange = tokenDefaultDateRange(7);", html)
         self.assertIn("function tokenEffectiveWindowDays(filters, fallbackWindowDays)", html)
@@ -5718,6 +5719,15 @@ Native Codex profile.
         self.assertIn('requestUrl.searchParams.set("provider", normalizeTokenProvider(filters.provider));', html)
         self.assertIn('requestUrl.searchParams.set("group_by", "day");', html)
         self.assertIn("function tokenFilterRangeLabel(filters, tokenUsage)", html)
+        self.assertIn('data-token-range-days="1"', html)
+        self.assertIn('data-token-range-days="3"', html)
+        self.assertIn('data-token-range-days="7"', html)
+        self.assertIn('data-token-range-days="30"', html)
+        self.assertIn('data-token-range-days="7" aria-pressed="true" data-active="true"', html)
+        self.assertIn('token-filter-grid token-filter-top-grid', html)
+        self.assertIn('token-filter-grid token-filter-bottom-grid', html)
+        self.assertIn('tokenRangeButtons: Array.from(document.querySelectorAll("[data-token-range-days]"))', html)
+        self.assertIn("setTokenFilterState(tokenDateRangeForDays(days, endDate), true);", html)
         self.assertIn('data-token-date-field="start"', html)
         self.assertIn('data-token-date-field="end"', html)
         self.assertIn('id="token-start-date"', html)
@@ -5729,6 +5739,8 @@ Native Codex profile.
         self.assertIn("function extractTokenRowCost(row)", html)
         self.assertIn("display: compactTokenWithCostValue(row.value, rowCost)", html)
         self.assertIn("prepared.summary_cards = deriveTokenSummaryCards(prepared);", html)
+        self.assertIn("周期 Token 速览", html)
+        self.assertIn('updateMetricCard(\n          "today_cost",', html)
         self.assertIn("function dailySummaryTokenValueForDate(dateValue)", html)
         self.assertIn("function resolveNightlyStatValue(summary, item)", html)
         self.assertIn("function nightlyStatCardClass(item)", html)
@@ -5736,7 +5748,8 @@ Native Codex profile.
         self.assertIn("renderNightlySummary(state.selectedNightlyDate);", html)
         self.assertIn('updateTokenVisuals(state.tokenUsage, state.tokenSourceKind);', html)
         self.assertNotIn("rowDate.slice(0, 10) === endIso", html)
-        self.assertNotIn('updateMetricCard(\n          "today_token",\n          tokenUsage.today_total_tokens_display', html)
+        self.assertNotIn('data-metric-key="seven_day_token"', html)
+        self.assertNotIn("缓存读取占总输入", html)
 
     def test_product_showcase_chinese_default_has_localized_visible_labels(self):
         html = (ROOT / "docs" / "product-showcase.html").read_text(encoding="utf-8")
@@ -11360,12 +11373,17 @@ Native Codex profile.
             )
 
         self.assertEqual(view["today_total_tokens"], 2300)
+        self.assertEqual(view["today_cost_usd"], 4.5)
+        self.assertEqual(view["today_token_cost_display"], "2300 · $5")
         self.assertIn("2026-04-26 至 2026-04-27", view["overview_note"])
         self.assertIn("2 个有数据日", view["overview_note"])
-        self.assertIn("7 日账单", [card["label"] for card in view["summary_cards"]])
-        self.assertEqual(view["summary_cards"][0]["value"], "$7")
-        self.assertIn("3400 Token", view["summary_cards"][0]["caption"])
-        self.assertIn("缓存读取占总输入", [card["label"] for card in view["summary_cards"]])
+        self.assertIn("周期 Token", [card["label"] for card in view["summary_cards"]])
+        self.assertIn("周期成本", [card["label"] for card in view["summary_cards"]])
+        self.assertEqual(view["summary_cards"][0]["value"], "3400")
+        self.assertEqual(view["summary_cards"][0]["caption"], "ccusage 估算")
+        self.assertEqual(view["summary_cards"][1]["value"], "$7")
+        self.assertEqual(view["summary_cards"][1]["caption"], "ccusage 估算")
+        self.assertNotIn("缓存读取占总输入", [card["label"] for card in view["summary_cards"]])
         self.assertEqual(view["daily_rows"][-1]["display"], "2300 · $5")
         self.assertIn("details", view["daily_rows"][-1])
         self.assertEqual(view["today_breakdown"][0]["value"], 500)
@@ -11413,6 +11431,7 @@ Native Codex profile.
 
         self.assertEqual(view["today_total_tokens"], 0)
         self.assertEqual(view["today_total_tokens_display"], "0")
+        self.assertEqual(view["today_token_cost_display"], "0")
         self.assertEqual(view["today_date_label"], "05-07")
         self.assertEqual(view["daily_rows"][-1]["date"], "2026-05-07")
         self.assertEqual(view["daily_rows"][-1]["value"], 0)
