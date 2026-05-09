@@ -390,6 +390,83 @@ class NightlyLogicTests(unittest.TestCase):
         self.assertNotIn("不要把这条放进全局记忆", stable_titles)
         self.assertIn("不要把这条放进全局记忆", local_titles)
 
+    def test_curated_memory_preview_replays_feedback_after_grouping(self):
+        pack = build_overview.build_curated_memory_pack_preview(
+            [
+                {
+                    "source": "canonical",
+                    "scope": "global",
+                    "injection_policy": "global_context",
+                    "memory_type": "workflow",
+                    "priority": "high",
+                    "title": "长任务更适合先给快速可用层",
+                    "value_note": "面对回溯先给轻量结果。",
+                    "memory_key": "normal-source-key",
+                },
+                {
+                    "source": "canonical",
+                    "scope": "global",
+                    "injection_policy": "global_context",
+                    "memory_type": "workflow",
+                    "priority": "medium",
+                    "title": "长任务先轻量后深度",
+                    "value_note": "遇到长任务先轻量，再补深度。",
+                    "memory_key": "liked-source-key",
+                },
+            ],
+            feedback_by_key={
+                "liked-source-key": {
+                    "memory_key": "liked-source-key",
+                    "feedback": "liked",
+                    "updated_at": "2026-05-09T12:00:00+08:00",
+                }
+            },
+        )
+
+        rules = pack["sections"][overview_curated_memory.SECTION_OPERATING_RULES]
+        self.assertEqual(len(rules), 1)
+        self.assertEqual(rules[0]["user_feedback"], "liked")
+        self.assertIn("liked-source-key", rules[0]["source_memory_keys"])
+
+    def test_curated_memory_preview_sorts_liked_items_first_after_feedback(self):
+        pack = build_overview.build_curated_memory_pack_preview(
+            [
+                {
+                    "source": "canonical",
+                    "scope": "project",
+                    "injection_policy": "project_context",
+                    "project_label": "OpenRelix",
+                    "memory_type": "workflow",
+                    "priority": "high",
+                    "title": "普通高优规则",
+                    "value_note": "默认排序会靠前。",
+                    "memory_key": "normal-project-key",
+                },
+                {
+                    "source": "canonical",
+                    "scope": "project",
+                    "injection_policy": "project_context",
+                    "project_label": "OpenRelix",
+                    "memory_type": "workflow",
+                    "priority": "medium",
+                    "title": "用户标记有用规则",
+                    "value_note": "点击有用后应排到最前。",
+                    "memory_key": "liked-project-key",
+                },
+            ],
+            feedback_by_key={
+                "liked-project-key": {
+                    "memory_key": "liked-project-key",
+                    "feedback": "liked",
+                    "updated_at": "2026-05-09T12:00:00+08:00",
+                }
+            },
+        )
+
+        playbooks = pack["sections"][overview_curated_memory.SECTION_PROJECT_PLAYBOOKS]
+        self.assertEqual([item["title"] for item in playbooks[:2]], ["用户标记有用规则", "普通高优规则"])
+        self.assertEqual(playbooks[0]["user_feedback"], "liked")
+
     def test_curated_memory_panel_localizes_playbooks_and_expands_with_feedback(self):
         sections = {section: [] for section in overview_curated_memory.SECTION_ORDER}
         sections[overview_curated_memory.SECTION_PROJECT_PLAYBOOKS] = [
@@ -5447,6 +5524,10 @@ Native Codex profile.
         self.assertIn("data-memory-feedback-endpoint=", html)
         self.assertIn("wireMemoryFeedbackActions();", html)
         self.assertIn("findMemoryFeedbackTopGrid", html)
+        self.assertIn("findCuratedMemoryTopList", html)
+        self.assertIn("moveCuratedMemoryItem(row, feedback)", html)
+        self.assertIn("rememberMemoryFeedback(memoryKey, savedFeedback);", html)
+        self.assertIn("applyStoredMemoryFeedback();", html)
         self.assertIn("removeMemoryFeedbackCard(row);", html)
         self.assertIn("已标记有用，并置顶展示", html)
         self.assertNotIn("const reloadAfterMs = Number((payload && payload.reload_after_ms) || 0);", html)

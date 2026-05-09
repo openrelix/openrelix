@@ -1779,7 +1779,7 @@ def normalize_loaded_memory_item_quality(item):
     return row
 
 
-def load_memory_registry_items():
+def load_memory_registry_items(feedback_by_key=None):
     canonical_path = REGISTRY_DIR / "memory_entries.jsonl"
     legacy_path = REGISTRY_DIR / "memory_items.jsonl"
     rows = []
@@ -1787,7 +1787,8 @@ def load_memory_registry_items():
         rows.extend(load_jsonl(canonical_path))
     else:
         rows.extend(load_jsonl(legacy_path))
-    feedback_by_key = overview_memory_feedback.load_memory_feedback_map(PATHS)
+    if feedback_by_key is None:
+        feedback_by_key = overview_memory_feedback.load_memory_feedback_map(PATHS)
     return [
         row
         for row in (
@@ -1867,16 +1868,23 @@ def curated_memory_entries_from_rows(memory_items, source_label):
     return entries
 
 
-def build_curated_memory_pack_preview(memory_items=None):
+def build_curated_memory_pack_preview(memory_items=None, feedback_by_key=None):
     source = curated_memory_source_metadata()
+    if feedback_by_key is None:
+        feedback_by_key = (
+            overview_memory_feedback.load_memory_feedback_map(PATHS)
+            if memory_items is None
+            else {}
+        )
     entries = curated_memory_entries_from_rows(
-        load_memory_registry_items() if memory_items is None else memory_items,
+        load_memory_registry_items(feedback_by_key=feedback_by_key) if memory_items is None else memory_items,
         source["source_label"],
     )
     pack = overview_curated_memory.build_curated_memory_pack(
         entries,
         parse_diagnostics={"malformed_lines": []},
     )
+    pack = apply_curated_memory_feedback_pack(pack, feedback_by_key)
     pack["source"] = source["source_label"]
     pack = dict(pack)
     pack["source_path_label"] = source["source_path_label"]
@@ -1933,6 +1941,80 @@ def memory_feedback_sort_rank(item):
     if feedback == overview_memory_feedback.FEEDBACK_DOWNVOTED:
         return -10
     return 0
+
+
+def curated_memory_feedback_candidates(item):
+    candidates = []
+    for key in (
+        (item or {}).get("canonical_key"),
+        (item or {}).get("memory_key"),
+    ):
+        key = str(key or "").strip()
+        if key and key not in candidates:
+            candidates.append(key)
+    source_keys = (item or {}).get("source_memory_keys") or []
+    if isinstance(source_keys, str):
+        source_keys = [source_keys]
+    for key in source_keys:
+        key = str(key or "").strip()
+        if key and key not in candidates:
+            candidates.append(key)
+    return candidates
+
+
+def latest_curated_memory_feedback(item, feedback_by_key):
+    rows = [
+        feedback_by_key.get(key)
+        for key in curated_memory_feedback_candidates(item)
+        if feedback_by_key.get(key)
+    ]
+    if not rows:
+        return None
+    return max(rows, key=lambda row: str((row or {}).get("updated_at") or ""))
+
+
+def apply_feedback_to_curated_memory_item(item, feedback_by_key):
+    feedback = latest_curated_memory_feedback(item, feedback_by_key or {})
+    if not feedback:
+        return item
+    state = overview_memory_feedback.normalize_feedback(feedback.get("feedback"))
+    if state == overview_memory_feedback.FEEDBACK_NEUTRAL:
+        row = dict(item)
+        row["user_feedback"] = ""
+        row["user_feedback_updated_at"] = str(feedback.get("updated_at") or "")
+        return row
+    return overview_memory_feedback.apply_memory_feedback(item, feedback)
+
+
+def sort_curated_memory_items_by_feedback(items):
+    return [
+        item
+        for _, item in sorted(
+            enumerate(items or []),
+            key=lambda pair: (-memory_feedback_sort_rank(pair[1]), pair[0]),
+        )
+    ]
+
+
+def apply_curated_memory_feedback_pack(pack, feedback_by_key):
+    pack = dict(pack or {})
+    sections = pack.get("sections") or {}
+    next_sections = {}
+    for section in overview_curated_memory.SECTION_ORDER:
+        items = [
+            apply_feedback_to_curated_memory_item(item, feedback_by_key)
+            for item in (sections.get(section) or [])
+        ]
+        next_sections[section] = sort_curated_memory_items_by_feedback(items)
+    for section, items in sections.items():
+        if section in next_sections:
+            continue
+        next_sections[section] = sort_curated_memory_items_by_feedback(
+            apply_feedback_to_curated_memory_item(item, feedback_by_key)
+            for item in (items or [])
+        )
+    pack["sections"] = next_sections
+    return pack
 
 
 def compact_number(value):
@@ -26075,14 +26157,58 @@ def build_html(data):
       }}
 
       function memoryFeedbackStatusMessage(feedback) {{
-        const state = String(feedback || "");
-        if (state === "liked" || state === "pinned") {{
+        const state = normalizeMemoryFeedbackValue(feedback);
+        if (state === "liked") {{
           return currentLanguage === "en" ? "Marked useful; moved to the top." : "已标记有用，并置顶展示";
         }}
         if (state === "downvoted") {{
           return currentLanguage === "en" ? "Marked not useful; deprioritized." : "已标记无用，后续降权";
         }}
         return currentLanguage === "en" ? "Feedback cleared" : "已取消标记";
+      }}
+
+      const memoryFeedbackStoreKey = "openrelix-memory-feedback-v1";
+
+      function readMemoryFeedbackStore() {{
+        try {{
+          const raw = window.localStorage ? window.localStorage.getItem(memoryFeedbackStoreKey) : "";
+          const parsed = raw ? JSON.parse(raw) : {{}};
+          return parsed && typeof parsed === "object" ? parsed : {{}};
+        }} catch (error) {{
+          return {{}};
+        }}
+      }}
+
+      function writeMemoryFeedbackStore(store) {{
+        try {{
+          if (window.localStorage) {{
+            window.localStorage.setItem(memoryFeedbackStoreKey, JSON.stringify(store || {{}}));
+          }}
+        }} catch (error) {{}}
+      }}
+
+      function normalizeMemoryFeedbackValue(value) {{
+        const state = String(value || "").trim();
+        return state === "pinned" ? "liked" : state;
+      }}
+
+      function memoryFeedbackKeyFromRow(row) {{
+        const control = row ? row.querySelector("[data-memory-feedback][data-memory-key]") : null;
+        return control ? String(control.getAttribute("data-memory-key") || "").trim() : "";
+      }}
+
+      function rememberMemoryFeedback(memoryKey, feedback) {{
+        if (!memoryKey) {{
+          return;
+        }}
+        const state = normalizeMemoryFeedbackValue(feedback);
+        const store = readMemoryFeedbackStore();
+        if (!state || state === "neutral") {{
+          delete store[memoryKey];
+        }} else {{
+          store[memoryKey] = {{ feedback: state, updated_at: Date.now() }};
+        }}
+        writeMemoryFeedbackStore(store);
       }}
 
       function setMemoryFeedbackStatus(row, message) {{
@@ -26096,7 +26222,7 @@ def build_html(data):
         if (!row) {{
           return;
         }}
-        const state = String(feedback || "") === "pinned" ? "liked" : String(feedback || "");
+        const state = normalizeMemoryFeedbackValue(feedback);
         row.setAttribute("data-memory-feedback-state", state);
         row.querySelectorAll("[data-memory-feedback]").forEach(function (candidate) {{
           const active = candidate.getAttribute("data-memory-feedback") === state;
@@ -26125,9 +26251,26 @@ def build_html(data):
         return primaryGrid || currentGrid;
       }}
 
+      function findCuratedMemoryTopList(item) {{
+        const sectionCard = item ? item.closest(".curated-memory-section-card") : null;
+        if (!sectionCard) {{
+          return null;
+        }}
+        return Array.from(sectionCard.children).find(function (child) {{
+          return child.classList && child.classList.contains("curated-memory-item-list");
+        }}) || null;
+      }}
+
       function removeEmptyMemoryFeedbackExpander(expandable) {{
         const extraGrid = expandable ? expandable.querySelector(".native-brief-grid") : null;
         if (expandable && extraGrid && !extraGrid.querySelector(".memory-brief-card")) {{
+          expandable.remove();
+        }}
+      }}
+
+      function removeEmptyCuratedMemoryExpander(expandable) {{
+        const extraList = expandable ? expandable.querySelector(".curated-memory-item-list") : null;
+        if (expandable && extraList && !extraList.querySelector(".curated-memory-item")) {{
           expandable.remove();
         }}
       }}
@@ -26142,8 +26285,29 @@ def build_html(data):
         removeEmptyMemoryFeedbackExpander(sourceExpandable);
       }}
 
+      function moveCuratedMemoryItem(row, feedback) {{
+        const item = row ? row.closest(".curated-memory-item") : null;
+        if (!item) {{
+          return false;
+        }}
+        const targetList = findCuratedMemoryTopList(item);
+        const sourceExpandable = item.closest("details.content-more");
+        if (feedback === "liked") {{
+          if (targetList && targetList.firstElementChild !== item) {{
+            targetList.insertBefore(item, targetList.firstElementChild);
+          }}
+          removeEmptyCuratedMemoryExpander(sourceExpandable);
+        }} else if (feedback === "downvoted") {{
+          if (targetList && item.parentElement === targetList && targetList.lastElementChild !== item) {{
+            targetList.appendChild(item);
+          }}
+        }}
+        return true;
+      }}
+
       function moveMemoryFeedbackCard(row, feedback) {{
         if (!row) return;
+        if (moveCuratedMemoryItem(row, feedback)) return;
         const card = row.closest(".memory-brief-card");
         if (!card) return;
         if (feedback === "liked") {{
@@ -26156,6 +26320,22 @@ def build_html(data):
         }} else if (feedback === "downvoted") {{
           removeMemoryFeedbackCard(row);
         }}
+      }}
+
+      function applyStoredMemoryFeedback() {{
+        const store = readMemoryFeedbackStore();
+        Array.from(document.querySelectorAll(".memory-feedback-row")).forEach(function (row) {{
+          const memoryKey = memoryFeedbackKeyFromRow(row);
+          const saved = memoryKey ? store[memoryKey] : null;
+          const state = normalizeMemoryFeedbackValue(
+            saved && typeof saved === "object" ? saved.feedback : saved
+          );
+          if (!state || state === "neutral") {{
+            return;
+          }}
+          updateMemoryFeedbackRow(row, state);
+          moveMemoryFeedbackCard(row, state);
+        }});
       }}
 
       function submitMemoryFeedback(button) {{
@@ -26205,6 +26385,7 @@ def build_html(data):
           }})
           .then(function (payload) {{
             const savedFeedback = payload && payload.feedback ? payload.feedback.feedback : feedback;
+            rememberMemoryFeedback(memoryKey, savedFeedback);
             updateMemoryFeedbackRow(row, savedFeedback);
             moveMemoryFeedbackCard(row, savedFeedback);
           }})
@@ -28504,6 +28685,7 @@ def build_html(data):
       wireTokenFilters();
       applyTheme(readStoredTheme(), false);
       applyLanguage(defaultLanguage);
+      applyStoredMemoryFeedback();
       if (elements.refreshButton) {{
         elements.refreshButton.addEventListener("click", function () {{
           refreshTokenUsage(true);
