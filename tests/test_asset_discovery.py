@@ -755,7 +755,7 @@ class AssetDiscoveryTests(unittest.TestCase):
 
         self.assertEqual(first_identifier, "beta")
         self.assertIn('class="asset-hotness-calls">9</td>', html)
-        self.assertIn("hotness-description-bubble", html)
+        self.assertIn("data-hotness-description-zh", html)
         self.assertIn("mini-trend", html)
 
     def test_top_skill_rows_expand_beyond_default_top_ten(self):
@@ -800,6 +800,17 @@ class AssetDiscoveryTests(unittest.TestCase):
                 json.dumps(row)
                 for row in [
                     {
+                        "timestamp": "2026-05-05T18:00:00+08:00",
+                        "type": "response_item",
+                        "payload": {
+                            "type": "function_call",
+                            "namespace": "mcp__node_repl__",
+                            "name": "js",
+                            "arguments": "{}",
+                        },
+                    },
+                    {
+                        "timestamp": "2026-05-05T00:30:00+08:00",
                         "type": "response_item",
                         "payload": {
                             "type": "function_call",
@@ -837,15 +848,21 @@ class AssetDiscoveryTests(unittest.TestCase):
 
         view = mcp_usage.build_mcp_usage_view(self.paths, self.today, lookback_days=1, limit=None)
 
-        self.assertEqual(view["total_calls"], 2)
-        self.assertEqual(view["active_tools"], 2)
-        self.assertEqual(view["active_servers"], 2)
+        self.assertEqual(view["total_calls"], 3)
+        self.assertEqual(view["active_tools"], 3)
+        self.assertEqual(view["active_servers"], 3)
         self.assertEqual(view["tools"][0]["label"], "figma/get_design_context")
         self.assertEqual(view["tools"][0]["sessions"], 1)
         self.assertEqual(view["tools"][0]["daily_calls"], [{"date": "2026-05-05", "value": 1}])
         self.assertEqual(view["tools"][0]["daily_sessions"], [{"date": "2026-05-05", "value": 1}])
         self.assertIn("Figma", view["tools"][0]["description"])
         self.assertIn("design context", view["tools"][0]["description_en"])
+        tools_by_label = {row["label"]: row for row in view["tools"]}
+        self.assertEqual(tools_by_label["node_repl/js"]["daily_calls"], [{"date": "2026-05-05", "value": 1}])
+        self.assertEqual(
+            tools_by_label["playwright/browser_navigate"]["daily_calls"],
+            [{"date": "2026-05-05", "value": 1}],
+        )
 
     def test_mcp_usage_merges_extra_codex_home_sessions(self):
         extra_home = self.home / ".codex-pro"
@@ -905,8 +922,10 @@ class AssetDiscoveryTests(unittest.TestCase):
         self.assertIn("mcp-usage-table", html)
         self.assertIn("playwright/browser_navigate", html)
         self.assertIn("在本地浏览器打开或跳转到指定 URL。", html)
-        self.assertIn("hotness-description-bubble", html)
+        self.assertIn("data-hotness-description-zh", html)
         self.assertIn("mini-trend", html)
+        self.assertIn("mini-trend-bar-rect", html)
+        self.assertIn(">3</text>", html)
         self.assertIn("top-skills-trend-col", html)
         self.assertIn("<th", html)
         self.assertIn("调用", html)
@@ -998,9 +1017,9 @@ class AssetDiscoveryTests(unittest.TestCase):
         html = build_overview.make_asset_stats_snapshot_panel(snapshot, "2026-05-05")
 
         self.assertIn('id="asset-stats-snapshot-section"', html)
-        self.assertIn("30 天 skills 读取", html)
+        self.assertIn("skills 读取", html)
         self.assertIn("11", html)
-        self.assertNotIn("30 天 skills 会话", html)
+        self.assertNotIn("skills 会话", html)
         self.assertNotIn("锚点 2026-05-05", html)
         self.assertNotIn("openrelix asset-stats --date 2026-05-05", html)
         self.assertNotIn("快照文件", html)
@@ -1074,9 +1093,9 @@ class AssetDiscoveryTests(unittest.TestCase):
 
         html = build_overview.make_asset_stats_snapshot_panel(snapshot, "2026-05-05")
 
-        self.assertIn("30 天 skills 会话", html)
+        self.assertIn("skills 会话", html)
         self.assertIn("按会话去重", html)
-        self.assertNotIn("30 天 skills 读取", html)
+        self.assertNotIn("skills 读取", html)
 
     def test_path_classifier_follows_canonical_roots(self):
         codex_manifest = self.paths.codex_home / "skills" / "foo" / "SKILL.md"
