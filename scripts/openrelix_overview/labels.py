@@ -3,7 +3,7 @@
 DISPLAY_TYPE = {
     "skill": "skills",
     "automation": "自动化",
-    "playbook": "方法",
+    "playbook": "方法手册",
     "template": "模板",
     "knowledge_card": "知识卡",
     "review": "复盘",

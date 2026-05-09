@@ -396,6 +396,7 @@ def row_to_group(row, section, scope, policy):
     title = primary_text(row, "title") or "Untitled memory"
     value_note = primary_text(row, "value_note")
     source_id = row["_source_entry_id"]
+    memory_key = str(row.get("memory_key") or "").strip()
     windows = source_window_ids(row)
     dates = source_dates(row)
     diagnostics = []
@@ -418,8 +419,11 @@ def row_to_group(row, section, scope, policy):
         "project_label": project_label(row) if section == SECTION_PROJECT_PLAYBOOKS else "",
         "memory_type": str(row.get("memory_type") or "semantic"),
         "priority": str(row.get("priority") or "medium"),
+        "memory_key": memory_key,
+        "user_feedback": str(row.get("user_feedback") or "").strip(),
         "evidence_count": evidence_count_for_row(row),
         "source_entry_ids": [source_id],
+        "source_memory_keys": [memory_key] if memory_key else [],
         "source_window_ids": windows,
         "source_dates": dates,
         "diagnostics": diagnostics,
@@ -436,11 +440,24 @@ def row_to_group(row, section, scope, policy):
 def merge_group(target, incoming):
     target["evidence_count"] += incoming["evidence_count"]
     target["source_entry_ids"] = unique_preserve_order(target["source_entry_ids"] + incoming["source_entry_ids"])
+    target["source_memory_keys"] = unique_preserve_order(
+        (target.get("source_memory_keys") or []) + (incoming.get("source_memory_keys") or [])
+    )
     target["source_window_ids"] = unique_preserve_order(target["source_window_ids"] + incoming["source_window_ids"])
     target["source_dates"] = unique_preserve_order(target["source_dates"] + incoming["source_dates"])
     target["diagnostics"] = unique_preserve_order(target["diagnostics"] + incoming["diagnostics"])
     if incoming["_rank"] < target["_rank"]:
-        for key in ("title", "value_note", "memory_type", "priority", "scope", "injection_policy", "project_label"):
+        for key in (
+            "title",
+            "value_note",
+            "memory_type",
+            "priority",
+            "scope",
+            "injection_policy",
+            "project_label",
+            "memory_key",
+            "user_feedback",
+        ):
             target[key] = incoming[key]
         target["_rank"] = incoming["_rank"]
     return target
@@ -450,8 +467,10 @@ def finalize_group(group):
     cleaned = {key: value for key, value in group.items() if not key.startswith("_")}
     cleaned["title"] = sanitized_render_text(cleaned["title"])
     cleaned["value_note"] = sanitized_render_text(cleaned["value_note"])
-    for key in ("source_entry_ids", "source_window_ids", "source_dates", "diagnostics"):
+    for key in ("source_entry_ids", "source_memory_keys", "source_window_ids", "source_dates", "diagnostics"):
         cleaned[key] = sorted(unique_preserve_order(cleaned.get(key) or []))
+    if cleaned.get("source_memory_keys"):
+        cleaned["memory_key"] = cleaned["source_memory_keys"][0]
     return cleaned
 
 
@@ -540,8 +559,11 @@ def build_curated_memory_pack(entries, parse_diagnostics=None):
                     "project_label": "",
                     "memory_type": "profile",
                     "priority": "medium",
+                    "memory_key": "",
+                    "user_feedback": "",
                     "evidence_count": 0,
                     "source_entry_ids": [],
+                    "source_memory_keys": [],
                     "source_window_ids": [],
                     "source_dates": [],
                     "diagnostics": ["synthetic"],

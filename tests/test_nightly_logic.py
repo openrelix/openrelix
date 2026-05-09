@@ -32,6 +32,7 @@ import token_live_server  # noqa: E402
 from openrelix_overview import contract as overview_contract  # noqa: E402
 from openrelix_overview import claude_desktop  # noqa: E402
 from openrelix_overview import codex_desktop as overview_codex_desktop  # noqa: E402
+from openrelix_overview import curated_memory as overview_curated_memory  # noqa: E402
 from openrelix_overview import finder as overview_finder  # noqa: E402
 from openrelix_overview import memory_context as overview_memory_context  # noqa: E402
 from openrelix_overview import memory_feedback as overview_memory_feedback  # noqa: E402
@@ -387,6 +388,40 @@ class NightlyLogicTests(unittest.TestCase):
         ]
         self.assertNotIn("不要把这条放进全局记忆", stable_titles)
         self.assertIn("不要把这条放进全局记忆", local_titles)
+
+    def test_curated_memory_panel_localizes_playbooks_and_expands_with_feedback(self):
+        sections = {section: [] for section in overview_curated_memory.SECTION_ORDER}
+        sections[overview_curated_memory.SECTION_PROJECT_PLAYBOOKS] = [
+            {
+                "section": overview_curated_memory.SECTION_PROJECT_PLAYBOOKS,
+                "title": "项目打法 {}".format(index),
+                "value_note": "可复用做法 {}".format(index),
+                "project_label": "OpenRelix",
+                "injection_policy": "project_context",
+                "memory_key": "memory-key-{}".format(index),
+                "user_feedback": "liked" if index == 0 else "",
+            }
+            for index in range(5)
+        ]
+        html = build_overview.make_curated_memory_panel_body(
+            {
+                "schema_version": 1,
+                "source": "registry/memory_entries.jsonl",
+                "model_calls": 0,
+                "entry_count": 5,
+                "sections": sections,
+                "diagnostics": {},
+                "artifact": {},
+            }
+        )
+
+        self.assertIn("项目工作手册", html)
+        self.assertNotIn("项目 Playbooks", html)
+        self.assertIn("查看更多 2 条", html)
+        self.assertIn('class="content-more"', html)
+        self.assertIn('class="curated-memory-memory-badge"', html)
+        self.assertIn('data-memory-feedback="liked" data-memory-key="memory-key-0"', html)
+        self.assertIn('data-memory-feedback="downvoted" data-memory-key="memory-key-0"', html)
 
     def test_runtime_language_config_persists_and_normalizes(self):
         self.assertEqual(asset_runtime.normalize_language("zh-CN"), "zh")
@@ -5380,10 +5415,10 @@ Native Codex profile.
         self.assertIn("旁路整理预览", html)
         self.assertIn("不改变注入", html)
         self.assertIn("总览", html)
-        self.assertIn("personal-memory-global-section", html)
-        self.assertIn("personal-memory-project-section", html)
+        self.assertNotIn("personal-memory-global-section", html)
+        self.assertNotIn("personal-memory-project-section", html)
         self.assertNotIn("personal-memory-on-demand-section", html)
-        self.assertIn("personal-memory-local-section", html)
+        self.assertNotIn("personal-memory-local-section", html)
         self.assertIn("codex-native-topic-section", html)
         self.assertNotIn('data-nav-target="codex-native-topic-section"', html)
         self.assertNotIn('data-nav-target="codex-native-preference-section"', html)

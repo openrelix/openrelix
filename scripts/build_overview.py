@@ -228,7 +228,7 @@ TERM_ALIASES = {
     "layer": "分层",
     "skill": "skills",
     "skills": "skills",
-    "playbook": "方法",
+    "playbook": "方法手册",
     "automation": "自动化",
     "template": "模板",
     "workflow": "流程",
@@ -394,6 +394,7 @@ FREEFORM_PHRASE_EN = {
     "自动化": "automation",
     "技能": "skill",
     "方法": "playbook",
+    "方法手册": "playbook",
     "模板": "template",
     "通用": "general",
     "协作沟通": "collaboration",
@@ -11602,9 +11603,6 @@ def make_side_nav():
         ("link", "memory-section", "个人资产记忆", "Personal Asset Memory", "个人资产记忆", "Personal Asset Memory"),
         ("child", "personal-memory-compiler-section", "总览", "Overview", "个人资产记忆-总览", "Personal Asset Memory - Overview"),
         ("child", "personal-memory-curated-section", "整理后记忆", "Curated", "个人资产记忆-整理后记忆", "Personal Asset Memory - Curated"),
-        ("child", "personal-memory-global-section", "通用上下文", "General Context", "个人资产记忆-通用上下文", "Personal Asset Memory - General Context"),
-        ("child", "personal-memory-project-section", "项目上下文", "Project Context", "个人资产记忆-项目上下文", "Personal Asset Memory - Project Context"),
-        ("child", "personal-memory-local-section", "本地保留", "Local Only", "个人资产记忆-本地保留", "Personal Asset Memory - Local Only"),
         ("link", "codex-native-section", "Codex 原生记忆", "Codex Native Memory", "Codex 原生记忆", "Codex Native Memory"),
         ("link", "claude-native-section", "Claude 原生记忆", "Claude Native Memory", "Claude Code 原生记忆", "Claude Code Native Memory"),
         ("group", "资产层", "Asset Layer"),
@@ -11616,25 +11614,33 @@ def make_side_nav():
     ]
     links = []
     link_index = 0
+    group_index = 0
+    current_group_key = ""
     for entry in entries:
         if entry[0] == "group":
             _, zh_label, en_label = entry
+            group_index += 1
+            current_group_key = "side-nav-group-{}".format(group_index)
             links.append(
                 """
-                  <div class="side-nav-group">{label}</div>
-                """.format(label=panel_language_text_html(zh_label, en_label))
+                  <div class="side-nav-group" data-nav-group="{group_key}">{label}</div>
+                """.format(
+                    group_key=escape(current_group_key, quote=True),
+                    label=panel_language_text_html(zh_label, en_label),
+                )
             )
             continue
         entry_kind, target_id, zh_label, en_label, zh_title, en_title = entry
         link_index += 1
         links.append(
             """
-              <a class="side-nav-link{active_class}" href="#{target_id}" data-nav-target="{target_id}" title="{title_attr}"{current_attr}>
+              <a class="side-nav-link{active_class}" href="#{target_id}" data-nav-target="{target_id}" data-nav-group="{group_key}" title="{title_attr}"{current_attr}>
                 <span class="side-nav-label">{label}</span>
               </a>
             """.format(
                 active_class=(" is-active" if link_index == 1 else "") + (" is-child" if entry_kind == "child" else ""),
                 target_id=escape(target_id, quote=True),
+                group_key=escape(current_group_key, quote=True),
                 title_attr=escape("{} / {}".format(zh_title, en_title), quote=True),
                 current_attr=' aria-current="true"' if link_index == 1 else "",
                 label=panel_language_text_html(zh_label, en_label),
@@ -11926,7 +11932,7 @@ CURATED_MEMORY_SECTION_LABELS = {
     overview_curated_memory.SECTION_USER_PROFILE: ("用户画像", "User Profile"),
     overview_curated_memory.SECTION_STABLE_PREFERENCES: ("稳定偏好", "Stable Preferences"),
     overview_curated_memory.SECTION_OPERATING_RULES: ("操作规则", "Operating Rules"),
-    overview_curated_memory.SECTION_PROJECT_PLAYBOOKS: ("项目 Playbooks", "Project Playbooks"),
+    overview_curated_memory.SECTION_PROJECT_PLAYBOOKS: ("项目工作手册", "Project Playbooks"),
     overview_curated_memory.SECTION_TASK_GROUPS: ("任务簇", "Task Groups"),
     overview_curated_memory.SECTION_LOCAL_VOLATILE: ("本地 / 时效", "Local / Volatile"),
 }
@@ -12048,41 +12054,80 @@ def make_curated_memory_panel_body(pack):
             )
         )
 
+    def curated_memory_feedback_key(item):
+        memory_key = str((item or {}).get("memory_key") or "").strip()
+        if memory_key:
+            return memory_key
+        source_keys = (item or {}).get("source_memory_keys") or []
+        if isinstance(source_keys, str):
+            source_keys = [source_keys]
+        for key in source_keys:
+            key = str(key or "").strip()
+            if key:
+                return key
+        return ""
+
+    def render_curated_memory_item(item):
+        project_label = item.get("project_label") or ""
+        tag_html = ""
+        if project_label:
+            tag_html = '<span class="memory-card-tag">{}</span>'.format(escape(project_label))
+        policy = str(item.get("injection_policy") or "").strip()
+        feedback_state = normalize_feedback_state(item.get("user_feedback") or "")
+        memory_badge = ""
+        if policy in {"global_context", "project_context"} or feedback_state == overview_memory_feedback.FEEDBACK_LIKED:
+            memory_badge = '<span class="curated-memory-memory-badge">{}</span>'.format(
+                panel_language_text_html("记忆", "Memory")
+            )
+        feedback_controls = make_memory_feedback_controls(
+            curated_memory_feedback_key(item),
+            item.get("title") or "Untitled memory",
+            feedback_state,
+        )
+        state_class = ""
+        if feedback_state == overview_memory_feedback.FEEDBACK_LIKED:
+            state_class = " is-feedback-liked"
+        elif feedback_state == overview_memory_feedback.FEEDBACK_DOWNVOTED:
+            state_class = " is-feedback-downvoted"
+        return """
+          <div class="curated-memory-item{state_class}">
+            <div class="curated-memory-item-title">
+              <span>{title}</span>
+              {memory_badge}
+              {tag_html}
+            </div>
+            <p>{note}</p>
+            {feedback_controls}
+          </div>
+        """.format(
+            state_class=state_class,
+            title=escape(item.get("title") or "Untitled memory"),
+            memory_badge=memory_badge,
+            tag_html=tag_html,
+            note=escape(item.get("value_note") or ""),
+            feedback_controls=feedback_controls,
+        )
+
     section_cards = []
     for section in overview_curated_memory.SECTION_ORDER:
         label_zh, label_en = curated_memory_section_label(section)
         items = sections.get(section) or []
         preview_items = items[:3]
-        item_rows = []
-        for item in preview_items:
-            project_label = item.get("project_label") or ""
-            tag_html = ""
-            if project_label:
-                tag_html = '<span class="memory-card-tag">{}</span>'.format(escape(project_label))
+        item_rows = [render_curated_memory_item(item) for item in preview_items]
+        extra_rows = "".join(render_curated_memory_item(item) for item in items[3:])
+        if extra_rows:
             item_rows.append(
-                """
-                  <div class="curated-memory-item">
-                    <div class="curated-memory-item-title">
-                      <span>{title}</span>
-                      {tag_html}
-                    </div>
-                    <p>{note}</p>
-                  </div>
-                """.format(
-                    title=escape(item.get("title") or "Untitled memory"),
-                    tag_html=tag_html,
-                    note=escape(item.get("value_note") or ""),
-                )
-            )
-        if len(items) > len(preview_items):
-            item_rows.append(
-                """
-                  <div class="curated-memory-more">{more}</div>
-                """.format(
-                    more=panel_language_text_html(
-                        "还有 {} 条未展开".format(len(items) - len(preview_items)),
-                        "{} more not expanded".format(len(items) - len(preview_items)),
-                    )
+                wrap_expandable_block(
+                    "",
+                    extra_rows,
+                    len(items) - len(preview_items),
+                    "条",
+                    "curated-memory-item-list content-more-grid",
+                    expanded_label="收起额外条目",
+                    item_label_en="items",
+                    expanded_label_en="Collapse extra items",
+                    collapsed_label="查看更多 {} 条".format(len(items) - len(preview_items)),
+                    collapsed_label_en="Show {} more items".format(len(items) - len(preview_items)),
                 )
             )
         if not item_rows:
@@ -12171,6 +12216,76 @@ def make_memory_family_header(title_zh, title_en, note_zh, note_en, extra_html="
         title=panel_language_text_html(title_zh, title_en),
         note=panel_language_text_html(note_zh, note_en),
         extra_html=extra_html,
+    )
+
+
+def normalize_feedback_state(value):
+    state = str(value or "").strip()
+    if state == "pinned":
+        return overview_memory_feedback.FEEDBACK_LIKED
+    return state
+
+
+def make_memory_feedback_icon(feedback_value):
+    if feedback_value == overview_memory_feedback.FEEDBACK_DOWNVOTED:
+        return (
+            '<svg class="memory-feedback-icon" viewBox="0 0 24 24" aria-hidden="true">'
+            '<path d="M17 14V2"></path>'
+            '<path d="M9 18.12 10 14H4.17a2 2 0 0 1-1.92-2.56l2.33-8A2 2 0 0 1 6.5 2H20a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2.76a2 2 0 0 0-1.79 1.11L12 22a3.13 3.13 0 0 1-3-3.88Z"></path>'
+            '</svg>'
+        )
+    return (
+        '<svg class="memory-feedback-icon" viewBox="0 0 24 24" aria-hidden="true">'
+        '<path d="M7 10v12"></path>'
+        '<path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2a3.13 3.13 0 0 1 3 3.88Z"></path>'
+        '</svg>'
+    )
+
+
+def make_memory_feedback_controls(memory_key, memory_title, feedback_state):
+    memory_key = str(memory_key or "").strip()
+    if not memory_key:
+        return ""
+    feedback_state = normalize_feedback_state(feedback_state)
+    feedback_status_labels = {
+        overview_memory_feedback.FEEDBACK_LIKED: ("已标记有用，将优先展示", "Marked useful; prioritized"),
+        overview_memory_feedback.FEEDBACK_DOWNVOTED: ("已标记无用，后续降权", "Marked not useful; deprioritized"),
+    }
+    feedback_status = feedback_status_labels.get(feedback_state, ("", ""))
+
+    def feedback_button(feedback_value, zh_label, en_label):
+        active = feedback_state == feedback_value
+        return (
+            '<button class="memory-feedback-button{active_class}" type="button" '
+            'data-memory-feedback="{feedback}" data-memory-key="{memory_key}" '
+            'data-memory-title="{memory_title}" aria-pressed="{pressed}">'
+            "{icon}{label}</button>"
+        ).format(
+            active_class=" is-active" if active else "",
+            feedback=escape(feedback_value, quote=True),
+            memory_key=escape(memory_key, quote=True),
+            memory_title=escape(str(memory_title or ""), quote=True),
+            pressed="true" if active else "false",
+            icon=make_memory_feedback_icon(feedback_value),
+            label=panel_language_text_html(zh_label, en_label),
+        )
+
+    return """
+      <div class="memory-feedback-row" data-memory-feedback-state="{state}">
+        {buttons}
+        <span class="memory-feedback-status">{status}</span>
+      </div>
+    """.format(
+        state=escape(feedback_state, quote=True),
+        buttons="".join(
+            [
+                feedback_button(overview_memory_feedback.FEEDBACK_LIKED, "有用", "Useful"),
+                feedback_button(overview_memory_feedback.FEEDBACK_DOWNVOTED, "无用", "Not useful"),
+            ]
+        ),
+        status=panel_language_text_html(feedback_status[0], feedback_status[1])
+        if feedback_status[0] or feedback_status[1]
+        else "",
     )
 
 
@@ -12509,66 +12624,11 @@ def make_memory_cards(
             label=panel_language_text_html("查看来源与上下文", "Show context and source"),
             details=details,
         )
-        feedback_state = ui_text(item.get("user_feedback") or "")
-        if feedback_state == "pinned":
-            feedback_state = overview_memory_feedback.FEEDBACK_LIKED
-        feedback_status_labels = {
-            overview_memory_feedback.FEEDBACK_LIKED: ("已标记有用，将优先展示", "Marked useful; prioritized"),
-            overview_memory_feedback.FEEDBACK_DOWNVOTED: ("已放入本地保留末尾", "Kept local at lowest priority"),
-        }
-        feedback_status = feedback_status_labels.get(feedback_state, ("", ""))
-        feedback_controls = ""
-        memory_key = ui_text(item.get("memory_key") or "")
-        if memory_key:
-            def feedback_icon(feedback_value):
-                if feedback_value == overview_memory_feedback.FEEDBACK_DOWNVOTED:
-                    return (
-                        '<svg class="memory-feedback-icon" viewBox="0 0 24 24" aria-hidden="true">'
-                        '<path d="M17 14V2"></path>'
-                        '<path d="M9 18.12 10 14H4.17a2 2 0 0 1-1.92-2.56l2.33-8A2 2 0 0 1 6.5 2H20a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2.76a2 2 0 0 0-1.79 1.11L12 22a3.13 3.13 0 0 1-3-3.88Z"></path>'
-                        '</svg>'
-                    )
-                return (
-                    '<svg class="memory-feedback-icon" viewBox="0 0 24 24" aria-hidden="true">'
-                    '<path d="M7 10v12"></path>'
-                    '<path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2a3.13 3.13 0 0 1 3 3.88Z"></path>'
-                    '</svg>'
-                )
-
-            def feedback_button(feedback_value, zh_label, en_label):
-                active = feedback_state == feedback_value
-                return (
-                    '<button class="memory-feedback-button{active_class}" type="button" '
-                    'data-memory-feedback="{feedback}" data-memory-key="{memory_key}" '
-                    'data-memory-title="{memory_title}" aria-pressed="{pressed}">'
-                    "{icon}{label}</button>"
-                ).format(
-                    active_class=" is-active" if active else "",
-                    feedback=escape(feedback_value, quote=True),
-                    memory_key=escape(memory_key, quote=True),
-                    memory_title=escape(full_display_title or full_raw_title, quote=True),
-                    pressed="true" if active else "false",
-                    icon=feedback_icon(feedback_value),
-                    label=panel_language_text_html(zh_label, en_label),
-                )
-
-            feedback_controls = """
-              <div class="memory-feedback-row" data-memory-feedback-state="{state}">
-                {buttons}
-                <span class="memory-feedback-status">{status}</span>
-              </div>
-            """.format(
-                state=escape(feedback_state, quote=True),
-                buttons="".join(
-                    [
-                        feedback_button(overview_memory_feedback.FEEDBACK_LIKED, "有用", "Useful"),
-                        feedback_button(overview_memory_feedback.FEEDBACK_DOWNVOTED, "无用", "Not useful"),
-                    ]
-                ),
-                status=panel_language_text_html(feedback_status[0], feedback_status[1])
-                if feedback_status[0] or feedback_status[1]
-                else "",
-            )
+        feedback_controls = make_memory_feedback_controls(
+            ui_text(item.get("memory_key") or ""),
+            full_display_title or full_raw_title,
+            ui_text(item.get("user_feedback") or ""),
+        )
 
         return """
           <article class="native-brief-card memory-brief-card">
@@ -16403,6 +16463,21 @@ def build_html(data):
       line-height: 1.2;
     }}
 
+    .side-nav-group.is-active {{
+      color: var(--teal);
+    }}
+
+    .side-nav-group.is-active::before {{
+      content: "";
+      display: inline-block;
+      width: 6px;
+      height: 6px;
+      margin-right: 6px;
+      border-radius: 999px;
+      background: var(--teal);
+      vertical-align: 1px;
+    }}
+
     .side-nav-group:first-child {{
       margin-top: 0;
     }}
@@ -17641,6 +17716,26 @@ def build_html(data):
       line-height: 1.5;
       overflow-wrap: anywhere;
       word-break: break-word;
+    }}
+
+    .curated-memory-memory-badge {{
+      flex: 0 0 auto;
+      padding: 2px 7px;
+      border: 1px solid rgba(0, 113, 227, 0.22);
+      border-radius: 999px;
+      background: var(--accent-soft);
+      color: var(--teal);
+      font-size: 11px;
+      font-weight: 760;
+      line-height: 1.35;
+    }}
+
+    .curated-memory-item .memory-feedback-row {{
+      margin-top: 2px;
+    }}
+
+    .curated-memory-item.is-feedback-downvoted {{
+      opacity: .72;
     }}
 
     .memory-token-topline {{
@@ -22505,29 +22600,6 @@ def build_html(data):
         {curated_memory_body}
       </section>
 
-      <section class="panel" id="personal-memory-global-section">
-        {global_memory_header}
-        <div class="memory-group-list">
-          {global_memory_cards}
-        </div>
-      </section>
-
-      <section class="grid memory-stack">
-        <section class="panel" id="personal-memory-project-section">
-          {project_memory_header}
-          <div class="memory-group-list">
-            {project_memory_cards}
-          </div>
-        </section>
-      </section>
-
-      <section class="panel" id="personal-memory-local-section">
-        {local_memory_header}
-        <div class="memory-group-list">
-          {local_memory_cards}
-        </div>
-      </section>
-
     </section>
 
     <section class="memory-family" id="codex-native-section">
@@ -24864,7 +24936,7 @@ def build_html(data):
           return currentLanguage === "en" ? "Marked useful; moved to the top." : "已标记有用，并置顶展示";
         }}
         if (state === "downvoted") {{
-          return currentLanguage === "en" ? "Removed from this view." : "已从当前视图移除";
+          return currentLanguage === "en" ? "Marked not useful; deprioritized." : "已标记无用，后续降权";
         }}
         return currentLanguage === "en" ? "Feedback cleared" : "已取消标记";
       }}
@@ -24887,6 +24959,11 @@ def build_html(data):
           candidate.classList.toggle("is-active", active);
           candidate.setAttribute("aria-pressed", active ? "true" : "false");
         }});
+        const curatedItem = row.closest(".curated-memory-item");
+        if (curatedItem) {{
+          curatedItem.classList.toggle("is-feedback-liked", state === "liked");
+          curatedItem.classList.toggle("is-feedback-downvoted", state === "downvoted");
+        }}
         setMemoryFeedbackStatus(row, memoryFeedbackStatusMessage(state));
       }}
 
@@ -25129,14 +25206,19 @@ def build_html(data):
         if (!targetId || !elements.sideNavLinks.length) {{
           return;
         }}
+        let activeGroup = "";
         elements.sideNavLinks.forEach(function (link) {{
           const isActive = link.getAttribute("data-nav-target") === targetId;
           link.classList.toggle("is-active", isActive);
           if (isActive) {{
             link.setAttribute("aria-current", "true");
+            activeGroup = link.getAttribute("data-nav-group") || "";
           }} else {{
             link.removeAttribute("aria-current");
           }}
+        }});
+        document.querySelectorAll("[data-nav-group].side-nav-group").forEach(function (group) {{
+          group.classList.toggle("is-active", !!activeGroup && group.getAttribute("data-nav-group") === activeGroup);
         }});
       }}
 
