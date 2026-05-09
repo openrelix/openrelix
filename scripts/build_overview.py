@@ -10405,13 +10405,14 @@ def make_mini_trend_html(rows, label="", empty_label="暂无调用趋势"):
         )
     max_value = max([safe_int(row.get("value", 0)) for row in series] + [1])
     is_scrollable = len(series) > 7
-    slot_width = 40 if len(series) <= 7 else 32
-    chart_width = max(320, 44 + slot_width * len(series))
+    slot_width = 40
+    base_chart_width = max(320, 40 + slot_width * len(series))
+    chart_width = base_chart_width + (slot_width if is_scrollable else 0)
     left = 22
-    right = chart_width - 18
+    right = base_chart_width - 18
     baseline = 58
     plot_height = 42
-    bar_width = 22 if len(series) <= 7 else 16
+    bar_width = 22 if len(series) <= 7 else 18
     scroll_class = " is-scrollable" if is_scrollable else ""
     bars = []
     labels = []
@@ -10502,7 +10503,6 @@ def make_hotness_name_with_description(
     subtitle="",
     subtitle_en="",
     tags=None,
-    icon_label="S",
     kind="skill",
 ):
     raw_description = normalize_brand_display_text(description or "")
@@ -10518,11 +10518,13 @@ def make_hotness_name_with_description(
         )
     return """
       <div class="asset-discovery-name hotness-name-cell hotness-name-card" tabindex="0" title="{title}" data-hotness-description-zh="{description_attr}" data-hotness-description-en="{description_en_attr}" data-hotness-kind="{kind}">
-        <span class="hotness-name-icon" aria-hidden="true">{icon}</span>
         <span class="hotness-name-copy">
           <span class="hotness-name-label">{name}</span>
           {subtitle}
           {tags}
+          <span class="hotness-total-bar" aria-hidden="true">
+            <span class="hotness-total-fill"></span>
+          </span>
         </span>
       </div>
     """.format(
@@ -10532,7 +10534,6 @@ def make_hotness_name_with_description(
         description_en_attr=escape(raw_description_en, quote=True),
         subtitle=subtitle_html,
         tags=make_hotness_tag_pills(tags),
-        icon=escape(str(icon_label or "S")[:2].upper()),
         kind=escape(str(kind or "skill"), quote=True),
     )
 
@@ -10980,7 +10981,7 @@ def make_top_asset_rows(rows, group_id="top-asset-rows"):
 def make_top_skill_rows(rows, group_id="top-skill-rows"):
     rows = list(rows or [])
     if not rows:
-        return '<tr><td colspan="4" class="empty-cell">暂无高频 skills。</td></tr>'
+        return '<tr><td colspan="5" class="empty-cell">暂无高频 skills。</td></tr>'
 
     def render_row(row, row_class="", group_id="", hidden_attr=""):
         attrs = [
@@ -11036,6 +11037,7 @@ def make_top_skill_rows(rows, group_id="top-skill-rows"):
               <td class="asset-hotness-trend-cell">{trend}</td>
               <td class="asset-hotness-calls">{reads_30d}</td>
               <td class="asset-hotness-sessions">{sessions_30d}</td>
+              <td class="top-skills-spacer-cell" aria-hidden="true"></td>
             </tr>
             """.format(
                 row_attrs=" ".join(attrs),
@@ -11046,7 +11048,6 @@ def make_top_skill_rows(rows, group_id="top-skill-rows"):
                     subtitle=subtitle,
                     subtitle_en=subtitle_en,
                     tags=source_tags,
-                    icon_label="S",
                     kind="skill",
                 ),
                 trend=make_mini_trend_html(calls_series, label="{} daily reads".format(row.get("name") or row.get("identifier") or "")),
@@ -11059,7 +11060,7 @@ def make_top_skill_rows(rows, group_id="top-skill-rows"):
         rows,
         render_row,
         10,
-        4,
+        5,
         "个 skills 热度",
         "收起 skills 热度",
         group_id,
@@ -11114,7 +11115,6 @@ def make_mcp_usage_panel(mcp_usage, help_html=""):
         )
         server = str(tool.get("server") or "MCP").strip()
         tool_name = str(tool.get("tool") or "").strip()
-        icon_label = "".join(part[:1] for part in server.replace("-", "_").split("_") if part)[:2] or "M"
         return """
             <tr {row_attrs}>
               <td>
@@ -11123,6 +11123,7 @@ def make_mcp_usage_panel(mcp_usage, help_html=""):
               <td class="asset-hotness-trend-cell">{trend}</td>
               <td class="asset-hotness-calls">{calls}</td>
               <td class="asset-hotness-sessions">{sessions}</td>
+              <td class="top-skills-spacer-cell" aria-hidden="true"></td>
             </tr>
             """.format(
             row_attrs=" ".join(attrs),
@@ -11133,7 +11134,6 @@ def make_mcp_usage_panel(mcp_usage, help_html=""):
                 subtitle=server,
                 subtitle_en=server,
                 tags=[("MCP", "MCP"), (tool_name or server, tool_name or server)],
-                icon_label=icon_label,
                 kind="mcp",
             ),
             trend=make_mini_trend_html(calls_series, label="{} daily calls".format(tool.get("label") or tool.get("name") or "")),
@@ -11146,13 +11146,13 @@ def make_mcp_usage_panel(mcp_usage, help_html=""):
             tools,
             render_row,
             10,
-            4,
+            5,
             "个 MCP 工具",
             "收起 MCP 工具",
             "mcp-usage-rows",
         )
         if tools
-        else '<tr><td colspan="4" class="empty-cell">暂无 MCP 调用。</td></tr>'
+        else '<tr><td colspan="5" class="empty-cell">暂无 MCP 调用。</td></tr>'
     )
 
     return """
@@ -11165,6 +11165,7 @@ def make_mcp_usage_panel(mcp_usage, help_html=""):
             <col class="top-skills-trend-col">
             <col class="top-skills-count-col">
             <col class="top-skills-count-col">
+            <col class="top-skills-spacer-col">
           </colgroup>
           <thead>
             <tr>
@@ -11172,6 +11173,7 @@ def make_mcp_usage_panel(mcp_usage, help_html=""):
               <th>{trend_header}</th>
               <th>{calls_header}</th>
               <th>{sessions_header}</th>
+              <th aria-hidden="true"></th>
             </tr>
           </thead>
           <tbody>
@@ -17586,7 +17588,7 @@ def build_html(data):
 
     .top-skills-table {{
       table-layout: fixed;
-      min-width: 1180px;
+      min-width: 960px;
     }}
 
     .top-skills-table-wrap,
@@ -17596,21 +17598,25 @@ def build_html(data):
     }}
 
     .top-skills-name-col {{
-      width: 34%;
+      width: 420px;
     }}
 
     .top-skills-trend-col {{
-      width: 460px;
+      width: 340px;
     }}
 
     .top-skills-count-col {{
-      width: 92px;
+      width: 76px;
+    }}
+
+    .top-skills-spacer-col {{
+      width: auto;
     }}
 
     .top-skills-table th:nth-child(2),
     .top-skills-table td:nth-child(2) {{
-      width: 460px;
-      max-width: 460px;
+      width: 340px;
+      max-width: 340px;
     }}
 
     .top-skills-table th {{
@@ -17634,6 +17640,12 @@ def build_html(data):
       font-variant-numeric: tabular-nums;
     }}
 
+    .top-skills-table th:nth-child(5),
+    .top-skills-table td:nth-child(5) {{
+      padding-left: 0;
+      padding-right: 0;
+    }}
+
     .top-skills-table .content-more-cell {{
       padding-left: 10px;
       padding-right: 10px;
@@ -17652,28 +17664,7 @@ def build_html(data):
     }}
 
     .hotness-name-card {{
-      grid-template-columns: 40px minmax(0, 1fr);
-      gap: 12px;
-      align-items: center;
-    }}
-
-    .hotness-name-icon {{
-      display: inline-grid;
-      place-items: center;
-      width: 36px;
-      height: 36px;
-      border-radius: 9px;
-      background: linear-gradient(180deg, rgba(0, 113, 227, 0.88), rgba(0, 113, 227, 0.58));
-      color: white;
-      font-size: 13px;
-      font-weight: 820;
-      letter-spacing: 0;
-      box-shadow: 0 10px 22px rgba(0, 113, 227, 0.18);
-    }}
-
-    .hotness-name-card[data-hotness-kind="mcp"] .hotness-name-icon {{
-      background: linear-gradient(180deg, rgba(98, 94, 222, 0.9), rgba(50, 56, 168, 0.72));
-      box-shadow: 0 10px 22px rgba(50, 56, 168, 0.18);
+      align-items: start;
     }}
 
     .hotness-name-copy {{
@@ -17719,6 +17710,26 @@ def build_html(data):
       font-size: 10px;
       font-weight: 700;
       line-height: 1.25;
+    }}
+
+    .hotness-total-bar {{
+      width: min(260px, 100%);
+      height: 7px;
+      margin-top: 3px;
+      border-radius: 999px;
+      background: color-mix(in srgb, var(--soft) 78%, transparent);
+      overflow: hidden;
+    }}
+
+    .hotness-total-fill {{
+      display: block;
+      width: 100%;
+      height: 100%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, rgba(52, 199, 89, 0.92), rgba(0, 113, 227, 0.74));
+      transform: scaleX(clamp(0, var(--hotness-total-ratio, 0), 1));
+      transform-origin: left center;
+      transition: transform 160ms ease;
     }}
 
     .hotness-description-bubble {{
@@ -17767,20 +17778,20 @@ def build_html(data):
     }}
 
     .asset-hotness-trend-cell {{
-      min-width: 420px;
+      min-width: 320px;
     }}
 
     .mini-trend {{
       position: relative;
       height: 88px;
-      min-width: 420px;
+      min-width: 320px;
       display: grid;
       align-items: center;
       padding: 0;
     }}
 
     .mini-trend-scroll {{
-      max-width: 100%;
+      width: min(100%, 324px);
       overflow-x: hidden;
       overflow-y: visible;
       padding: 4px 2px 2px;
@@ -17859,15 +17870,15 @@ def build_html(data):
 
     .asset-hotness-calls {{
       color: var(--ink);
-      font-size: 18px;
-      font-weight: 760;
+      font-size: 14px;
+      font-weight: 720;
       line-height: 1.1;
     }}
 
     .asset-hotness-sessions {{
       color: color-mix(in srgb, var(--ink) 82%, var(--muted));
-      font-size: 16px;
-      font-weight: 700;
+      font-size: 13px;
+      font-weight: 680;
       line-height: 1.1;
     }}
 
@@ -23290,6 +23301,7 @@ def build_html(data):
               <col class="top-skills-trend-col">
               <col class="top-skills-count-col">
               <col class="top-skills-count-col">
+              <col class="top-skills-spacer-col">
             </colgroup>
             <thead>
               <tr>
@@ -23297,6 +23309,7 @@ def build_html(data):
                 <th>{trend_header}</th>
                 <th>{skill_reads_30d_header}</th>
                 <th>{skill_sessions_30d_header}</th>
+                <th aria-hidden="true"></th>
               </tr>
             </thead>
             <tbody>
@@ -24494,13 +24507,14 @@ def build_html(data):
           );
         }}
         const isScrollable = rows.length > 7;
-        const slotWidth = rows.length <= 7 ? 40 : 32;
-        const chartWidth = Math.max(320, 44 + slotWidth * rows.length);
+        const slotWidth = 40;
+        const baseChartWidth = Math.max(320, 40 + slotWidth * rows.length);
+        const chartWidth = baseChartWidth + (isScrollable ? slotWidth : 0);
         const left = 22;
-        const axisRight = chartWidth - 18;
+        const axisRight = baseChartWidth - 18;
         const baseline = 58;
         const plotHeight = 42;
-        const barWidth = rows.length <= 7 ? 22 : 16;
+        const barWidth = rows.length <= 7 ? 22 : 18;
         const bars = [];
         const valueLabels = [];
         const dateLabels = [];
@@ -24714,13 +24728,25 @@ def build_html(data):
         const activeRows = rowsWithStats.filter(function (entry) {{
           return entry.calls > 0 || entry.sessions > 0;
         }});
+        const maxCalls = activeRows.reduce(function (peak, entry) {{
+          return Math.max(peak, Number(entry.calls) || 0);
+        }}, 0);
         rowsWithStats.forEach(function (entry) {{
           const visibleIndex = activeRows.indexOf(entry);
           const shouldShow = visibleIndex >= 0 && (expanded || visibleIndex < {asset_hotness_visible_count});
           entry.row.hidden = !shouldShow;
+          const totalRatio = maxCalls > 0 ? Math.max(0, Math.min(1, entry.calls / maxCalls)) : 0;
+          entry.row.style.setProperty("--hotness-total-ratio", String(totalRatio));
+          const totalBar = entry.row.querySelector(".hotness-total-bar");
           const callsCell = entry.row.querySelector(".asset-hotness-calls");
           const sessionsCell = entry.row.querySelector(".asset-hotness-sessions");
           const trendCell = entry.row.querySelector(".asset-hotness-trend-cell");
+          if (totalBar) {{
+            totalBar.setAttribute(
+              "title",
+              entry.calls + " " + localizeValue(groupName === "mcp" ? "次调用" : "次读取", groupName === "mcp" ? "calls" : "reads")
+            );
+          }}
           if (callsCell) callsCell.textContent = String(entry.calls);
           if (sessionsCell) sessionsCell.textContent = String(entry.sessions);
           if (trendCell) {{
