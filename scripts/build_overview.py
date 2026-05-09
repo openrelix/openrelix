@@ -10210,6 +10210,7 @@ def wrap_expandable_block(
     collapsed_label="",
     collapsed_label_en="",
     open_by_default=False,
+    collapse_footer=False,
 ):
     if not extra_html or extra_count <= 0:
         return primary_html
@@ -10228,6 +10229,13 @@ def wrap_expandable_block(
         expanded_label_en or panel_english_text(expanded_label) or expanded_label,
     )
     open_attr = " open" if open_by_default else ""
+    collapse_footer_html = ""
+    if collapse_footer:
+        collapse_footer_html = """
+          <button class="content-more-collapse-button" type="button" data-collapse-details>
+            {expanded_label}
+          </button>
+        """.format(expanded_label=expanded_label_html)
     return """
         {primary_html}
         <details class="content-more"{open_attr}>
@@ -10238,6 +10246,7 @@ def wrap_expandable_block(
           <div class="{extra_container_class}">
             {extra_html}
           </div>
+          {collapse_footer}
         </details>
     """.format(
         primary_html=primary_html,
@@ -10246,6 +10255,7 @@ def wrap_expandable_block(
         expanded_label=expanded_label_html,
         extra_container_class=escape(extra_container_class),
         extra_html=extra_html,
+        collapse_footer=collapse_footer_html,
     )
 
 
@@ -12075,9 +12085,9 @@ def make_curated_memory_panel_body(pack):
         policy = str(item.get("injection_policy") or "").strip()
         feedback_state = normalize_feedback_state(item.get("user_feedback") or "")
         memory_badge = ""
-        if policy in {"global_context", "project_context"} or feedback_state == overview_memory_feedback.FEEDBACK_LIKED:
+        if policy in {"global_context", "project_context"}:
             memory_badge = '<span class="curated-memory-memory-badge">{}</span>'.format(
-                panel_language_text_html("记忆", "Memory")
+                panel_language_text_html("记忆已注入", "Injected Memory")
             )
         feedback_controls = make_memory_feedback_controls(
             curated_memory_feedback_key(item),
@@ -12128,6 +12138,7 @@ def make_curated_memory_panel_body(pack):
                     expanded_label_en="Collapse extra items",
                     collapsed_label="查看更多 {} 条".format(len(items) - len(preview_items)),
                     collapsed_label_en="Show {} more items".format(len(items) - len(preview_items)),
+                    collapse_footer=True,
                 )
             )
         if not item_rows:
@@ -20219,6 +20230,40 @@ def build_html(data):
       content: "−";
     }}
 
+    .content-more-collapse-button {{
+      appearance: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      border: 0;
+      background: transparent;
+      padding: 10px 2px 2px;
+      color: var(--teal);
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+    }}
+
+    .content-more-collapse-button::before {{
+      content: "−";
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 18px;
+      height: 18px;
+      border-radius: 999px;
+      border: 1px solid rgba(0, 113, 227, 0.22);
+      background: rgba(0, 113, 227, 0.08);
+      line-height: 1;
+      font-size: 14px;
+    }}
+
+    .content-more-collapse-button:hover,
+    .content-more-collapse-button:focus-visible {{
+      color: var(--accent-strong);
+      outline: none;
+    }}
+
     .content-more-extra-row[hidden] {{
       display: none;
     }}
@@ -25332,6 +25377,28 @@ def build_html(data):
       }}
 
       function wireContentMoreButtons() {{
+        document.addEventListener("click", function (event) {{
+          const collapseButton = event.target.closest("[data-collapse-details]");
+          if (!collapseButton) {{
+            return;
+          }}
+          const details = collapseButton.closest("details.content-more");
+          if (!details) {{
+            return;
+          }}
+          event.preventDefault();
+          event.stopPropagation();
+          details.open = false;
+          const summary = details.querySelector("summary.content-more-trigger");
+          if (summary) {{
+            try {{
+              summary.focus({{ preventScroll: true }});
+            }} catch (error) {{
+              summary.focus();
+            }}
+          }}
+          details.scrollIntoView({{ behavior: "smooth", block: "nearest" }});
+        }});
         const buttons = Array.from(document.querySelectorAll(".content-more-button"));
         buttons.forEach(function (button) {{
           button.addEventListener("click", function () {{

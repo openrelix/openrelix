@@ -681,6 +681,7 @@ class TokenLiveHandler(BaseHTTPRequestHandler):
                 self.send_header("Vary", "Origin")
             self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
             self.send_header("Access-Control-Allow-Headers", "Content-Type, X-OpenRelix-Token")
+            self.send_header("Access-Control-Allow-Private-Network", "true")
         self.end_headers()
         self.wfile.write(body)
 
@@ -692,10 +693,10 @@ class TokenLiveHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         if parsed.path in TRUSTED_POST_PATHS:
             origin = self.headers.get("Origin", "").strip()
-            if not is_allowed_panel_origin(origin):
+            if origin and not is_allowed_panel_origin(origin):
                 self._send_json(403, {"ok": False, "error": "forbidden_origin"}, allow_origin=None)
                 return
-            self._send_json(200, {"ok": True}, allow_origin=origin)
+            self._send_json(200, {"ok": True}, allow_origin=origin or "*")
             return
         self._send_json(200, {"ok": True})
 

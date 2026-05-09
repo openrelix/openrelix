@@ -4,6 +4,7 @@ import argparse
 import csv
 from dataclasses import replace
 from datetime import date, datetime
+import http.client
 from html.parser import HTMLParser
 import io
 import json
@@ -418,10 +419,42 @@ class NightlyLogicTests(unittest.TestCase):
         self.assertIn("项目工作手册", html)
         self.assertNotIn("项目 Playbooks", html)
         self.assertIn("查看更多 2 条", html)
+        self.assertIn('data-collapse-details', html)
+        self.assertIn('class="content-more-collapse-button"', html)
         self.assertIn('class="content-more"', html)
         self.assertIn('class="curated-memory-memory-badge"', html)
+        self.assertIn("记忆已注入", html)
         self.assertIn('data-memory-feedback="liked" data-memory-key="memory-key-0"', html)
         self.assertIn('data-memory-feedback="downvoted" data-memory-key="memory-key-0"', html)
+
+    def test_curated_memory_badge_only_marks_injected_policy(self):
+        sections = {section: [] for section in overview_curated_memory.SECTION_ORDER}
+        sections[overview_curated_memory.SECTION_LOCAL_VOLATILE] = [
+            {
+                "section": overview_curated_memory.SECTION_LOCAL_VOLATILE,
+                "title": "本地保留的有用记忆",
+                "value_note": "只在本地保留。",
+                "injection_policy": "local_only",
+                "memory_key": "local-liked-memory",
+                "user_feedback": "liked",
+            }
+        ]
+
+        html = build_overview.make_curated_memory_panel_body(
+            {
+                "schema_version": 1,
+                "source": "registry/memory_entries.jsonl",
+                "model_calls": 0,
+                "entry_count": 1,
+                "sections": sections,
+                "diagnostics": {},
+                "artifact": {},
+            }
+        )
+
+        self.assertIn("本地保留的有用记忆", html)
+        self.assertNotIn('class="curated-memory-memory-badge"', html)
+        self.assertNotIn("记忆已注入", html)
 
     def test_runtime_language_config_persists_and_normalizes(self):
         self.assertEqual(asset_runtime.normalize_language("zh-CN"), "zh")
@@ -7538,6 +7571,58 @@ Native Codex profile.
         self.assertIn(overview_finder.FINDER_REVEAL_PATH, token_live_server.TRUSTED_POST_PATHS)
         self.assertIn(token_live_server.PANEL_REFRESH_PATH, token_live_server.TRUSTED_POST_PATHS)
         self.assertIn(token_live_server.MEMORY_FEEDBACK_PATH, token_live_server.TRUSTED_POST_PATHS)
+
+    def test_token_live_allows_no_origin_preflight_for_trusted_local_posts(self):
+        server = token_live_server.ThreadingHTTPServer(("127.0.0.1", 0), token_live_server.TokenLiveHandler)
+        thread = token_live_server.threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            connection = http.client.HTTPConnection("127.0.0.1", server.server_address[1], timeout=5)
+            connection.request(
+                "OPTIONS",
+                token_live_server.MEMORY_FEEDBACK_PATH,
+                headers={
+                    "Access-Control-Request-Method": "POST",
+                    "Access-Control-Request-Headers": "content-type,x-openrelix-token",
+                },
+            )
+            response = connection.getresponse()
+            body = response.read().decode("utf-8")
+            connection.close()
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=5)
+
+        self.assertEqual(response.status, 200, body)
+        self.assertEqual(response.getheader("Access-Control-Allow-Origin"), "*")
+        self.assertEqual(response.getheader("Access-Control-Allow-Private-Network"), "true")
+
+    def test_token_live_rejects_untrusted_preflight_origin(self):
+        server = token_live_server.ThreadingHTTPServer(("127.0.0.1", 0), token_live_server.TokenLiveHandler)
+        thread = token_live_server.threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            connection = http.client.HTTPConnection("127.0.0.1", server.server_address[1], timeout=5)
+            connection.request(
+                "OPTIONS",
+                token_live_server.MEMORY_FEEDBACK_PATH,
+                headers={
+                    "Origin": "https://example.com",
+                    "Access-Control-Request-Method": "POST",
+                    "Access-Control-Request-Headers": "content-type,x-openrelix-token",
+                },
+            )
+            response = connection.getresponse()
+            body = response.read().decode("utf-8")
+            connection.close()
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=5)
+
+        self.assertEqual(response.status, 403, body)
+        self.assertIsNone(response.getheader("Access-Control-Allow-Origin"))
 
     def test_panel_refresh_runs_refresh_overview_for_requested_date(self):
         with TemporaryDirectory() as tmpdir:
