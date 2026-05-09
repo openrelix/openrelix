@@ -5807,7 +5807,8 @@ Native Codex profile.
         self.assertLess(top_start, review_start)
         self.assertNotIn('class="grid two-up"', main_template[top_start:review_start])
         self.assertIn('class="asset-discovery-table top-skills-table"', top_section)
-        self.assertIn('class="top-skills-description-col"', top_section)
+        self.assertIn('class="top-skills-trend-col"', top_section)
+        self.assertIn("{asset_filter_panel}", main_template)
         self.assertIn("{top_skill_rows}", top_section)
         self.assertIn('class="review-grid review-panel-grid"', review_section)
         self.assertIn("{review_cards}", review_section)
@@ -5840,19 +5841,19 @@ Native Codex profile.
         main_template = source[
             main_start : source.index("</main>", main_start)
         ]
-        stack_start = main_template.index('class="grid memory-stack"')
-        memory_stack = main_template[
-            stack_start : main_template.index("{local_memory_header}", stack_start)
+        memory_start = main_template.index('id="memory-section"')
+        memory_section = main_template[
+            memory_start : main_template.index('id="codex-native-section"', memory_start)
         ]
 
-        self.assertIn("{project_memory_header}", memory_stack)
-        self.assertNotIn("{on_demand_memory_header}", memory_stack)
-        self.assertNotIn('class="grid two-up"', memory_stack)
-        self.assertIn('class="memory-group-list"', memory_stack)
-        self.assertNotIn('class="review-grid memory-grid"', memory_stack)
+        self.assertIn("{personal_asset_memory_family_header}", memory_section)
         self.assertIn("{memory_compiler_header}", main_template)
-        self.assertIn("{global_memory_header}", main_template)
-        self.assertIn("{local_memory_header}", main_template)
+        self.assertIn("{memory_compiler_body}", memory_section)
+        self.assertIn("{curated_memory_header}", memory_section)
+        self.assertIn("{curated_memory_body}", memory_section)
+        self.assertNotIn("{on_demand_memory_header}", memory_section)
+        self.assertNotIn('class="grid two-up"', memory_section)
+        self.assertNotIn('class="review-grid memory-grid"', memory_section)
         self.assertNotIn("{memory_registry_header}", main_template)
         self.assertNotIn("{memory_registry_cards}", main_template)
 
@@ -5904,12 +5905,12 @@ Native Codex profile.
             "{codex_native_task_group_header}",
         ):
             self.assertLess(main_template.index(header), main_template.index("{asset_metric_cards}"))
-        self.assertLess(main_template.index("{asset_metric_cards}"), main_template.index("{asset_stats_snapshot_panel}"))
-        self.assertLess(main_template.index("{asset_stats_snapshot_panel}"), main_template.index("{type_panel}"))
-        self.assertLess(main_template.index("{asset_metric_cards}"), main_template.index("{type_panel}"))
+        self.assertLess(main_template.index("{asset_metric_cards}"), main_template.index("{asset_filter_panel}"))
+        self.assertLess(main_template.index("{asset_filter_panel}"), main_template.index("{asset_stats_snapshot_panel}"))
+        self.assertLess(main_template.index("{asset_stats_snapshot_panel}"), main_template.index("{top_assets_header}"))
         self.assertLess(main_template.index("{asset_metric_cards}"), main_template.index("{window_overview_header}"))
-        self.assertLess(main_template.index("{type_panel}"), main_template.index("{month_panel}"))
-        self.assertLess(main_template.index("{month_panel}"), main_template.index("{top_assets_header}"))
+        self.assertNotIn("{type_panel}", main_template)
+        self.assertNotIn("{month_panel}", main_template)
         self.assertLess(main_template.index("{top_skill_rows}"), main_template.index("{mcp_usage_panel}"))
         self.assertLess(main_template.index("{mcp_usage_panel}"), main_template.index("{discovered_assets_section}"))
         self.assertNotIn("{scope_panel}", main_template)
@@ -5917,6 +5918,7 @@ Native Codex profile.
         self.assertLess(main_template.index("{pipeline_status_panel}"), main_template.index("{memory_compiler_header}"))
         self.assertLess(main_template.index("{asset_metric_cards}"), main_template.index("{project_context_body}"))
         self.assertLess(main_template.index("{discovered_assets_section}"), main_template.index("{project_context_body}"))
+        self.assertLess(main_template.index('id="window-layer-section"'), main_template.index("{project_context_body}"))
         self.assertLess(main_template.index("{reviews_header}"), main_template.index("{project_context_body}"))
         self.assertLess(main_template.index("{usage_rows}"), main_template.index("{window_overview_header}"))
         self.assertLess(main_template.index("{usage_rows}"), main_template.index("{project_context_body}"))
@@ -6050,6 +6052,21 @@ Native Codex profile.
         self.assertIn('data-window-range-days="30"', html)
         self.assertNotIn('id="window-overview-date-input"', html)
         self.assertNotIn('class="nightly-date-control"', html)
+
+    def test_asset_filter_panel_reuses_token_filter_style(self):
+        html = build_overview.make_asset_filter_panel("2026-04-10", "2026-05-09")
+
+        self.assertIn('id="asset-filter-panel"', html)
+        self.assertIn('class="token-filter-panel asset-filter-panel"', html)
+        self.assertIn('id="asset-filter-summary"', html)
+        self.assertIn('id="asset-start-date"', html)
+        self.assertIn('type="date" value="2026-04-10"', html)
+        self.assertIn('id="asset-end-date"', html)
+        self.assertIn('type="date" value="2026-05-09"', html)
+        self.assertIn('data-asset-range-days="1"', html)
+        self.assertIn('data-asset-range-days="3"', html)
+        self.assertIn('data-asset-range-days="7"', html)
+        self.assertIn('data-asset-range-days="30" aria-pressed="true" data-active="true"', html)
 
     def test_filter_window_overview_by_date_range_updates_counts(self):
         overview = {
