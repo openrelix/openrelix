@@ -306,32 +306,32 @@ def build_token_summary_cards(
     group_by = normalize_token_group_by(group_by)
     summary_rows = parsed_rows if custom_period else trailing_rows
     active_trailing_rows = [row for row in summary_rows if row.get("totalTokens", 0) > 0]
-    bill_label = localized("周期账单", "Period bill", language) if custom_period else localized("7 日账单", "7-day bill", language)
-    average_label = localized("月均值", "Monthly average", language) if group_by == "month" else (
-        localized("周期日均", "Daily average", language) if custom_period else localized("7 日均值", "7-day average", language)
-    )
+    period_token_label = localized("周期 Token", "Period Token", language)
+    period_cost_label = localized("周期成本", "Period cost", language)
+    average_label = localized("月均值", "Monthly average", language) if group_by == "month" else localized("周期日均", "Daily average", language)
     peak_label = localized("峰值月", "Peak month", language) if group_by == "month" else localized("峰值日", "Peak day", language)
     summary_cards = []
 
     if active_trailing_rows:
-        seven_day_total = sum(row["totalTokens"] for row in active_trailing_rows)
-        seven_day_cost = sum(safe_float(row.get("costUSD")) for row in active_trailing_rows)
-        seven_day_average = sum(row["totalTokens"] for row in active_trailing_rows) // len(active_trailing_rows)
+        period_total = sum(row["totalTokens"] for row in active_trailing_rows)
+        period_cost = sum(safe_float(row.get("costUSD")) for row in active_trailing_rows)
+        period_average = period_total // len(active_trailing_rows)
         peak_row = max(active_trailing_rows, key=lambda row: row["totalTokens"])
         summary_cards.extend(
             [
                 make_token_summary_card(
-                    bill_label,
-                    format_usd(seven_day_cost),
-                    localized(
-                        "{} Token · ccusage 估算".format(compact_token(seven_day_total, language=language)),
-                        "{} Tokens · ccusage estimate".format(compact_token(seven_day_total, language=language)),
-                        language,
-                    ),
+                    period_token_label,
+                    compact_token(period_total, language=language),
+                    localized("ccusage 估算", "ccusage estimate", language),
+                ),
+                make_token_summary_card(
+                    period_cost_label,
+                    format_usd(period_cost),
+                    localized("ccusage 估算", "ccusage estimate", language),
                 ),
                 make_token_summary_card(
                     average_label,
-                    compact_token(seven_day_average, language=language),
+                    compact_token(period_average, language=language),
                     localized(
                         "按 {} 个有数据{}".format(len(active_trailing_rows), token_period_unit(group_by, language=language)),
                         "Across {} {} with data".format(len(active_trailing_rows), token_period_unit(group_by, language=language)),
@@ -350,34 +350,20 @@ def build_token_summary_cards(
             ]
         )
     else:
-        summary_cards.append(
-            make_token_summary_card(
-                bill_label,
-                "—",
-                localized("暂无账单数据", "No bill data yet", language),
-            )
-        )
-
-    total_input_tokens, cached_input_tokens, _ = split_ccusage_input_tokens(latest)
-    cached_share = percent_of(cached_input_tokens, total_input_tokens)
-    summary_cards.append(
-        make_token_summary_card(
-            localized("缓存读取占总输入", "Cache Read / total input", language),
-            format_percent(cached_share),
-            localized(
-                "缓存读取 {} / 总输入 {}".format(
-                    compact_token(cached_input_tokens, language=language),
-                    compact_token(total_input_tokens, language=language),
+        summary_cards.extend(
+            [
+                make_token_summary_card(
+                    period_token_label,
+                    "—",
+                    localized("ccusage 估算", "ccusage estimate", language),
                 ),
-                "Cache Read {} / total input {}".format(
-                    compact_token(cached_input_tokens, language=language),
-                    compact_token(total_input_tokens, language=language),
+                make_token_summary_card(
+                    period_cost_label,
+                    "—",
+                    localized("ccusage 估算", "ccusage estimate", language),
                 ),
-                language,
-            ),
-            "neutral",
+            ]
         )
-    )
     return summary_cards
 
 
@@ -519,6 +505,9 @@ def build_token_usage_view(
             "today_breakdown": [],
             "today_total_tokens": None,
             "today_total_tokens_display": "—",
+            "today_cost_usd": None,
+            "today_cost_display": "—",
+            "today_token_cost_display": "—",
             "seven_day_total_tokens": None,
             "seven_day_total_tokens_display": "—",
             "seven_day_cost_usd": None,
@@ -778,6 +767,8 @@ def build_token_usage_view(
             ]
         )
 
+    latest_cost = safe_float(latest.get("costUSD")) if latest else 0.0
+
     return {
         "available": True,
         "error": "",
@@ -819,6 +810,13 @@ def build_token_usage_view(
         "today_breakdown": today_breakdown,
         "today_total_tokens": latest["totalTokens"] if latest else 0,
         "today_total_tokens_display": compact_token(latest["totalTokens"], language=language) if latest else "0",
+        "today_cost_usd": latest_cost,
+        "today_cost_display": format_usd(latest_cost),
+        "today_token_cost_display": compact_token_with_cost(
+            latest["totalTokens"] if latest else 0,
+            latest_cost,
+            language=language,
+        ),
         "seven_day_total_tokens": seven_day_total,
         "seven_day_total_tokens_display": compact_token(seven_day_total, language=language),
         "seven_day_cost_usd": seven_day_cost,
