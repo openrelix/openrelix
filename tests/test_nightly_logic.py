@@ -426,6 +426,10 @@ class NightlyLogicTests(unittest.TestCase):
         self.assertIn("记忆已注入", html)
         self.assertIn('data-memory-feedback="liked" data-memory-key="memory-key-0"', html)
         self.assertIn('data-memory-feedback="downvoted" data-memory-key="memory-key-0"', html)
+        self.assertNotIn("旁路整理预览", html)
+        self.assertNotIn("输入条目", html)
+        self.assertNotIn("质量信号", html)
+        self.assertNotIn("curated-memory-diagnostic-grid", html)
 
     def test_curated_memory_badge_only_marks_injected_policy(self):
         sections = {section: [] for section in overview_curated_memory.SECTION_ORDER}
@@ -5255,7 +5259,28 @@ Native Codex profile.
             "Project Context",
         )
 
-    def test_memory_context_compiler_card_counts_general_context_only(self):
+    def test_memory_context_compiler_cards_use_curated_metrics(self):
+        sections = {section: [] for section in overview_curated_memory.SECTION_ORDER}
+        sections[overview_curated_memory.SECTION_STABLE_PREFERENCES] = [
+            {"title": "稳定偏好", "value_note": "长期稳定。"},
+        ]
+        sections[overview_curated_memory.SECTION_OPERATING_RULES] = [
+            {"title": "操作规则", "value_note": "可直接复用。"},
+        ]
+        sections[overview_curated_memory.SECTION_TASK_GROUPS] = [
+            {
+                "title": "跨项目疑似",
+                "value_note": "需要确认范围。",
+                "diagnostics": ["possible_cross_project_leakage"],
+            },
+        ]
+        sections[overview_curated_memory.SECTION_LOCAL_VOLATILE] = [
+            {
+                "title": "时效内容",
+                "value_note": "适合本地保留。",
+                "diagnostics": ["timeline_like"],
+            },
+        ]
         html = build_overview.make_memory_context_compiler_body(
             {
                 "compiler": {
@@ -5265,13 +5290,25 @@ Native Codex profile.
                     "project_context_count": 48,
                     "on_demand_count": 4,
                 }
-            }
+            },
+            {
+                "sections": sections,
+                "diagnostics": {
+                    "duplicate_clusters": [
+                        {"canonical_key": "topic:one", "source_entry_ids": ["a", "b"]},
+                    ],
+                },
+            },
         )
 
-        self.assertIn("通用上下文", html)
-        self.assertIn("会进入通用 host context 的候选", html)
-        self.assertIn(">25</strong>", html)
-        self.assertNotIn("可进上下文", html)
+        self.assertIn("整理后记忆", html)
+        self.assertIn("稳定可用", html)
+        self.assertIn("待确认", html)
+        self.assertIn("已合并重复", html)
+        self.assertIn(">4</strong>", html)
+        self.assertIn(">2</strong>", html)
+        self.assertIn(">1</strong>", html)
+        self.assertNotIn("通用上下文", html)
         self.assertNotIn(">73</strong>", html)
 
     def test_context_memory_preview_only_uses_integrated_context_candidates(self):
@@ -5445,8 +5482,10 @@ Native Codex profile.
         self.assertNotIn("side-nav-sublabel", html)
         self.assertIn("personal-memory-compiler-section", html)
         self.assertIn("personal-memory-curated-section", html)
-        self.assertIn("旁路整理预览", html)
-        self.assertIn("不改变注入", html)
+        self.assertNotIn('data-nav-target="personal-memory-compiler-section"', html)
+        self.assertNotIn('data-nav-target="personal-memory-curated-section"', html)
+        self.assertNotIn("旁路整理预览", html)
+        self.assertNotIn("不改变注入", html)
         self.assertIn("总览", html)
         self.assertNotIn("personal-memory-global-section", html)
         self.assertNotIn("personal-memory-project-section", html)
