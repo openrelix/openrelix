@@ -10384,7 +10384,10 @@ def make_mini_trend_html(rows, label="", empty_label="暂无调用趋势"):
     if not series:
         return """
           <div class="mini-trend is-empty" aria-label="{label}">
-            <span class="mini-trend-axis" aria-hidden="true"></span>
+            <svg class="mini-trend-svg" viewBox="0 0 180 48" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
+              <line class="mini-trend-axis-x" x1="10" y1="39" x2="174" y2="39"></line>
+              <line class="mini-trend-axis-y" x1="10" y1="9" x2="10" y2="39"></line>
+            </svg>
             <span class="mini-trend-empty">{empty}</span>
           </div>
         """.format(
@@ -10392,25 +10395,59 @@ def make_mini_trend_html(rows, label="", empty_label="暂无调用趋势"):
             empty=panel_language_text_html("暂无", "None"),
         )
     max_value = max([safe_int(row.get("value", 0)) for row in series] + [1])
+    left = 10
+    plot_width = 164
+    baseline = 39
+    plot_height = 27
+    gap = 3
+    bar_width = max(2.4, min(12, (plot_width - gap * max(len(series) - 1, 0)) / max(len(series), 1)))
+    total_width = bar_width * len(series) + gap * max(len(series) - 1, 0)
+    start_x = left + max(0, (plot_width - total_width) / 2)
     bars = []
-    for row in series:
+    labels = []
+    for index, row in enumerate(series):
         value = safe_int(row.get("value", 0))
-        height = max(6, min(100, round(value / max_value * 100))) if value > 0 else 2
+        bar_height = max(2, value / max_value * plot_height) if value > 0 else 1
+        x = start_x + index * (bar_width + gap)
+        y = baseline - bar_height
         title = "{} · {}".format(row.get("date", ""), value)
+        x_text = "{:.2f}".format(x).rstrip("0").rstrip(".")
+        y_text = "{:.2f}".format(y).rstrip("0").rstrip(".")
+        width_text = "{:.2f}".format(bar_width).rstrip("0").rstrip(".")
+        height_text = "{:.2f}".format(bar_height).rstrip("0").rstrip(".")
         bars.append(
-            '<span class="mini-trend-bar" style="--trend-height: {}%;" title="{}"></span>'.format(
-                escape(str(height), quote=True),
+            '<rect class="mini-trend-bar-rect{}" x="{}" y="{}" width="{}" height="{}" rx="1.8"><title>{}</title></rect>'.format(
+                " is-active" if value > 0 else "",
+                escape(x_text, quote=True),
+                escape(y_text, quote=True),
+                escape(width_text, quote=True),
+                escape(height_text, quote=True),
                 escape(title, quote=True),
             )
         )
+        if value > 0:
+            label_x = x + bar_width / 2
+            label_y = max(8, y - 4)
+            labels.append(
+                '<text class="mini-trend-value" x="{}" y="{}">{}</text>'.format(
+                    escape("{:.2f}".format(label_x).rstrip("0").rstrip("."), quote=True),
+                    escape("{:.2f}".format(label_y).rstrip("0").rstrip("."), quote=True),
+                    escape(str(value)),
+                )
+            )
     return """
       <div class="mini-trend" aria-label="{label}">
-        <span class="mini-trend-axis" aria-hidden="true"></span>
-        <span class="mini-trend-bars" aria-hidden="true">{bars}</span>
+        <svg class="mini-trend-svg" viewBox="0 0 180 48" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
+          <line class="mini-trend-axis-x" x1="10" y1="39" x2="174" y2="39"></line>
+          <line class="mini-trend-axis-y" x1="10" y1="9" x2="10" y2="39"></line>
+          {bars}
+          {labels}
+        </svg>
       </div>
     """.format(
         label=escape(label or "每日调用趋势", quote=True),
         bars="".join(bars),
+        labels="".join(labels),
     )
 
 
@@ -10422,16 +10459,14 @@ def make_hotness_name_with_description(name_html, description, description_en=""
     if not raw_description_en:
         raw_description_en = raw_description
     return """
-      <div class="asset-discovery-name hotness-name-cell" tabindex="0" title="{title}">
+      <div class="asset-discovery-name hotness-name-cell" tabindex="0" title="{title}" data-hotness-description-zh="{description_attr}" data-hotness-description-en="{description_en_attr}">
         <span class="hotness-name-label">{name}</span>
-        <span class="hotness-description-bubble" role="tooltip">
-          {description}
-        </span>
       </div>
     """.format(
         name=name_html,
         title=escape("{} / {}".format(raw_description, raw_description_en), quote=True),
-        description=panel_language_text_html(raw_description, raw_description_en),
+        description_attr=escape(raw_description, quote=True),
+        description_en_attr=escape(raw_description_en, quote=True),
     )
 
 
@@ -10604,8 +10639,8 @@ def make_discovered_assets_section(render_rows):
     header = make_panel_header(
         "已发现的 Codex / Claude 资产",
         note_content_html=panel_language_text_html(
-            '从本机扫描到的可用资产，以及过去 30 天里被模型真实读取过的项目内 / 跨仓库 skills。skills 按名称聚合，频率统计基于模型读取 SKILL.md 的会话数；非 skills 类显示 "—"。',
-            'Assets scanned from this machine, plus project-local and external-repo skills the model actually read in the past 30 days. Skills aggregate by name, frequency counts sessions where the model read SKILL.md; non-skill types render "—".',
+            '从本机扫描到的可用资产，以及被模型真实读取过的项目内 / 跨仓库 skills。skills 按名称聚合，频率统计基于模型读取 SKILL.md 的会话数；非 skills 类显示 "—"。',
+            'Assets scanned from this machine, plus project-local and external-repo skills the model actually read. Skills aggregate by name, frequency counts sessions where the model read SKILL.md; non-skill types render "—".',
         ),
     )
     return """
@@ -10627,20 +10662,26 @@ def make_asset_stats_snapshot_panel(snapshot, default_date):
     snapshot = snapshot if isinstance(snapshot, dict) else {}
     summary = snapshot.get("summary") if isinstance(snapshot.get("summary"), dict) else {}
     has_snapshot = bool(summary)
-    header = make_panel_header("单次资产统计")
+    header = make_panel_header(
+        "资产基线统计",
+        note_content_html=panel_language_text_html(
+            "本地快照基线；筛选后的热度以列表中的读取、调用和趋势为准。",
+            "Local snapshot baseline; filtered hotness is reflected in the list reads, calls, and trends.",
+        ),
+    )
     skill_reads = summary.get("skill_reads_30d") if has_snapshot else None
     if skill_reads is None:
         skill_activity_stat = (
-            "30 天 skills 会话",
-            "30d Skill Sessions",
+            "skills 会话",
+            "Skill Sessions",
             summary.get("skill_sessions_30d", "—") if has_snapshot else "—",
             "按会话去重",
             "Deduped by session",
         )
     else:
         skill_activity_stat = (
-            "30 天 skills 读取",
-            "30d Skill Reads",
+            "skills 读取",
+            "Skill Reads",
             skill_reads,
             "模型读取 SKILL.md",
             "Model SKILL.md reads",
@@ -10655,8 +10696,8 @@ def make_asset_stats_snapshot_panel(snapshot, default_date):
             "Displayable after grouping by name",
         ),
         (
-            "30 天活跃 skills",
-            "30d Active Skills",
+            "活跃 skills",
+            "Active Skills",
             summary.get("active_skills_30d", "—") if has_snapshot else "—",
             "按 skills 名去重",
             "Deduped by skill name",
@@ -10948,8 +10989,8 @@ def make_mcp_usage_panel(mcp_usage, help_html=""):
     total_calls = safe_int(mcp_usage.get("total_calls", 0))
     active_tools = safe_int(mcp_usage.get("active_tools", 0))
     note_html = panel_language_text_html(
-        "默认近 {} 天，共 {} 次 MCP 调用，{} 个工具有活动；可用资产筛选切换范围".format(lookback_days, total_calls, active_tools),
-        "Default last {} days, {} MCP calls across {} active tools; use asset filters to change range".format(lookback_days, total_calls, active_tools),
+        "已扫描 {} 天观察窗，共 {} 次 MCP 调用，{} 个工具有活动；列表会随资产筛选范围重算".format(lookback_days, total_calls, active_tools),
+        "Scanned a {}-day observation window: {} MCP calls across {} active tools; the list recalculates with asset filters".format(lookback_days, total_calls, active_tools),
     )
 
     def render_row(tool, row_class="", group_id="", hidden_attr=""):
@@ -11817,7 +11858,7 @@ def make_side_nav():
         ("link", "claude-native-section", "Claude 原生记忆", "Claude Native Memory", "Claude Code 原生记忆", "Claude Code Native Memory"),
         ("group", "资产层", "Asset Layer"),
         ("link", "asset-overview-section", "总览", "Overview", "资产层总览", "Asset Layer Overview"),
-        ("link", "top-assets-section", "skills 热度", "Skill Hotness", "近 30 天高频 skills 热度", "Skill Hotness"),
+        ("link", "top-assets-section", "skills 热度", "Skill Hotness", "高频 skills 热度", "Skill Hotness"),
         ("link", "mcp-usage-section", "MCP 热度", "MCP Hotness", "MCP 使用热度", "MCP Tool Usage"),
         ("link", "reviews-section", "复盘记录", "Reviews", "复盘记录", "Reviews"),
         ("group", "窗口层", "Window Layer"),
@@ -15354,15 +15395,15 @@ def build_metric_help_sections(metric):
             {
                 "label": "统计什么",
                 "body": {
-                    "zh": "从本机扫描到的 Codex / Claude skills、提示词、规则、插件、启动项，以及近 30 天里真实读取过的项目内 / 跨仓库 skills。",
-                    "en": "Codex / Claude skills, prompts, rules, plugins, launch agents scanned from this machine, plus project-local and external-repo skills actually read in the last 30 days.",
+                    "zh": "从本机扫描到的 Codex / Claude skills、提示词、规则、插件、启动项，以及真实读取过的项目内 / 跨仓库 skills。",
+                    "en": "Codex / Claude skills, prompts, rules, plugins, launch agents scanned from this machine, plus project-local and external-repo skills actually read by the model.",
                 },
             },
             {
                 "label": "怎么算",
                 "body": {
-                    "zh": "项目本地 skills 和跨仓库 skills 仅在 30 天内至少 2 个会话读取过 SKILL.md 时显示。",
-                    "en": "Project-local and external-repo skills are shown only when at least 2 sessions read their SKILL.md in the last 30 days.",
+                    "zh": "项目本地 skills 和跨仓库 skills 仅在观察窗内至少 2 个会话读取过 SKILL.md 时显示。",
+                    "en": "Project-local and external-repo skills are shown only when at least 2 sessions read their SKILL.md within the observation window.",
                 },
             },
         ],
@@ -15821,8 +15862,8 @@ def build_html(data):
             {
                 "label": "统计什么",
                 "body": {
-                    "zh": "统计近 30 天 Codex 会话里真实 function_call 名称形如 mcp__server__tool 的调用次数，并按 server/tool 聚合。",
-                    "en": "Counts real function_call entries in the last 30 days whose names look like mcp__server__tool, grouped by server/tool.",
+                    "zh": "统计 Codex 会话里的真实 MCP function_call，包括 name=mcp__server__tool 和 namespace=mcp__server__ + name=tool 两种记录形态，并按 server/tool 聚合。",
+                    "en": "Counts real MCP function_call entries from Codex sessions, including both name=mcp__server__tool and namespace=mcp__server__ plus name=tool records, grouped by server/tool.",
                 },
             },
             {
@@ -16223,7 +16264,7 @@ def build_html(data):
             },
             {
                 "label": "数据来源",
-                "body": "skills 来源来自本机扫描和近 30 天项目内 / 跨仓库读取记录；同名 skills 跨来源会合并计数，筛选只影响热度和趋势。",
+                "body": "skills 来源来自本机扫描和项目内 / 跨仓库读取记录；同名 skills 跨来源会合并计数，筛选只影响热度和趋势。",
             },
             {
                 "label": "点击名称",
@@ -17432,7 +17473,7 @@ def build_html(data):
     }}
 
     .top-skills-trend-col {{
-      width: 220px;
+      width: 300px;
     }}
 
     .top-skills-count-col {{
@@ -17441,8 +17482,8 @@ def build_html(data):
 
     .top-skills-table th:nth-child(2),
     .top-skills-table td:nth-child(2) {{
-      width: 220px;
-      max-width: 220px;
+      width: 300px;
+      max-width: 300px;
     }}
 
     .top-skills-table th:nth-child(3),
@@ -17477,11 +17518,11 @@ def build_html(data):
     }}
 
     .hotness-description-bubble {{
-      position: absolute;
-      z-index: 45;
+      position: fixed;
+      z-index: 120;
       left: 0;
-      bottom: calc(100% + 10px);
-      width: min(360px, calc(100vw - 52px));
+      top: 0;
+      width: min(380px, calc(100vw - 28px));
       padding: 10px 12px;
       border: 1px solid rgba(148, 163, 184, 0.34);
       border-radius: 12px;
@@ -17493,9 +17534,9 @@ def build_html(data):
       line-height: 1.5;
       white-space: normal;
       overflow-wrap: anywhere;
-      opacity: 0;
       pointer-events: none;
-      transform: translateY(4px);
+      opacity: 1;
+      transform: translateY(0);
       transition: opacity 120ms ease, transform 120ms ease;
     }}
 
@@ -17503,62 +17544,67 @@ def build_html(data):
       content: "";
       position: absolute;
       left: 18px;
-      bottom: -6px;
+      top: -6px;
       width: 10px;
       height: 10px;
-      border-right: 1px solid rgba(148, 163, 184, 0.34);
-      border-bottom: 1px solid rgba(148, 163, 184, 0.34);
+      border-left: 1px solid rgba(148, 163, 184, 0.34);
+      border-top: 1px solid rgba(148, 163, 184, 0.34);
       background: color-mix(in srgb, var(--card) 96%, transparent);
       transform: rotate(45deg);
     }}
 
-    .hotness-name-cell:hover .hotness-description-bubble,
-    .hotness-name-cell:focus .hotness-description-bubble,
-    .hotness-name-cell:focus-within .hotness-description-bubble {{
-      opacity: 1;
-      transform: translateY(0);
+    .hotness-description-bubble.is-above::after {{
+      top: auto;
+      bottom: -6px;
+      border-left: 0;
+      border-top: 0;
+      border-right: 1px solid rgba(148, 163, 184, 0.34);
+      border-bottom: 1px solid rgba(148, 163, 184, 0.34);
     }}
 
     .asset-hotness-trend-cell {{
-      min-width: 180px;
+      min-width: 250px;
     }}
 
     .mini-trend {{
       position: relative;
-      height: 34px;
-      min-width: 160px;
+      height: 50px;
+      min-width: 240px;
       display: grid;
-      align-items: end;
-      padding: 3px 4px 6px 9px;
+      align-items: center;
+      padding: 0;
     }}
 
-    .mini-trend-axis {{
-      position: absolute;
-      left: 7px;
-      right: 2px;
-      bottom: 5px;
-      top: 4px;
-      border-left: 1px solid rgba(94, 103, 109, 0.34);
-      border-bottom: 1px solid rgba(94, 103, 109, 0.34);
-      pointer-events: none;
+    .mini-trend-svg {{
+      width: 100%;
+      height: 50px;
+      overflow: visible;
     }}
 
-    .mini-trend-bars {{
-      position: relative;
-      z-index: 1;
-      display: flex;
-      align-items: end;
-      gap: 2px;
-      height: 100%;
-      padding-left: 3px;
+    .mini-trend-axis-x,
+    .mini-trend-axis-y {{
+      stroke: rgba(94, 103, 109, 0.32);
+      stroke-width: 1.2;
+      vector-effect: non-scaling-stroke;
     }}
 
-    .mini-trend-bar {{
-      flex: 1 1 0;
-      min-width: 2px;
-      height: var(--trend-height, 4%);
-      border-radius: 2px 2px 0 0;
-      background: linear-gradient(180deg, rgba(0, 113, 227, 0.86), rgba(0, 113, 227, 0.38));
+    .mini-trend-bar-rect {{
+      fill: rgba(0, 113, 227, 0.12);
+    }}
+
+    .mini-trend-bar-rect.is-active {{
+      fill: rgba(0, 113, 227, 0.74);
+    }}
+
+    .mini-trend-value {{
+      fill: var(--muted);
+      font-size: 8.4px;
+      font-weight: 760;
+      text-anchor: middle;
+      paint-order: stroke;
+      stroke: color-mix(in srgb, var(--panel) 92%, transparent);
+      stroke-width: 2.4px;
+      stroke-linejoin: round;
     }}
 
     .mini-trend.is-empty {{
@@ -19369,12 +19415,13 @@ def build_html(data):
       box-shadow: none;
     }}
 
-    .window-filter-panel.is-sticky {{
+    .window-filter-panel.is-sticky,
+    .asset-filter-panel.is-sticky {{
       position: fixed;
-      top: var(--window-filter-sticky-top, 12px);
-      left: var(--window-filter-sticky-left, 0);
+      top: var(--filter-sticky-top, 12px);
+      left: var(--filter-sticky-left, 0);
       z-index: 72;
-      width: var(--window-filter-sticky-width, auto);
+      width: var(--filter-sticky-width, auto);
       margin: 0;
       border-color: rgba(210, 210, 215, 0.74);
       background: color-mix(in srgb, var(--panel) 94%, transparent);
@@ -19382,7 +19429,8 @@ def build_html(data):
       backdrop-filter: saturate(180%) blur(28px);
     }}
 
-    .window-filter-sticky-placeholder[hidden] {{
+    .window-filter-sticky-placeholder[hidden],
+    .asset-filter-sticky-placeholder[hidden] {{
       display: none;
     }}
 
@@ -22980,6 +23028,7 @@ def build_html(data):
         {asset_metric_cards}
       </section>
       {asset_filter_panel}
+      <div class="asset-filter-sticky-placeholder" id="asset-filter-sticky-placeholder" hidden></div>
       {asset_stats_snapshot_panel}
       <section class="panel" id="top-assets-section">
         {top_assets_header}
@@ -23224,10 +23273,12 @@ def build_html(data):
         tokenOverviewNote: document.getElementById("token-overview-note"),
         tokenSummaryCards: document.getElementById("token-summary-cards"),
         assetFilterPanel: document.getElementById("asset-filter-panel"),
+        assetFilterStickyPlaceholder: document.getElementById("asset-filter-sticky-placeholder"),
         assetFilterSummary: document.getElementById("asset-filter-summary"),
         assetStartDateInput: document.getElementById("asset-start-date"),
         assetEndDateInput: document.getElementById("asset-end-date"),
         assetRangeButtons: Array.from(document.querySelectorAll("[data-asset-range-days]")),
+        assetOverviewSection: document.getElementById("asset-overview-section"),
         dailyTokenPanel: document.getElementById("daily-token-panel"),
         dailyTokenNote: document.getElementById("daily-token-note"),
         dailyTokenRows: document.getElementById("daily-token-rows"),
@@ -23969,14 +24020,39 @@ def build_html(data):
           );
         }}
         elements.windowFilterPanel.classList.remove("is-sticky");
-        elements.windowFilterPanel.style.removeProperty("--window-filter-sticky-top");
-        elements.windowFilterPanel.style.removeProperty("--window-filter-sticky-left");
-        elements.windowFilterPanel.style.removeProperty("--window-filter-sticky-width");
+        elements.windowFilterPanel.style.removeProperty("--filter-sticky-top");
+        elements.windowFilterPanel.style.removeProperty("--filter-sticky-left");
+        elements.windowFilterPanel.style.removeProperty("--filter-sticky-width");
         if (elements.windowFilterStickyPlaceholder) {{
           elements.windowFilterStickyPlaceholder.hidden = true;
           elements.windowFilterStickyPlaceholder.style.height = "";
         }}
         document.documentElement.style.setProperty("--window-filter-sticky-height", "0px");
+      }}
+
+      function clearAssetFilterSticky() {{
+        if (!elements.assetFilterPanel) {{
+          return;
+        }}
+        if (
+          elements.assetFilterStickyPlaceholder &&
+          elements.assetFilterStickyPlaceholder.parentNode &&
+          elements.assetFilterPanel.parentElement !== elements.assetFilterStickyPlaceholder.parentElement
+        ) {{
+          elements.assetFilterStickyPlaceholder.parentNode.insertBefore(
+            elements.assetFilterPanel,
+            elements.assetFilterStickyPlaceholder
+          );
+        }}
+        elements.assetFilterPanel.classList.remove("is-sticky");
+        elements.assetFilterPanel.style.removeProperty("--filter-sticky-top");
+        elements.assetFilterPanel.style.removeProperty("--filter-sticky-left");
+        elements.assetFilterPanel.style.removeProperty("--filter-sticky-width");
+        if (elements.assetFilterStickyPlaceholder) {{
+          elements.assetFilterStickyPlaceholder.hidden = true;
+          elements.assetFilterStickyPlaceholder.style.height = "";
+        }}
+        document.documentElement.style.setProperty("--asset-filter-sticky-height", "0px");
       }}
 
       function syncWindowFilterSticky() {{
@@ -24003,14 +24079,45 @@ def build_html(data):
         if (panel.parentElement !== document.body) {{
           document.body.appendChild(panel);
         }}
-        panel.style.setProperty("--window-filter-sticky-top", offset + "px");
-        panel.style.setProperty("--window-filter-sticky-left", Math.round(markerRect.left) + "px");
-        panel.style.setProperty("--window-filter-sticky-width", Math.round(width) + "px");
+        panel.style.setProperty("--filter-sticky-top", offset + "px");
+        panel.style.setProperty("--filter-sticky-left", Math.round(markerRect.left) + "px");
+        panel.style.setProperty("--filter-sticky-width", Math.round(width) + "px");
         panel.classList.add("is-sticky");
         document.documentElement.style.setProperty("--window-filter-sticky-height", measuredHeight + "px");
         if (elements.windowDatePopover && !elements.windowDatePopover.hidden) {{
           positionWindowDatePopover(windowDateButtonForField(state.activeWindowDateField || "start"));
         }}
+      }}
+
+      function syncAssetFilterSticky() {{
+        if (!elements.assetFilterPanel || !elements.assetFilterStickyPlaceholder || !elements.assetOverviewSection) {{
+          return;
+        }}
+        const panel = elements.assetFilterPanel;
+        const placeholder = elements.assetFilterStickyPlaceholder;
+        const isSticky = panel.classList.contains("is-sticky");
+        const offset = windowFilterStickyOffset();
+        const markerRect = isSticky ? placeholder.getBoundingClientRect() : panel.getBoundingClientRect();
+        const markerTop = markerRect.top + window.scrollY;
+        const assetRect = elements.assetOverviewSection.getBoundingClientRect();
+        const assetBottom = assetRect.bottom + window.scrollY;
+        const measuredHeight = Math.ceil((isSticky ? placeholder : panel).getBoundingClientRect().height || panel.offsetHeight || 0);
+        const shouldStick = window.scrollY + offset > markerTop && window.scrollY + offset + measuredHeight < assetBottom;
+        if (!shouldStick) {{
+          clearAssetFilterSticky();
+          return;
+        }}
+        const width = markerRect.width || panel.getBoundingClientRect().width;
+        placeholder.style.height = measuredHeight + "px";
+        placeholder.hidden = false;
+        if (panel.parentElement !== document.body) {{
+          document.body.appendChild(panel);
+        }}
+        panel.style.setProperty("--filter-sticky-top", offset + "px");
+        panel.style.setProperty("--filter-sticky-left", Math.round(markerRect.left) + "px");
+        panel.style.setProperty("--filter-sticky-width", Math.round(width) + "px");
+        panel.classList.add("is-sticky");
+        document.documentElement.style.setProperty("--asset-filter-sticky-height", measuredHeight + "px");
       }}
 
       function windowFilterDateRange(days, endDateValue) {{
@@ -24125,23 +24232,169 @@ def build_html(data):
         if (maxValue <= 0) {{
           return (
             '<div class="mini-trend is-empty" aria-label="' + escapeHtml(label || "") + '">' +
-              '<span class="mini-trend-axis" aria-hidden="true"></span>' +
+              '<svg class="mini-trend-svg" viewBox="0 0 180 48" preserveAspectRatio="xMidYMid meet" aria-hidden="true">' +
+                '<line class="mini-trend-axis-x" x1="10" y1="39" x2="174" y2="39"></line>' +
+                '<line class="mini-trend-axis-y" x1="10" y1="9" x2="10" y2="39"></line>' +
+              '</svg>' +
               '<span class="mini-trend-empty">' + escapeHtml(localizeValue("暂无", "None")) + '</span>' +
             '</div>'
           );
         }}
-        const bars = rows.map(function (row) {{
+        const left = 10;
+        const plotWidth = 164;
+        const baseline = 39;
+        const plotHeight = 27;
+        const gap = 3;
+        const barWidth = Math.max(2.4, Math.min(12, (plotWidth - gap * Math.max(rows.length - 1, 0)) / Math.max(rows.length, 1)));
+        const totalWidth = barWidth * rows.length + gap * Math.max(rows.length - 1, 0);
+        const startX = left + Math.max(0, (plotWidth - totalWidth) / 2);
+        const bars = [];
+        const valueLabels = [];
+        rows.forEach(function (row, index) {{
           const value = Number(row && row.value) || 0;
-          const height = value > 0 ? Math.max(6, Math.min(100, Math.round(value / maxValue * 100))) : 2;
+          const barHeight = value > 0 ? Math.max(2, value / maxValue * plotHeight) : 1;
+          const x = startX + index * (barWidth + gap);
+          const y = baseline - barHeight;
           const title = String((row && row.date) || "") + " · " + value;
-          return '<span class="mini-trend-bar" style="--trend-height: ' + height + '%;" title="' + escapeHtml(title) + '"></span>';
-        }}).join("");
+          bars.push(
+            '<rect class="mini-trend-bar-rect' + (value > 0 ? ' is-active' : '') + '" x="' + x.toFixed(2) + '" y="' + y.toFixed(2) + '" width="' + barWidth.toFixed(2) + '" height="' + barHeight.toFixed(2) + '" rx="1.8"><title>' + escapeHtml(title) + '</title></rect>'
+          );
+          if (value > 0) {{
+            valueLabels.push(
+              '<text class="mini-trend-value" x="' + (x + barWidth / 2).toFixed(2) + '" y="' + Math.max(8, y - 4).toFixed(2) + '">' + escapeHtml(String(value)) + '</text>'
+            );
+          }}
+        }});
         return (
           '<div class="mini-trend" aria-label="' + escapeHtml(label || "") + '">' +
-            '<span class="mini-trend-axis" aria-hidden="true"></span>' +
-            '<span class="mini-trend-bars" aria-hidden="true">' + bars + '</span>' +
+            '<svg class="mini-trend-svg" viewBox="0 0 180 48" preserveAspectRatio="xMidYMid meet" aria-hidden="true">' +
+              '<line class="mini-trend-axis-x" x1="10" y1="39" x2="174" y2="39"></line>' +
+              '<line class="mini-trend-axis-y" x1="10" y1="9" x2="10" y2="39"></line>' +
+              bars.join("") +
+              valueLabels.join("") +
+            '</svg>' +
           '</div>'
         );
+      }}
+
+      let activeHotnessDescriptionTarget = null;
+
+      function hotnessDescriptionTooltip() {{
+        let tooltip = document.getElementById("hotness-description-tooltip");
+        if (!tooltip) {{
+          tooltip = document.createElement("div");
+          tooltip.id = "hotness-description-tooltip";
+          tooltip.className = "hotness-description-bubble";
+          tooltip.setAttribute("role", "tooltip");
+          tooltip.hidden = true;
+          document.body.appendChild(tooltip);
+        }}
+        return tooltip;
+      }}
+
+      function positionHotnessDescriptionTooltip(target, tooltip) {{
+        if (!target || !tooltip || tooltip.hidden) {{
+          return;
+        }}
+        const rect = target.getBoundingClientRect();
+        const gap = 8;
+        const margin = 12;
+        const width = Math.min(380, Math.max(240, window.innerWidth - margin * 2));
+        tooltip.style.width = width + "px";
+        const measured = tooltip.getBoundingClientRect();
+        let left = rect.left;
+        if (left + width > window.innerWidth - margin) {{
+          left = window.innerWidth - margin - width;
+        }}
+        left = Math.max(margin, left);
+        let top = rect.bottom + gap;
+        let isAbove = false;
+        if (top + measured.height > window.innerHeight - margin) {{
+          top = rect.top - measured.height - gap;
+          isAbove = true;
+        }}
+        if (top < margin) {{
+          top = Math.min(window.innerHeight - measured.height - margin, rect.bottom + gap);
+          isAbove = false;
+        }}
+        tooltip.style.left = Math.round(left) + "px";
+        tooltip.style.top = Math.round(top) + "px";
+        tooltip.classList.toggle("is-above", isAbove);
+      }}
+
+      function showHotnessDescriptionTooltip(target) {{
+        if (!target) {{
+          return;
+        }}
+        const text = target.getAttribute(currentLanguage === "en" ? "data-hotness-description-en" : "data-hotness-description-zh") ||
+          target.getAttribute("data-hotness-description-zh") ||
+          target.getAttribute("data-hotness-description-en") ||
+          "";
+        if (!text.trim()) {{
+          return;
+        }}
+        const tooltip = hotnessDescriptionTooltip();
+        activeHotnessDescriptionTarget = target;
+        tooltip.textContent = text;
+        tooltip.hidden = false;
+        positionHotnessDescriptionTooltip(target, tooltip);
+      }}
+
+      function hideHotnessDescriptionTooltip() {{
+        activeHotnessDescriptionTarget = null;
+        const tooltip = document.getElementById("hotness-description-tooltip");
+        if (tooltip) {{
+          tooltip.hidden = true;
+        }}
+      }}
+
+      function wireHotnessDescriptionTooltips() {{
+        document.addEventListener("pointerover", function (event) {{
+          const target = event.target && event.target.closest
+            ? event.target.closest(".hotness-name-cell[data-hotness-description-zh]")
+            : null;
+          if (!target || (event.relatedTarget && target.contains(event.relatedTarget))) {{
+            return;
+          }}
+          showHotnessDescriptionTooltip(target);
+        }});
+        document.addEventListener("pointerout", function (event) {{
+          const target = event.target && event.target.closest
+            ? event.target.closest(".hotness-name-cell[data-hotness-description-zh]")
+            : null;
+          if (!target || (event.relatedTarget && target.contains(event.relatedTarget))) {{
+            return;
+          }}
+          hideHotnessDescriptionTooltip();
+        }});
+        document.addEventListener("focusin", function (event) {{
+          const target = event.target && event.target.matches && event.target.matches(".hotness-name-cell[data-hotness-description-zh]")
+            ? event.target
+            : null;
+          if (target) {{
+            showHotnessDescriptionTooltip(target);
+          }}
+        }});
+        document.addEventListener("focusout", function (event) {{
+          const target = event.target && event.target.matches && event.target.matches(".hotness-name-cell[data-hotness-description-zh]")
+            ? event.target
+            : null;
+          if (target) {{
+            hideHotnessDescriptionTooltip();
+          }}
+        }});
+        window.addEventListener("scroll", function () {{
+          const tooltip = document.getElementById("hotness-description-tooltip");
+          if (activeHotnessDescriptionTarget && tooltip && !tooltip.hidden) {{
+            positionHotnessDescriptionTooltip(activeHotnessDescriptionTarget, tooltip);
+          }}
+        }}, {{ passive: true }});
+        window.addEventListener("resize", function () {{
+          const tooltip = document.getElementById("hotness-description-tooltip");
+          if (activeHotnessDescriptionTarget && tooltip && !tooltip.hidden) {{
+            positionHotnessDescriptionTooltip(activeHotnessDescriptionTarget, tooltip);
+          }}
+        }});
       }}
 
       function assetFilterRangeLabel(filters, skillCount, mcpCount) {{
@@ -24256,6 +24509,7 @@ def build_html(data):
         const skillCount = updateHotnessTable("skills", state.assetFilters);
         const mcpCount = updateHotnessTable("mcp", state.assetFilters);
         syncAssetFilterControls(skillCount, mcpCount);
+        syncAssetFilterSticky();
       }}
 
       function setAssetFilterState(nextFilters) {{
@@ -26247,6 +26501,15 @@ def build_html(data):
         syncWindowFilterSticky();
       }}
 
+      function wireAssetFilterSticky() {{
+        if (!elements.assetFilterPanel || !elements.assetFilterStickyPlaceholder || !elements.assetOverviewSection) {{
+          return;
+        }}
+        window.addEventListener("scroll", syncAssetFilterSticky, {{ passive: true }});
+        window.addEventListener("resize", syncAssetFilterSticky);
+        syncAssetFilterSticky();
+      }}
+
       function describeRelativeTime(isoValue, actionText) {{
         const normalizedAction = String(actionText || "");
         const isGeneratedAction = normalizedAction === "生成" || normalizedAction === "generated";
@@ -27929,8 +28192,10 @@ def build_html(data):
       wireAssetFilters();
       wireWindowOverviewProjectMore();
       wireWindowFilterSticky();
+      wireAssetFilterSticky();
       wireProjectContextWindowLinks();
       wireContextWindowTooltips();
+      wireHotnessDescriptionTooltips();
       wireThemeButtons();
       wireLanguageButtons();
       wireNightlyDateInput();

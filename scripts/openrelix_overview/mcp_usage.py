@@ -236,15 +236,41 @@ def _parse_arguments(value):
     return parsed if isinstance(parsed, dict) else {}
 
 
-def parse_mcp_call_name(raw_name):
+def _parse_mcp_namespace(namespace, tool_name):
+    namespace_text = str(namespace or "").strip()
+    if namespace_text.startswith("functions."):
+        namespace_text = namespace_text.split(".", 1)[1]
+    namespace_text = namespace_text.rstrip(".")
+    if not namespace_text.startswith("mcp__"):
+        return None
+    server = namespace_text[len("mcp__") :]
+    if server.endswith("__"):
+        server = server[:-2]
+    tool = str(tool_name or "").strip()
+    if tool.startswith("functions."):
+        tool = tool.split(".", 1)[1]
+    if "." in tool:
+        tool = tool.rsplit(".", 1)[1]
+    if not server or not tool or "__" in tool:
+        return None
+    name = "mcp__{}__{}".format(server, tool)
+    return server, tool, name
+
+
+def parse_mcp_call_name(raw_name, namespace=None):
     """Return (server, tool, normalized_name) for an MCP function call name."""
     name = str(raw_name or "").strip()
     if name.startswith("functions."):
         name = name.split(".", 1)[1]
+    if "." in name:
+        namespace_part, tool_part = name.rsplit(".", 1)
+        namespaced = _parse_mcp_namespace(namespace_part, tool_part)
+        if namespaced:
+            return namespaced
     parts = name.split("__", 2)
-    if len(parts) != 3 or parts[0] != "mcp" or not parts[1] or not parts[2]:
-        return None
-    return parts[1], parts[2], name
+    if len(parts) == 3 and parts[0] == "mcp" and parts[1] and parts[2]:
+        return parts[1], parts[2], name
+    return _parse_mcp_namespace(namespace, name)
 
 
 def _iter_codex_sessions_for_date(paths, session_date):
@@ -262,7 +288,7 @@ def _iter_mcp_calls_from_payload(payload):
     if not isinstance(payload, dict) or payload.get("type") != "function_call":
         return
 
-    direct = parse_mcp_call_name(payload.get("name"))
+    direct = parse_mcp_call_name(payload.get("name"), payload.get("namespace"))
     if direct:
         yield direct
         return
@@ -273,12 +299,32 @@ def _iter_mcp_calls_from_payload(payload):
     for tool_use in args.get("tool_uses") or []:
         if not isinstance(tool_use, dict):
             continue
-        nested = parse_mcp_call_name(tool_use.get("recipient_name"))
+        nested = parse_mcp_call_name(tool_use.get("recipient_name"), tool_use.get("namespace"))
         if nested:
             yield nested
 
 
-def _scan_codex_session(path):
+def _row_event_date(row, fallback_date):
+    if not isinstance(row, dict):
+        return fallback_date
+    value = row.get("timestamp")
+    if not value and isinstance(row.get("payload"), dict):
+        value = row["payload"].get("timestamp")
+    if not isinstance(value, str) or not value.strip():
+        return fallback_date
+    text = value.strip()
+    if text.endswith("Z"):
+        text = text[:-1] + "+00:00"
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        return fallback_date
+    if parsed.tzinfo is not None:
+        parsed = parsed.astimezone()
+    return parsed.date()
+
+
+def _scan_codex_session(path, fallback_date=None):
     try:
         handle = Path(path).open(encoding="utf-8")
     except OSError:
@@ -290,8 +336,9 @@ def _scan_codex_session(path):
             if not isinstance(row, dict) or row.get("type") != "response_item":
                 continue
             payload = row.get("payload")
+            event_date = _row_event_date(row, fallback_date)
             for call in _iter_mcp_calls_from_payload(payload):
-                calls.append(call)
+                calls.append((event_date, *call))
     return calls
 
 
@@ -336,8 +383,12 @@ def build_mcp_usage_view(paths, today, lookback_days=30, limit=10, codex_homes=N
             for session_path in _iter_codex_sessions_for_date(codex_paths, session_date):
                 scanned_sessions += 1
                 session_tool_names = set()
+                session_tool_dates = set()
                 session_server_names = set()
-                for server, tool, name in _scan_codex_session(session_path):
+                session_server_dates = set()
+                for event_date, server, tool, name in _scan_codex_session(session_path, fallback_date=session_date):
+                    if event_date < start or event_date > anchor:
+                        continue
                     description, description_en = describe_mcp_tool(server, tool)
                     row = tool_stats.setdefault(
                         name,
@@ -356,10 +407,11 @@ def build_mcp_usage_view(paths, today, lookback_days=30, limit=10, codex_homes=N
                         },
                     )
                     row["calls"] += 1
-                    _increment_daily(row["_daily_calls"], session_date)
-                    if not row["last_seen"] or session_date.isoformat() > row["last_seen"]:
-                        row["last_seen"] = session_date.isoformat()
+                    _increment_daily(row["_daily_calls"], event_date)
+                    if not row["last_seen"] or event_date.isoformat() > row["last_seen"]:
+                        row["last_seen"] = event_date.isoformat()
                     session_tool_names.add(name)
+                    session_tool_dates.add((name, event_date))
 
                     server_row = server_stats.setdefault(
                         server,
@@ -374,17 +426,20 @@ def build_mcp_usage_view(paths, today, lookback_days=30, limit=10, codex_homes=N
                         },
                     )
                     server_row["calls"] += 1
-                    _increment_daily(server_row["_daily_calls"], session_date)
-                    if not server_row["last_seen"] or session_date.isoformat() > server_row["last_seen"]:
-                        server_row["last_seen"] = session_date.isoformat()
+                    _increment_daily(server_row["_daily_calls"], event_date)
+                    if not server_row["last_seen"] or event_date.isoformat() > server_row["last_seen"]:
+                        server_row["last_seen"] = event_date.isoformat()
                     session_server_names.add(server)
+                    session_server_dates.add((server, event_date))
 
                 for name in session_tool_names:
                     tool_stats[name]["sessions"] += 1
-                    _increment_daily(tool_stats[name]["_daily_sessions"], session_date)
+                for name, event_date in session_tool_dates:
+                    _increment_daily(tool_stats[name]["_daily_sessions"], event_date)
                 for server in session_server_names:
                     server_stats[server]["sessions"] += 1
-                    _increment_daily(server_stats[server]["_daily_sessions"], session_date)
+                for server, event_date in session_server_dates:
+                    _increment_daily(server_stats[server]["_daily_sessions"], event_date)
 
     def sort_key(row):
         return (-int(row.get("calls") or 0), -int(row.get("sessions") or 0), str(row.get("label") or ""))
