@@ -10335,10 +10335,9 @@ def wrap_expandable_block(
 def make_discovered_asset_name_html(row):
     name = str(row.get("name") or row.get("identifier") or "").strip()
     if row.get("click_target"):
-        return '<button type="button" class="discovered-skill-name" data-open-finder-path="{path}" data-label="{label}" title="{title}">{name}</button>'.format(
+        return '<button type="button" class="discovered-skill-name" data-open-finder-path="{path}" data-label="{label}">{name}</button>'.format(
             path=escape(str(row.get("click_target") or ""), quote=True),
             label=escape(name, quote=True),
-            title=escape(localized("在 Finder 中显示", "Reveal in Finder", LANGUAGE), quote=True),
             name=escape(name),
         )
     return escape(name)
@@ -10422,19 +10421,17 @@ def make_mini_trend_html(rows, label="", empty_label="暂无调用趋势"):
         bar_height = max(4, value / max_value * plot_height) if value > 0 else 2
         x = left + index * slot_width + (slot_width - bar_width) / 2
         y = baseline - bar_height
-        title = "{} · {}".format(row.get("date", ""), value)
         x_text = "{:.2f}".format(x).rstrip("0").rstrip(".")
         y_text = "{:.2f}".format(y).rstrip("0").rstrip(".")
         width_text = "{:.2f}".format(bar_width).rstrip("0").rstrip(".")
         height_text = "{:.2f}".format(bar_height).rstrip("0").rstrip(".")
         bars.append(
-            '<rect class="mini-trend-bar-rect{}" x="{}" y="{}" width="{}" height="{}" rx="1.8"><title>{}</title></rect>'.format(
+            '<rect class="mini-trend-bar-rect{}" x="{}" y="{}" width="{}" height="{}" rx="1.8"></rect>'.format(
                 " is-active" if value > 0 else "",
                 escape(x_text, quote=True),
                 escape(y_text, quote=True),
                 escape(width_text, quote=True),
                 escape(height_text, quote=True),
-                escape(title, quote=True),
             )
         )
         date_labels.append(
@@ -10517,7 +10514,7 @@ def make_hotness_name_with_description(
             panel_language_text_html(subtitle, subtitle_en or subtitle)
         )
     return """
-      <div class="asset-discovery-name hotness-name-cell hotness-name-card" tabindex="0" title="{title}" data-hotness-description-zh="{description_attr}" data-hotness-description-en="{description_en_attr}" data-hotness-kind="{kind}">
+      <div class="asset-discovery-name hotness-name-cell hotness-name-card" tabindex="0" aria-label="{aria_label}" data-hotness-description-zh="{description_attr}" data-hotness-description-en="{description_en_attr}" data-hotness-kind="{kind}">
         <span class="hotness-name-copy">
           <span class="hotness-name-label">{name}</span>
           {subtitle}
@@ -10529,7 +10526,7 @@ def make_hotness_name_with_description(
       </div>
     """.format(
         name=name_html,
-        title=escape("{} / {}".format(raw_description, raw_description_en), quote=True),
+        aria_label=escape(raw_description, quote=True),
         description_attr=escape(raw_description, quote=True),
         description_en_attr=escape(raw_description_en, quote=True),
         subtitle=subtitle_html,
@@ -16528,6 +16525,7 @@ def build_html(data):
       --elevated: rgba(255, 255, 255, 0.96);
       --card: rgba(255, 255, 255, 0.68);
       --metric-card: rgba(255, 255, 255, 0.82);
+      --tooltip-bg: #ffffff;
       --soft: rgba(245, 245, 247, 0.82);
       --chip-bg: rgba(255, 255, 255, 0.55);
       --chip-muted-bg: rgba(245, 245, 247, 0.82);
@@ -16561,6 +16559,7 @@ def build_html(data):
       --elevated: rgba(33, 38, 48, 0.98);
       --card: rgba(35, 40, 50, 0.78);
       --metric-card: rgba(35, 40, 50, 0.92);
+      --tooltip-bg: #232832;
       --soft: rgba(43, 48, 58, 0.74);
       --chip-bg: rgba(47, 53, 65, 0.86);
       --chip-muted-bg: rgba(50, 56, 68, 0.9);
@@ -16594,6 +16593,7 @@ def build_html(data):
         --elevated: rgba(33, 38, 48, 0.98);
         --card: rgba(35, 40, 50, 0.78);
         --metric-card: rgba(35, 40, 50, 0.92);
+        --tooltip-bg: #232832;
         --soft: rgba(43, 48, 58, 0.74);
         --chip-bg: rgba(47, 53, 65, 0.86);
         --chip-muted-bg: rgba(50, 56, 68, 0.9);
@@ -17741,7 +17741,7 @@ def build_html(data):
       padding: 10px 12px;
       border: 1px solid rgba(148, 163, 184, 0.34);
       border-radius: 12px;
-      background: color-mix(in srgb, var(--card) 96%, transparent);
+      background: var(--tooltip-bg);
       color: var(--ink);
       box-shadow: 0 18px 42px rgba(15, 23, 42, 0.18);
       font-size: 12px;
@@ -17764,7 +17764,7 @@ def build_html(data):
       height: 10px;
       border-left: 1px solid rgba(148, 163, 184, 0.34);
       border-top: 1px solid rgba(148, 163, 184, 0.34);
-      background: color-mix(in srgb, var(--card) 96%, transparent);
+      background: var(--tooltip-bg);
       transform: rotate(45deg);
     }}
 
@@ -24523,9 +24523,8 @@ def build_html(data):
           const barHeight = value > 0 ? Math.max(4, value / maxValue * plotHeight) : 2;
           const x = left + index * slotWidth + (slotWidth - barWidth) / 2;
           const y = baseline - barHeight;
-          const title = String((row && row.date) || "") + " · " + value;
           bars.push(
-            '<rect class="mini-trend-bar-rect' + (value > 0 ? ' is-active' : '') + '" x="' + x.toFixed(2) + '" y="' + y.toFixed(2) + '" width="' + barWidth.toFixed(2) + '" height="' + barHeight.toFixed(2) + '" rx="1.8"><title>' + escapeHtml(title) + '</title></rect>'
+            '<rect class="mini-trend-bar-rect' + (value > 0 ? ' is-active' : '') + '" x="' + x.toFixed(2) + '" y="' + y.toFixed(2) + '" width="' + barWidth.toFixed(2) + '" height="' + barHeight.toFixed(2) + '" rx="1.8"></rect>'
           );
           dateLabels.push(
             '<text class="mini-trend-date" x="' + (x + barWidth / 2).toFixed(2) + '" y="75">' + escapeHtml(String((row && row.date) || "").slice(5, 10) || String((row && row.date) || "")) + '</text>'
@@ -24742,10 +24741,7 @@ def build_html(data):
           const sessionsCell = entry.row.querySelector(".asset-hotness-sessions");
           const trendCell = entry.row.querySelector(".asset-hotness-trend-cell");
           if (totalBar) {{
-            totalBar.setAttribute(
-              "title",
-              entry.calls + " " + localizeValue(groupName === "mcp" ? "次调用" : "次读取", groupName === "mcp" ? "calls" : "reads")
-            );
+            totalBar.setAttribute("aria-label", entry.calls + " " + localizeValue(groupName === "mcp" ? "次调用" : "次读取", groupName === "mcp" ? "calls" : "reads"));
           }}
           if (callsCell) callsCell.textContent = String(entry.calls);
           if (sessionsCell) sessionsCell.textContent = String(entry.sessions);
