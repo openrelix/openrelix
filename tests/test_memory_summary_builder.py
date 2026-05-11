@@ -265,6 +265,26 @@ class MemorySummaryBuilderTests(unittest.TestCase):
         self.assertIn("Project policy-only memory - This enters project context from policy metadata.", result.text)
         self.assertNotIn("[durable", result.text.lower())
 
+    def test_personal_memory_registry_filters_smoke_test_entries_from_host_context(self):
+        registry = (
+            '{"source":"smoke-test","title":"按钮烟测-无用-20260511T120520",'
+            '"memory_type":"profile","priority":"high","scope":"global",'
+            '"injection_policy":"global_context","occurrence_count":98,'
+            '"value_note":"临时烟测条目：点击无用后应从当前视图移除。"}\n'
+            '{"source":"canonical","title":"Real global preference","memory_type":"preference",'
+            '"priority":"high","scope":"global","injection_policy":"global_context",'
+            '"value_note":"Keep this real preference in host context."}\n'
+        )
+
+        host_context_items = build_codex_memory_summary.parse_personal_memory_registry(registry)
+        all_items = build_codex_memory_summary.parse_personal_memory_registry(
+            registry,
+            host_context_only=False,
+        )
+
+        self.assertEqual([item.title for item in host_context_items], ["Real global preference"])
+        self.assertEqual(len(all_items), 2)
+
     def test_personal_memory_registry_prefers_hotter_items_without_bucket_bias(self):
         registry = (
             '{"date":"2026-05-06","source":"canonical","bucket":"durable",'

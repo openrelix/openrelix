@@ -95,6 +95,11 @@ PROFILE_LIKE_PATTERN = re.compile(
     r"|(?:用户画像|偏好画像|工作画像|工作方式|工作领域)",
     re.IGNORECASE,
 )
+HOST_SUMMARY_EXCLUDED_SOURCE_NAMES = {"smoke_test"}
+HOST_SUMMARY_EXCLUDED_TEXT_PATTERN = re.compile(
+    r"\bsmoke[-_ ]?test\b|(?:临时烟测|烟测条目)",
+    re.IGNORECASE,
+)
 
 
 @dataclass
@@ -359,6 +364,27 @@ def memory_source_systems_from_record(item):
     return source_systems
 
 
+def normalize_source_name(value):
+    return str(value or "").strip().lower().replace("-", "_").replace(" ", "_")
+
+
+def personal_memory_record_is_host_summary_noise(item):
+    source_names = {
+        normalize_source_name(source)
+        for source in memory_source_systems_from_record(item)
+        if normalize_source_name(source)
+    }
+    if source_names & HOST_SUMMARY_EXCLUDED_SOURCE_NAMES:
+        return True
+    blob = collapse_whitespace(
+        "{} {}".format(
+            localized_record_value(item, "title"),
+            localized_record_value(item, "value_note"),
+        )
+    )
+    return bool(HOST_SUMMARY_EXCLUDED_TEXT_PATTERN.search(blob))
+
+
 def merge_string_lists(left, right, limit=8):
     merged = list(left or [])
     for item in right or []:
@@ -405,6 +431,8 @@ def parse_personal_memory_registry(
         if not isinstance(item, dict):
             continue
         item = apply_memory_feedback_map(item, feedback_by_key)
+        if host_context_only and personal_memory_record_is_host_summary_noise(item):
+            continue
 
         title = localized_record_value(item, "title", language=language)
         if not title:
