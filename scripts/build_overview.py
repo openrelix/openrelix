@@ -10258,14 +10258,33 @@ def make_token_filter_panel(token_usage):
           </div>
         </div>
         <div class="token-filter-field token-filter-range" data-token-date-field="start">
-          <label class="token-filter-label" for="token-start-date">{start_label}</label>
-          <input id="token-start-date" class="token-date-input" type="date" value="">
+          <span class="token-filter-label" id="token-start-date-label">{start_label}</span>
+          <button class="apple-date-button" type="button" data-date-picker-button="token:start" aria-labelledby="token-start-date-label">
+            <span class="apple-date-value" data-date-picker-display="token:start">—</span>
+            <span class="apple-date-chevron" aria-hidden="true">⌄</span>
+          </button>
+          <input id="token-start-date" class="token-date-input" type="hidden" value="">
         </div>
         <div class="token-filter-field token-filter-range" data-token-date-field="end">
-          <label class="token-filter-label" for="token-end-date">{end_label}</label>
-          <input id="token-end-date" class="token-date-input" type="date" value="">
+          <span class="token-filter-label" id="token-end-date-label">{end_label}</span>
+          <button class="apple-date-button" type="button" data-date-picker-button="token:end" aria-labelledby="token-end-date-label">
+            <span class="apple-date-value" data-date-picker-display="token:end">—</span>
+            <span class="apple-date-chevron" aria-hidden="true">⌄</span>
+          </button>
+          <input id="token-end-date" class="token-date-input" type="hidden" value="">
         </div>
         <button class="token-reset-button" type="button" id="token-reset-button">{reset_label}</button>
+      </div>
+      <div class="apple-date-popover" data-date-picker-popover="token" hidden>
+        <div class="apple-date-popover-head">
+          <button class="apple-date-nav-button" type="button" data-date-picker-nav="prev" aria-label="{prev_aria}">‹</button>
+          <strong data-date-picker-month-label="token"></strong>
+          <button class="apple-date-nav-button" type="button" data-date-picker-nav="next" aria-label="{next_aria}">›</button>
+        </div>
+        <div class="apple-date-weekdays" aria-hidden="true">
+          {weekdays}
+        </div>
+        <div class="apple-date-grid" data-date-picker-grid="token" role="grid"></div>
       </div>
     </section>
     """.format(
@@ -10289,6 +10308,12 @@ def make_token_filter_panel(token_usage):
             for value, label_zh, label_en in group_options
         ),
         reset_label=panel_language_text_html("重置", "Reset"),
+        prev_aria=escape("上个月", quote=True),
+        next_aria=escape("下个月", quote=True),
+        weekdays="".join(
+            '<span>{}</span>'.format(escape(label))
+            for label in ["日", "一", "二", "三", "四", "五", "六"]
+        ),
     )
 
 
@@ -10330,31 +10355,31 @@ def make_window_filter_panel(default_start_date, default_end_date):
         </div>
         <div class="token-filter-field token-filter-range window-date-field" data-window-date-field="start">
           <span class="token-filter-label" id="window-start-date-label">{start_label}</span>
-          <button class="apple-date-button" type="button" data-window-date-button="start" aria-labelledby="window-start-date-label">
-            <span class="apple-date-value" data-window-date-display="start">{start_display}</span>
+          <button class="apple-date-button" type="button" data-date-picker-button="window:start" data-window-date-button="start" aria-labelledby="window-start-date-label">
+            <span class="apple-date-value" data-date-picker-display="window:start" data-window-date-display="start">{start_display}</span>
             <span class="apple-date-chevron" aria-hidden="true">⌄</span>
           </button>
           <input id="window-start-date" class="token-date-input window-date-input" type="hidden" value="{start_date}">
         </div>
         <div class="token-filter-field token-filter-range window-date-field" data-window-date-field="end">
           <span class="token-filter-label" id="window-end-date-label">{end_label}</span>
-          <button class="apple-date-button" type="button" data-window-date-button="end" aria-labelledby="window-end-date-label">
-            <span class="apple-date-value" data-window-date-display="end">{end_display}</span>
+          <button class="apple-date-button" type="button" data-date-picker-button="window:end" data-window-date-button="end" aria-labelledby="window-end-date-label">
+            <span class="apple-date-value" data-date-picker-display="window:end" data-window-date-display="end">{end_display}</span>
             <span class="apple-date-chevron" aria-hidden="true">⌄</span>
           </button>
           <input id="window-end-date" class="token-date-input window-date-input" type="hidden" value="{end_date}">
         </div>
       </div>
-      <div class="apple-date-popover" id="window-date-popover" hidden>
+      <div class="apple-date-popover" id="window-date-popover" data-date-picker-popover="window" hidden>
         <div class="apple-date-popover-head">
-          <button class="apple-date-nav-button" type="button" data-window-date-nav="prev" aria-label="{prev_aria}">‹</button>
-          <strong id="window-date-month-label"></strong>
-          <button class="apple-date-nav-button" type="button" data-window-date-nav="next" aria-label="{next_aria}">›</button>
+          <button class="apple-date-nav-button" type="button" data-date-picker-nav="prev" data-window-date-nav="prev" aria-label="{prev_aria}">‹</button>
+          <strong id="window-date-month-label" data-date-picker-month-label="window"></strong>
+          <button class="apple-date-nav-button" type="button" data-date-picker-nav="next" data-window-date-nav="next" aria-label="{next_aria}">›</button>
         </div>
         <div class="apple-date-weekdays" aria-hidden="true">
           {weekdays}
         </div>
-        <div class="apple-date-grid" id="window-date-grid" role="grid" aria-labelledby="window-date-month-label"></div>
+        <div class="apple-date-grid" id="window-date-grid" data-date-picker-grid="window" role="grid" aria-labelledby="window-date-month-label"></div>
       </div>
     </section>
     """.format(
@@ -10413,14 +10438,33 @@ def make_asset_filter_panel(default_start_date, default_end_date):
             {buttons}
           </div>
         </div>
-        <div class="token-filter-field token-filter-range" data-asset-date-field>
-          <label class="token-filter-label" for="asset-start-date">{start_label}</label>
-          <input id="asset-start-date" class="token-date-input" type="date" value="{start_date}">
+        <div class="token-filter-field token-filter-range" data-asset-date-field="start">
+          <span class="token-filter-label" id="asset-start-date-label">{start_label}</span>
+          <button class="apple-date-button" type="button" data-date-picker-button="asset:start" aria-labelledby="asset-start-date-label">
+            <span class="apple-date-value" data-date-picker-display="asset:start">{start_display}</span>
+            <span class="apple-date-chevron" aria-hidden="true">⌄</span>
+          </button>
+          <input id="asset-start-date" class="token-date-input" type="hidden" value="{start_date}">
         </div>
-        <div class="token-filter-field token-filter-range" data-asset-date-field>
-          <label class="token-filter-label" for="asset-end-date">{end_label}</label>
-          <input id="asset-end-date" class="token-date-input" type="date" value="{end_date}">
+        <div class="token-filter-field token-filter-range" data-asset-date-field="end">
+          <span class="token-filter-label" id="asset-end-date-label">{end_label}</span>
+          <button class="apple-date-button" type="button" data-date-picker-button="asset:end" aria-labelledby="asset-end-date-label">
+            <span class="apple-date-value" data-date-picker-display="asset:end">{end_display}</span>
+            <span class="apple-date-chevron" aria-hidden="true">⌄</span>
+          </button>
+          <input id="asset-end-date" class="token-date-input" type="hidden" value="{end_date}">
         </div>
+      </div>
+      <div class="apple-date-popover" data-date-picker-popover="asset" hidden>
+        <div class="apple-date-popover-head">
+          <button class="apple-date-nav-button" type="button" data-date-picker-nav="prev" aria-label="{prev_aria}">‹</button>
+          <strong data-date-picker-month-label="asset"></strong>
+          <button class="apple-date-nav-button" type="button" data-date-picker-nav="next" aria-label="{next_aria}">›</button>
+        </div>
+        <div class="apple-date-weekdays" aria-hidden="true">
+          {weekdays}
+        </div>
+        <div class="apple-date-grid" data-date-picker-grid="asset" role="grid"></div>
       </div>
     </section>
     """.format(
@@ -10432,6 +10476,14 @@ def make_asset_filter_panel(default_start_date, default_end_date):
         end_label=panel_language_text_html("结束日期", "End Date"),
         start_date=escape(default_start_date, quote=True),
         end_date=escape(default_end_date, quote=True),
+        start_display=escape(str(default_start_date).replace("-", "/") if default_start_date else "—"),
+        end_display=escape(str(default_end_date).replace("-", "/") if default_end_date else "—"),
+        prev_aria=escape("上个月", quote=True),
+        next_aria=escape("下个月", quote=True),
+        weekdays="".join(
+            '<span>{}</span>'.format(escape(label))
+            for label in ["日", "一", "二", "三", "四", "五", "六"]
+        ),
     )
 
 
@@ -19985,13 +20037,18 @@ def build_html(data):
     }}
 
     .apple-date-button {{
+      position: relative;
+      isolation: isolate;
+      overflow: hidden;
       width: 100%;
       min-width: 0;
       height: 40px;
       padding: 0 12px 0 14px;
-      border: 1px solid var(--line);
+      border: 1px solid color-mix(in srgb, var(--line-strong) 78%, rgba(255, 255, 255, 0.38));
       border-radius: 12px;
-      background: linear-gradient(180deg, var(--panel), var(--soft));
+      background:
+        linear-gradient(145deg, rgba(255, 255, 255, 0.46), rgba(255, 255, 255, 0.10) 34%, rgba(102, 170, 255, 0.12)),
+        color-mix(in srgb, var(--control-strong) 90%, transparent);
       color: var(--ink);
       font: inherit;
       font-size: 13px;
@@ -20002,15 +20059,65 @@ def build_html(data):
       justify-content: space-between;
       gap: 10px;
       cursor: pointer;
-      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.64), 0 1px 2px rgba(0, 0, 0, 0.04);
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.68),
+        inset 0 -12px 24px rgba(0, 113, 227, 0.05),
+        0 12px 30px rgba(15, 23, 42, 0.06);
+      backdrop-filter: saturate(180%) blur(18px);
+      -webkit-backdrop-filter: saturate(180%) blur(18px);
       transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease, background 160ms ease;
+    }}
+
+    .apple-date-button::before {{
+      content: "";
+      position: absolute;
+      inset: 1px 1px auto 1px;
+      height: 46%;
+      border-radius: 11px 11px 8px 8px;
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.52), rgba(255, 255, 255, 0));
+      opacity: 0.72;
+      pointer-events: none;
+      z-index: -1;
+    }}
+
+    .apple-date-button::after {{
+      content: "";
+      position: absolute;
+      inset: 0;
+      border-radius: inherit;
+      background:
+        linear-gradient(115deg, transparent 0 18%, rgba(255, 255, 255, 0.36) 28%, transparent 42%),
+        linear-gradient(160deg, transparent 0 58%, rgba(102, 170, 255, 0.18) 76%, transparent 100%);
+      opacity: 0.5;
+      pointer-events: none;
+      z-index: -1;
+    }}
+
+    body[data-theme="dark"] .apple-date-button {{
+      border-color: rgba(255, 255, 255, 0.20);
+      background:
+        linear-gradient(145deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.04) 38%, rgba(102, 170, 255, 0.12)),
+        color-mix(in srgb, var(--control-strong) 92%, rgba(10, 14, 22, 0.78));
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.22),
+        inset 0 -12px 26px rgba(102, 170, 255, 0.08),
+        0 14px 34px rgba(0, 0, 0, 0.22);
     }}
 
     .apple-date-button:hover,
     .apple-date-button.is-open {{
-      border-color: rgba(0, 113, 227, 0.34);
-      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72), 0 8px 22px rgba(0, 113, 227, 0.10);
+      border-color: rgba(0, 113, 227, 0.42);
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.78),
+        inset 0 -12px 26px rgba(0, 113, 227, 0.08),
+        0 16px 34px rgba(0, 113, 227, 0.14);
       transform: translateY(-1px);
+    }}
+
+    .apple-date-button:disabled {{
+      cursor: wait;
+      opacity: 0.68;
+      transform: none;
     }}
 
     .apple-date-value {{
@@ -20033,14 +20140,47 @@ def build_html(data):
     .apple-date-popover {{
       position: absolute;
       z-index: 80;
+      isolation: isolate;
+      overflow: hidden;
       width: min(292px, calc(100vw - 40px));
       padding: 12px;
-      border: 1px solid rgba(210, 210, 215, 0.72);
+      border: 1px solid color-mix(in srgb, var(--line-strong) 74%, rgba(255, 255, 255, 0.46));
       border-radius: 18px;
-      background: var(--panel);
-      background: color-mix(in srgb, var(--panel) 92%, transparent);
-      box-shadow: 0 24px 60px rgba(15, 23, 42, 0.18), 0 3px 12px rgba(15, 23, 42, 0.08);
-      backdrop-filter: saturate(180%) blur(28px);
+      background:
+        linear-gradient(145deg, rgba(255, 255, 255, 0.52), rgba(255, 255, 255, 0.14) 36%, rgba(102, 170, 255, 0.10)),
+        color-mix(in srgb, var(--elevated) 92%, rgba(255, 255, 255, 0.62));
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.78),
+        inset 0 -24px 56px rgba(0, 113, 227, 0.05),
+        0 34px 76px rgba(15, 23, 42, 0.24),
+        0 5px 18px rgba(15, 23, 42, 0.12);
+      backdrop-filter: saturate(220%) contrast(108%) blur(34px);
+      -webkit-backdrop-filter: saturate(220%) contrast(108%) blur(34px);
+    }}
+
+    .apple-date-popover::before {{
+      content: "";
+      position: absolute;
+      inset: 1px;
+      border-radius: 17px;
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.52), rgba(255, 255, 255, 0) 34%),
+        linear-gradient(110deg, transparent 0 8%, rgba(255, 255, 255, 0.36) 18%, transparent 34%),
+        linear-gradient(155deg, transparent 0 64%, rgba(102, 170, 255, 0.14) 82%, transparent 100%);
+      pointer-events: none;
+      z-index: -1;
+    }}
+
+    body[data-theme="dark"] .apple-date-popover {{
+      border-color: rgba(255, 255, 255, 0.28);
+      background:
+        linear-gradient(145deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.06) 38%, rgba(102, 170, 255, 0.13)),
+        color-mix(in srgb, var(--elevated) 96%, rgba(10, 14, 22, 0.90));
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.28),
+        inset 0 -24px 56px rgba(102, 170, 255, 0.08),
+        0 34px 76px rgba(0, 0, 0, 0.48),
+        0 5px 18px rgba(0, 0, 0, 0.30);
     }}
 
     .apple-date-popover[hidden] {{
@@ -23648,14 +23788,17 @@ def build_html(data):
         defaultWindowFilters: null,
         defaultAssetFilters: null,
         windowDetailsExpanded: false,
-        assetHotnessExpanded: {{
-          skills: false,
-          mcp: false,
-        }},
-        windowOverviewProjectsExpanded: false,
-        activeWindowDateField: "",
-        windowDatePickerMonth: null,
-        selectedNightlyDate: snapshot.daily_summary_default_date || "",
+	        assetHotnessExpanded: {{
+	          skills: false,
+	          mcp: false,
+	        }},
+	        windowOverviewProjectsExpanded: false,
+	        activeDatePickerScope: "",
+	        activeDatePickerField: "",
+	        datePickerMonth: null,
+	        activeWindowDateField: "",
+	        windowDatePickerMonth: null,
+	        selectedNightlyDate: snapshot.daily_summary_default_date || "",
         selectedWindowOverviewDate: snapshot.window_overview_default_date || "",
         pipelineStatus: snapshot.pipeline_status || null,
         pipelineHistoryExpanded: false,
@@ -23675,15 +23818,21 @@ def build_html(data):
         windowFilterStickyPlaceholder: document.getElementById("window-filter-sticky-placeholder"),
         windowFilterSummary: document.getElementById("window-filter-summary"),
         windowStartDateInput: document.getElementById("window-start-date"),
-        windowEndDateInput: document.getElementById("window-end-date"),
-        windowRangeButtons: Array.from(document.querySelectorAll("[data-window-range-days]")),
-        windowDateButtons: Array.from(document.querySelectorAll("[data-window-date-button]")),
-        windowDateDisplays: Array.from(document.querySelectorAll("[data-window-date-display]")),
-        windowDatePopover: document.getElementById("window-date-popover"),
-        windowDateMonthLabel: document.getElementById("window-date-month-label"),
-        windowDateGrid: document.getElementById("window-date-grid"),
-        windowDateNavButtons: Array.from(document.querySelectorAll("[data-window-date-nav]")),
-        windowDetailMoreRow: document.getElementById("window-detail-more-row"),
+	        windowEndDateInput: document.getElementById("window-end-date"),
+	        windowRangeButtons: Array.from(document.querySelectorAll("[data-window-range-days]")),
+	        windowDateButtons: Array.from(document.querySelectorAll("[data-window-date-button]")),
+	        windowDateDisplays: Array.from(document.querySelectorAll("[data-window-date-display]")),
+	        windowDatePopover: document.getElementById("window-date-popover"),
+	        windowDateMonthLabel: document.getElementById("window-date-month-label"),
+	        windowDateGrid: document.getElementById("window-date-grid"),
+	        windowDateNavButtons: Array.from(document.querySelectorAll("[data-window-date-nav]")),
+	        datePickerButtons: Array.from(document.querySelectorAll("[data-date-picker-button]")),
+	        datePickerDisplays: Array.from(document.querySelectorAll("[data-date-picker-display]")),
+	        datePickerPopovers: Array.from(document.querySelectorAll("[data-date-picker-popover]")),
+	        datePickerMonthLabels: Array.from(document.querySelectorAll("[data-date-picker-month-label]")),
+	        datePickerGrids: Array.from(document.querySelectorAll("[data-date-picker-grid]")),
+	        datePickerNavButtons: Array.from(document.querySelectorAll("[data-date-picker-nav]")),
+	        windowDetailMoreRow: document.getElementById("window-detail-more-row"),
         windowDetailMoreButton: document.getElementById("window-detail-more-button"),
         windowOverviewSection: document.getElementById("window-overview-section"),
         windowOverviewMap: document.getElementById("window-overview-map"),
@@ -24325,31 +24474,82 @@ def build_html(data):
         document.querySelectorAll(".nightly-date-input").forEach(syncDateControlValue);
       }}
 
-      function parseWindowDateValue(value) {{
-        const text = String(value || "").slice(0, 10);
-        if (!text) {{
-          return null;
-        }}
-        const parsed = new Date(text + "T00:00:00");
-        return Number.isNaN(parsed.getTime()) ? null : parsed;
-      }}
+	      function parseWindowDateValue(value) {{
+	        const text = String(value || "").slice(0, 10);
+	        if (!text) {{
+	          return null;
+	        }}
+	        const parsed = new Date(text + "T00:00:00");
+	        return Number.isNaN(parsed.getTime()) ? null : parsed;
+	      }}
 
-      function displayWindowDateValue(value) {{
-        const text = String(value || "").slice(0, 10);
-        return text ? text.replace(/-/g, "/") : "—";
-      }}
+	      function displayWindowDateValue(value) {{
+	        const text = String(value || "").slice(0, 10);
+	        return text ? text.replace(/-/g, "/") : "—";
+	      }}
 
-      function windowDateInputForField(fieldKey) {{
-        return fieldKey === "end" ? elements.windowEndDateInput : elements.windowStartDateInput;
-      }}
+	      function parseDatePickerKey(rawKey) {{
+	        const parts = String(rawKey || "").split(":");
+	        const scope = ["token", "asset", "window"].includes(parts[0]) ? parts[0] : "window";
+	        const field = parts[1] === "end" ? "end" : "start";
+	        return {{ scope: scope, field: field, key: scope + ":" + field }};
+	      }}
 
-      function windowDateButtonForField(fieldKey) {{
-        return elements.windowDateButtons.find(function (button) {{
-          return button.getAttribute("data-window-date-button") === fieldKey;
-        }}) || null;
-      }}
+	      function datePickerInputForKey(scope, fieldKey) {{
+	        const field = fieldKey === "end" ? "end" : "start";
+	        if (scope === "token") {{
+	          return field === "end" ? elements.tokenEndDateInput : elements.tokenStartDateInput;
+	        }}
+	        if (scope === "asset") {{
+	          return field === "end" ? elements.assetEndDateInput : elements.assetStartDateInput;
+	        }}
+	        return field === "end" ? elements.windowEndDateInput : elements.windowStartDateInput;
+	      }}
 
-      function windowDateMonthLabel(date) {{
+	      function datePickerFiltersForScope(scope) {{
+	        if (scope === "token") {{
+	          return state.tokenFilters || {{}};
+	        }}
+	        if (scope === "asset") {{
+	          return state.assetFilters || {{}};
+	        }}
+	        return state.windowFilters || {{}};
+	      }}
+
+	      function datePickerButtonForKey(scope, fieldKey) {{
+	        const key = scope + ":" + (fieldKey === "end" ? "end" : "start");
+	        return elements.datePickerButtons.find(function (button) {{
+	          return button.getAttribute("data-date-picker-button") === key;
+	        }}) || null;
+	      }}
+
+	      function datePickerPopoverForScope(scope) {{
+	        return elements.datePickerPopovers.find(function (popover) {{
+	          return popover.getAttribute("data-date-picker-popover") === scope;
+	        }}) || null;
+	      }}
+
+	      function datePickerMonthLabelForScope(scope) {{
+	        return elements.datePickerMonthLabels.find(function (label) {{
+	          return label.getAttribute("data-date-picker-month-label") === scope;
+	        }}) || null;
+	      }}
+
+	      function datePickerGridForScope(scope) {{
+	        return elements.datePickerGrids.find(function (grid) {{
+	          return grid.getAttribute("data-date-picker-grid") === scope;
+	        }}) || null;
+	      }}
+
+	      function windowDateInputForField(fieldKey) {{
+	        return datePickerInputForKey("window", fieldKey);
+	      }}
+
+	      function windowDateButtonForField(fieldKey) {{
+	        return datePickerButtonForKey("window", fieldKey);
+	      }}
+
+	      function windowDateMonthLabel(date) {{
         const month = date.getMonth() + 1;
         const year = date.getFullYear();
         if (currentLanguage === "en") {{
@@ -24357,52 +24557,80 @@ def build_html(data):
           return names[date.getMonth()] + " " + year;
         }}
         return year + "年" + month + "月";
-      }}
+	      }}
 
-      function updateWindowDateDisplays() {{
-        elements.windowDateDisplays.forEach(function (display) {{
-          const fieldKey = display.getAttribute("data-window-date-display") || "start";
-          const input = windowDateInputForField(fieldKey);
-          display.textContent = displayWindowDateValue(input ? input.value : "");
-        }});
-      }}
+	      function updateWindowDateDisplays() {{
+	        updateDatePickerDisplays("window");
+	      }}
 
-      function positionWindowDatePopover(button) {{
-        if (!elements.windowDatePopover || !elements.windowFilterPanel || !button) {{
-          return;
-        }}
-        const panelRect = elements.windowFilterPanel.getBoundingClientRect();
-        const buttonRect = button.getBoundingClientRect();
-        const popoverWidth = Math.min(292, Math.max(240, window.innerWidth - 40));
-        const left = Math.max(
-          12,
-          Math.min(buttonRect.left - panelRect.left, panelRect.width - popoverWidth - 12)
-        );
-        const top = buttonRect.bottom - panelRect.top + 8;
-        elements.windowDatePopover.style.left = left + "px";
-        elements.windowDatePopover.style.top = top + "px";
-      }}
+	      function updateDatePickerDisplays(scope) {{
+	        elements.datePickerDisplays.forEach(function (display) {{
+	          const parsed = parseDatePickerKey(display.getAttribute("data-date-picker-display"));
+	          if (scope && parsed.scope !== scope) {{
+	            return;
+	          }}
+	          const input = datePickerInputForKey(parsed.scope, parsed.field);
+	          display.textContent = displayWindowDateValue(input ? input.value : "");
+	        }});
+	      }}
 
-      function renderWindowDatePicker() {{
-        if (!elements.windowDatePopover || !elements.windowDateGrid || !elements.windowDateMonthLabel) {{
-          return;
-        }}
-        const activeField = state.activeWindowDateField || "start";
-        const selectedValue = windowDateInputForField(activeField) ? windowDateInputForField(activeField).value : "";
-        const selectedDate = parseWindowDateValue(selectedValue);
-        const monthDate = state.windowDatePickerMonth || selectedDate || parseWindowDateValue(state.windowFilters.endDate) || new Date();
-        const monthStart = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1);
-        const gridStart = new Date(monthStart);
-        gridStart.setDate(1 - monthStart.getDay());
-        const todayValue = tokenDateInputValue(new Date());
-        const rangeStart = state.windowFilters.startDate || "";
-        const rangeEnd = state.windowFilters.endDate || "";
-        elements.windowDateMonthLabel.textContent = windowDateMonthLabel(monthStart);
-        const cells = [];
-        for (let offset = 0; offset < 42; offset += 1) {{
-          const day = new Date(gridStart);
-          day.setDate(gridStart.getDate() + offset);
-          const dateValue = tokenDateInputValue(day);
+	      function positionDatePickerPopover(scope, button) {{
+	        const popover = datePickerPopoverForScope(scope);
+	        if (!popover || !button) {{
+	          return;
+	        }}
+	        const panel = button.closest(".token-filter-panel");
+	        if (!panel) {{
+	          return;
+	        }}
+	        const panelRect = panel.getBoundingClientRect();
+	        const buttonRect = button.getBoundingClientRect();
+	        const popoverWidth = Math.min(292, Math.max(240, window.innerWidth - 40));
+	        const left = Math.max(
+	          12,
+	          Math.min(buttonRect.left - panelRect.left, panelRect.width - popoverWidth - 12)
+	        );
+	        const top = buttonRect.bottom - panelRect.top + 8;
+	        popover.style.left = left + "px";
+	        popover.style.top = top + "px";
+	      }}
+
+	      function positionActiveDatePicker() {{
+	        const scope = state.activeDatePickerScope || "window";
+	        const field = state.activeDatePickerField || "start";
+	        positionDatePickerPopover(scope, datePickerButtonForKey(scope, field));
+	      }}
+
+	      function positionWindowDatePopover(button) {{
+	        positionDatePickerPopover("window", button);
+	      }}
+
+	      function renderDatePicker() {{
+	        const scope = state.activeDatePickerScope || "window";
+	        const popover = datePickerPopoverForScope(scope);
+	        const grid = datePickerGridForScope(scope);
+	        const monthLabel = datePickerMonthLabelForScope(scope);
+	        if (!popover || !grid || !monthLabel) {{
+	          return;
+	        }}
+	        const activeField = state.activeDatePickerField || "start";
+	        const selectedInput = datePickerInputForKey(scope, activeField);
+	        const selectedValue = selectedInput ? selectedInput.value : "";
+	        const selectedDate = parseWindowDateValue(selectedValue);
+	        const filters = datePickerFiltersForScope(scope);
+	        const monthDate = state.datePickerMonth || selectedDate || parseWindowDateValue(filters.endDate) || new Date();
+	        const monthStart = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1);
+	        const gridStart = new Date(monthStart);
+	        gridStart.setDate(1 - monthStart.getDay());
+	        const todayValue = tokenDateInputValue(new Date());
+	        const rangeStart = filters.startDate || "";
+	        const rangeEnd = filters.endDate || "";
+	        monthLabel.textContent = windowDateMonthLabel(monthStart);
+	        const cells = [];
+	        for (let offset = 0; offset < 42; offset += 1) {{
+	          const day = new Date(gridStart);
+	          day.setDate(gridStart.getDate() + offset);
+	          const dateValue = tokenDateInputValue(day);
           const classNames = ["apple-date-day"];
           if (day.getMonth() !== monthStart.getMonth()) {{
             classNames.push("is-muted");
@@ -24413,49 +24641,182 @@ def build_html(data):
           if (rangeStart && rangeEnd && dateValue >= rangeStart && dateValue <= rangeEnd) {{
             classNames.push("is-in-range");
           }}
-          if (dateValue === selectedValue) {{
-            classNames.push("is-selected");
-          }}
-          cells.push(
-            '<button class="' + classNames.join(" ") + '" type="button" role="gridcell" data-window-date-option="' + dateValue + '" aria-label="' + displayWindowDateValue(dateValue) + '">' +
-              String(day.getDate()) +
-            '</button>'
-          );
-        }}
-        elements.windowDateGrid.innerHTML = cells.join("");
-      }}
+	          if (dateValue === selectedValue) {{
+	            classNames.push("is-selected");
+	          }}
+	          cells.push(
+	            '<button class="' + classNames.join(" ") + '" type="button" role="gridcell" data-date-picker-option="' + dateValue + '" aria-label="' + displayWindowDateValue(dateValue) + '">' +
+	              String(day.getDate()) +
+	            '</button>'
+	          );
+	        }}
+	        grid.innerHTML = cells.join("");
+	      }}
 
-      function closeWindowDatePicker() {{
-        if (elements.windowDatePopover) {{
-          elements.windowDatePopover.hidden = true;
-        }}
-        elements.windowDateButtons.forEach(function (button) {{
-          button.classList.remove("is-open");
-          button.setAttribute("aria-expanded", "false");
-        }});
-        state.activeWindowDateField = "";
-      }}
+	      function renderWindowDatePicker() {{
+	        renderDatePicker();
+	      }}
 
-      function openWindowDatePicker(fieldKey) {{
-        const resolvedField = fieldKey === "end" ? "end" : "start";
-        const button = windowDateButtonForField(resolvedField);
-        const input = windowDateInputForField(resolvedField);
-        if (!button || !input || !elements.windowDatePopover) {{
-          return;
-        }}
-        state.activeWindowDateField = resolvedField;
-        state.windowDatePickerMonth = parseWindowDateValue(input.value) || parseWindowDateValue(state.windowFilters.endDate) || new Date();
-        elements.windowDateButtons.forEach(function (candidate) {{
-          const isOpen = candidate === button;
-          candidate.classList.toggle("is-open", isOpen);
-          candidate.setAttribute("aria-expanded", isOpen ? "true" : "false");
-        }});
-        renderWindowDatePicker();
-        elements.windowDatePopover.hidden = false;
-        positionWindowDatePopover(button);
-      }}
+	      function closeDatePicker(scope) {{
+	        elements.datePickerPopovers.forEach(function (popover) {{
+	          const popoverScope = popover.getAttribute("data-date-picker-popover") || "";
+	          if (!scope || popoverScope === scope) {{
+	            popover.hidden = true;
+	          }}
+	        }});
+	        elements.datePickerButtons.forEach(function (button) {{
+	          const parsed = parseDatePickerKey(button.getAttribute("data-date-picker-button"));
+	          if (scope && parsed.scope !== scope) {{
+	            return;
+	          }}
+	          button.classList.remove("is-open");
+	          button.setAttribute("aria-expanded", "false");
+	        }});
+	        if (!scope || state.activeDatePickerScope === scope) {{
+	          state.activeDatePickerScope = "";
+	          state.activeDatePickerField = "";
+	          state.datePickerMonth = null;
+	          state.activeWindowDateField = "";
+	          state.windowDatePickerMonth = null;
+	        }}
+	      }}
 
-      function windowFilterStickyOffset() {{
+	      function closeWindowDatePicker() {{
+	        closeDatePicker("window");
+	      }}
+
+	      function openDatePicker(scope, fieldKey) {{
+	        const resolvedField = fieldKey === "end" ? "end" : "start";
+	        const button = datePickerButtonForKey(scope, resolvedField);
+	        const input = datePickerInputForKey(scope, resolvedField);
+	        const popover = datePickerPopoverForScope(scope);
+	        if (!button || !input || !popover || input.disabled) {{
+	          return;
+	        }}
+	        closeDatePicker();
+	        const filters = datePickerFiltersForScope(scope);
+	        state.activeDatePickerScope = scope;
+	        state.activeDatePickerField = resolvedField;
+	        state.datePickerMonth = parseWindowDateValue(input.value) || parseWindowDateValue(filters.endDate) || new Date();
+	        state.activeWindowDateField = scope === "window" ? resolvedField : "";
+	        state.windowDatePickerMonth = scope === "window" ? state.datePickerMonth : null;
+	        elements.datePickerButtons.forEach(function (candidate) {{
+	          const isOpen = candidate === button;
+	          candidate.classList.toggle("is-open", isOpen);
+	          candidate.setAttribute("aria-expanded", isOpen ? "true" : "false");
+	        }});
+	        renderDatePicker();
+	        popover.hidden = false;
+	        positionDatePickerPopover(scope, button);
+	      }}
+
+	      function openWindowDatePicker(fieldKey) {{
+	        openDatePicker("window", fieldKey);
+	      }}
+
+	      function setDatePickerScopeState(scope, nextFilters) {{
+	        if (scope === "token") {{
+	          setTokenFilterState(nextFilters, true);
+	          return;
+	        }}
+	        if (scope === "asset") {{
+	          setAssetFilterState(nextFilters);
+	          return;
+	        }}
+	        setWindowFilterState(nextFilters);
+	      }}
+
+	      function wireDatePickers() {{
+	        elements.datePickerButtons.forEach(function (button) {{
+	          button.setAttribute("aria-haspopup", "dialog");
+	          button.setAttribute("aria-expanded", "false");
+	          button.addEventListener("click", function (event) {{
+	            event.preventDefault();
+	            event.stopPropagation();
+	            const parsed = parseDatePickerKey(button.getAttribute("data-date-picker-button"));
+	            const popover = datePickerPopoverForScope(parsed.scope);
+	            if (
+	              state.activeDatePickerScope === parsed.scope &&
+	              state.activeDatePickerField === parsed.field &&
+	              popover &&
+	              !popover.hidden
+	            ) {{
+	              closeDatePicker(parsed.scope);
+	              return;
+	            }}
+	            openDatePicker(parsed.scope, parsed.field);
+	          }});
+	        }});
+	        elements.datePickerNavButtons.forEach(function (button) {{
+	          button.addEventListener("click", function (event) {{
+	            event.preventDefault();
+	            event.stopPropagation();
+	            const popover = button.closest("[data-date-picker-popover]");
+	            const scope = popover ? popover.getAttribute("data-date-picker-popover") : state.activeDatePickerScope;
+	            if (!scope || state.activeDatePickerScope !== scope) {{
+	              return;
+	            }}
+	            const direction = button.getAttribute("data-date-picker-nav") === "next" ? 1 : -1;
+	            const currentMonth = state.datePickerMonth || new Date();
+	            state.datePickerMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + direction, 1);
+	            if (scope === "window") {{
+	              state.windowDatePickerMonth = state.datePickerMonth;
+	            }}
+	            renderDatePicker();
+	          }});
+	        }});
+	        elements.datePickerGrids.forEach(function (grid) {{
+	          grid.addEventListener("click", function (event) {{
+	            const option = event.target && event.target.closest
+	              ? event.target.closest("[data-date-picker-option]")
+	              : null;
+	            if (!option) {{
+	              return;
+	            }}
+	            event.preventDefault();
+	            event.stopPropagation();
+	            const scope = grid.getAttribute("data-date-picker-grid") || state.activeDatePickerScope || "window";
+	            const field = state.activeDatePickerField === "end" ? "end" : "start";
+	            const dateValue = option.getAttribute("data-date-picker-option") || "";
+	            const nextFilters = Object.assign({{}}, datePickerFiltersForScope(scope));
+	            if (field === "end") {{
+	              nextFilters.endDate = dateValue;
+	            }} else {{
+	              nextFilters.startDate = dateValue;
+	            }}
+	            closeDatePicker(scope);
+	            setDatePickerScopeState(scope, nextFilters);
+	          }});
+	        }});
+	        document.addEventListener("click", function (event) {{
+	          const scope = state.activeDatePickerScope || "";
+	          if (!scope) {{
+	            return;
+	          }}
+	          const popover = datePickerPopoverForScope(scope);
+	          const target = event.target;
+	          if (
+	            popover &&
+	            !popover.hidden &&
+	            (popover.contains(target) || (target && target.closest && target.closest("[data-date-picker-button]")))
+	          ) {{
+	            return;
+	          }}
+	          closeDatePicker();
+	        }});
+	        document.addEventListener("keydown", function (event) {{
+	          if (event.key === "Escape") {{
+	            closeDatePicker();
+	          }}
+	        }});
+	        window.addEventListener("resize", function () {{
+	          if (state.activeDatePickerScope) {{
+	            positionActiveDatePicker();
+	          }}
+	        }});
+	      }}
+
+	      function windowFilterStickyOffset() {{
         return window.innerWidth <= 760 ? 8 : 12;
       }}
 
@@ -24535,12 +24896,12 @@ def build_html(data):
         }}
         panel.style.setProperty("--filter-sticky-top", offset + "px");
         panel.style.setProperty("--filter-sticky-left", Math.round(markerRect.left) + "px");
-        panel.style.setProperty("--filter-sticky-width", Math.round(width) + "px");
-        panel.classList.add("is-sticky");
-        document.documentElement.style.setProperty("--window-filter-sticky-height", measuredHeight + "px");
-        if (elements.windowDatePopover && !elements.windowDatePopover.hidden) {{
-          positionWindowDatePopover(windowDateButtonForField(state.activeWindowDateField || "start"));
-        }}
+	        panel.style.setProperty("--filter-sticky-width", Math.round(width) + "px");
+	        panel.classList.add("is-sticky");
+	        document.documentElement.style.setProperty("--window-filter-sticky-height", measuredHeight + "px");
+	        if (state.activeDatePickerScope === "window") {{
+	          positionActiveDatePicker();
+	        }}
       }}
 
       function syncAssetFilterSticky() {{
@@ -24569,10 +24930,13 @@ def build_html(data):
         }}
         panel.style.setProperty("--filter-sticky-top", offset + "px");
         panel.style.setProperty("--filter-sticky-left", Math.round(markerRect.left) + "px");
-        panel.style.setProperty("--filter-sticky-width", Math.round(width) + "px");
-        panel.classList.add("is-sticky");
-        document.documentElement.style.setProperty("--asset-filter-sticky-height", measuredHeight + "px");
-      }}
+	        panel.style.setProperty("--filter-sticky-width", Math.round(width) + "px");
+	        panel.classList.add("is-sticky");
+	        document.documentElement.style.setProperty("--asset-filter-sticky-height", measuredHeight + "px");
+	        if (state.activeDatePickerScope === "asset") {{
+	          positionActiveDatePicker();
+	        }}
+	      }}
 
       function windowFilterDateRange(days, endDateValue) {{
         const resolvedDays = Math.max(Number(days) || Number(snapshot.window_filter_default_days) || 3, 1);
@@ -24968,9 +25332,10 @@ def build_html(data):
         if (elements.assetStartDateInput && elements.assetStartDateInput.value !== filters.startDate) {{
           elements.assetStartDateInput.value = filters.startDate;
         }}
-        if (elements.assetEndDateInput && elements.assetEndDateInput.value !== filters.endDate) {{
-          elements.assetEndDateInput.value = filters.endDate;
-        }}
+	        if (elements.assetEndDateInput && elements.assetEndDateInput.value !== filters.endDate) {{
+	          elements.assetEndDateInput.value = filters.endDate;
+	        }}
+	        updateDatePickerDisplays("asset");
         const start = parseWindowDateValue(filters.startDate);
         const end = parseWindowDateValue(filters.endDate);
         const rangeDays = start && end ? Math.round((end.getTime() - start.getTime()) / (24 * 60 * 60 * 1000)) + 1 : 0;
@@ -25017,22 +25382,15 @@ def build_html(data):
           if (!input) return;
           input.addEventListener("change", onDateChange);
         }});
-        elements.assetRangeButtons.forEach(function (button) {{
-          button.addEventListener("click", function () {{
-            const days = Number(button.getAttribute("data-asset-range-days")) || Number(snapshot.asset_filter_default_days) || 30;
-            const endDate = state.assetFilters.endDate || defaultAssetFilterEnd || tokenDateInputValue(new Date());
-            setAssetFilterState(assetFilterDateRange(days, endDate));
-          }});
-        }});
-        document.querySelectorAll("[data-asset-date-field]").forEach(function (field) {{
-          const input = field.querySelector(".token-date-input");
-          if (!input) return;
-          field.addEventListener("click", function (event) {{
-            if (event.target && event.target.closest && event.target.closest(".token-date-input")) return;
-            openTokenDatePicker(input);
-          }});
-        }});
-        document.addEventListener("click", function (event) {{
+	        elements.assetRangeButtons.forEach(function (button) {{
+	          button.addEventListener("click", function () {{
+	            closeDatePicker("asset");
+	            const days = Number(button.getAttribute("data-asset-range-days")) || Number(snapshot.asset_filter_default_days) || 30;
+	            const endDate = state.assetFilters.endDate || defaultAssetFilterEnd || tokenDateInputValue(new Date());
+	            setAssetFilterState(assetFilterDateRange(days, endDate));
+	          }});
+	        }});
+	        document.addEventListener("click", function (event) {{
           const button = event.target && event.target.closest
             ? event.target.closest("[data-hotness-group]")
             : null;
@@ -25466,9 +25824,9 @@ def build_html(data):
         if (elements.windowFilterSummary) {{
           elements.windowFilterSummary.textContent = windowFilterRangeLabel(filters, matchedCount || 0);
         }}
-        if (elements.windowDatePopover && !elements.windowDatePopover.hidden) {{
-          renderWindowDatePicker();
-          positionWindowDatePopover(windowDateButtonForField(state.activeWindowDateField || "start"));
+	        if (state.activeDatePickerScope === "window" && elements.windowDatePopover && !elements.windowDatePopover.hidden) {{
+	          renderDatePicker();
+	          positionActiveDatePicker();
         }}
       }}
 
@@ -25566,79 +25924,9 @@ def build_html(data):
             input.addEventListener(eventName, onDateChange);
           }});
         }});
-        elements.windowDateButtons.forEach(function (button) {{
-          button.setAttribute("aria-haspopup", "dialog");
-          button.setAttribute("aria-expanded", "false");
-          button.addEventListener("click", function (event) {{
-            event.preventDefault();
-            event.stopPropagation();
-            const fieldKey = button.getAttribute("data-window-date-button") || "start";
-            if (state.activeWindowDateField === fieldKey && elements.windowDatePopover && !elements.windowDatePopover.hidden) {{
-              closeWindowDatePicker();
-              return;
-            }}
-            openWindowDatePicker(fieldKey);
-          }});
-        }});
-        if (elements.windowDateNavButtons.length) {{
-          elements.windowDateNavButtons.forEach(function (button) {{
-            button.addEventListener("click", function (event) {{
-              event.preventDefault();
-              event.stopPropagation();
-              const direction = button.getAttribute("data-window-date-nav") === "next" ? 1 : -1;
-              const currentMonth = state.windowDatePickerMonth || new Date();
-              state.windowDatePickerMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + direction, 1);
-              renderWindowDatePicker();
-            }});
-          }});
-        }}
-        if (elements.windowDateGrid) {{
-          elements.windowDateGrid.addEventListener("click", function (event) {{
-            const option = event.target && event.target.closest
-              ? event.target.closest("[data-window-date-option]")
-              : null;
-            if (!option) {{
-              return;
-            }}
-            event.preventDefault();
-            event.stopPropagation();
-            const dateValue = option.getAttribute("data-window-date-option") || "";
-            const nextFilters = Object.assign({{}}, state.windowFilters);
-            if (state.activeWindowDateField === "end") {{
-              nextFilters.endDate = dateValue;
-            }} else {{
-              nextFilters.startDate = dateValue;
-            }}
-            closeWindowDatePicker();
-            setWindowFilterState(nextFilters);
-          }});
-        }}
-        document.addEventListener("click", function (event) {{
-          if (!elements.windowDatePopover || elements.windowDatePopover.hidden) {{
-            return;
-          }}
-          const target = event.target;
-          if (
-            elements.windowDatePopover.contains(target) ||
-            (target && target.closest && target.closest("[data-window-date-button]"))
-          ) {{
-            return;
-          }}
-          closeWindowDatePicker();
-        }});
-        document.addEventListener("keydown", function (event) {{
-          if (event.key === "Escape") {{
-            closeWindowDatePicker();
-          }}
-        }});
-        window.addEventListener("resize", function () {{
-          if (elements.windowDatePopover && !elements.windowDatePopover.hidden) {{
-            positionWindowDatePopover(windowDateButtonForField(state.activeWindowDateField || "start"));
-          }}
-        }});
-        elements.windowRangeButtons.forEach(function (button) {{
-          button.addEventListener("click", function () {{
-            closeWindowDatePicker();
+	        elements.windowRangeButtons.forEach(function (button) {{
+	          button.addEventListener("click", function () {{
+	            closeWindowDatePicker();
             const days = Number(button.getAttribute("data-window-range-days")) || Number(snapshot.window_filter_default_days) || 3;
             const endDate = state.windowFilters.endDate || defaultWindowFilterEnd || tokenDateInputValue(new Date());
             setWindowFilterState(windowFilterDateRange(days, endDate));
@@ -27175,18 +27463,24 @@ def build_html(data):
         if (elements.tokenFilterPanel) {{
           elements.tokenFilterPanel.classList.toggle("is-loading", isLoading);
         }}
-        [
-          elements.tokenStartDateInput,
-          elements.tokenEndDateInput,
-          elements.tokenResetButton,
-        ].forEach(function (control) {{
+	        [
+	          elements.tokenStartDateInput,
+	          elements.tokenEndDateInput,
+	          elements.tokenResetButton,
+	        ].forEach(function (control) {{
           if (control) {{
             control.disabled = isLoading;
-          }}
-        }});
-        elements.tokenRangeButtons.concat(elements.tokenProviderButtons, elements.tokenGroupButtons).forEach(function (button) {{
-          button.disabled = isLoading;
-        }});
+	          }}
+	        }});
+	        elements.datePickerButtons.forEach(function (button) {{
+	          const parsed = parseDatePickerKey(button.getAttribute("data-date-picker-button"));
+	          if (parsed.scope === "token") {{
+	            button.disabled = isLoading;
+	          }}
+	        }});
+	        elements.tokenRangeButtons.concat(elements.tokenProviderButtons, elements.tokenGroupButtons).forEach(function (button) {{
+	          button.disabled = isLoading;
+	        }});
         liveCards.forEach(function (card) {{
           card.classList.toggle("is-loading", isLoading);
         }});
@@ -28171,9 +28465,10 @@ def build_html(data):
         if (elements.tokenStartDateInput && elements.tokenStartDateInput.value !== (filters.startDate || "")) {{
           elements.tokenStartDateInput.value = filters.startDate || "";
         }}
-        if (elements.tokenEndDateInput && elements.tokenEndDateInput.value !== (filters.endDate || "")) {{
-          elements.tokenEndDateInput.value = filters.endDate || "";
-        }}
+	        if (elements.tokenEndDateInput && elements.tokenEndDateInput.value !== (filters.endDate || "")) {{
+	          elements.tokenEndDateInput.value = filters.endDate || "";
+	        }}
+	        updateDatePickerDisplays("token");
         if (elements.tokenFilterSummary) {{
           const rangeLabel = tokenFilterRangeLabel(filters, tokenUsage);
           elements.tokenFilterSummary.textContent = [
@@ -28224,46 +28519,13 @@ def build_html(data):
         }}), true);
       }}
 
-      function openTokenDatePicker(input) {{
-        if (!input || input.disabled) {{
-          return;
-        }}
-        try {{
-          input.focus({{ preventScroll: true }});
-        }} catch (error) {{
-          input.focus();
-        }}
-        if (typeof input.showPicker === "function") {{
-          try {{
-            input.showPicker();
-          }} catch (error) {{}}
-        }}
-      }}
-
-      function wireTokenDateFieldClicks() {{
-        document.querySelectorAll("[data-token-date-field]").forEach(function (field) {{
-          const input = field.querySelector(".token-date-input");
-          if (!input) {{
-            return;
-          }}
-          field.addEventListener("click", function (event) {{
-            if (event.target && event.target.closest && event.target.closest(".token-date-input")) {{
-              return;
-            }}
-            openTokenDatePicker(input);
-          }});
-          input.addEventListener("click", function () {{
-            openTokenDatePicker(input);
-          }});
-        }});
-      }}
-
-      function wireTokenFilters() {{
-        elements.tokenRangeButtons.forEach(function (button) {{
-          button.addEventListener("click", function () {{
-            const days = Number(button.getAttribute("data-token-range-days")) || {token_filter_default_days};
-            const endDate = (state.tokenFilters && state.tokenFilters.endDate) || defaultTokenDateRange.endDate || tokenDateInputValue(new Date());
-            setTokenFilterState(tokenDateRangeForDays(days, endDate), true);
+	      function wireTokenFilters() {{
+	        elements.tokenRangeButtons.forEach(function (button) {{
+	          button.addEventListener("click", function () {{
+	            closeDatePicker("token");
+	            const days = Number(button.getAttribute("data-token-range-days")) || {token_filter_default_days};
+	            const endDate = (state.tokenFilters && state.tokenFilters.endDate) || defaultTokenDateRange.endDate || tokenDateInputValue(new Date());
+	            setTokenFilterState(tokenDateRangeForDays(days, endDate), true);
           }});
         }});
         elements.tokenProviderButtons.forEach(function (button) {{
@@ -28286,12 +28548,14 @@ def build_html(data):
             setTokenFilterState({{ endDate: elements.tokenEndDateInput.value || "" }}, true);
           }});
         }}
-        if (elements.tokenResetButton) {{
-          elements.tokenResetButton.addEventListener("click", resetTokenFilters);
-        }}
-        wireTokenDateFieldClicks();
-        syncTokenFilterControls(state.tokenUsage);
-      }}
+	        if (elements.tokenResetButton) {{
+	          elements.tokenResetButton.addEventListener("click", function () {{
+	            closeDatePicker("token");
+	            resetTokenFilters();
+	          }});
+	        }}
+	        syncTokenFilterControls(state.tokenUsage);
+	      }}
 
       function deriveTokenSummaryCards(tokenUsage) {{
         const dailyRows = Array.isArray(tokenUsage.daily_rows) ? tokenUsage.daily_rows : [];
@@ -28813,9 +29077,10 @@ def build_html(data):
           state.tokenUsage
         );
       }}
-      wireContentMoreButtons();
-      wireWindowFilters();
-      wireAssetFilters();
+	      wireContentMoreButtons();
+	      wireDatePickers();
+	      wireWindowFilters();
+	      wireAssetFilters();
       wireWindowOverviewProjectMore();
       wireWindowFilterSticky();
       wireAssetFilterSticky();
