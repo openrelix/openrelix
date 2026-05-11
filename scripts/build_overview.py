@@ -12519,9 +12519,14 @@ def make_curated_memory_panel_body(pack):
         if project_label:
             tag_html = '<span class="memory-card-tag">{}</span>'.format(escape(project_label))
         policy = str(item.get("injection_policy") or "").strip()
+        diagnostics = set(item.get("diagnostics") or [])
         feedback_state = normalize_feedback_state(item.get("user_feedback") or "")
         memory_badge = ""
-        if policy in {"global_context", "project_context"}:
+        if "synthetic" in diagnostics:
+            memory_badge = '<span class="curated-memory-memory-badge is-synthetic">{}</span>'.format(
+                panel_language_text_html("自动汇总", "Auto Summary")
+            )
+        elif policy in {"global_context", "project_context"}:
             memory_badge = '<span class="curated-memory-memory-badge">{}</span>'.format(
                 panel_language_text_html("记忆已注入", "Injected Memory")
             )

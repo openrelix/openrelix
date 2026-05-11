@@ -329,6 +329,50 @@ class MemorySummaryBuilderTests(unittest.TestCase):
         self.assertNotIn("Local Codex personal asset system", result.text)
         self.assertNotIn("Android scan QR-only cleanup", result.text)
 
+    def test_summary_builds_compact_profile_from_recurring_project_contexts(self):
+        personal_items = build_codex_memory_summary.parse_personal_memory_registry(
+            (
+                '{"date":"2026-05-06","source":"canonical","bucket":"durable",'
+                '"title":"Prefer compact summaries","memory_type":"preference","priority":"high",'
+                '"scope":"global","injection_policy":"global_context",'
+                '"value_note":"Keep host context concise.","keywords":["compact"]}\n'
+                '{"date":"2026-05-06","source":"canonical","bucket":"durable",'
+                '"title":"OpenRelix worktree delivery","memory_type":"procedural","priority":"high",'
+                '"scope":"project","injection_policy":"project_context","project_label":"OpenRelix",'
+                '"value_note":"Use an isolated worktree for OpenRelix changes.","keywords":["openrelix"]}\n'
+                '{"date":"2026-05-06","source":"canonical","bucket":"durable",'
+                '"title":"Douyin search workflow","memory_type":"procedural","priority":"high",'
+                '"scope":"project","injection_policy":"project_context","project_label":"Douyin",'
+                '"value_note":"Use Douyin search workflow for Android search tasks.","keywords":["douyin"]}\n'
+            )
+        )
+        result = build_codex_memory_summary.build_memory_summary(
+            "",
+            "",
+            build_codex_memory_summary.SummaryBudget(
+                target_tokens=900,
+                warn_tokens=1000,
+                max_tokens=1100,
+                profile_tokens=120,
+                preferences_tokens=140,
+                tips_tokens=140,
+                personal_memory_tokens=360,
+                max_preferences=3,
+                max_tips=3,
+                max_personal_memory_items=0,
+            ),
+            personal_memory_items=personal_items,
+        )
+
+        self.assertIn("## User Profile", result.text)
+        self.assertIn("OpenRelix", result.text)
+        self.assertIn("Douyin", result.text)
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            summary_path = Path(tmp_dir) / "memory_summary.md"
+            summary_path.write_text(result.text, encoding="utf-8")
+            parsed = build_overview.parse_codex_native_memory_summary(summary_path)
+        self.assertEqual(parsed["counts"]["user_profile"], 1)
+
     def test_legacy_source_window_memory_stays_out_of_global_host_context(self):
         legacy_registry = """
 {"date":"2026-05-06","source":"legacy","bucket":"durable","title":"Project-only legacy item","memory_type":"procedural","priority":"high","value_note":"Has only old source_window_ids metadata.","source_window_ids":["w-project"]}

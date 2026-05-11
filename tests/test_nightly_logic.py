@@ -579,6 +579,35 @@ class NightlyLogicTests(unittest.TestCase):
         self.assertNotIn('class="curated-memory-memory-badge"', html)
         self.assertNotIn("记忆已注入", html)
 
+    def test_curated_memory_synthetic_profile_is_labeled_as_summary_not_injected(self):
+        sections = {section: [] for section in overview_curated_memory.SECTION_ORDER}
+        sections[overview_curated_memory.SECTION_USER_PROFILE] = [
+            {
+                "section": overview_curated_memory.SECTION_USER_PROFILE,
+                "title": "Recurring work profile",
+                "value_note": "Recurring work appears across OpenRelix and Douyin.",
+                "injection_policy": "global_context",
+                "diagnostics": ["synthetic"],
+            }
+        ]
+
+        html = build_overview.make_curated_memory_panel_body(
+            {
+                "schema_version": 1,
+                "source": "registry/memory_entries.jsonl",
+                "model_calls": 0,
+                "entry_count": 0,
+                "sections": sections,
+                "diagnostics": {},
+                "artifact": {},
+            }
+        )
+
+        self.assertIn("Recurring work profile", html)
+        self.assertIn("自动汇总", html)
+        self.assertIn("is-synthetic", html)
+        self.assertNotIn("记忆已注入", html)
+
     def test_runtime_language_config_persists_and_normalizes(self):
         self.assertEqual(asset_runtime.normalize_language("zh-CN"), "zh")
         self.assertEqual(asset_runtime.normalize_language("english"), "en")

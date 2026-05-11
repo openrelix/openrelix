@@ -90,6 +90,11 @@ SUMMARY_DEDUPE_STOPWORDS = {
 SECTION_PREFERENCE = "User preferences"
 SECTION_TIPS = "General Tips"
 SECTION_PROFILE = "User Profile"
+PROFILE_LIKE_PATTERN = re.compile(
+    r"\b(user profile|work profile|working style|works across)\b"
+    r"|(?:用户画像|偏好画像|工作画像|工作方式|工作领域)",
+    re.IGNORECASE,
+)
 
 
 @dataclass
@@ -723,8 +728,64 @@ def unique_personal_memory_context_labels(items, limit=4):
     return labels
 
 
+def join_profile_context_labels(labels):
+    labels = [collapse_whitespace(label) for label in labels or [] if collapse_whitespace(label)]
+    if not labels:
+        return ""
+    if LANGUAGE == "zh":
+        return "、".join(labels)
+    if len(labels) == 1:
+        return labels[0]
+    if len(labels) == 2:
+        return "{} and {}".format(labels[0], labels[1])
+    return "{}, and {}".format(", ".join(labels[:-1]), labels[-1])
+
+
+def personal_memory_item_is_profile(item):
+    memory_type = str(item.memory_type or "").lower()
+    if memory_type == "profile":
+        return True
+    return bool(PROFILE_LIKE_PATTERN.search("{} {}".format(item.title, item.value_note)))
+
+
 def generate_profile_paragraphs_from_personal_memory(items):
-    return []
+    explicit_profiles = [
+        personal_memory_bullet_text(item)
+        for item in items or []
+        if personal_memory_item_is_global_context(item) and personal_memory_item_is_profile(item)
+    ]
+    explicit_profiles = [item for item in dedupe_preserve_order(explicit_profiles) if item]
+    if explicit_profiles:
+        return explicit_profiles[:1]
+
+    project_labels = unique_personal_memory_context_labels(
+        [item for item in items or [] if personal_memory_item_is_project_context(item)],
+        limit=4,
+    )
+    if len(project_labels) < 2:
+        return []
+
+    context_label = join_profile_context_labels(project_labels)
+    if not context_label:
+        return []
+    return [
+        localized(
+            "用户反复在{}等上下文间工作；先应用全局稳定偏好和操作规则，再按具体项目工作手册执行。".format(
+                context_label
+            ),
+            "Recurring work spans {}. Apply global stable preferences and operating rules before project-specific playbooks.".format(
+                context_label
+            ),
+        )
+    ]
+
+
+def profile_match_texts_from_personal_memory(items):
+    return [
+        personal_memory_bullet_text(item)
+        for item in items or []
+        if personal_memory_item_is_global_context(item) and personal_memory_item_is_profile(item)
+    ]
 
 
 def build_profile_lines(personal_memory_items, token_budget):
@@ -825,9 +886,10 @@ def render_with_budgets(personal_memory_items, budget):
     )
     selected_personal_match_texts = [
         rendered_summary_line_match_text(line)
-        for line in (preference_lines + tip_lines)
+        for line in (profile_lines + preference_lines + tip_lines)
         if rendered_summary_line_match_text(line)
     ]
+    selected_personal_match_texts.extend(profile_match_texts_from_personal_memory(personal_memory_items))
     global_personal_memory_lines, _, _ = build_personal_memory_lines(
         global_memory_items,
         global_memory_tokens,
