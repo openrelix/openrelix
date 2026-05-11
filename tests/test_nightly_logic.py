@@ -1181,6 +1181,193 @@ class NightlyLogicTests(unittest.TestCase):
         self.assertEqual(payload["token_usage"]["today_total_tokens"], 120)
         start_refresh.assert_called_once()
 
+    def test_token_live_cache_keeps_provider_entries_separate(self):
+        def result(provider, total_tokens):
+            return {
+                "available": True,
+                "provider": provider,
+                "provider_label": token_fetcher.provider_display_name(provider),
+                "window_days": 30,
+                "range_start": "2026-04-12",
+                "range_end": "2026-05-11",
+                "payload": {
+                    "daily": [
+                        {
+                            "date": "2026-05-11",
+                            "provider": provider,
+                            "inputTokens": total_tokens,
+                            "cachedInputTokens": 0,
+                            "outputTokens": 0,
+                            "reasoningOutputTokens": 0,
+                            "totalTokens": total_tokens,
+                            "costUSD": 1.0,
+                        }
+                    ]
+                },
+                "error": "",
+            }
+
+        all_result = result("all", 300)
+        all_result["provider_results"] = {
+            "codex": result("codex", 100),
+            "claude": result("claude", 200),
+        }
+
+        with TemporaryDirectory() as tmpdir:
+            cache_path = Path(tmpdir) / "token-live-cache.json"
+            old_cache_path = token_live_server.CACHE_PATH
+            token_live_server.CACHE_PATH = cache_path
+            try:
+                token_live_server.write_cache(
+                    token_live_server.build_token_payload_from_result(
+                        all_result,
+                        30,
+                        "all",
+                        start_date="2026-04-12",
+                        end_date="2026-05-11",
+                    )
+                )
+                token_live_server.write_cache(
+                    token_live_server.build_token_payload_from_result(
+                        result("claude", 200),
+                        3,
+                        "claude",
+                        start_date="2026-05-09",
+                        end_date="2026-05-11",
+                    )
+                )
+                cached = token_live_server.load_cache()
+            finally:
+                token_live_server.CACHE_PATH = old_cache_path
+
+        self.assertEqual(cached["version"], 2)
+        self.assertIn("all|2026-04-12|2026-05-11", cached["entries"])
+        self.assertIn("claude|2026-04-12|2026-05-11", cached["entries"])
+        all_payload = token_live_server.build_payload_from_cache(
+            cached,
+            7,
+            "all",
+            start_date="2026-05-05",
+            end_date="2026-05-11",
+        )
+        claude_payload = token_live_server.build_payload_from_cache(
+            cached,
+            3,
+            "claude",
+            start_date="2026-05-09",
+            end_date="2026-05-11",
+        )
+
+        self.assertIsNotNone(all_payload)
+        self.assertEqual(all_payload["provider"], "all")
+        self.assertEqual(all_payload["token_usage"]["today_total_tokens"], 300)
+        self.assertIsNotNone(claude_payload)
+        self.assertEqual(claude_payload["provider"], "claude")
+        self.assertEqual(claude_payload["token_usage"]["today_total_tokens"], 200)
+
+    def test_token_live_cache_uses_report_cache_when_live_slot_is_different_provider(self):
+        def result(provider, total_tokens):
+            return {
+                "available": True,
+                "provider": provider,
+                "provider_label": token_fetcher.provider_display_name(provider),
+                "window_days": 30,
+                "range_start": "2026-04-12",
+                "range_end": "2026-05-11",
+                "payload": {
+                    "daily": [
+                        {
+                            "date": "2026-05-11",
+                            "provider": provider,
+                            "inputTokens": total_tokens,
+                            "cachedInputTokens": 0,
+                            "outputTokens": 0,
+                            "reasoningOutputTokens": 0,
+                            "totalTokens": total_tokens,
+                            "costUSD": 1.0,
+                        }
+                    ]
+                },
+                "error": "",
+            }
+
+        all_result = result("all", 300)
+        all_result["provider_results"] = {
+            "codex": result("codex", 100),
+            "claude": result("claude", 200),
+        }
+
+        with TemporaryDirectory() as tmpdir:
+            cache_path = Path(tmpdir) / "token-live-cache.json"
+            report_cache_path = Path(tmpdir) / "token-usage-cache.json"
+            report_cache_path.write_text(json.dumps(all_result), encoding="utf-8")
+            cache_path.write_text(
+                json.dumps(
+                    token_live_server.build_token_payload_from_result(
+                        result("claude", 200),
+                        3,
+                        "claude",
+                        start_date="2026-05-09",
+                        end_date="2026-05-11",
+                    )
+                ),
+                encoding="utf-8",
+            )
+            old_cache_path = token_live_server.CACHE_PATH
+            old_report_cache_path = token_live_server.REPORT_TOKEN_CACHE_PATH
+            token_live_server.CACHE_PATH = cache_path
+            token_live_server.REPORT_TOKEN_CACHE_PATH = report_cache_path
+            try:
+                cached = token_live_server.load_cache()
+            finally:
+                token_live_server.CACHE_PATH = old_cache_path
+                token_live_server.REPORT_TOKEN_CACHE_PATH = old_report_cache_path
+
+        self.assertIn("claude|2026-04-12|2026-05-11", cached["entries"])
+        self.assertIn("all|2026-04-12|2026-05-11", cached["entries"])
+        all_payload = token_live_server.build_payload_from_cache(
+            cached,
+            7,
+            "all",
+            start_date="2026-05-05",
+            end_date="2026-05-11",
+        )
+
+        self.assertIsNotNone(all_payload)
+        self.assertEqual(all_payload["provider"], "all")
+        self.assertEqual(all_payload["token_usage"]["today_total_tokens"], 300)
+
+    def test_token_live_background_refresh_does_not_wait_for_fetch_lock(self):
+        started = token_live_server.threading.Event()
+        release = token_live_server.threading.Event()
+
+        def fake_refresh(*args, **kwargs):
+            started.set()
+            release.wait(2)
+            return {}
+
+        old_in_flight = set(token_live_server.CACHE_REFRESH_IN_FLIGHT)
+        token_live_server.CACHE_REFRESH_IN_FLIGHT.clear()
+        try:
+            with token_live_server.FETCH_LOCK, mock.patch.object(
+                token_live_server,
+                "refresh_token_cache",
+                side_effect=fake_refresh,
+            ):
+                self.assertTrue(
+                    token_live_server.start_token_cache_refresh_async(
+                        7,
+                        "all",
+                        start_date="2026-05-05",
+                        end_date="2026-05-11",
+                    )
+                )
+                self.assertTrue(started.wait(1))
+        finally:
+            release.set()
+            token_live_server.CACHE_REFRESH_IN_FLIGHT.clear()
+            token_live_server.CACHE_REFRESH_IN_FLIGHT.update(old_in_flight)
+
     def test_token_resolver_does_not_fall_back_to_mismatched_cache(self):
         cached = {
             "available": True,

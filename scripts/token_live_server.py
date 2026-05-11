@@ -48,11 +48,13 @@ PATHS = get_runtime_paths()
 LANGUAGE = get_runtime_language(PATHS)
 RUNTIME_DIR = PATHS.runtime_dir
 CACHE_PATH = RUNTIME_DIR / "token-live-cache.json"
+REPORT_TOKEN_CACHE_PATH = PATHS.reports_dir / "token-usage-cache.json"
 CACHE_TTL_SECONDS = 90
 CACHE_REUSE_SECONDS = 30 * 24 * 60 * 60
 FETCH_LOCK = threading.Lock()
 CACHE_REFRESH_LOCK = threading.Lock()
 CACHE_REFRESH_IN_FLIGHT = set()
+CACHE_WRITE_LOCK = threading.Lock()
 REFRESH_LOCK = threading.RLock()
 
 OPENRELIX_CLI = PATHS.repo_root / "scripts" / "openrelix.py"
@@ -534,16 +536,18 @@ def start_update_async():
 
 
 def load_cache():
+    payload = None
     if not CACHE_PATH.exists():
-        return None
-    try:
-        return json.loads(CACHE_PATH.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return None
-
-
-def write_cache(payload):
-    atomic_write_json(CACHE_PATH, payload)
+        payload = None
+    else:
+        try:
+            payload = json.loads(CACHE_PATH.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            payload = None
+    report_entry = load_report_token_cache_entry()
+    if report_entry:
+        return merge_cache_entries(payload, [report_entry])
+    return payload
 
 
 def cached_ccusage_result(payload):
@@ -551,6 +555,95 @@ def cached_ccusage_result(payload):
         return None
     result = payload.get("ccusage_result")
     return result if isinstance(result, dict) else None
+
+
+def cache_entry_key(payload):
+    ccusage_result = cached_ccusage_result(payload) or {}
+    provider = normalize_token_provider(ccusage_result.get("provider") or payload.get("provider"))
+    range_start = str(ccusage_result.get("range_start") or payload.get("range_start") or "")
+    range_end = str(ccusage_result.get("range_end") or payload.get("range_end") or "")
+    return "|".join([provider, range_start, range_end])
+
+
+def merge_cache_entries(payload, extra_entries=()):
+    entries = {
+        cache_entry_key(entry): entry
+        for entry in cache_entries(payload)
+        if cache_entry_key(entry)
+    }
+    for entry in extra_entries:
+        key = cache_entry_key(entry)
+        if not key:
+            continue
+        existing = entries.get(key)
+        if not existing or float(entry.get("_cached_at_epoch") or 0) >= float(existing.get("_cached_at_epoch") or 0):
+            entries[key] = entry
+    if not entries:
+        return payload
+    updated_at_epoch = max(float(entry.get("_cached_at_epoch") or 0) for entry in entries.values())
+    return {
+        "version": 2,
+        "updated_at_epoch": updated_at_epoch,
+        "entries": entries,
+    }
+
+
+def cache_entries(payload):
+    if not isinstance(payload, dict):
+        return []
+    entries = payload.get("entries")
+    if isinstance(entries, dict):
+        return [entry for entry in entries.values() if isinstance(entry, dict)]
+    if cached_ccusage_result(payload):
+        return [payload]
+    return []
+
+
+def load_report_token_cache_entry(cache_path=None):
+    path = cache_path or REPORT_TOKEN_CACHE_PATH
+    try:
+        ccusage_result = json.loads(path.read_text(encoding="utf-8"))
+        cached_at_epoch = path.stat().st_mtime
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(ccusage_result, dict) or not ccusage_result.get("available"):
+        return None
+    provider = normalize_token_provider(ccusage_result.get("provider"))
+    return {
+        "ok": True,
+        "stale": False,
+        "error": ccusage_result.get("error", ""),
+        "window_days": ccusage_result.get("window_days", CCUSAGE_WINDOW_DAYS),
+        "provider": provider,
+        "group_by": "day",
+        "range_start": ccusage_result.get("range_start", ""),
+        "range_end": ccusage_result.get("range_end", ""),
+        "served_from_cache": True,
+        "ccusage_result": ccusage_result,
+        "_cached_at_epoch": cached_at_epoch,
+    }
+
+
+def write_cache(payload):
+    if not isinstance(payload, dict):
+        return
+    with CACHE_WRITE_LOCK:
+        existing_entries = {
+            cache_entry_key(entry): entry
+            for entry in cache_entries(load_cache())
+            if cache_entry_key(entry)
+        }
+        key = cache_entry_key(payload)
+        if key:
+            existing_entries[key] = payload
+        atomic_write_json(
+            CACHE_PATH,
+            {
+                "version": 2,
+                "updated_at_epoch": time.time(),
+                "entries": existing_entries,
+            },
+        )
 
 
 def cache_age_seconds(payload):
@@ -603,7 +696,7 @@ def build_token_payload_from_result(
     return payload
 
 
-def build_payload_from_cache(payload, window_days, provider, start_date=None, end_date=None, group_by="day"):
+def build_payload_from_cache_entry(payload, window_days, provider, start_date=None, end_date=None, group_by="day"):
     ccusage_result = cached_ccusage_result(payload)
     if not token_result_covers_request(
         ccusage_result,
@@ -627,6 +720,34 @@ def build_payload_from_cache(payload, window_days, provider, start_date=None, en
         stale=age >= CACHE_TTL_SECONDS,
         cached_at_epoch=payload.get("_cached_at_epoch"),
     )
+
+
+def build_payload_from_cache(payload, window_days, provider, start_date=None, end_date=None, group_by="day"):
+    matches = [
+        candidate
+        for candidate in (
+            build_payload_from_cache_entry(
+                entry,
+                window_days,
+                provider,
+                start_date=start_date,
+                end_date=end_date,
+                group_by=group_by,
+            )
+            for entry in cache_entries(payload)
+        )
+        if candidate
+    ]
+    if not matches:
+        return None
+    matches.sort(
+        key=lambda item: (
+            0 if item.get("stale") else 1,
+            float(item.get("_cached_at_epoch") or 0),
+        ),
+        reverse=True,
+    )
+    return matches[0]
 
 
 def token_cache_refresh_key(window_days, provider, start_date=None, end_date=None):
@@ -688,14 +809,13 @@ def start_token_cache_refresh_async(window_days, provider, start_date=None, end_
 
     def worker():
         try:
-            with FETCH_LOCK:
-                refresh_token_cache(
-                    window_days,
-                    provider,
-                    start_date=start_date,
-                    end_date=end_date,
-                    group_by=group_by,
-                )
+            refresh_token_cache(
+                window_days,
+                provider,
+                start_date=start_date,
+                end_date=end_date,
+                group_by=group_by,
+            )
         finally:
             with CACHE_REFRESH_LOCK:
                 CACHE_REFRESH_IN_FLIGHT.discard(key)
@@ -720,16 +840,17 @@ def cache_matches_request(
 ):
     if not payload:
         return False
-    ccusage_result = cached_ccusage_result(payload)
-    if token_result_covers_request(
-        ccusage_result,
-        provider,
-        window_days,
-        start_date=start_date,
-        end_date=end_date,
-        now_func=now_func,
-    ):
-        return True
+    for entry in cache_entries(payload):
+        ccusage_result = cached_ccusage_result(entry)
+        if token_result_covers_request(
+            ccusage_result,
+            provider,
+            window_days,
+            start_date=start_date,
+            end_date=end_date,
+            now_func=now_func,
+        ):
+            return True
     if (
         normalize_token_provider(payload.get("provider")) != normalize_token_provider(provider)
         or normalize_token_group_by(payload.get("group_by")) != normalize_token_group_by(group_by)
