@@ -30,6 +30,7 @@ from asset_runtime import (
     LEGACY_APP_SLUGS,
     atomic_write_json,
     atomic_write_text,
+    build_claude_cli_env,
     ensure_state_layout,
     get_activity_host,
     get_claude_env_file,
@@ -2111,11 +2112,10 @@ def load_claude_env_file(path):
 
 
 def build_doctor_claude_env():
-    env = dict(os.environ)
-    env.update(load_claude_env_file(get_claude_env_file(PATHS)))
-    env.setdefault("CLAUDE_HOME", str(PATHS.claude_home))
-    env.setdefault("CLAUDE_CONFIG_DIR", str(PATHS.claude_home))
-    return env
+    return build_claude_cli_env(
+        claude_home=PATHS.claude_home,
+        env_file_values=load_claude_env_file(get_claude_env_file(PATHS)),
+    )
 
 
 def build_doctor_claude_command():

@@ -13,6 +13,7 @@ from functools import lru_cache
 from pathlib import Path
 
 from asset_runtime import (
+    build_claude_cli_env,
     default_claude_binary,
     get_claude_env_file,
     get_claude_settings,
@@ -131,11 +132,11 @@ def _load_env_file(path):
 
 def build_claude_desktop_resume_env(paths=None, base_env=None):
     paths = paths or get_runtime_paths()
-    env = dict(base_env or os.environ)
-    env.update(_load_env_file(get_claude_env_file(paths)))
-    env.setdefault("CLAUDE_HOME", str(paths.claude_home))
-    env.setdefault("CLAUDE_CONFIG_DIR", str(paths.claude_home))
-    return env
+    return build_claude_cli_env(
+        base_env=base_env,
+        claude_home=paths.claude_home,
+        env_file_values=_load_env_file(get_claude_env_file(paths)),
+    )
 
 
 def build_claude_desktop_resume_command(resume_id, paths=None, claude_bin=None):

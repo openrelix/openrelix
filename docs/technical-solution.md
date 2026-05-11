@@ -91,7 +91,7 @@ openrelix_overview/
 
 ### 1. Host adapter 层
 
-AI host 自己的用户级目录、history、session 和 native memory 由各 host adapter 负责映射。Codex 适配器由 `CODEX_HOME` 决定用户级目录，默认是 `~/.codex`；默认 `auto` 先通过 `codex app-server` 读取 threads，失败时再读取其中的 `history.jsonl` 和 `sessions/**/*.jsonl`。Claude Code 适配器由 `CLAUDE_HOME` / `CLAUDE_CONFIG_DIR` 决定用户级目录，默认读取 `projects/**/*.jsonl` 和 `history.jsonl`。raw window 会写入 `ai_host=codex|claude`，面板按 host 展示。
+AI host 自己的用户级目录、history、session 和 native memory 由各 host adapter 负责映射。Codex 适配器由 `CODEX_HOME` 决定用户级目录，默认是 `~/.codex`；默认 `auto` 先通过 `codex app-server` 读取 threads，失败时再读取其中的 `history.jsonl` 和 `sessions/**/*.jsonl`。Claude Code 适配器由 `CLAUDE_HOME` 决定用户级数据目录，默认读取 `projects/**/*.jsonl` 和 `history.jsonl`；`CLAUDE_CONFIG_DIR` 只作为显式 env-file 配置传给 Claude CLI，不由 OpenRelix 自动注入。raw window 会写入 `ai_host=codex|claude`，面板按 host 展示。
 
 默认安装开启本地个人记忆，并把压缩后的 bounded summary 写入启用 host context 里的 OpenRelix 受控块：Codex `memory_summary.md` 和 Claude Code `CLAUDE.md`。普通刷新和 `openrelix context sync` 现在走同一条统一编译路径：全局记忆和项目记忆都会按热度进入候选，其中全局预算是配置上限的 10%，项目预算是 30%。完整结构化记录和统一编译产物仍保留在 state root，例如 `runtime/host-context/memory_summary.md`；默认不把个人记忆写进项目仓库，避免 git 噪音和泄露风险。同步时只更新 OpenRelix 自己的受控块，保留 Codex / Claude Code 原生内容；面板展示 host 原生记忆时会过滤 OpenRelix 注入块，避免把个人记忆登记册误标成 Codex/Claude 原生内容。需要严格隔离时使用 `--record-memory-only` 或 `--no-memory-summary`。
 
@@ -222,7 +222,7 @@ state root 的主要目录：
 模型调用方式：
 
 - 默认 `model_cli=codex` 时使用 `codex exec --ephemeral --model <codex_model>` 和隔离的 nightly `CODEX_HOME`
-- `model_cli=claude` 时使用 `claude -p --output-format json --json-schema ...`，`CLAUDE_HOME` / `CLAUDE_CONFIG_DIR` 指向配置的 Claude Code home
+- `model_cli=claude` 时使用 `claude -p --output-format json --json-schema ...`，`CLAUDE_HOME` 指向配置的 Claude Code 数据目录；OpenRelix 不自动设置 `CLAUDE_CONFIG_DIR`，以免改变 Claude CLI 的登录态位置
 - 默认 `codex_model` 是 `gpt-5.4-mini`，默认 `claude_model` 是 `sonnet`；`openrelix models` 通过 `codex debug models` 读取当前本机 Codex catalog，`openrelix config --codex-model <model>`、`openrelix config --model-cli claude --claude-model <model>` 负责切换
 - 通过 `templates/nightly-summary-schema.json` 约束输出 JSON
 - 在 prompt 前加安全前缀，声明这是纯整理任务，不允许读额外文件、调用 shell、web、MCP 或 patch

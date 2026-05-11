@@ -559,10 +559,28 @@ def default_codex_binary() -> str:
 
 
 def default_claude_home() -> Path:
-    explicit = os.environ.get("CLAUDE_HOME") or os.environ.get("CLAUDE_CONFIG_DIR")
+    explicit = os.environ.get("CLAUDE_HOME")
     if explicit:
         return _expand_path(explicit)
     return Path.home() / ".claude"
+
+
+def build_claude_cli_env(base_env=None, *, claude_home=None, env_file_values=None) -> dict:
+    """Build env for Claude CLI calls without inventing a config/auth root.
+
+    OpenRelix uses CLAUDE_HOME as the data home for projects, memory, and logs.
+    Claude Code's CLAUDE_CONFIG_DIR can change where the CLI looks for its
+    login/config file, so only keep it when the user explicitly supplied it via
+    the OpenRelix Claude env file.
+    """
+    env = dict(base_env or os.environ)
+    explicit_env_values = dict(env_file_values or {})
+    env.update(explicit_env_values)
+    if claude_home is not None:
+        env.setdefault("CLAUDE_HOME", str(claude_home))
+    if "CLAUDE_CONFIG_DIR" not in explicit_env_values:
+        env.pop("CLAUDE_CONFIG_DIR", None)
+    return env
 
 
 def default_claude_binary() -> str:
@@ -717,6 +735,7 @@ def sanitize_codex_exec_config(text: str) -> str:
     """Keep only config needed for isolated non-interactive Codex exec runs."""
     kept_lines = []
     current_section_allowed = False
+    in_section = False
     for raw_line in str(text or "").splitlines():
         stripped = raw_line.strip()
         if not stripped or stripped.startswith("#"):
@@ -726,6 +745,7 @@ def sanitize_codex_exec_config(text: str) -> str:
 
         section_name = _toml_section_name(stripped)
         if section_name is not None:
+            in_section = True
             current_section_allowed = _codex_exec_config_section_allowed(section_name)
             if current_section_allowed:
                 if kept_lines and kept_lines[-1] != "":
@@ -737,7 +757,11 @@ def sanitize_codex_exec_config(text: str) -> str:
             kept_lines.append(raw_line)
             continue
 
-        if not stripped.startswith("[") and _toml_assignment_key(stripped) in CODEX_EXEC_CONFIG_TOP_LEVEL_KEYS:
+        if (
+            not in_section
+            and not stripped.startswith("[")
+            and _toml_assignment_key(stripped) in CODEX_EXEC_CONFIG_TOP_LEVEL_KEYS
+        ):
             kept_lines.append(raw_line)
 
     while kept_lines and kept_lines[-1] == "":

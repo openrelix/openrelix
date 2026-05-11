@@ -1153,6 +1153,30 @@ class NightlyLogicTests(unittest.TestCase):
 
         self.assertEqual(parsed["date"], "2026-05-04")
 
+    def test_build_claude_cli_env_drops_inherited_config_dir(self):
+        env = asset_runtime.build_claude_cli_env(
+            {
+                "CLAUDE_HOME": "/tmp/claude-data",
+                "CLAUDE_CONFIG_DIR": "/tmp/claude-data",
+                "PATH": "/usr/bin",
+            },
+            claude_home=Path("/tmp/claude-data"),
+        )
+
+        self.assertEqual(env["CLAUDE_HOME"], "/tmp/claude-data")
+        self.assertNotIn("CLAUDE_CONFIG_DIR", env)
+        self.assertEqual(env["PATH"], "/usr/bin")
+
+    def test_build_claude_cli_env_keeps_explicit_env_file_config_dir(self):
+        env = asset_runtime.build_claude_cli_env(
+            {"CLAUDE_CONFIG_DIR": "/tmp/inherited"},
+            claude_home=Path("/tmp/claude-data"),
+            env_file_values={"CLAUDE_CONFIG_DIR": "/tmp/explicit-config"},
+        )
+
+        self.assertEqual(env["CLAUDE_HOME"], "/tmp/claude-data")
+        self.assertEqual(env["CLAUDE_CONFIG_DIR"], "/tmp/explicit-config")
+
     def test_default_claude_binary_prefers_user_local_binary(self):
         with TemporaryDirectory() as tmpdir:
             home = Path(tmpdir)
@@ -1229,6 +1253,26 @@ trust_level = "trusted"
         self.assertNotIn("[features]", sanitized)
         self.assertNotIn("[plugins", sanitized)
         self.assertNotIn("[projects", sanitized)
+
+    def test_sanitize_codex_exec_config_ignores_profile_model_provider(self):
+        source_config = """
+model_provider = "chatgpt_http"
+
+[profiles.gpt55_stable]
+model = "gpt-5.5"
+model_provider = "chatgpt_http"
+
+[model_providers.chatgpt_http]
+name = "ChatGPT HTTP"
+base_url = "https://chatgpt.example/backend-api/codex"
+wire_api = "responses"
+"""
+
+        sanitized = asset_runtime.sanitize_codex_exec_config(source_config)
+
+        self.assertEqual(sanitized.count('model_provider = "chatgpt_http"'), 1)
+        self.assertNotIn("[profiles.gpt55_stable]", sanitized)
+        self.assertIn("[model_providers.chatgpt_http]", sanitized)
 
     def test_nightly_output_schema_is_strict_for_codex_exec(self):
         schema = json.loads((ROOT / "templates" / "nightly-summary-schema.json").read_text(encoding="utf-8"))

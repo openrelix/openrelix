@@ -79,7 +79,7 @@ External state root
 | `AI_ASSET_STATE_DIR` | 覆盖 state root |
 | `CODEX_HOME` / `CODEX_BIN` | 覆盖 Codex home 和 binary |
 | `OPENRELIX_CODEX_HOMES` / `OPENRELIX_EXTRA_CODEX_HOMES` | 额外 Codex home 列表，逗号分隔；运行中的 Codex desktop profile 会在 macOS 上自动探测 |
-| `CLAUDE_HOME` / `CLAUDE_CONFIG_DIR` / `CLAUDE_BIN` | 覆盖 Claude Code home 和 binary |
+| `CLAUDE_HOME` / `CLAUDE_BIN` | 覆盖 Claude Code data home 和 binary；Claude CLI auth/config env 通过 `--claude-env-file` 显式传入 |
 | `AI_ASSET_LANGUAGE` | `zh` / `en`，控制本地输出和报告语言 |
 | `AI_ASSET_MEMORY_MODE` | `integrated` / `local-only` / `off` |
 | `OPENRELIX_ACTIVITY_SOURCE` | `history` / `app-server` / `auto` |
@@ -200,7 +200,7 @@ scripts/build_overview.py
 ### 修改 host adapter
 
 1. 先确认是 Codex、Claude Code，还是未来 host 的新 adapter。
-2. host 原生目录只能通过 `CODEX_HOME`、`CLAUDE_HOME`、`CLAUDE_CONFIG_DIR` 或新增可配置变量解析。
+2. host 原生目录只能通过 `CODEX_HOME`、`CLAUDE_HOME` 或新增可配置变量解析；不要把 Claude CLI auth/config 目录和 Claude data home 混用。
 3. 采集 raw window 时保留 `ai_host`、cwd、thread/session id 等最小定位字段。
 4. 不把未脱敏原始 transcript 写入 repo、docs、fixtures 或 release artifact。
 5. 对外文档只写通用路径形态和可配置方式，不写个人机器路径。

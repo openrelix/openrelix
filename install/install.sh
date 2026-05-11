@@ -6,7 +6,7 @@ REPO_ROOT="${SCRIPT_DIR:h}"
 PYTHON_BIN="${PYTHON_BIN:-}"
 CODEX_HOME="${CODEX_HOME:-$HOME/.codex}"
 CODEX_BIN="${CODEX_BIN:-}"
-CLAUDE_HOME="${CLAUDE_HOME:-${CLAUDE_CONFIG_DIR:-$HOME/.claude}}"
+CLAUDE_HOME="${CLAUDE_HOME:-$HOME/.claude}"
 CLAUDE_BIN="${CLAUDE_BIN:-}"
 CLAUDE_MODEL="${OPENRELIX_CLAUDE_MODEL:-${AI_ASSET_CLAUDE_MODEL:-auto}}"
 CLAUDE_SETTINGS="${OPENRELIX_CLAUDE_SETTINGS:-${AI_ASSET_CLAUDE_SETTINGS:-}}"
@@ -104,7 +104,9 @@ Options:
   --codex-home PATH             Override CODEX_HOME. Default: ~/.codex
   --codex-bin PATH              Override the Codex CLI binary used by launchd jobs.
                                 If omitted, resolved from PATH plus common npm/volta/nvm/brew locations.
-  --claude-home PATH            Override CLAUDE_HOME / CLAUDE_CONFIG_DIR. Default: ~/.claude
+  --claude-home PATH            Override Claude Code data home. Default: ~/.claude
+                                This does not override Claude CLI auth/config; use --claude-env-file
+                                for explicit CLAUDE_CONFIG_DIR or provider env.
   --claude-bin PATH             Override the Claude Code CLI binary used by model backfill jobs.
   --claude-model MODEL          Claude model or alias for OpenRelix internal claude -p calls.
                                 Default: auto, which lets Claude Code choose its configured provider/model.
@@ -1190,7 +1192,6 @@ fi
 export AI_ASSET_STATE_DIR="$STATE_DIR"
 export CODEX_HOME="$CODEX_HOME"
 export CLAUDE_HOME="$CLAUDE_HOME"
-export CLAUDE_CONFIG_DIR="$CLAUDE_HOME"
 export CLAUDE_BIN="$CLAUDE_BIN"
 export PYTHON_BIN="$PYTHON_BIN"
 export AI_ASSET_LANGUAGE="$LANGUAGE"
@@ -1463,10 +1464,9 @@ learn_memory_command() {
       printf 'openrelix review --stage preliminary --learn-window-days 0 --jobs %s\n' "$INSTALL_LEARN_JOBS"
       return
     fi
-    printf 'AI_ASSET_STATE_DIR=%q CODEX_HOME=%q CLAUDE_HOME=%q CLAUDE_CONFIG_DIR=%q CLAUDE_BIN=%q AI_ASSET_LANGUAGE=%q OPENRELIX_ACTIVITY_SOURCE=%q OPENRELIX_ACTIVITY_HOST=%q OPENRELIX_MODEL_CLI=%q OPENRELIX_CLAUDE_MODEL=%q OPENRELIX_CLAUDE_SETTINGS=%q OPENRELIX_CLAUDE_ENV_FILE=%q %q %q review --stage preliminary --learn-window-days 0 --jobs %s\n' \
+    printf 'AI_ASSET_STATE_DIR=%q CODEX_HOME=%q CLAUDE_HOME=%q CLAUDE_BIN=%q AI_ASSET_LANGUAGE=%q OPENRELIX_ACTIVITY_SOURCE=%q OPENRELIX_ACTIVITY_HOST=%q OPENRELIX_MODEL_CLI=%q OPENRELIX_CLAUDE_MODEL=%q OPENRELIX_CLAUDE_SETTINGS=%q OPENRELIX_CLAUDE_ENV_FILE=%q %q %q review --stage preliminary --learn-window-days 0 --jobs %s\n' \
       "$STATE_DIR" \
       "$CODEX_HOME" \
-      "$CLAUDE_HOME" \
       "$CLAUDE_HOME" \
       "$CLAUDE_BIN" \
       "$LANGUAGE" \
@@ -1485,10 +1485,9 @@ learn_memory_command() {
     printf 'openrelix backfill --days %s --stage preliminary --learn-window-days 0 --jobs %s\n' "$LEARNING_REFRESH_WINDOW_DAYS" "$INSTALL_LEARN_JOBS"
     return
   fi
-  printf 'AI_ASSET_STATE_DIR=%q CODEX_HOME=%q CLAUDE_HOME=%q CLAUDE_CONFIG_DIR=%q CLAUDE_BIN=%q AI_ASSET_LANGUAGE=%q OPENRELIX_ACTIVITY_SOURCE=%q OPENRELIX_ACTIVITY_HOST=%q OPENRELIX_MODEL_CLI=%q OPENRELIX_CLAUDE_MODEL=%q OPENRELIX_CLAUDE_SETTINGS=%q OPENRELIX_CLAUDE_ENV_FILE=%q %q %q backfill --days %s --stage preliminary --learn-window-days 0 --jobs %s\n' \
+  printf 'AI_ASSET_STATE_DIR=%q CODEX_HOME=%q CLAUDE_HOME=%q CLAUDE_BIN=%q AI_ASSET_LANGUAGE=%q OPENRELIX_ACTIVITY_SOURCE=%q OPENRELIX_ACTIVITY_HOST=%q OPENRELIX_MODEL_CLI=%q OPENRELIX_CLAUDE_MODEL=%q OPENRELIX_CLAUDE_SETTINGS=%q OPENRELIX_CLAUDE_ENV_FILE=%q %q %q backfill --days %s --stage preliminary --learn-window-days 0 --jobs %s\n' \
     "$STATE_DIR" \
     "$CODEX_HOME" \
-    "$CLAUDE_HOME" \
     "$CLAUDE_HOME" \
     "$CLAUDE_BIN" \
     "$LANGUAGE" \
@@ -1512,10 +1511,9 @@ deep_learn_memory_command() {
     printf 'openrelix backfill --days %s --stage final --learn-window-days %s --jobs %s --force\n' "$LEARNING_REFRESH_WINDOW_DAYS" "$LEARNING_REFRESH_WINDOW_DAYS" "$INSTALL_DEEP_LEARN_JOBS"
     return
   fi
-  printf 'AI_ASSET_STATE_DIR=%q CODEX_HOME=%q CLAUDE_HOME=%q CLAUDE_CONFIG_DIR=%q CLAUDE_BIN=%q AI_ASSET_LANGUAGE=%q OPENRELIX_ACTIVITY_SOURCE=%q OPENRELIX_ACTIVITY_HOST=%q OPENRELIX_MODEL_CLI=%q OPENRELIX_CLAUDE_MODEL=%q OPENRELIX_CLAUDE_SETTINGS=%q OPENRELIX_CLAUDE_ENV_FILE=%q %q %q backfill --days %s --stage final --learn-window-days %s --jobs %s --force\n' \
+  printf 'AI_ASSET_STATE_DIR=%q CODEX_HOME=%q CLAUDE_HOME=%q CLAUDE_BIN=%q AI_ASSET_LANGUAGE=%q OPENRELIX_ACTIVITY_SOURCE=%q OPENRELIX_ACTIVITY_HOST=%q OPENRELIX_MODEL_CLI=%q OPENRELIX_CLAUDE_MODEL=%q OPENRELIX_CLAUDE_SETTINGS=%q OPENRELIX_CLAUDE_ENV_FILE=%q %q %q backfill --days %s --stage final --learn-window-days %s --jobs %s --force\n' \
     "$STATE_DIR" \
     "$CODEX_HOME" \
-    "$CLAUDE_HOME" \
     "$CLAUDE_HOME" \
     "$CLAUDE_BIN" \
     "$LANGUAGE" \
@@ -1568,7 +1566,6 @@ ensure_memory_migration_marker() {
   AI_ASSET_STATE_DIR="$STATE_DIR" \
     CODEX_HOME="$CODEX_HOME" \
     CLAUDE_HOME="$CLAUDE_HOME" \
-    CLAUDE_CONFIG_DIR="$CLAUDE_HOME" \
     CLAUDE_BIN="$CLAUDE_BIN" \
     AI_ASSET_LANGUAGE="$LANGUAGE" \
     AI_ASSET_MEMORY_MODE="$MEMORY_MODE" \
@@ -1586,7 +1583,6 @@ mark_memory_migration_completed_after_learning() {
   AI_ASSET_STATE_DIR="$STATE_DIR" \
     CODEX_HOME="$CODEX_HOME" \
     CLAUDE_HOME="$CLAUDE_HOME" \
-    CLAUDE_CONFIG_DIR="$CLAUDE_HOME" \
     CLAUDE_BIN="$CLAUDE_BIN" \
     AI_ASSET_LANGUAGE="$LANGUAGE" \
     AI_ASSET_MEMORY_MODE="$MEMORY_MODE" \
@@ -1900,7 +1896,6 @@ run_post_install_shallow_learning() {
     AI_ASSET_STATE_DIR="$STATE_DIR" \
       CODEX_HOME="$CODEX_HOME" \
       CLAUDE_HOME="$CLAUDE_HOME" \
-      CLAUDE_CONFIG_DIR="$CLAUDE_HOME" \
       CLAUDE_BIN="$CLAUDE_BIN" \
       AI_ASSET_LANGUAGE="$LANGUAGE" \
       OPENRELIX_ACTIVITY_SOURCE="$ACTIVITY_SOURCE" \
@@ -1916,7 +1911,6 @@ run_post_install_shallow_learning() {
   AI_ASSET_STATE_DIR="$STATE_DIR" \
     CODEX_HOME="$CODEX_HOME" \
     CLAUDE_HOME="$CLAUDE_HOME" \
-    CLAUDE_CONFIG_DIR="$CLAUDE_HOME" \
     CLAUDE_BIN="$CLAUDE_BIN" \
     AI_ASSET_LANGUAGE="$LANGUAGE" \
     OPENRELIX_ACTIVITY_SOURCE="$ACTIVITY_SOURCE" \
@@ -1986,7 +1980,6 @@ run_post_install_deep_learning() {
   AI_ASSET_STATE_DIR="$STATE_DIR" \
     CODEX_HOME="$CODEX_HOME" \
     CLAUDE_HOME="$CLAUDE_HOME" \
-    CLAUDE_CONFIG_DIR="$CLAUDE_HOME" \
     CLAUDE_BIN="$CLAUDE_BIN" \
     AI_ASSET_LANGUAGE="$LANGUAGE" \
     OPENRELIX_ACTIVITY_SOURCE="$ACTIVITY_SOURCE" \
