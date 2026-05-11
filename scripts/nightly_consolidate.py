@@ -735,6 +735,8 @@ Organization principles:
 13. For each window summary, write window_title as a plain-language title under 100 characters. Do not reuse raw window IDs, paths, Markdown, or numbered question labels as the title. Then populate summary_pairs with 1 to many readable question/conclusion pairs. If a window contains multiple distinct questions and conclusions, aggregate related turns but keep each pair one-to-one and ordered from oldest to newest.
 14. If learning_context contains memory_feedback_examples, treat liked examples as the user's preferred memory granularity and downvoted examples as noise patterns to avoid. Do not copy their historical facts unless they also appear in today's input.
 15. global_context_memories is optional. Use it only when recent_window_learning shows a stable cross-context pattern about the user's working style, preferences, general tips, or lessons. Keep these entries repo-agnostic, avoid private raw details, and cite only source_window_ids that appear in recent_window_learning.window_samples, context_patterns.sample_window_ids, or batch_summaries.sample_window_ids. Leave it empty when the evidence is weak.
+16. day_summary must answer: what mainline work did the user actually accomplish today? Do not summarize isolated greetings, wording questions, UI nits, or command noise as the day's result unless they were part of a larger delivered outcome.
+17. next_actions must capture unfinished, interrupted, blocked, or explicitly deferred work. If the day has no real follow-up, keep next_actions empty rather than inventing one.
 
 Input data follows. This is a compact same-day view: each window conservatively clusters near-duplicate or variant prompt / conclusion text before it is shown to you.
 - In prompt_samples / conclusion_samples, a `[merged N similar items]` prefix means the sample represents N similar items.
@@ -769,6 +771,8 @@ Strictly base your output on these clusters. You may learn abstraction granulari
 13. 每个 window_summaries 项都要填写 window_title 和 summary_pairs。window_title 要用通俗易懂的话概括窗口主题，最好不超过 100 字；不要直接复用原始窗口 ID、路径、Markdown 或“问题1/问题2”这类编号标签当标题。summary_pairs 要聚合成 1 到多个可读的问题/结论对，同一组问题和结论必须一一对应，并按从旧到新的顺序排列。
 14. 如果 learning_context 里出现 memory_feedback_examples，把“有用”样例当作用户偏好的记忆粒度和风格，把“无用”样例当作噪声模式规避；不能把这些历史事实抄进今天的结果，除非当日输入也明确出现。
 15. global_context_memories 是可选字段。只有当 recent_window_learning 显示出稳定、跨上下文的用户工作方式、偏好、通用 tips 或经验时才填写；这些条目必须尽量仓库无关、避免私有原文细节，并且 source_window_ids 只能引用 recent_window_learning.window_samples、context_patterns.sample_window_ids 或 batch_summaries.sample_window_ids 中出现过的窗口 ID。证据不足就留空。
+16. day_summary 必须回答：用户今天真正围绕哪条主线做成了什么结果。不要把问候、措辞问题、局部 UI 小修、命令噪声当成一天的成果，除非它们明确属于一个更大的已交付结果。
+17. next_actions 必须记录未完成、中断、阻塞或用户明确延后的事情；没有真实待办就留空，不要编造。
 
 输入数据如下。注意：这是已经压缩过的当日视图；每个窗口会先把近重复、同类变体的 prompt / conclusion 做保守聚类，再提供给你。
 - prompt_samples / conclusion_samples 里，如果样本带有 `[合并N条同类项]` 前缀，表示这一条代表了 N 条相近内容。

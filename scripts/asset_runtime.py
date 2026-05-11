@@ -27,7 +27,8 @@ DEFAULT_ACTIVITY_HOST = "all"
 SUPPORTED_MODEL_CLIS = ("codex", "claude")
 DEFAULT_MODEL_CLI = "codex"
 SUPPORTED_HOST_CONTEXT_TARGETS = ("codex", "claude")
-DEFAULT_CODEX_MODEL = "gpt-5.4-mini"
+MINI_CODEX_MODEL = "gpt-5.4-mini"
+DEFAULT_CODEX_MODEL = "gpt-5.5"
 DEFAULT_CLAUDE_MODEL = "auto"
 DEFAULT_MEMORY_SUMMARY_MAX_TOKENS = 8000
 MIN_MEMORY_SUMMARY_MAX_TOKENS = 2000
@@ -122,10 +123,10 @@ HOST_CONTEXT_TARGET_ALIASES = {
     "claude_code_cli": "claude",
 }
 CODEX_MODEL_ALIASES = {
-    "mini": DEFAULT_CODEX_MODEL,
-    "gpt54mini": DEFAULT_CODEX_MODEL,
-    "gpt5.4mini": DEFAULT_CODEX_MODEL,
-    "gpt5.4min": DEFAULT_CODEX_MODEL,
+    "mini": MINI_CODEX_MODEL,
+    "gpt54mini": MINI_CODEX_MODEL,
+    "gpt5.4mini": MINI_CODEX_MODEL,
+    "gpt5.4min": MINI_CODEX_MODEL,
     "gpt5.4": "gpt-5.4",
     "gpt54": "gpt-5.4",
     "gpt5.5": "gpt-5.5",

@@ -493,7 +493,7 @@ class NightlyLogicTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             asset_runtime.normalize_claude_model("bad model", strict=True)
         self.assertEqual(asset_runtime.normalize_host_context_targets("codex,cc"), ["codex", "claude"])
-        self.assertEqual(asset_runtime.normalize_codex_model(None), "gpt-5.4-mini")
+        self.assertEqual(asset_runtime.normalize_codex_model(None), "gpt-5.5")
         self.assertEqual(asset_runtime.normalize_codex_model("gpt5.4mini"), "gpt-5.4-mini")
         self.assertEqual(asset_runtime.normalize_codex_model("gpt5.5"), "gpt-5.5")
         with self.assertRaises(ValueError):
@@ -7925,8 +7925,8 @@ Native Codex profile.
             self.assertEqual(command, [paths.codex_bin, "debug", "models"])
             self.assertEqual(run.call_args.kwargs["env"]["CODEX_HOME"], str(codex_home))
             payload = json.loads(stream.getvalue())
-            self.assertEqual(payload["configured_model"], "gpt-5.4-mini")
-            self.assertEqual(payload["recommended_default"], "gpt-5.4-mini")
+            self.assertEqual(payload["configured_model"], "gpt-5.5")
+            self.assertEqual(payload["recommended_default"], "gpt-5.5")
             self.assertEqual([item["slug"] for item in payload["models"]], ["gpt-5.5"])
             self.assertEqual(payload["models"][0]["supported_reasoning_levels"], ["low", "medium"])
             self.assertNotIn("base_instructions", payload["models"][0])

@@ -89,6 +89,8 @@ def validate_overview_data(data):
         "summary_term_views": list,
         "pipeline_status": dict,
         "token_usage": dict,
+        "daily_work_desk": dict,
+        "daily_work_desk_views": list,
         "window_overview": (dict, type(None)),
         "window_overview_views": list,
         "memory_registry": list,

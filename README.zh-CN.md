@@ -62,7 +62,7 @@ OpenRelix™ 和 openrelix™ 是项目维护者的商标。MIT License 授权�
 - Python 3.10+
 - Codex CLI，并且 `CODEX_HOME` 可写，默认是 `~/.codex`
 - 可选 Claude Code CLI，并且 `CLAUDE_HOME` / `CLAUDE_CONFIG_DIR` 可写，默认是 `~/.claude`；当你需要 Claude Code 窗口、Token、原生上下文或用 Claude 做模型回溯时启用。
-- 如果要使用模型学习刷新，需要当前配置的 `model_cli` 可用。默认走 Codex 的 `codex exec --model gpt-5.4-mini`；`--model-cli claude` 会改用 `claude -p --model <claude_model>`。OpenRelix 会为回溯、1 小时学习刷新和夜间总结显式传模型，不修改用户全局 Codex 或 Claude Code 默认模型。若 Codex 报 `401`、`Unauthorized` 或 `invalid_issuer`，先确认普通终端里 `codex exec` 可用；使用集体/代理配置时，`CODEX_HOME/auth.json` 和 `CODEX_HOME/config.toml` 需要一起保留，因为 `model_provider/base_url` 不在 `auth.json` 里；使用官方 OpenAI API key 时，再检查或清理错误的 `OPENAI_API_KEY`。
+- 如果要使用模型学习刷新，需要当前配置的 `model_cli` 可用。默认走 Codex 的 `codex exec --model gpt-5.5`；`--model-cli claude` 会改用 `claude -p --model <claude_model>`。OpenRelix 会为回溯、1 小时学习刷新和夜间总结显式传模型，不修改用户全局 Codex 或 Claude Code 默认模型。若 Codex 报 `401`、`Unauthorized` 或 `invalid_issuer`，先确认普通终端里 `codex exec` 可用；使用集体/代理配置时，`CODEX_HOME/auth.json` 和 `CODEX_HOME/config.toml` 需要一起保留，因为 `model_provider/base_url` 不在 `auth.json` 里；使用官方 OpenAI API key 时，再检查或清理错误的 `OPENAI_API_KEY`。
 
 Linux 和 Windows 是后续工作。部分底层 Python 脚本已经把路径做成可配置，但当前公开 installer 和后台自动化应按 macOS-only 理解。
 
@@ -380,13 +380,13 @@ openrelix models
 openrelix tokens --provider all
 openrelix tokens --provider codex
 openrelix tokens --provider cc
-openrelix config --codex-model gpt-5.4-mini
+openrelix config --codex-model gpt-5.5
 openrelix config --model-cli claude --claude-model sonnet
 openrelix config --activity-host all
 openrelix config --memory-summary-max-tokens 8000
 ```
 
-`openrelix models` 会通过 `codex debug models` 读取当前本机 Codex CLI 的模型 catalog，并只打印脱敏后的可选模型 ID。`openrelix tokens` 默认 `--provider all`，会合并 Codex 的 `@ccusage/codex` 和 Claude Code 的 `ccusage`；需要单独看某个 host 时传 `--provider codex` 或 `--provider cc`。`codex_model` 默认 `gpt-5.4-mini`，`claude_model` 默认 `sonnet`，`model_cli` 决定 OpenRelix 内部记忆回溯用哪个 CLI。`memory_summary_max_tokens` 默认 8000，支持 2000 到 20000。target 和 warning budgets 会自动从 max 派生。更新后默认刷新 summary、overview 和 panel；只想持久化配置时加 `--no-refresh`。
+`openrelix models` 会通过 `codex debug models` 读取当前本机 Codex CLI 的模型 catalog，并只打印脱敏后的可选模型 ID。`openrelix tokens` 默认 `--provider all`，会合并 Codex 的 `@ccusage/codex` 和 Claude Code 的 `ccusage`；需要单独看某个 host 时传 `--provider codex` 或 `--provider cc`。`codex_model` 默认 `gpt-5.5`，`claude_model` 默认 `auto`，`model_cli` 决定 OpenRelix 内部记忆回溯用哪个 CLI。`memory_summary_max_tokens` 默认 8000，支持 2000 到 20000。target 和 warning budgets 会自动从 max 派生。更新后默认刷新 summary、overview 和 panel；只想持久化配置时加 `--no-refresh`。
 
 host context 可以随时重新同步。它会从 eligible 的全局和项目个人记忆编译一份统一摘要，再把同一份 bounded summary 写进启用的 Codex / Claude Code host 目标中的 OpenRelix 受控块。Codex 和 Claude Code 使用同一套选择策略：全局上下文 capped 在配置摘要预算的 10%，项目上下文 capped 在 30%。编译后的摘要保存在 OpenRelix state root 的 `runtime/host-context/memory_summary.md`，默认不会把个人记忆写进项目仓库，也不会替换受控块之外的 host 原生记忆。
 

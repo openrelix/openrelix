@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 from functools import lru_cache
 from html import escape
 from pathlib import Path
-from urllib.parse import quote, urlparse
+from urllib.parse import parse_qsl, quote, urlencode, urlparse, urlsplit, urlunsplit
 
 from asset_runtime import (
     atomic_write_json,
@@ -60,6 +60,7 @@ from openrelix_overview import redaction as overview_redaction
 from openrelix_overview import token_fetcher as overview_token_fetcher
 from openrelix_overview import token_usage as overview_token_usage
 from openrelix_overview import update_secret as overview_update_secret
+from openrelix_overview import work_asset_feedback as overview_work_asset_feedback
 from openrelix_overview.config import (
     CCUSAGE_TIMEZONE,
     CCUSAGE_WINDOW_DAYS,
@@ -112,6 +113,10 @@ TOKEN_METRIC_KEYS = {"today_token", "seven_day_token"}
 DISCOVERED_KIND_ORDER = overview_asset_discovery.DISCOVERED_KIND_ORDER
 DISCOVERED_TYPE_ORDER = overview_asset_discovery.HIGH_LEVEL_TYPE_ORDER
 DISCOVERED_NON_SKILL_KINDS = overview_asset_discovery.NON_SKILL_KINDS
+WORK_ASSET_MAX_OUTCOMES = 4
+WORK_ASSET_MAX_CANDIDATES = 12
+WORK_ASSET_MAX_PROJECTS = 4
+WORK_ASSET_STAGE_PRIORITY = {"manual": 0, "preliminary": 1, "final": 2}
 MEMORY_BRIEF_TITLE_LIMIT = 42
 MEMORY_BRIEF_BODY_LIMIT = 132
 MEMORY_BRIEF_FULL_TEXT_LIMIT = 520
@@ -135,6 +140,37 @@ def _load_brand_icon_data_uri():
 
 
 BRAND_ICON_DATA_URI = _load_brand_icon_data_uri()
+NAV_GROUP_ICON_SVGS = {
+    "runtime": (
+        '<svg viewBox="0 0 24 24" aria-hidden="true">'
+        '<rect x="4" y="4" width="6" height="6" rx="1.7"></rect>'
+        '<rect x="14" y="4" width="6" height="6" rx="1.7"></rect>'
+        '<rect x="4" y="14" width="6" height="6" rx="1.7"></rect>'
+        '<path d="M14 17h6M17 14v6"></path>'
+        '</svg>'
+    ),
+    "memory": (
+        '<svg viewBox="0 0 24 24" aria-hidden="true">'
+        '<path d="M6 8.5c0-1.9 2.7-3.5 6-3.5s6 1.6 6 3.5-2.7 3.5-6 3.5-6-1.6-6-3.5Z"></path>'
+        '<path d="M6 8.5v3.7c0 1.9 2.7 3.4 6 3.4s6-1.5 6-3.4V8.5"></path>'
+        '<path d="M6 12.2v3.6c0 1.9 2.7 3.4 6 3.4s6-1.5 6-3.4v-3.6"></path>'
+        '</svg>'
+    ),
+    "asset": (
+        '<svg viewBox="0 0 24 24" aria-hidden="true">'
+        '<path d="M8.2 8V6.8c0-1 .8-1.8 1.8-1.8h4c1 0 1.8.8 1.8 1.8V8"></path>'
+        '<rect x="4.5" y="8" width="15" height="11" rx="2.5"></rect>'
+        '<path d="M4.8 12.4h14.4M10 12.4v1.7h4v-1.7"></path>'
+        '</svg>'
+    ),
+    "window": (
+        '<svg viewBox="0 0 24 24" aria-hidden="true">'
+        '<rect x="5" y="5" width="11" height="9" rx="2"></rect>'
+        '<path d="M8 18h10c1.1 0 2-.9 2-2V9"></path>'
+        '<path d="M8 8h5M8 11h3"></path>'
+        '</svg>'
+    ),
+}
 LOCAL_PATH_TRAILING_PUNCTUATION = overview_local_paths.LOCAL_PATH_TRAILING_PUNCTUATION
 LOCAL_PATH_TOKEN_RE = overview_local_paths.LOCAL_PATH_TOKEN_RE
 
@@ -7375,6 +7411,7 @@ def build_window_items_from_daily_capture(daily_capture, latest_nightly=None, la
         resume_app_action = claude_desktop_resume_action(ai_host, resume_id)
         codex_home = raw_window.get("codex_home", "")
         codex_electron_user_data_path = raw_window.get("codex_electron_user_data_path", "")
+        artifact_refs = extract_work_asset_artifact_refs_from_raw_window(raw_window)
         items.append(
             {
                 "date": (daily_capture or {}).get("date", ""),
@@ -7426,6 +7463,7 @@ def build_window_items_from_daily_capture(daily_capture, latest_nightly=None, la
                     limit=2,
                     fallback=localized("暂无结论记录。", "No conclusion records.", language),
                 ),
+                "artifact_refs": artifact_refs,
             }
         )
     return items
@@ -7512,6 +7550,7 @@ def build_window_overview(latest_nightly, language=None, target_date=""):
                     "started_at_display": localized("时间未知", "Unknown time", language),
                     "recent_prompts": [{"time": "", "text": localized("未找到原始问题记录。", "Raw question records were not found.", language)}],
                     "recent_conclusions": [{"time": "", "text": localized("未找到原始结论记录。", "Raw conclusion records were not found.", language)}],
+                    "artifact_refs": extract_work_asset_artifact_refs(item),
                 }
             )
         if not fallback_items:
@@ -8405,6 +8444,1701 @@ def sort_top_assets(enriched_assets):
     )
 
 
+WORK_ASSET_OUTCOME_CUES = (
+    "完成",
+    "实现",
+    "修复",
+    "验证通过",
+    "确认",
+    "已确认",
+    "形成",
+    "落地",
+    "发布",
+    "合并",
+    "提交",
+    "收口",
+    "重构",
+    "delivered",
+    "implemented",
+    "fixed",
+    "confirmed",
+    "merged",
+    "shipped",
+    "validated",
+)
+WORK_ASSET_REUSE_CUES = (
+    "资产",
+    "沉淀",
+    "复用",
+    "记忆",
+    "规则",
+    "流程",
+    "排障",
+    "检查清单",
+    "模板",
+    "自动化",
+    "playbook",
+    "skill",
+    "template",
+    "automation",
+    "memory",
+    "reusable",
+)
+WORK_ASSET_USER_SIGNAL_CUES = (
+    "记住",
+    "以后",
+    "后续",
+    "沉淀",
+    "复盘",
+    "复用",
+    "资产",
+    "不要",
+    "必须",
+    "prefer",
+    "remember",
+)
+WORK_ASSET_NOISE_CUES = (
+    "暂无",
+    "失败",
+    "报错",
+    "登录",
+    "权限",
+    "token",
+    "重试",
+    "hi",
+    "hello",
+    "test",
+    "no conclusion",
+    "error",
+    "failed",
+    "permission",
+)
+WORK_ASSET_PENDING_CUES = (
+    "待办",
+    "待处理",
+    "待验证",
+    "待确认",
+    "待修复",
+    "待补",
+    "待继续",
+    "中断",
+    "打断",
+    "未完成",
+    "尚未",
+    "还没",
+    "需要",
+    "继续",
+    "后续",
+    "明天",
+    "回头",
+    "follow up",
+    "todo",
+    "next step",
+    "pending",
+    "blocked",
+    "interrupted",
+)
+WORK_ASSET_OUTCOME_MEMORY_TYPES = {"task", "workflow", "procedural", "semantic", "rule"}
+WORK_ASSET_LONG_TERM_CUES = (
+    "长期",
+    "中长期",
+    "沉淀",
+    "复用",
+    "资产",
+    "技术方案",
+    "prd",
+    "架构",
+    "设计",
+    "指南",
+    "手册",
+    "playbook",
+    "模板",
+    "规范",
+    "检查清单",
+    "里程碑",
+    "复盘",
+    "安装",
+    "developer guide",
+    "technical solution",
+    "reusable",
+    "long term",
+)
+WORK_ASSET_EPHEMERAL_CUES = (
+    "临时",
+    "一次性",
+    "草稿",
+    "raw",
+    "日志",
+    "log",
+    "cookie",
+    "密钥",
+    "secret",
+    "debug",
+    "截图",
+    "原始",
+)
+WORK_ASSET_SENSITIVE_URL_PARAM_RE = re.compile(
+    r"^(?:access[_-]?token|refresh[_-]?token|id[_-]?token|api[_-]?key|client[_-]?secret|"
+    r"secret|password|passwd|authorization|auth|cookie|session|jwt|signature|sig)$",
+    re.IGNORECASE,
+)
+
+
+def clamp_work_asset_score(value):
+    return max(0.0, min(1.0, safe_float(value)))
+
+
+def work_asset_text_blob(item):
+    parts = [
+        item.get("window_title", ""),
+        item.get("window_summary", ""),
+        item.get("question_summary", ""),
+        item.get("main_takeaway", ""),
+        " ".join(item.get("keywords", []) or []),
+        " ".join(row.get("text", "") for row in item.get("recent_prompts", []) or []),
+        " ".join(row.get("text", "") for row in item.get("recent_conclusions", []) or []),
+    ]
+    return normalize_brand_display_text(" ".join(str(part or "") for part in parts if part))
+
+
+def compact_work_asset_window_item(item):
+    def compact(value, limit=900):
+        return compact_preview_text(normalize_brand_display_text(str(value or "")), limit=limit)
+
+    artifact_refs = []
+    for raw_ref in item.get("artifact_refs", []) or []:
+        if not isinstance(raw_ref, dict):
+            continue
+        artifact_refs.append(
+            {
+                "kind": compact(raw_ref.get("kind", ""), limit=40),
+                "title": compact(raw_ref.get("title", ""), limit=96),
+                "url": sanitize_work_asset_url_for_storage(raw_ref.get("url", "")),
+                "raw_path": compact(raw_ref.get("raw_path", ""), limit=220),
+                "path": str(raw_ref.get("path", "") or ""),
+            }
+        )
+        if len(artifact_refs) >= 16:
+            break
+
+    compacted = {
+        "date": item.get("date", ""),
+        "ai_host": item.get("ai_host", ""),
+        "ai_host_label": item.get("ai_host_label", ""),
+        "window_id": item.get("window_id", ""),
+        "window_id_short": item.get("window_id_short", ""),
+        "display_label": item.get("display_label", item.get("display_index", "")),
+        "cwd": item.get("cwd", ""),
+        "cwd_display": item.get("cwd_display", ""),
+        "project_label": item.get("project_label", ""),
+        "activity_source": item.get("activity_source", ""),
+        "window_title": compact(item.get("window_title", ""), limit=180),
+        "window_summary": compact(item.get("window_summary", ""), limit=900),
+        "question_summary": compact(item.get("question_summary", ""), limit=420),
+        "main_takeaway": compact(item.get("main_takeaway", ""), limit=900),
+        "keywords": [compact(keyword, limit=60) for keyword in (item.get("keywords", []) or [])[:12]],
+        "question_count": safe_int(item.get("question_count", 0)),
+        "conclusion_count": safe_int(item.get("conclusion_count", 0)),
+        "latest_activity_at": item.get("latest_activity_at", ""),
+        "latest_activity_display": item.get("latest_activity_display", ""),
+        "started_at": item.get("started_at", ""),
+        "started_at_display": item.get("started_at_display", ""),
+        "artifact_refs": artifact_refs,
+    }
+    compacted["recent_prompts"] = [
+        {"text": compact(row.get("text", ""), limit=220)}
+        for row in (item.get("recent_prompts", []) or [])[:3]
+        if isinstance(row, dict)
+    ]
+    compacted["recent_conclusions"] = [
+        {"text": compact(row.get("text", ""), limit=260)}
+        for row in (item.get("recent_conclusions", []) or [])[:3]
+        if isinstance(row, dict)
+    ]
+    compacted["summary_pairs"] = [
+        {
+            "q": compact(row.get("q", ""), limit=220),
+            "a": compact(row.get("a", ""), limit=320),
+        }
+        for row in (item.get("summary_pairs", []) or [])[:3]
+        if isinstance(row, dict)
+    ]
+    return compacted
+
+
+def work_asset_cue_score(text, cues, unit=0.18):
+    lowered = str(text or "").lower()
+    matches = 0
+    for cue in cues:
+        if str(cue).lower() in lowered:
+            matches += 1
+    return clamp_work_asset_score(matches * unit)
+
+
+def work_asset_project_key(value):
+    text = normalize_brand_display_text(str(value or "")).strip().lower()
+    return re.sub(r"[^0-9a-z\u4e00-\u9fff]+", "", text)
+
+
+def work_asset_is_generic_project(label):
+    key = work_asset_project_key(label)
+    return key in {
+        "",
+        work_asset_project_key("个人工作区"),
+        work_asset_project_key("Personal Workspace"),
+        work_asset_project_key("未分类上下文"),
+        work_asset_project_key("Unclassified Context"),
+    }
+
+
+def work_asset_status_for_scores(text, scores, language=None):
+    lowered = str(text or "").lower()
+    has_done_signal = any(
+        cue in lowered
+        for cue in (
+            "验证通过",
+            "已验证",
+            "验证完成",
+            "测试通过",
+            "已确认",
+            "完成",
+            "confirmed",
+            "validated",
+            "verified",
+            "implemented",
+            "fixed",
+        )
+    )
+    has_pending_signal = any(
+        re.search(pattern, lowered)
+        for pattern in (
+            r"(待|需|需要|尚未|未)(验证|确认|排查|处理)",
+            r"(排查中|调查中|待处理|待修复)",
+            r"\b(?:needs?|pending|awaiting)\s+(?:validation|verification|investigation|review|fix)\b",
+            r"\b(?:to verify|to investigate|unverified|unconfirmed|investigating)\b",
+        )
+    )
+    if has_done_signal:
+        return localized("已确认", "Confirmed", language), "confirmed"
+    if has_pending_signal:
+        return localized("待验证", "Needs Validation", language), "pending"
+    if any(cue in lowered for cue in ("方案", "设计", "prd", "计划", "plan", "design", "proposal")):
+        return localized("形成方案", "Plan Formed", language), "plan"
+    if scores.get("reuse_score", 0) >= 0.62 and not any(cue in lowered for cue in ("确认", "完成", "implemented", "fixed")):
+        return localized("待沉淀", "To Capture", language), "capture"
+    if scores.get("outcome_score", 0) >= 0.62:
+        return localized("已确认", "Confirmed", language), "confirmed"
+    return localized("待验证", "Needs Validation", language), "pending"
+
+
+def work_asset_is_noisy_outcome_title(title, summary=""):
+    normalized = normalize_context_topic_key(title)
+    combined = "{} {}".format(title or "", summary or "").lower()
+    if not normalized:
+        return True
+    if normalized in {"hi", "hello", "test", "测试", "看看", "帮我看看"}:
+        return True
+    has_done_signal = any(cue in combined for cue in WORK_ASSET_OUTCOME_CUES)
+    if len(normalized) <= 3 and not has_done_signal:
+        return True
+    if re.match(r"^(?:hi|hello|test|你看|看下|看看|帮我|解释|什么|为啥|为什么|这个)", str(title or "").strip().lower()):
+        return not has_done_signal
+    return False
+
+
+def score_work_asset_window(item):
+    text = work_asset_text_blob(item)
+    conclusion_count = safe_int(item.get("conclusion_count", 0))
+    question_count = safe_int(item.get("question_count", 0))
+    project_label = item.get("project_label", "")
+    outcome_score = clamp_work_asset_score(
+        0.18
+        + min((question_count + conclusion_count) * 0.045, 0.28)
+        + (0.18 if conclusion_count else 0)
+        + work_asset_cue_score(text, WORK_ASSET_OUTCOME_CUES, unit=0.12)
+    )
+    reuse_score = clamp_work_asset_score(
+        0.10
+        + work_asset_cue_score(text, WORK_ASSET_REUSE_CUES, unit=0.14)
+        + (0.12 if any(keyword in str(text).lower() for keyword in ("skill", "playbook", "template", "automation")) else 0)
+    )
+    user_signal_score = clamp_work_asset_score(work_asset_cue_score(text, WORK_ASSET_USER_SIGNAL_CUES, unit=0.16))
+    evidence_score = clamp_work_asset_score(
+        0.30
+        + (0.35 if item.get("window_id") else 0)
+        + (0.20 if item.get("summary_pairs") else 0)
+        + (0.12 if item.get("cwd_display") or item.get("cwd") else 0)
+    )
+    project_score = 0.35 if work_asset_is_generic_project(project_label) else 0.78
+    noise_penalty = work_asset_cue_score(text, WORK_ASSET_NOISE_CUES, unit=0.10)
+    importance = clamp_work_asset_score(
+        outcome_score * 0.30
+        + reuse_score * 0.25
+        + user_signal_score * 0.20
+        + evidence_score * 0.15
+        + project_score * 0.10
+        - noise_penalty
+    )
+    return {
+        "outcome_score": round(outcome_score, 3),
+        "reuse_score": round(reuse_score, 3),
+        "user_signal_score": round(user_signal_score, 3),
+        "evidence_score": round(evidence_score, 3),
+        "project_score": round(project_score, 3),
+        "noise_penalty": round(noise_penalty, 3),
+        "importance_score": round(importance, 3),
+    }
+
+
+def work_asset_window_title(item, language=None):
+    candidates = [
+        item.get("window_title", ""),
+        item.get("main_takeaway", ""),
+        item.get("question_summary", ""),
+        item.get("window_summary", ""),
+    ]
+    for candidate in candidates:
+        title = compact_preview_text(candidate, limit=42)
+        if title and not is_noisy_context_topic_candidate(title):
+            return normalize_brand_display_text(title)
+    return localized("未命名成果", "Untitled Outcome", language)
+
+
+def work_asset_window_summary(item, title="", language=None):
+    candidates = [
+        item.get("main_takeaway", ""),
+        item.get("question_summary", ""),
+        item.get("window_summary", ""),
+    ]
+    for candidate in candidates:
+        summary = compact_preview_text(candidate, limit=118)
+        if summary and summary != title and not is_noisy_context_topic_candidate(summary):
+            return normalize_brand_display_text(summary)
+    return localized("已保留来源窗口，可在下方继续追溯。", "Source window is retained for traceability below.", language)
+
+
+def build_work_asset_evidence_refs(item, language=None):
+    refs = []
+    window_id = str(item.get("window_id") or "").strip()
+    if window_id:
+        refs.append(
+            {
+                "kind": "window",
+                "label": localized(
+                    "窗口 {}".format(item.get("display_label") or item.get("window_id_short") or window_id[:8]),
+                    "Window {}".format(item.get("display_label") or item.get("window_id_short") or window_id[:8]),
+                    language,
+                ),
+                "anchor_id": build_window_anchor_id(window_id),
+            }
+        )
+    cwd = item.get("cwd_display") or item.get("cwd") or ""
+    if cwd:
+        refs.append({"kind": "path", "label": cwd, "anchor_id": ""})
+    for keyword in useful_context_keywords(item.get("keywords", []))[:2]:
+        refs.append({"kind": "keyword", "label": localized_context_keyword(keyword, language=language), "anchor_id": ""})
+    return refs[:4]
+
+
+def work_asset_topic_tokens(item, title="", summary=""):
+    text = " ".join(
+        [
+            title,
+            item.get("window_title", ""),
+            " ".join(item.get("keywords", []) or []),
+        ]
+    ).lower()
+    tokens = set()
+    for token in re.findall(r"[0-9a-zA-Z_]{3,}|[\u4e00-\u9fff]{2,}", text):
+        normalized = normalize_context_topic_key(token)
+        if normalized and normalized not in {
+            "openrelix",
+            "codex",
+            "claude",
+            "image",
+            "工作",
+            "资产",
+            "支持",
+            "查看",
+            "问题",
+            "目前",
+            "这个",
+            "什么",
+            "意思",
+            "完成",
+            "实现",
+            "修复",
+            "验证",
+            "确认",
+            "形成",
+            "落地",
+            "发布",
+            "合并",
+            "提交",
+            "收口",
+            "重构",
+            "沉淀",
+            "复用",
+            "规则",
+            "流程",
+            "检查",
+            "模板",
+        }:
+            tokens.add(normalized)
+    return tokens
+
+
+def work_asset_group_matches(group, outcome):
+    if group.get("project_key") != outcome.get("project_key"):
+        return False
+    if group.get("title_key") and group.get("title_key") == outcome.get("title_key"):
+        return True
+    overlap = (group.get("_topic_tokens") or set()) & (outcome.get("_topic_tokens") or set())
+    return len(overlap) >= 2 or any(len(token) >= 4 for token in overlap)
+
+
+def work_asset_merged_status(statuses, language=None):
+    status_set = set(statuses or [])
+    if "confirmed" in status_set:
+        return localized("已确认", "Confirmed", language), "confirmed"
+    if "capture" in status_set:
+        return localized("待沉淀", "To Capture", language), "capture"
+    if "plan" in status_set:
+        return localized("形成方案", "Plan Formed", language), "plan"
+    return localized("待验证", "Needs Validation", language), "pending"
+
+
+def build_work_asset_evidence_refs_from_window_ids(window_ids, window_lookup=None, language=None):
+    refs = []
+    seen = set()
+    window_lookup = window_lookup or {}
+    for window_id in window_ids or []:
+        normalized_id = str(window_id or "").strip()
+        if not normalized_id or normalized_id in seen:
+            continue
+        seen.add(normalized_id)
+        item = window_lookup.get(normalized_id, {})
+        label = item.get("display_label") or item.get("window_id_short") or normalized_id[:8]
+        refs.append(
+            {
+                "kind": "window",
+                "label": localized("窗口 {}".format(label), "Window {}".format(label), language),
+                "anchor_id": build_window_anchor_id(normalized_id),
+            }
+        )
+    return refs[:6]
+
+
+def work_asset_memory_item_score(item):
+    title = str(item.get("title") or "").strip()
+    summary = str(item.get("value_note") or "").strip()
+    text = "{} {}".format(title, summary)
+    priority_score = {"high": 0.42, "medium": 0.30, "low": 0.14}.get(str(item.get("priority") or "").lower(), 0.18)
+    type_score = 0.12 if str(item.get("memory_type") or "").lower() in WORK_ASSET_OUTCOME_MEMORY_TYPES else 0.04
+    source_score = min(len(item.get("source_window_ids", []) or []) * 0.055, 0.18)
+    outcome_score = work_asset_cue_score(text, WORK_ASSET_OUTCOME_CUES, unit=0.07)
+    reuse_score = work_asset_cue_score(text, WORK_ASSET_REUSE_CUES, unit=0.045)
+    noise_penalty = 0.34 if work_asset_is_noisy_outcome_title(title, summary) else 0.0
+    return round(
+        clamp_work_asset_score(priority_score + type_score + source_score + outcome_score + reuse_score - noise_penalty),
+        3,
+    )
+
+
+def build_daily_outcomes_from_nightly_summary(nightly_summary, window_overview=None, language=None):
+    language = current_language(language)
+    if not isinstance(nightly_summary, dict):
+        return []
+    date_str = str(nightly_summary.get("date") or (window_overview or {}).get("date") or "")
+    window_lookup = {item.get("window_id", ""): item for item in (window_overview or {}).get("windows", []) or []}
+    groups = []
+    memory_rows = list(nightly_summary.get("durable_memories", []) or []) + list(nightly_summary.get("session_memories", []) or [])
+    for index, row in enumerate(memory_rows):
+        if not isinstance(row, dict):
+            continue
+        title = normalize_brand_display_text(compact_preview_text(row.get("title", ""), limit=48))
+        summary = normalize_brand_display_text(compact_preview_text(row.get("value_note", ""), limit=150))
+        if not title or work_asset_is_noisy_outcome_title(title, summary):
+            continue
+        score = work_asset_memory_item_score(row)
+        if score < 0.48:
+            continue
+        source_ids = [
+            str(window_id or "").strip()
+            for window_id in (row.get("source_window_ids", []) or [])
+            if str(window_id or "").strip()
+        ]
+        project_labels = [
+            localized_context_label(window_lookup.get(window_id, {}).get("project_label", ""), language)
+            for window_id in source_ids
+            if window_lookup.get(window_id, {}).get("project_label")
+        ]
+        project_label = project_labels[0] if project_labels else localized("个人工作区", "Personal Workspace", language)
+        status_label, status_tone = work_asset_status_for_scores("{} {}".format(title, summary), {"reuse_score": score, "outcome_score": score}, language=language)
+        outcome_id_source = "{}:memory:{}:{}".format(date_str, index, title)
+        outcome = {
+            "id": "outcome_" + hashlib.sha1(outcome_id_source.encode("utf-8")).hexdigest()[:12],
+            "date": date_str,
+            "title": title,
+            "title_key": normalize_context_topic_key(title),
+            "summary": summary or compact_preview_text(nightly_summary.get("day_summary", ""), limit=150),
+            "status": status_tone,
+            "status_label": status_label,
+            "importance_score": score,
+            "reuse_score": score,
+            "projects": [project_label] if project_label else [],
+            "project_key": work_asset_project_key(project_label),
+            "source_window_ids": source_ids,
+            "source_window_count": len(source_ids),
+            "evidence_refs": build_work_asset_evidence_refs_from_window_ids(source_ids, window_lookup=window_lookup, language=language),
+            "scores": {"importance_score": score, "reuse_score": score, "source": "nightly_memory"},
+            "_topic_tokens": work_asset_topic_tokens({"keywords": row.get("keywords", []) or []}, title=title, summary=summary),
+            "_statuses": [status_tone],
+        }
+        matched_index = next(
+            (idx for idx, group in enumerate(groups) if work_asset_group_matches(group, outcome)),
+            None,
+        )
+        if matched_index is None:
+            groups.append(outcome)
+        else:
+            groups[matched_index] = merge_work_asset_outcome(groups[matched_index], outcome, language=language)
+    return finalize_work_asset_outcomes(groups)
+
+
+def build_daily_outcomes_for_work_ledger(window_overview, nightly_summary=None, language=None):
+    summary_outcomes = build_daily_outcomes_from_nightly_summary(nightly_summary, window_overview=window_overview, language=language)
+    if isinstance(nightly_summary, dict) and nightly_summary:
+        return summary_outcomes
+    used_windows = {
+        window_id
+        for outcome in summary_outcomes
+        for window_id in outcome.get("source_window_ids", []) or []
+        if window_id
+    }
+    merged = list(summary_outcomes)
+    for fallback in build_daily_outcomes_for_window_overview(window_overview, language=language):
+        if fallback.get("source_window_ids") and set(fallback.get("source_window_ids", [])) <= used_windows:
+            continue
+        if work_asset_is_noisy_outcome_title(fallback.get("title", ""), fallback.get("summary", "")):
+            continue
+        merged.append(fallback)
+        if len(merged) >= WORK_ASSET_MAX_OUTCOMES:
+            break
+    merged.sort(
+        key=lambda item: (
+            item.get("importance_score", 0),
+            item.get("source_window_count", 0),
+            item.get("title", ""),
+        ),
+        reverse=True,
+    )
+    return merged[:WORK_ASSET_MAX_OUTCOMES]
+
+
+def merge_work_asset_outcome(group, outcome, language=None):
+    merged = dict(group)
+    merged["_topic_tokens"] = set(group.get("_topic_tokens") or set()) | set(outcome.get("_topic_tokens") or set())
+    merged["_statuses"] = list(dict.fromkeys((group.get("_statuses") or []) + [outcome.get("status", "")]))
+    status_label, status_tone = work_asset_merged_status(merged["_statuses"], language=language)
+    merged["status"] = status_tone
+    merged["status_label"] = status_label
+
+    source_ids = list(dict.fromkeys((group.get("source_window_ids") or []) + (outcome.get("source_window_ids") or [])))
+    merged["source_window_ids"] = source_ids
+    merged["source_window_count"] = len(source_ids)
+
+    evidence_refs = []
+    seen_refs = set()
+    for ref in (group.get("evidence_refs") or []) + (outcome.get("evidence_refs") or []):
+        ref_key = (ref.get("kind", ""), ref.get("anchor_id", ""), ref.get("label", ""))
+        if ref_key in seen_refs:
+            continue
+        seen_refs.add(ref_key)
+        evidence_refs.append(ref)
+    merged["evidence_refs"] = evidence_refs[:6]
+
+    summaries = [
+        value
+        for value in [group.get("summary", ""), outcome.get("summary", "")]
+        if value and normalize_context_topic_key(value) != normalize_context_topic_key(group.get("title", ""))
+    ]
+    unique_summaries = []
+    seen_summaries = set()
+    for summary in summaries:
+        summary_key = normalize_context_topic_key(summary)
+        if summary_key in seen_summaries:
+            continue
+        seen_summaries.add(summary_key)
+        unique_summaries.append(summary)
+    if len(unique_summaries) > 1:
+        merged["summary"] = compact_preview_text("；".join(unique_summaries[:2]), limit=138)
+
+    merged["importance_score"] = round(
+        clamp_work_asset_score(
+            max(safe_float(group.get("importance_score", 0)), safe_float(outcome.get("importance_score", 0)))
+            + min(max(len(source_ids) - 1, 0) * 0.035, 0.10)
+        ),
+        3,
+    )
+    merged["reuse_score"] = round(max(safe_float(group.get("reuse_score", 0)), safe_float(outcome.get("reuse_score", 0))), 3)
+    merged["scores"] = dict(group.get("scores", {}))
+    merged["scores"]["importance_score"] = merged["importance_score"]
+    merged["scores"]["reuse_score"] = merged["reuse_score"]
+    return merged
+
+
+def finalize_work_asset_outcomes(groups):
+    outcomes = []
+    for group in groups:
+        outcome = dict(group)
+        outcome.pop("_topic_tokens", None)
+        outcome.pop("_statuses", None)
+        outcome.pop("title_key", None)
+        outcomes.append(outcome)
+    outcomes.sort(
+        key=lambda item: (
+            item.get("importance_score", 0),
+            item.get("source_window_count", 0),
+            item.get("reuse_score", 0),
+            item.get("title", ""),
+        ),
+        reverse=True,
+    )
+    return outcomes[:WORK_ASSET_MAX_OUTCOMES]
+
+
+def build_daily_outcomes_for_window_overview(window_overview, language=None):
+    language = current_language(language)
+    groups = []
+    for item in (window_overview or {}).get("windows", []) or []:
+        scores = score_work_asset_window(item)
+        if scores["importance_score"] < 0.34 or scores["evidence_score"] < 0.35:
+            continue
+        title = work_asset_window_title(item, language=language)
+        project_label = localized_context_label(
+            item.get("project_label") or localized("个人工作区", "Personal Workspace", language),
+            language,
+        )
+        summary = work_asset_window_summary(item, title=title, language=language)
+        status_label, status_tone = work_asset_status_for_scores(work_asset_text_blob(item), scores, language=language)
+        window_id = str(item.get("window_id") or "").strip()
+        outcome_id_source = "{}:{}:{}".format((window_overview or {}).get("date", ""), window_id, title)
+        outcome_id = "outcome_" + hashlib.sha1(outcome_id_source.encode("utf-8")).hexdigest()[:12]
+        outcome = {
+            "id": outcome_id,
+            "date": (window_overview or {}).get("date", ""),
+            "title": title,
+            "title_key": normalize_context_topic_key(title),
+            "summary": summary,
+            "status": status_tone,
+            "status_label": status_label,
+            "importance_score": scores["importance_score"],
+            "reuse_score": scores["reuse_score"],
+            "projects": [project_label] if project_label else [],
+            "project_key": work_asset_project_key(project_label),
+            "source_window_ids": [window_id] if window_id else [],
+            "source_window_count": 1 if window_id else 0,
+            "evidence_refs": build_work_asset_evidence_refs(item, language=language),
+            "scores": scores,
+            "_topic_tokens": work_asset_topic_tokens(item, title=title, summary=summary),
+            "_statuses": [status_tone],
+        }
+        matched_index = next(
+            (
+                index
+                for index, group in enumerate(groups)
+                if work_asset_group_matches(group, outcome)
+            ),
+            None,
+        )
+        if matched_index is None:
+            groups.append(outcome)
+        else:
+            groups[matched_index] = merge_work_asset_outcome(groups[matched_index], outcome, language=language)
+    return finalize_work_asset_outcomes(groups)
+
+
+def work_asset_kind_for_text(text):
+    lowered = str(text or "").lower()
+    if "docs.google.com" in lowered or "drive.google.com" in lowered:
+        return "google_doc"
+    if "larkoffice.com" in lowered or "feishu.cn" in lowered:
+        return "feishu_doc"
+    if "github.com" in lowered or "gitlab" in lowered or "bitbucket.org" in lowered:
+        return "repo_link"
+    if re.search(r"https?://[^\s\"'<>)]+/(docs|documentation|reference|api|openapi|swagger)(?:/|$)", lowered):
+        return "api_doc"
+    if re.search(r"https?://[^\s\"'<>)]+/(docx|doc|wiki|sheets)/", lowered) or "larkoffice.com" in lowered or "feishu.cn" in lowered:
+        return "cloud_doc"
+    if any(cue in lowered for cue in ("skill", "skill.md")):
+        return "skill"
+    if any(cue in lowered for cue in ("template", "模板")):
+        return "template"
+    if any(cue in lowered for cue in ("automation", "launchagent", "自动化", "定时", "后台任务")):
+        return "automation"
+    if any(cue in lowered for cue in ("playbook", "流程", "排障", "检查清单", "手册")):
+        return "playbook"
+    if any(cue in lowered for cue in ("memory", "记忆", "规则", "偏好", "codex_home")):
+        return "key_memory"
+    if re.search(r"(docs|templates|scripts)/[^\s\"'<>)]+\.(md|mdx)", lowered):
+        return "markdown_file"
+    if re.search(r"(docs|templates|scripts)/[^\s\"'<>)]+\.(txt|html|py|sh)", lowered):
+        return "local_doc"
+    return "playbook"
+
+
+def work_asset_kind_label(kind, language=None):
+    labels = {
+        "feishu_doc": ("飞书文档", "Feishu Doc"),
+        "feishu_folder": ("飞书文件夹", "Feishu Folder"),
+        "google_doc": ("Google 文档", "Google Doc"),
+        "markdown_file": ("Markdown", "Markdown"),
+        "api_doc": ("API 文档", "API Doc"),
+        "repo_link": ("代码仓库", "Repository"),
+        "issue_link": ("Issue / PR", "Issue / PR"),
+        "web_reference": ("网站资料", "Web Reference"),
+        "cloud_doc": ("云文档", "Cloud Doc"),
+        "local_doc": ("本地文档", "Local Doc"),
+        "key_memory": ("关键记忆", "Key Memory"),
+        "playbook": ("Playbook", "Playbook"),
+        "skill": ("Skill", "Skill"),
+        "template": ("Template", "Template"),
+        "automation": ("Automation", "Automation"),
+    }
+    zh, en = labels.get(kind, (kind or "资产", kind or "Asset"))
+    return localized(zh, en, language)
+
+
+def work_asset_action_state_label(state, language=None):
+    labels = {
+        "pending_review": ("待确认", "Pending"),
+        "resolved": ("已沉淀", "Captured"),
+        "merge_suggested": ("待合并", "Merge Suggested"),
+        "ignored": ("已忽略", "Ignored"),
+    }
+    zh, en = labels.get(state, ("待确认", "Pending"))
+    return localized(zh, en, language)
+
+
+def work_asset_reuse_horizon_label(horizon, language=None):
+    labels = {
+        "long_term": ("长期可复用", "Long-term"),
+        "mid_term": ("中期复用", "Mid-term"),
+        "session_only": ("本次参考", "Session-only"),
+    }
+    zh, en = labels.get(horizon, ("待判断", "To Judge"))
+    return localized(zh, en, language)
+
+
+def sanitize_work_asset_url_for_storage(url):
+    raw_url = str(url or "").strip().rstrip(".,;，。；)）]`")
+    raw_url = re.split(r"[，。；、]", raw_url, maxsplit=1)[0]
+    if not raw_url:
+        return ""
+    try:
+        parsed = urlsplit(raw_url)
+    except ValueError:
+        return raw_url
+    if not parsed.query:
+        return raw_url
+    query_pairs = parse_qsl(parsed.query, keep_blank_values=True)
+    sanitized_pairs = []
+    changed = False
+    for key, value in query_pairs:
+        if WORK_ASSET_SENSITIVE_URL_PARAM_RE.search(key):
+            sanitized_pairs.append((key, "REDACTED"))
+            changed = True
+        else:
+            sanitized_pairs.append((key, value))
+    if not changed:
+        return raw_url
+    return urlunsplit(
+        (
+            parsed.scheme,
+            parsed.netloc,
+            parsed.path,
+            urlencode(sanitized_pairs, doseq=True),
+            parsed.fragment,
+        )
+    )
+
+
+def work_asset_artifact_kind_for_url(url):
+    lowered = str(url or "").lower()
+    try:
+        parsed = urlparse(lowered)
+    except ValueError:
+        parsed = None
+    host = parsed.netloc if parsed else ""
+    path = parsed.path if parsed else lowered
+    if not host or host.startswith(("localhost", "127.", "0.0.0.0", "[::1]")):
+        return ""
+    if "larkoffice.com" in host or "feishu.cn" in host:
+        if re.search(r"/drive/folder/", path):
+            return "feishu_folder"
+        return "feishu_doc"
+    if "docs.google.com" in host or "drive.google.com" in host:
+        return "google_doc"
+    if any(host == domain or host.endswith("." + domain) for domain in ("github.com", "gitlab.com", "bitbucket.org")):
+        if re.search(r"/(?:pull|pulls|issues|issue|merge_requests|-/merge_requests)/", path):
+            return "issue_link"
+        return "repo_link"
+    if (
+        host.startswith(("docs.", "developer.", "developers."))
+        or re.search(r"/(?:docs|documentation|reference|api|openapi|swagger)(?:/|$)", path)
+    ):
+        return "api_doc"
+    if re.search(r"/(?:docx|doc|document|wiki|sheets|spreadsheet|base|drive|folder|file)(?:/|$)", path):
+        return "cloud_doc"
+    return "web_reference"
+
+
+def extract_work_asset_urls(text):
+    urls = []
+    seen = set()
+
+    def add_url(raw_url, title=""):
+        cleaned = sanitize_work_asset_url_for_storage(raw_url)
+        kind = work_asset_artifact_kind_for_url(cleaned)
+        if not kind or cleaned in seen:
+            return
+        seen.add(cleaned)
+        ref = {"kind": kind, "url": cleaned}
+        title = normalize_brand_display_text(str(title or "")).strip()
+        if title and not title.startswith(("http://", "https://")):
+            ref["title"] = compact_preview_text(title, limit=96)
+        urls.append(ref)
+
+    for title, raw_url in re.findall(r"\[([^\]\n]{1,160})\]\((https?://[^\s)]+)\)", str(text or "")):
+        add_url(raw_url, title=title)
+    for match in re.findall(r"https?://[^\s\"'<>)\]]+", str(text or "")):
+        add_url(match)
+    return urls
+
+
+def extract_work_asset_url(text):
+    urls = extract_work_asset_urls(text)
+    return urls[0]["url"] if urls else ""
+
+
+def extract_work_asset_markdown_paths(text):
+    raw_text = str(text or "")
+    matches = []
+    seen = set()
+    patterns = (
+        r"(?:^|[\s('\"`])((?:docs|templates|install|ops|\.agents)/[^\s\"'<>)\]]+\.(?:md|mdx))",
+        r"(?:^|[\s('\"`])((?:~|/)[^\s\"'<>)\]]+\.(?:md|mdx))",
+    )
+    for pattern in patterns:
+        for raw_match in re.findall(pattern, raw_text):
+            cleaned = str(raw_match or "").strip().rstrip(".,;，。；)）]")
+            if not cleaned or cleaned in seen:
+                continue
+            seen.add(cleaned)
+            path = Path(cleaned).expanduser() if cleaned.startswith(("~", "/")) else (ROOT / cleaned).resolve()
+            matches.append(
+                {
+                    "kind": "markdown_file",
+                    "raw_path": cleaned,
+                    "path": str(path) if path.exists() else "",
+                }
+            )
+    return matches
+
+
+def normalize_work_asset_artifact_ref(ref):
+    if not isinstance(ref, dict):
+        return None
+    title = normalize_brand_display_text(str(ref.get("title") or ref.get("label") or "")).strip()
+    url = sanitize_work_asset_url_for_storage(ref.get("url", ""))
+    raw_path = str(ref.get("raw_path") or ref.get("path") or "").strip()
+    path = str(ref.get("path") or "").strip()
+    kind = str(ref.get("kind") or "").strip()
+    if url:
+        kind = kind or work_asset_artifact_kind_for_url(url)
+    if raw_path and not kind:
+        kind = "markdown_file" if raw_path.lower().endswith((".md", ".mdx")) else "local_doc"
+    if not kind:
+        return None
+    normalized = {"kind": kind}
+    if title and not title.startswith(("http://", "https://")):
+        normalized["title"] = compact_preview_text(title, limit=96)
+    if url:
+        normalized["url"] = url
+    if raw_path:
+        normalized["raw_path"] = raw_path
+    if path:
+        normalized["path"] = path
+    return normalized
+
+
+def extract_work_asset_artifact_refs_from_raw_window(raw_window):
+    raw_window = raw_window or {}
+    parts = [
+        raw_window.get("window_summary", ""),
+        raw_window.get("thread_title", ""),
+        raw_window.get("title", ""),
+        (raw_window.get("app_server") or {}).get("preview", ""),
+        (raw_window.get("app_server") or {}).get("title", ""),
+    ]
+    for row in raw_window.get("prompts", []) or []:
+        if isinstance(row, dict):
+            parts.append(row.get("text", ""))
+    for row in raw_window.get("conclusions", []) or []:
+        if isinstance(row, dict):
+            parts.append(row.get("text", ""))
+    refs = []
+    seen = set()
+    for text in parts:
+        for raw_ref in [*extract_work_asset_urls(text), *extract_work_asset_markdown_paths(text)]:
+            ref = normalize_work_asset_artifact_ref(raw_ref)
+            if not ref:
+                continue
+            key = ("url", ref.get("url", "")) if ref.get("url") else ("path", ref.get("path") or ref.get("raw_path", ""))
+            if key in seen:
+                continue
+            if ref.get("kind") == "feishu_folder" and any(row.get("kind") == "feishu_folder" for row in refs):
+                continue
+            seen.add(key)
+            refs.append(ref)
+            if len(refs) >= 20:
+                return refs
+    return refs
+
+
+def extract_work_asset_local_path(text):
+    markdown_paths = extract_work_asset_markdown_paths(text)
+    if markdown_paths:
+        return markdown_paths[0].get("path", "")
+    for match in re.findall(r"(?:^|\s)((?:docs|templates|scripts|install|ops)/[^\s\"'<>)]+\.(?:txt|html|py|sh|json))", str(text or "")):
+        candidate = (ROOT / match.strip()).resolve()
+        if candidate.exists():
+            return str(candidate)
+    return ""
+
+
+def work_asset_artifact_text_blob(item):
+    parts = [
+        item.get("window_title", ""),
+        item.get("window_summary", ""),
+        item.get("question_summary", ""),
+        item.get("main_takeaway", ""),
+        item.get("cwd_display", ""),
+        item.get("cwd", ""),
+        item.get("project_label", ""),
+        " ".join(item.get("keywords", []) or []),
+        " ".join(row.get("text", "") for row in item.get("recent_prompts", []) or []),
+        " ".join(row.get("text", "") for row in item.get("recent_conclusions", []) or []),
+        " ".join(
+            "{} {}".format(row.get("q", ""), row.get("a", ""))
+            for row in item.get("summary_pairs", []) or []
+            if isinstance(row, dict)
+        ),
+        " ".join(
+            "{} {} {} {}".format(
+                ref.get("title", ""),
+                ref.get("url", ""),
+                ref.get("raw_path", ""),
+                ref.get("path", ""),
+            )
+            for ref in item.get("artifact_refs", []) or []
+            if isinstance(ref, dict)
+        ),
+    ]
+    return " ".join(str(part or "") for part in parts if part)
+
+
+def work_asset_reuse_assessment_for_artifact(ref, item, language=None):
+    text = work_asset_artifact_text_blob(item)
+    project_label = item.get("project_label", "")
+    path = ref.get("path") or ref.get("raw_path") or ""
+    kind = ref.get("kind", "")
+    score = 0.24
+    reasons = []
+    if not work_asset_is_generic_project(project_label):
+        score += 0.16
+        reasons.append(localized("绑定项目上下文", "project context", language))
+    if kind in {"feishu_doc", "feishu_folder", "google_doc", "markdown_file", "cloud_doc", "local_doc"}:
+        score += 0.12
+        reasons.append(localized("真实文档产物", "real document artifact", language))
+    elif kind in {"api_doc", "repo_link", "issue_link", "web_reference"}:
+        score += 0.08
+        reasons.append(localized("可复用信息源", "reusable information source", language))
+    if path and re.search(r"(?:^|/)(docs|templates|install|ops)/", path):
+        score += 0.14
+        reasons.append(localized("位于可复用目录", "in reusable directory", language))
+    durable_score = work_asset_cue_score(text, WORK_ASSET_LONG_TERM_CUES, unit=0.11)
+    if durable_score:
+        score += durable_score
+        reasons.append(localized("包含复用信号", "reuse signals", language))
+    if item.get("window_id"):
+        score += 0.08
+        reasons.append(localized("可追溯到窗口", "traceable window", language))
+    if work_asset_cue_score(text, WORK_ASSET_EPHEMERAL_CUES, unit=0.13):
+        score -= 0.28
+        reasons.append(localized("含临时信号", "temporary signals", language))
+    score = round(clamp_work_asset_score(score), 3)
+    if score >= 0.65:
+        horizon = "long_term"
+    elif score >= 0.42:
+        horizon = "mid_term"
+    else:
+        horizon = "session_only"
+    if not reasons:
+        reasons.append(localized("证据不足，先保留候选", "insufficient evidence; keep as candidate", language))
+    return {
+        "reuse_potential_score": score,
+        "reuse_horizon": horizon,
+        "reuse_horizon_label": work_asset_reuse_horizon_label(horizon, language=language),
+        "reuse_reason": " · ".join(reasons[:3]),
+    }
+
+
+def title_from_work_asset_artifact_ref(ref, item, language=None):
+    ref_title = normalize_brand_display_text(str(ref.get("title") or "")).strip()
+    if ref_title and not ref_title.startswith(("http://", "https://")):
+        return compact_preview_text(ref_title, limit=58)
+    title = work_asset_window_title(item, language=language)
+    if title and title != localized("未命名成果", "Untitled Outcome", language):
+        return title
+    raw_path = ref.get("raw_path") or ref.get("path") or ref.get("url") or ""
+    name = Path(raw_path.rstrip("/")).name if raw_path else ""
+    return compact_preview_text(name or localized("未命名文档", "Untitled Document", language), limit=48)
+
+
+def extract_work_asset_artifact_refs(item):
+    text = work_asset_artifact_text_blob(item)
+    refs = []
+    seen = set()
+    for existing_ref in item.get("artifact_refs", []) or []:
+        ref = normalize_work_asset_artifact_ref(existing_ref)
+        if not ref:
+            continue
+        key = ("url", ref.get("url", "")) if ref.get("url") else ("path", ref.get("path") or ref.get("raw_path", ""))
+        if key in seen:
+            continue
+        if ref.get("kind") == "feishu_folder" and any(row.get("kind") == "feishu_folder" for row in refs):
+            continue
+        seen.add(key)
+        refs.append(ref)
+    for url_ref in extract_work_asset_urls(text):
+        key = ("url", url_ref.get("url", ""))
+        if key in seen:
+            continue
+        seen.add(key)
+        refs.append(url_ref)
+    for path_ref in extract_work_asset_markdown_paths(text):
+        key = ("path", path_ref.get("path") or path_ref.get("raw_path", ""))
+        if key in seen:
+            continue
+        seen.add(key)
+        refs.append(path_ref)
+    return refs
+
+
+def build_asset_candidate_from_artifact_ref(ref, item, language=None):
+    language = current_language(language)
+    kind = ref.get("kind") or "local_doc"
+    title = title_from_work_asset_artifact_ref(ref, item, language=language)
+    project_label = localized_context_label(
+        item.get("project_label") or localized("个人工作区", "Personal Workspace", language),
+        language,
+    )
+    source_window_id = str(item.get("window_id") or "").strip()
+    artifact_identity = ref.get("url") or ref.get("path") or ref.get("raw_path") or title
+    candidate_id_source = "{}:{}:{}".format(item.get("date", ""), kind, artifact_identity)
+    assessment = work_asset_reuse_assessment_for_artifact(ref, item, language=language)
+    action_state = "pending_review"
+    return {
+        "id": "asset_candidate_" + hashlib.sha1(candidate_id_source.encode("utf-8")).hexdigest()[:12],
+        "kind": kind,
+        "kind_label": work_asset_kind_label(kind, language=language),
+        "title": compact_preview_text(title, limit=58),
+        "scope": "project" if project_label else "local",
+        "project_label": project_label,
+        "project_key": work_asset_project_key(project_label),
+        "source_outcome_id": "",
+        "source_window_ids": [source_window_id] if source_window_id else [],
+        "action_state": action_state,
+        "action_state_label": work_asset_action_state_label(action_state, language=language),
+        "open_url": ref.get("url", ""),
+        "open_path": ref.get("path", ""),
+        "artifact_path": ref.get("raw_path", "") or ref.get("path", ""),
+        "artifact_source": "window_artifact",
+        **assessment,
+    }
+
+
+def build_asset_candidate_from_outcome(outcome, window_lookup=None, language=None):
+    language = current_language(language)
+    window_lookup = window_lookup or {}
+    source_window_id = (outcome.get("source_window_ids") or [""])[0]
+    source_item = window_lookup.get(source_window_id, {})
+    text = " ".join(
+        [
+            outcome.get("title", ""),
+            outcome.get("summary", ""),
+            work_asset_text_blob(source_item),
+        ]
+    )
+    if outcome.get("reuse_score", 0) < 0.30 and not work_asset_cue_score(text, WORK_ASSET_REUSE_CUES, unit=0.18):
+        return None
+    kind = work_asset_kind_for_text(text)
+    url = extract_work_asset_url(text)
+    local_path = extract_work_asset_local_path(text)
+    action_state = "merge_suggested" if kind in {"playbook", "template"} and "合并" in text else "pending_review"
+    horizon = "long_term" if outcome.get("reuse_score", 0) >= 0.72 else "mid_term"
+    candidate_id_source = "{}:{}:{}".format(outcome.get("date", ""), kind, outcome.get("id", ""))
+    candidate_id = "asset_candidate_" + hashlib.sha1(candidate_id_source.encode("utf-8")).hexdigest()[:12]
+    return {
+        "id": candidate_id,
+        "kind": kind,
+        "kind_label": work_asset_kind_label(kind, language=language),
+        "title": outcome.get("title", ""),
+        "scope": "project" if outcome.get("projects") else "local",
+        "project_label": (outcome.get("projects") or [""])[0],
+        "project_key": outcome.get("project_key", ""),
+        "source_outcome_id": outcome.get("id", ""),
+        "source_window_ids": outcome.get("source_window_ids", []),
+        "action_state": action_state,
+        "action_state_label": work_asset_action_state_label(action_state, language=language),
+        "open_url": url,
+        "open_path": local_path,
+        "reuse_potential_score": round(clamp_work_asset_score(outcome.get("reuse_score", 0)), 3),
+        "reuse_horizon": horizon,
+        "reuse_horizon_label": work_asset_reuse_horizon_label(horizon, language=language),
+        "reuse_reason": localized("来自高复用成果", "from reusable outcome", language),
+    }
+
+
+def build_asset_candidate_from_registered_asset(asset, anchor_date, language=None):
+    language = current_language(language)
+    updated = str(asset.get("updated_at") or asset.get("created_at") or "")
+    if anchor_date and not updated.startswith(anchor_date):
+        return None
+    kind = str(asset.get("type") or asset.get("kind") or "local_doc").strip() or "local_doc"
+    title = (
+        asset.get("display_title")
+        or asset.get("title")
+        or asset.get("name")
+        or localized("未命名资产", "Untitled Asset", language)
+    )
+    artifact_paths = [str(path or "") for path in asset.get("artifact_paths", []) or [] if str(path or "").strip()]
+    candidate_id_source = "{}:{}:{}".format(anchor_date, kind, asset.get("id") or title)
+    candidate_id = "asset_candidate_" + hashlib.sha1(candidate_id_source.encode("utf-8")).hexdigest()[:12]
+    project_label = asset.get("display_context") or asset.get("project_label") or ""
+    return {
+        "id": candidate_id,
+        "kind": work_asset_kind_for_text(" ".join([kind, title] + artifact_paths)),
+        "kind_label": work_asset_kind_label(work_asset_kind_for_text(" ".join([kind, title] + artifact_paths)), language=language),
+        "title": compact_preview_text(title, limit=48),
+        "scope": asset.get("scope") or "local",
+        "project_label": localized_context_label(project_label, language) if project_label else "",
+        "project_key": work_asset_project_key(project_label),
+        "source_outcome_id": "",
+        "source_window_ids": [],
+        "action_state": "resolved",
+        "action_state_label": work_asset_action_state_label("resolved", language=language),
+        "open_url": "",
+        "open_path": artifact_paths[0] if artifact_paths else "",
+        "reuse_potential_score": 0.80,
+        "reuse_horizon": "long_term",
+        "reuse_horizon_label": work_asset_reuse_horizon_label("long_term", language=language),
+        "reuse_reason": localized("已登记资产", "registered asset", language),
+    }
+
+
+def build_work_asset_candidates(outcomes, window_overview=None, asset_rows=None, language=None):
+    language = current_language(language)
+    window_lookup = {item.get("window_id", ""): item for item in (window_overview or {}).get("windows", []) or []}
+    candidates = []
+    seen = set()
+
+    def candidate_identity(candidate):
+        if not isinstance(candidate, dict):
+            return ("", "")
+        kind = candidate.get("kind", "")
+        url = str(candidate.get("open_url") or "").strip()
+        if url:
+            try:
+                parsed_url = urlparse(url.lower())
+                token_match = re.search(r"/(?:docx|doc|wiki|drive/folder)/([^/?#]+)", parsed_url.path)
+                if kind in {"feishu_doc", "feishu_folder"} and token_match:
+                    return (kind, token_match.group(1))
+            except ValueError:
+                pass
+            return (kind, url)
+        path_value = str(candidate.get("open_path") or candidate.get("artifact_path") or "").strip()
+        if path_value:
+            try:
+                return (kind, str(Path(path_value).expanduser().resolve(strict=False)))
+            except OSError:
+                return (kind, path_value)
+        return (kind, normalize_context_topic_key(candidate.get("title", "")))
+
+    def add_candidate(candidate):
+        if not candidate:
+            return
+        key = candidate_identity(candidate)
+        if key in seen:
+            return
+        seen.add(key)
+        candidates.append(candidate)
+
+    for item in (window_overview or {}).get("windows", []) or []:
+        for artifact_ref in extract_work_asset_artifact_refs(item):
+            add_candidate(build_asset_candidate_from_artifact_ref(artifact_ref, item, language=language))
+    for outcome in outcomes:
+        add_candidate(build_asset_candidate_from_outcome(outcome, window_lookup=window_lookup, language=language))
+    anchor_date = (window_overview or {}).get("date", "")
+    for asset in asset_rows or []:
+        add_candidate(build_asset_candidate_from_registered_asset(asset, anchor_date, language=language))
+        if len(candidates) >= WORK_ASSET_MAX_CANDIDATES:
+            break
+    pending_first_rank = {"pending_review": 0, "merge_suggested": 1, "resolved": 2, "ignored": 3}
+    horizon_rank = {"long_term": 0, "mid_term": 1, "session_only": 2}
+    kind_rank = {
+        "feishu_doc": 0,
+        "google_doc": 0,
+        "feishu_folder": 1,
+        "cloud_doc": 1,
+        "markdown_file": 2,
+        "local_doc": 2,
+        "api_doc": 3,
+        "repo_link": 4,
+        "issue_link": 4,
+        "web_reference": 5,
+        "key_memory": 6,
+        "playbook": 7,
+        "skill": 8,
+        "template": 8,
+        "automation": 8,
+    }
+    candidates.sort(
+        key=lambda item: (
+            pending_first_rank.get(item.get("action_state", ""), 9),
+            horizon_rank.get(item.get("reuse_horizon", ""), 9),
+            kind_rank.get(item.get("kind", ""), 9),
+            -safe_float(item.get("reuse_potential_score", 0)),
+            item.get("title", ""),
+        )
+    )
+    return candidates[:WORK_ASSET_MAX_CANDIDATES]
+
+
+def build_work_asset_project_links(project_contexts, outcomes, candidates, language=None):
+    language = current_language(language)
+    outcome_counts = Counter(item.get("project_key", "") for item in outcomes)
+    candidate_counts = Counter(item.get("project_key", "") for item in candidates)
+    rows = []
+    for context in project_contexts or []:
+        label = context.get("label", "")
+        key = work_asset_project_key(label)
+        item_count = outcome_counts.get(key, 0)
+        asset_count = candidate_counts.get(key, 0)
+        if not item_count and not asset_count and len(rows) >= WORK_ASSET_MAX_PROJECTS:
+            continue
+        rows.append(
+            {
+                "label": label,
+                "project_key": key,
+                "item_count": item_count,
+                "asset_count": asset_count,
+                "window_count": safe_int(context.get("window_count", 0)),
+                "latest_activity_display": context.get("latest_activity_display", localized("时间未知", "Unknown time", language)),
+                "summary": compact_preview_text(context.get("takeaway_preview") or context.get("summary", ""), limit=84),
+            }
+        )
+    existing_keys = {row.get("project_key") for row in rows}
+    for outcome in outcomes:
+        key = outcome.get("project_key", "")
+        if not key or key in existing_keys:
+            continue
+        label = (outcome.get("projects") or [""])[0]
+        rows.append(
+            {
+                "label": label,
+                "project_key": key,
+                "item_count": outcome_counts.get(key, 0),
+                "asset_count": candidate_counts.get(key, 0),
+                "window_count": len(outcome.get("source_window_ids", []) or []),
+                "latest_activity_display": localized("今日", "Today", language),
+                "summary": compact_preview_text(outcome.get("summary", ""), limit=84),
+            }
+        )
+        existing_keys.add(key)
+    rows.sort(
+        key=lambda item: (
+            item.get("item_count", 0),
+            item.get("asset_count", 0),
+            item.get("window_count", 0),
+            item.get("label", ""),
+        ),
+        reverse=True,
+    )
+    return rows[:WORK_ASSET_MAX_PROJECTS]
+
+
+def work_asset_task_state_label(state, language=None):
+    labels = {
+        "pending_review": ("待处理", "Open"),
+        "done": ("已完成", "Done"),
+        "snoozed": ("稍后提醒", "Snoozed"),
+        "ignored": ("已忽略", "Ignored"),
+    }
+    zh, en = labels.get(state, ("待处理", "Open"))
+    return localized(zh, en, language)
+
+
+def is_generic_backfill_next_action(text):
+    lowered = str(text or "").lower()
+    return (
+        "openrelix backfill" in lowered
+        and any(cue in lowered for cue in ("final 深度回溯", "deep backfill", "全部可用的记忆", "all available memories"))
+    )
+
+
+def pending_item_from_next_action(action, date_str, index, language=None):
+    text = normalize_brand_display_text(compact_preview_text(action, limit=180))
+    if not text or is_generic_backfill_next_action(text):
+        return None
+    title = text
+    summary = ""
+    if "：" in text:
+        title, summary = [part.strip() for part in text.split("：", 1)]
+    elif ": " in text:
+        title, summary = [part.strip() for part in text.split(": ", 1)]
+    if not summary:
+        summary = localized("来自当日模型整理的下一步，建议确认是否继续推进。", "From the daily model summary; confirm whether to continue.", language)
+    item_id_source = "{}:next_action:{}:{}".format(date_str, index, title)
+    return {
+        "id": "work_task_" + hashlib.sha1(item_id_source.encode("utf-8")).hexdigest()[:12],
+        "title": compact_preview_text(title, limit=58),
+        "summary": compact_preview_text(summary, limit=150),
+        "status": "pending",
+        "status_label": localized("待办", "Todo", language),
+        "project_label": localized("个人工作区", "Personal Workspace", language),
+        "project_key": work_asset_project_key(localized("个人工作区", "Personal Workspace", language)),
+        "source": "next_action",
+        "source_window_ids": [],
+        "evidence_refs": [],
+        "action_state": "pending_review",
+        "action_state_label": work_asset_task_state_label("pending_review", language=language),
+    }
+
+
+def pending_item_from_window(item, date_str, language=None):
+    text = work_asset_text_blob(item)
+    if not work_asset_cue_score(text, WORK_ASSET_PENDING_CUES, unit=0.10):
+        return None
+    scores = score_work_asset_window(item)
+    status_label, status_tone = work_asset_status_for_scores(text, scores, language=language)
+    if status_tone == "confirmed":
+        return None
+    title = work_asset_window_title(item, language=language)
+    summary = work_asset_window_summary(item, title=title, language=language)
+    if work_asset_is_noisy_outcome_title(title, summary) and scores.get("importance_score", 0) < 0.55:
+        return None
+    window_id = str(item.get("window_id") or "").strip()
+    project_label = localized_context_label(
+        item.get("project_label") or localized("个人工作区", "Personal Workspace", language),
+        language,
+    )
+    item_id_source = "{}:window_pending:{}:{}".format(date_str, window_id, title)
+    return {
+        "id": "work_task_" + hashlib.sha1(item_id_source.encode("utf-8")).hexdigest()[:12],
+        "title": compact_preview_text(title, limit=58),
+        "summary": compact_preview_text(summary, limit=150),
+        "status": "interrupted" if "中断" in text or "打断" in text else "pending",
+        "status_label": localized("中断", "Interrupted", language) if "中断" in text or "打断" in text else localized("待确认", "Pending", language),
+        "project_label": project_label,
+        "project_key": work_asset_project_key(project_label),
+        "source": "window_pending",
+        "source_window_ids": [window_id] if window_id else [],
+        "evidence_refs": build_work_asset_evidence_refs(item, language=language),
+        "action_state": "pending_review",
+        "action_state_label": work_asset_task_state_label("pending_review", language=language),
+        "importance_score": scores.get("importance_score", 0),
+    }
+
+
+def build_work_pending_items(nightly_summary=None, window_overview=None, language=None):
+    language = current_language(language)
+    date_str = str((nightly_summary or {}).get("date") or (window_overview or {}).get("date") or "")
+    items = []
+    seen = set()
+
+    def add_item(item):
+        if not item:
+            return
+        key = normalize_context_topic_key("{} {}".format(item.get("title", ""), item.get("summary", "")))
+        if not key or key in seen:
+            return
+        seen.add(key)
+        items.append(item)
+
+    for index, action in enumerate((nightly_summary or {}).get("next_actions", []) or []):
+        add_item(pending_item_from_next_action(action, date_str, index, language=language))
+    if work_asset_has_deep_summary(nightly_summary):
+        items.sort(
+            key=lambda item: (
+                item.get("source") == "next_action",
+                safe_float(item.get("importance_score", 0)),
+                item.get("title", ""),
+            ),
+            reverse=True,
+        )
+        return items[:4]
+    for item in (window_overview or {}).get("windows", []) or []:
+        add_item(pending_item_from_window(item, date_str, language=language))
+    items.sort(
+        key=lambda item: (
+            item.get("source") == "next_action",
+            safe_float(item.get("importance_score", 0)),
+            item.get("title", ""),
+        ),
+        reverse=True,
+    )
+    return items[:4]
+
+
+def work_asset_desk_lead_text(nightly_summary=None, outcomes=None, language=None):
+    language = current_language(language)
+    day_summary = normalize_brand_display_text(compact_preview_text((nightly_summary or {}).get("day_summary", ""), limit=180))
+    if day_summary:
+        return day_summary
+    titles = [item.get("title", "") for item in outcomes or [] if item.get("title")]
+    if titles:
+        return localized(
+            "今日主线成果：{}。".format("、".join(titles[:3])),
+            "Main outcomes today: {}.".format(", ".join(titles[:3])),
+            language,
+        )
+    return localized("该日期暂无可确认的主线成果。", "No confirmed mainline outcome for this date.", language)
+
+
+def work_asset_has_deep_summary(nightly_summary):
+    if not isinstance(nightly_summary, dict):
+        return False
+    return (
+        str(nightly_summary.get("stage") or "").strip() == "final"
+        and str(nightly_summary.get("model_status") or nightly_summary.get("last_run_model_status") or "").strip() == "completed"
+    )
+
+
+def work_asset_deep_summary_required_note(date_str="", language=None):
+    return localized(
+        "该日期只有浅度整理或缺少成功的 final 模型总结；资产台主总结先不生成，避免把碎片窗口误当成一天的成果。",
+        "This date only has shallow organization or no successful final model summary; the work ledger summary is withheld to avoid mistaking window fragments for the day's outcome.",
+        language,
+    )
+
+
+def apply_work_feedback_to_rows(rows, feedback_by_id, label_fn, language=None):
+    if not feedback_by_id:
+        return rows
+    updated = []
+    for row in rows or []:
+        if not isinstance(row, dict):
+            updated.append(row)
+            continue
+        feedback = feedback_by_id.get(str(row.get("id") or "").strip())
+        state = overview_work_asset_feedback.normalize_action_state(
+            feedback.get("state") if isinstance(feedback, dict) else ""
+        )
+        if not state:
+            updated.append(row)
+            continue
+        next_row = dict(row)
+        next_row["action_state"] = state
+        next_row["action_state_label"] = label_fn(state, language=language)
+        next_row["action_updated_at"] = str(feedback.get("updated_at") or "")
+        updated.append(next_row)
+    return updated
+
+
+def build_work_asset_desk_view(date_str, window_overview=None, project_contexts=None, asset_rows=None, nightly_summary=None, language=None):
+    language = current_language(language)
+    window_overview = window_overview or {"date": date_str, "windows": [], "window_count": 0}
+    if project_contexts is None:
+        project_contexts = build_project_contexts(window_overview, language=language)
+    has_deep_summary = work_asset_has_deep_summary(nightly_summary)
+    if has_deep_summary:
+        outcomes = build_daily_outcomes_for_work_ledger(window_overview, nightly_summary=nightly_summary, language=language)
+        pending_items = build_work_pending_items(nightly_summary=nightly_summary, window_overview=window_overview, language=language)
+        lead_text = work_asset_desk_lead_text(nightly_summary=nightly_summary, outcomes=outcomes, language=language)
+        empty_note = localized(
+            "该日期 final 总结里没有足够证据形成首页成果，已保留窗口明细供追溯。",
+            "The final summary did not contain enough evidence-backed outcomes; window details remain available below.",
+            language,
+        )
+    else:
+        outcomes = []
+        pending_items = []
+        lead_text = work_asset_deep_summary_required_note(date_str, language=language)
+        empty_note = lead_text
+    candidates = build_work_asset_candidates(
+        outcomes,
+        window_overview=window_overview,
+        asset_rows=asset_rows,
+        language=language,
+    )
+    project_links = build_work_asset_project_links(project_contexts, outcomes, candidates, language=language)
+    evidence_window_ids = {
+        window_id
+        for outcome in outcomes
+        for window_id in (outcome.get("source_window_ids", []) or [])
+        if window_id
+    }
+    for item in pending_items:
+        for window_id in item.get("source_window_ids", []) or []:
+            if window_id:
+                evidence_window_ids.add(window_id)
+    return {
+        "date": date_str or (window_overview or {}).get("date", ""),
+        "has_deep_summary": has_deep_summary,
+        "lead_text": lead_text,
+        "outcomes": outcomes,
+        "pending_items": pending_items,
+        "asset_candidates": candidates,
+        "project_links": project_links,
+        "summary": {
+            "outcome_count": len(outcomes),
+            "pending_count": len(pending_items),
+            "asset_candidate_count": len(candidates),
+            "evidence_window_count": len(evidence_window_ids),
+            "source_window_count": safe_int((window_overview or {}).get("window_count", 0)),
+        },
+        "empty_note": empty_note,
+    }
+
+
+def build_work_asset_desk_views(
+    window_overview_views,
+    window_overview,
+    project_context_views,
+    project_contexts,
+    asset_rows,
+    nightly_candidates=None,
+    default_date="",
+    language=None,
+):
+    language = current_language(language)
+    nightly_by_date = {}
+    for summary in nightly_candidates or []:
+        if not isinstance(summary, dict):
+            continue
+        parsed = parse_nightly_summary_date(summary)
+        if parsed is None:
+            continue
+        date_key = parsed.isoformat()
+        current = nightly_by_date.get(date_key)
+        if current is None or WORK_ASSET_STAGE_PRIORITY.get(str(summary.get("stage") or ""), -1) >= WORK_ASSET_STAGE_PRIORITY.get(str(current.get("stage") or ""), -1):
+            nightly_by_date[date_key] = summary
+    windows_by_date = {}
+    for view in window_overview_views or []:
+        date_str = str(view.get("date") or "").strip()
+        if not date_str:
+            continue
+        windows_by_date[date_str] = {
+            "date": date_str,
+            "window_count": view.get("window_count", 0),
+            "source_kind": view.get("source_kind", ""),
+            "windows": view.get("work_asset_windows", []) or view.get("windows", []),
+        }
+    if window_overview and window_overview.get("date"):
+        existing = windows_by_date.get(window_overview.get("date")) or {}
+        if not existing.get("windows") and window_overview.get("windows"):
+            windows_by_date[window_overview.get("date")] = {
+                **window_overview,
+                "windows": [
+                    compact_work_asset_window_item(item)
+                    for item in window_overview.get("windows", []) or []
+                ],
+            }
+    if default_date and default_date not in windows_by_date:
+        windows_by_date[default_date] = {"date": default_date, "windows": [], "window_count": 0}
+
+    project_contexts_by_date = {}
+    for days, view in (project_context_views or {}).items():
+        if safe_int(days) != PROJECT_CONTEXT_DEFAULT_DAYS:
+            continue
+        for source_date in view.get("source_dates", []) or []:
+            project_contexts_by_date.setdefault(source_date, view.get("project_contexts", []))
+    if window_overview and window_overview.get("date"):
+        project_contexts_by_date.setdefault(window_overview.get("date"), project_contexts or [])
+
+    views = []
+    for date_str in sorted(windows_by_date.keys(), reverse=True):
+        views.append(
+            build_work_asset_desk_view(
+                date_str,
+                window_overview=windows_by_date[date_str],
+                project_contexts=project_contexts_by_date.get(date_str),
+                asset_rows=asset_rows,
+                nightly_summary=nightly_by_date.get(date_str),
+                language=language,
+            )
+        )
+    if not views and default_date:
+        views.append(
+            build_work_asset_desk_view(
+                default_date,
+                window_overview={"date": default_date, "windows": [], "window_count": 0},
+                project_contexts=[],
+                asset_rows=asset_rows,
+                nightly_summary=nightly_by_date.get(default_date),
+                language=language,
+            )
+        )
+    return views
+
+
+def selected_work_asset_desk_view(views, selected_date=""):
+    for view in views or []:
+        if selected_date and view.get("date") == selected_date:
+            return view
+    return (views or [{}])[0] if views else {}
+
+
+def apply_work_asset_feedback_to_desk_views(views, feedback_by_id, language=None):
+    if not feedback_by_id:
+        return views
+    updated_views = []
+    for view in views or []:
+        if not isinstance(view, dict):
+            updated_views.append(view)
+            continue
+        next_view = dict(view)
+        next_candidates = []
+        for candidate in view.get("asset_candidates", []) or []:
+            if not isinstance(candidate, dict):
+                next_candidates.append(candidate)
+                continue
+            feedback = feedback_by_id.get(str(candidate.get("id") or "").strip())
+            state = overview_work_asset_feedback.normalize_action_state(
+                feedback.get("state") if isinstance(feedback, dict) else ""
+            )
+            if not state:
+                next_candidates.append(candidate)
+                continue
+            next_candidate = dict(candidate)
+            next_candidate["action_state"] = state
+            next_candidate["action_state_label"] = work_asset_action_state_label(state, language=language)
+            next_candidate["action_updated_at"] = str(feedback.get("updated_at") or "")
+            next_candidates.append(next_candidate)
+        next_view["asset_candidates"] = next_candidates
+        next_view["pending_items"] = apply_work_feedback_to_rows(
+            view.get("pending_items", []) or [],
+            feedback_by_id,
+            work_asset_task_state_label,
+            language=language,
+        )
+        updated_views.append(next_view)
+    return updated_views
+
+
 def build_data(assets, usage_events, reviews, language=None):
     language = current_language(language)
     runtime_config = load_runtime_config(PATHS)
@@ -8692,6 +10426,39 @@ def build_data(assets, usage_events, reviews, language=None):
     )
     if not window_overview_default_date and window_overview_views:
         window_overview_default_date = window_overview_views[0].get("date", "")
+    work_asset_desk_views = build_work_asset_desk_views(
+        window_overview_views,
+        window_overview,
+        project_context_views,
+        project_contexts,
+        enriched_assets,
+        nightly_candidates=nightly_candidates,
+        default_date=window_overview_default_date or daily_summary_default_date or today_date_str,
+        language=language,
+    )
+    work_asset_desk_views = apply_work_asset_feedback_to_desk_views(
+        work_asset_desk_views,
+        overview_work_asset_feedback.load_work_asset_feedback_map(PATHS),
+        language=language,
+    )
+    work_asset_desk_default_date = (
+        window_overview_default_date
+        or daily_summary_default_date
+        or (work_asset_desk_views[0].get("date", "") if work_asset_desk_views else "")
+    )
+    work_asset_desk = selected_work_asset_desk_view(
+        work_asset_desk_views,
+        selected_date=work_asset_desk_default_date,
+    )
+    daily_summary_select_dates = sorted(
+        set(daily_summary_select_dates)
+        | {
+            view.get("date", "")
+            for view in work_asset_desk_views
+            if view.get("date")
+        },
+        reverse=True,
+    )
     generated_now = current_local_datetime()
     generated_at = generated_now.strftime("%Y-%m-%d %H:%M:%S")
     generated_at_iso = generated_now.isoformat()
@@ -8990,6 +10757,9 @@ def build_data(assets, usage_events, reviews, language=None):
         "daily_summary_views": daily_summary_views,
         "daily_summary_default_date": daily_summary_default_date,
         "daily_summary_select_dates": daily_summary_select_dates,
+        "daily_work_desk": work_asset_desk,
+        "daily_work_desk_views": work_asset_desk_views,
+        "daily_work_desk_default_date": work_asset_desk_default_date,
         "today_date": today_date_str,
         "backfill": backfill,
         "asset_stats_snapshot": asset_stats_snapshot,
@@ -11461,7 +13231,7 @@ def make_project_context_cards(items, language=None):
         if max_window_count > 0 and window_count > 0:
             weight = max(12, min(100, round((window_count / max_window_count) * 100)))
         return """
-            <article class="context-card" style="--context-weight: {weight}%;">
+            <article class="context-card" data-context-project="{project_key}" style="--context-weight: {weight}%;">
               <div class="context-card-rail" aria-hidden="true"><span></span></div>
               <div class="context-project-row">
                 <div class="context-card-copy">
@@ -11485,6 +13255,7 @@ def make_project_context_cards(items, language=None):
             </article>
             """.format(
                 weight=escape(str(weight)),
+                project_key=escape(work_asset_project_key(item.get("label", "")), quote=True),
                 index=escape(str(index)),
                 recent_activity=escape(localized("最近活动", "Recent activity", language)),
                 latest_activity=escape(item.get("latest_activity_display", localized("时间未知", "Unknown time", language))),
@@ -11939,21 +13710,21 @@ def make_theme_switch():
 
 def make_side_nav():
     entries = [
-        ("group", "运行视图", "Runtime View"),
+        ("group", "runtime", "运行视图", "Runtime View"),
         ("link", "overview-top", "总览", "Overview", "总览", "Overview"),
         ("link", "nightly-summary", "整理摘要", "Synthesis", "整理摘要", "Synthesis"),
         ("link", "token-section", "Token", "Token", "Token", "Token"),
         ("link", "pipeline-section", "后台运行监控", "Background Monitor", "后台运行监控", "Background Monitor"),
-        ("group", "记忆层", "Memory Layer"),
+        ("group", "memory", "记忆层", "Memory Layer"),
         ("link", "memory-section", "个人资产记忆", "Personal Asset Memory", "个人资产记忆", "Personal Asset Memory"),
         ("link", "codex-native-section", "Codex 原生记忆", "Codex Native Memory", "Codex 原生记忆", "Codex Native Memory"),
         ("link", "claude-native-section", "Claude 原生记忆", "Claude Native Memory", "Claude Code 原生记忆", "Claude Code Native Memory"),
-        ("group", "资产层", "Asset Layer"),
+        ("group", "asset", "资产层", "Asset Layer"),
         ("link", "asset-overview-section", "总览", "Overview", "资产层总览", "Asset Layer Overview"),
         ("link", "top-assets-section", "skills 热度", "Skill Hotness", "高频 skills 热度", "Skill Hotness"),
         ("link", "mcp-usage-section", "MCP 热度", "MCP Hotness", "MCP 使用热度", "MCP Tool Usage"),
         ("link", "reviews-section", "复盘记录", "Reviews", "复盘记录", "Reviews"),
-        ("group", "窗口层", "Window Layer"),
+        ("group", "window", "窗口层", "Window Layer"),
         ("link", "project-context-section", "窗口总览", "Window Overview", "窗口总览", "Window Overview"),
         ("link", "window-overview-section", "窗口明细", "Windows", "窗口明细", "Windows"),
     ]
@@ -11963,14 +13734,24 @@ def make_side_nav():
     current_group_key = ""
     for entry in entries:
         if entry[0] == "group":
-            _, zh_label, en_label = entry
+            _, icon_key, zh_label, en_label = entry
             group_index += 1
             current_group_key = "side-nav-group-{}".format(group_index)
+            icon_svg = NAV_GROUP_ICON_SVGS.get(icon_key, "")
+            icon_html = (
+                '<span class="side-nav-group-icon" aria-hidden="true">{}</span>'.format(icon_svg)
+                if icon_svg
+                else '<span class="side-nav-group-icon is-fallback" aria-hidden="true"></span>'
+            )
             links.append(
                 """
-                  <div class="side-nav-group" data-nav-group="{group_key}">{label}</div>
+                  <div class="side-nav-group" data-nav-group="{group_key}">
+                    {icon_html}
+                    <span>{label}</span>
+                  </div>
                 """.format(
                     group_key=escape(current_group_key, quote=True),
+                    icon_html=icon_html,
                     label=panel_language_text_html(zh_label, en_label),
                 )
             )
@@ -14317,6 +16098,363 @@ def make_nightly_summary_panel(
     )
 
 
+def make_work_asset_desk_panel(
+    desk_views,
+    selected_date="",
+    selectable_dates=None,
+    backfill=None,
+    help_html="",
+    language=None,
+):
+    language = current_language(language)
+    desk_views = desk_views or []
+    current_view = selected_work_asset_desk_view(desk_views, selected_date=selected_date)
+    selected_date = selected_date or current_view.get("date", "")
+    backfill = backfill or {}
+    selectable_dates = selectable_dates or [view.get("date", "") for view in desk_views if view.get("date")]
+    date_control = make_daily_summary_date_control(
+        desk_views,
+        selected_date,
+        selectable_dates=selectable_dates,
+        missing_dates=backfill.get("missing_dates", []),
+    )
+
+    def summary_line(view):
+        summary = view.get("summary", {}) if isinstance(view, dict) else {}
+        parts = [
+            localized(
+                "{} 件重要事项".format(summary.get("outcome_count", 0)),
+                plural_en(summary.get("outcome_count", 0), "important outcome"),
+                language,
+            ),
+            localized(
+                "{} 个待办/中断".format(summary.get("pending_count", 0)),
+                plural_en(summary.get("pending_count", 0), "follow-up"),
+                language,
+            ),
+            localized(
+                "{} 个资产候选".format(summary.get("asset_candidate_count", 0)),
+                plural_en(summary.get("asset_candidate_count", 0), "asset candidate"),
+                language,
+            ),
+            localized(
+                "{} 个证据窗口".format(summary.get("evidence_window_count", 0)),
+                plural_en(summary.get("evidence_window_count", 0), "evidence window"),
+                language,
+            ),
+        ]
+        return " · ".join(parts)
+
+    def render_project_tags(projects):
+        return "".join(
+            '<span class="work-asset-tag">{}</span>'.format(escape(project))
+            for project in projects or []
+            if project
+        )
+
+    def render_evidence_refs(refs):
+        links = []
+        for ref in refs or []:
+            label = ref.get("label", "")
+            anchor_id = str(ref.get("anchor_id") or "").strip()
+            if anchor_id:
+                links.append(
+                    '<a class="work-evidence-link" href="#{anchor}" data-window-target="{anchor}">{label}</a>'.format(
+                        anchor=escape(anchor_id, quote=True),
+                        label=escape(label),
+                    )
+                )
+            else:
+                links.append('<span class="work-evidence-chip">{}</span>'.format(escape(label)))
+        if not links:
+            return '<span class="work-evidence-chip">{}</span>'.format(
+                escape(localized("暂无证据入口", "No evidence entry", language))
+            )
+        return "".join(links)
+
+    def render_outcome(outcome):
+        tags = render_project_tags(outcome.get("projects", []))
+        score = safe_float(outcome.get("importance_score", 0))
+        score_label = "{:.0f}".format(score * 100)
+        return """
+          <article class="work-outcome-card" data-work-outcome-id="{outcome_id}" data-work-project-key="{project_key}">
+            <div class="work-outcome-status-row">
+              <span class="work-status-pill is-{status}">{status_label}</span>
+              <span class="work-score-pill">{score_label}</span>
+            </div>
+            <div class="work-outcome-main">
+              <h3>{title}</h3>
+              <p>{summary}</p>
+            </div>
+            <div class="work-tag-row">{tags}</div>
+            <details class="work-evidence-details">
+              <summary>{evidence_label}</summary>
+              <div class="work-evidence-row">
+                {evidence_refs}
+              </div>
+            </details>
+          </article>
+        """.format(
+            outcome_id=escape(outcome.get("id", ""), quote=True),
+            project_key=escape(outcome.get("project_key", ""), quote=True),
+            status=escape(outcome.get("status", "pending"), quote=True),
+            status_label=escape(outcome.get("status_label", "")),
+            score_label=escape(localized("重要性 {}".format(score_label), "Score {}".format(score_label), language)),
+            title=escape(outcome.get("title", "")),
+            summary=escape(outcome.get("summary", "")),
+            tags=tags,
+            evidence_label=escape(localized("查看证据", "View Evidence", language)),
+            evidence_refs=render_evidence_refs(outcome.get("evidence_refs", [])),
+        )
+
+    def render_pending_item(item):
+        source_window_ids = item.get("source_window_ids", []) or []
+        if source_window_ids:
+            anchor_id = build_window_anchor_id(source_window_ids[0])
+            open_target = '<a class="work-asset-mini-button is-primary" href="#{anchor}" data-window-target="{anchor}">{label}</a>'.format(
+                anchor=escape(anchor_id, quote=True),
+                label=escape(localized("打开", "Open", language)),
+            )
+        else:
+            open_target = '<button class="work-asset-mini-button is-disabled" type="button" disabled>{}</button>'.format(
+                escape(localized("打开", "Open", language))
+            )
+        return """
+          <article class="work-task-card" data-work-task-id="{task_id}" data-work-task-title="{title_attr}" data-work-source-window-ids="{source_window_ids}" data-work-project-key="{project_key}" data-work-task-state="{state}">
+            <div class="work-task-status-row">
+              <span class="work-status-pill is-{status}">{status_label}</span>
+              <span class="work-state-pill">{state_label}</span>
+            </div>
+            <div class="work-task-main">
+              <h3>{title}</h3>
+              <p>{summary}</p>
+              <div class="work-task-meta">{project_label}</div>
+            </div>
+            <div class="work-task-actions">
+              {open_target}
+              <button class="work-asset-mini-button" type="button" data-work-task-action="done" data-label="{done_label_attr}">{done_label}</button>
+              <button class="work-asset-mini-button" type="button" data-work-task-action="snooze" data-label="{snooze_label_attr}">{snooze_label}</button>
+              <button class="work-asset-mini-button" type="button" data-work-task-action="ignore" data-label="{ignore_label_attr}">{ignore_label}</button>
+            </div>
+          </article>
+        """.format(
+            task_id=escape(item.get("id", ""), quote=True),
+            title_attr=escape(item.get("title", ""), quote=True),
+            source_window_ids=escape(",".join(str(row or "") for row in source_window_ids), quote=True),
+            project_key=escape(item.get("project_key", ""), quote=True),
+            state=escape(item.get("action_state", "pending_review"), quote=True),
+            status=escape(item.get("status", "pending"), quote=True),
+            status_label=escape(item.get("status_label", "")),
+            state_label=escape(item.get("action_state_label", "")),
+            title=escape(item.get("title", "")),
+            summary=escape(item.get("summary", "")),
+            project_label=escape(item.get("project_label", "")),
+            open_target=open_target,
+            done_label=escape(localized("完成", "Done", language)),
+            done_label_attr=escape(localized("完成", "Done", language), quote=True),
+            snooze_label=escape(localized("稍后", "Snooze", language)),
+            snooze_label_attr=escape(localized("稍后", "Snooze", language), quote=True),
+            ignore_label=escape(localized("忽略", "Ignore", language)),
+            ignore_label_attr=escape(localized("忽略", "Ignore", language), quote=True),
+        )
+
+    def render_candidate(candidate):
+        open_target = ""
+        open_url = str(candidate.get("open_url") or "").strip()
+        open_path = str(candidate.get("open_path") or "").strip()
+        source_window_ids = candidate.get("source_window_ids", []) or []
+        if open_url:
+            open_target = '<a class="work-asset-mini-button is-primary" href="{url}">{label}</a>'.format(
+                url=escape(open_url, quote=True),
+                label=escape(localized("打开", "Open", language)),
+            )
+        elif open_path:
+            open_target = '<button class="work-asset-mini-button is-primary" type="button" data-open-finder-path="{path}">{label}</button>'.format(
+                path=escape(open_path, quote=True),
+                label=escape(localized("打开", "Open", language)),
+            )
+        elif source_window_ids:
+            anchor_id = build_window_anchor_id(source_window_ids[0])
+            open_target = '<a class="work-asset-mini-button is-primary" href="#{anchor}" data-window-target="{anchor}">{label}</a>'.format(
+                anchor=escape(anchor_id, quote=True),
+                label=escape(localized("打开", "Open", language)),
+            )
+        else:
+            open_target = '<button class="work-asset-mini-button is-disabled" type="button" disabled>{}</button>'.format(
+                escape(localized("打开", "Open", language))
+            )
+        return """
+          <article class="work-asset-candidate" data-work-candidate-id="{candidate_id}" data-work-candidate-title="{title_attr}" data-work-candidate-kind="{kind}" data-work-source-outcome-id="{source_outcome_id}" data-work-source-window-ids="{source_window_ids}" data-work-project-key="{project_key}" data-work-asset-state="{state}">
+            <div class="work-candidate-icon" data-kind="{kind}">{kind_initial}</div>
+            <div class="work-candidate-copy">
+              <div class="work-candidate-title">{kind_label} · {title}</div>
+              <div class="work-candidate-meta">
+                <span class="work-state-pill">{state_label}</span>
+                <span class="work-horizon-pill">{horizon_label}</span>
+                <span>{scope}</span>
+              </div>
+            </div>
+            <div class="work-candidate-actions">
+              {open_target}
+              <button class="work-asset-mini-button" type="button" data-work-asset-action="capture" data-label="{capture_label_attr}">{capture_label}</button>
+              <button class="work-asset-mini-button" type="button" data-work-asset-action="merge" data-label="{merge_label_attr}">{merge_label}</button>
+              <button class="work-asset-mini-button" type="button" data-work-asset-action="ignore" data-label="{ignore_label_attr}">{ignore_label}</button>
+            </div>
+          </article>
+        """.format(
+            candidate_id=escape(candidate.get("id", ""), quote=True),
+            title_attr=escape(candidate.get("title", ""), quote=True),
+            project_key=escape(candidate.get("project_key", ""), quote=True),
+            state=escape(candidate.get("action_state", "pending_review"), quote=True),
+            kind=escape(candidate.get("kind", ""), quote=True),
+            source_outcome_id=escape(candidate.get("source_outcome_id", ""), quote=True),
+            source_window_ids=escape(
+                ",".join(str(item or "") for item in (candidate.get("source_window_ids", []) or [])),
+                quote=True,
+            ),
+            kind_initial=escape((candidate.get("kind_label") or "?")[:1]),
+            kind_label=escape(candidate.get("kind_label", "")),
+            title=escape(candidate.get("title", "")),
+            state_label=escape(candidate.get("action_state_label", "")),
+            horizon_label=escape(candidate.get("reuse_horizon_label", "")),
+            scope=escape(candidate.get("project_label") or display_label("scope", candidate.get("scope", ""), language=language) or candidate.get("scope", "")),
+            open_target=open_target,
+            capture_label=escape(localized("沉淀", "Capture", language)),
+            capture_label_attr=escape(localized("沉淀", "Capture", language), quote=True),
+            merge_label=escape(localized("合并", "Merge", language)),
+            merge_label_attr=escape(localized("合并", "Merge", language), quote=True),
+            ignore_label=escape(localized("忽略", "Ignore", language)),
+            ignore_label_attr=escape(localized("忽略", "Ignore", language), quote=True),
+        )
+
+    def render_project_link(item):
+        return """
+          <a class="work-project-card" href="#project-context-section" data-work-desk-project="{project_key}">
+            <span class="work-project-dot" aria-hidden="true"></span>
+            <span class="work-project-copy">
+              <strong>{label}</strong>
+              <small>{meta}</small>
+            </span>
+            <span class="work-project-action">{action}</span>
+          </a>
+        """.format(
+            project_key=escape(item.get("project_key", ""), quote=True),
+            label=escape(item.get("label", "")),
+            meta=escape(
+                localized(
+                    "{} 事项 · {} 资产 · {} 窗口".format(
+                        item.get("item_count", 0),
+                        item.get("asset_count", 0),
+                        item.get("window_count", 0),
+                    ),
+                    "{} · {} · {}".format(
+                        plural_en(item.get("item_count", 0), "outcome"),
+                        plural_en(item.get("asset_count", 0), "asset"),
+                        plural_en(item.get("window_count", 0), "window"),
+                    ),
+                    language,
+                )
+            ),
+            action=escape(localized("查看", "View", language)),
+        )
+
+    outcomes_html = "".join(render_outcome(outcome) for outcome in current_view.get("outcomes", []))
+    if not outcomes_html:
+        outcomes_html = '<p class="empty work-asset-empty">{}</p>'.format(
+            escape(current_view.get("empty_note") or localized("今天暂无可确认的重要事项。", "No confirmed important outcomes today.", language))
+        )
+    candidates_html = "".join(render_candidate(candidate) for candidate in current_view.get("asset_candidates", []))
+    if not candidates_html:
+        candidates_html = '<p class="empty work-asset-empty">{}</p>'.format(
+            escape(localized("暂无资产候选，待更多证据进入窗口整理。", "No asset candidates yet; more evidence is needed.", language))
+        )
+    pending_html = "".join(render_pending_item(item) for item in current_view.get("pending_items", []))
+    if not pending_html:
+        pending_html = '<p class="empty work-asset-empty">{}</p>'.format(
+            escape(localized("暂无明确待办或中断项。", "No clear follow-ups or interruptions.", language))
+        )
+    projects_html = "".join(render_project_link(item) for item in current_view.get("project_links", []))
+    if not projects_html:
+        projects_html = '<p class="empty work-asset-empty">{}</p>'.format(
+            escape(localized("暂无可联动项目。", "No linked projects yet.", language))
+        )
+
+    backfill_panel = """
+          <div class="nightly-backfill" id="nightly-backfill-panel" hidden>
+            <div class="nightly-backfill-title" id="nightly-backfill-title"></div>
+            <p class="nightly-backfill-note" id="nightly-backfill-note"></p>
+            <div class="nightly-backfill-command">
+              <div class="nightly-backfill-label" id="nightly-backfill-single-label"></div>
+              <code id="nightly-backfill-single-command"></code>
+              <button type="button" class="nightly-backfill-copy" data-backfill-copy="single">复制命令</button>
+            </div>
+            <div class="nightly-backfill-command" id="nightly-backfill-range" hidden>
+              <div class="nightly-backfill-label">多日回溯</div>
+              <code id="nightly-backfill-range-command"></code>
+              <button type="button" class="nightly-backfill-copy" data-backfill-copy="range">复制命令</button>
+            </div>
+            <p class="nightly-backfill-status" id="nightly-backfill-status" aria-live="polite"></p>
+          </div>
+    """
+    return """
+    <section id="nightly-summary" class="panel work-asset-desk-panel">
+      <div class="work-desk-head">
+        <div class="work-desk-title-block">
+          <div class="nightly-kicker">{kicker}</div>
+          <div class="nightly-title-row">
+            <div class="nightly-title-main">
+              <h2 id="nightly-summary-title">{title}</h2>
+              {date_control}
+            </div>
+            {help_html}
+          </div>
+          <p class="work-desk-summary" id="work-desk-summary">{summary_line}</p>
+          <p class="work-desk-lead" id="work-desk-lead">{lead_text}</p>
+        </div>
+        <a class="work-desk-evidence-link" href="#window-overview-section">{all_evidence_label}</a>
+      </div>
+      <div class="work-desk-grid">
+        <section class="work-desk-column is-primary">
+          <div class="work-desk-subhead">{outcomes_title}</div>
+          <div class="work-outcome-list" id="work-outcome-list">{outcomes_html}</div>
+        </section>
+        <section class="work-desk-column is-secondary">
+          <div class="work-desk-subsection">
+            <div class="work-desk-subhead">{pending_title}</div>
+            <div class="work-task-list" id="work-task-list">{pending_html}</div>
+          </div>
+          <div class="work-desk-subsection">
+            <div class="work-desk-subhead">{candidates_title}</div>
+            <div class="work-candidate-list" id="work-candidate-list">{candidates_html}</div>
+          </div>
+        </section>
+      </div>
+      <section class="work-project-strip">
+        <div class="work-desk-subhead">{projects_title}</div>
+        <div class="work-project-list" id="work-project-list">{projects_html}</div>
+      </section>
+      {backfill_panel}
+    </section>
+    """.format(
+        kicker=panel_language_text_html("每日资产账本", "Daily Asset Ledger"),
+        title=escape(localized("今日工作资产台", "Today Work Asset Desk", language)),
+        date_control=date_control,
+        help_html=help_html,
+        summary_line=escape(summary_line(current_view)),
+        lead_text=escape(current_view.get("lead_text", "")),
+        all_evidence_label=escape(localized("全部证据窗口", "All Evidence Windows", language)),
+        outcomes_title=escape(localized("今日真正做成的事", "Important Outcomes", language)),
+        pending_title=escape(localized("待办 / 中断提醒", "Follow-ups / Interruptions", language)),
+        candidates_title=escape(localized("可复用资产收件箱", "Reusable Asset Inbox", language)),
+        projects_title=escape(localized("项目联动", "Project Links", language)),
+        outcomes_html=outcomes_html,
+        pending_html=pending_html,
+        candidates_html=candidates_html,
+        projects_html=projects_html,
+        backfill_panel=backfill_panel,
+    )
+
+
 def make_window_summary_cards(
     window_overview,
     language=None,
@@ -15411,6 +17549,10 @@ def build_window_overview_view(window_overview, title_zh="当日窗口概览", t
         "note": note_zh,
         "note_zh": note_zh,
         "note_en": note_en,
+        "work_asset_windows": [
+            compact_work_asset_window_item(item)
+            for item in window_overview.get("windows", []) or []
+        ],
         "cards_html": make_window_summary_cards(window_overview, language="zh"),
         "cards_html_zh": make_window_summary_cards(window_overview, language="zh"),
         "cards_html_en": make_window_summary_cards(window_overview, language="en"),
@@ -15740,6 +17882,9 @@ def build_html(data):
             "daily_summaries": data.get("daily_summary_views", []),
             "daily_summary_default_date": data.get("daily_summary_default_date", ""),
             "daily_summary_select_dates": data.get("daily_summary_select_dates", []),
+            "daily_work_desk": data.get("daily_work_desk", {}),
+            "daily_work_desk_views": data.get("daily_work_desk_views", []),
+            "daily_work_desk_default_date": data.get("daily_work_desk_default_date", ""),
             "today_date": data.get("today_date", ""),
             "backfill": data.get("backfill", {}),
             "window_overviews": window_overview_views,
@@ -15812,7 +17957,7 @@ def build_html(data):
         localized("窗口明细", "Window Details", language),
         language=language,
     )
-    daily_summary_title = localized("今天哪些工作能复用？", "What work can be reused today?", language)
+    daily_summary_title = localized("今日工作资产台", "Today Work Asset Desk", language)
     window_filter_panel = make_window_filter_panel(window_filter_start_date, window_filter_end_date)
     asset_filter_panel = make_asset_filter_panel(
         data.get("asset_filter_start_date", ""),
@@ -16077,19 +18222,22 @@ def build_html(data):
         [
             {
                 "label": "统计什么",
-                "body": "这是按日期切换的每日整理摘要卡，默认展示今天。",
+                "body": "按日期展示真正有结果、有证据、值得继续追溯的工作成果。",
             },
             {
                 "label": "包含什么",
                 "body": [
-                    "日期选择器和摘要主结论。",
-                    "工作窗口、通用上下文、项目上下文、今日 Token。",
-                    "最近相关的上下文标签。",
+                    "最多 4 条重要事项。",
+                    "当天可复用资产候选，不自动写入长期记忆。",
+                    "项目联动入口，会连接到下方窗口总览和窗口明细。",
                 ],
             },
             {
                 "label": "当前来源",
-                "body": window_source_note,
+                "body": [
+                    window_source_note,
+                    "主要从 raw daily capture、nightly window summary、资产登记册和项目上下文中提取。",
+                ],
             },
         ],
     )
@@ -16419,19 +18567,13 @@ def build_html(data):
             },
         ],
     )
-    nightly_summary_panel = make_nightly_summary_panel(
-        daily_summary_title,
-        nightly_note,
-        active_nightly_note,
-        nightly,
-        window_overview,
-        project_contexts,
-        help_html=nightly_summary_help,
-        summary_views=data.get("daily_summary_views", []),
-        selected_date=data.get("daily_summary_default_date", ""),
+    nightly_summary_panel = make_work_asset_desk_panel(
+        data.get("daily_work_desk_views", []),
+        selected_date=data.get("daily_work_desk_default_date", "") or data.get("daily_summary_default_date", ""),
         selectable_dates=data.get("daily_summary_select_dates", []),
         backfill=data.get("backfill", {}),
-        token_usage=data.get("token_usage", {}),
+        help_html=nightly_summary_help,
+        language=language,
     )
     pipeline_status_help = make_help_popover(
         "后台运行监控",
@@ -16491,7 +18633,7 @@ def build_html(data):
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="openrelix:version" content="{current_version}" data-pkg="{npm_package}" data-update-endpoint="{update_endpoint}" data-update-status-endpoint="{update_status_endpoint}" data-asset-refresh-endpoint="{asset_refresh_endpoint}" data-codex-desktop-endpoint="{codex_desktop_endpoint}" data-memory-feedback-endpoint="{memory_feedback_endpoint}" data-claude-desktop-endpoint="{claude_desktop_endpoint}" data-finder-open-endpoint="{finder_open_endpoint}" data-update-token="{update_token}">
+  <meta name="openrelix:version" content="{current_version}" data-pkg="{npm_package}" data-update-endpoint="{update_endpoint}" data-update-status-endpoint="{update_status_endpoint}" data-asset-refresh-endpoint="{asset_refresh_endpoint}" data-codex-desktop-endpoint="{codex_desktop_endpoint}" data-memory-feedback-endpoint="{memory_feedback_endpoint}" data-work-asset-feedback-endpoint="{work_asset_feedback_endpoint}" data-claude-desktop-endpoint="{claude_desktop_endpoint}" data-finder-open-endpoint="{finder_open_endpoint}" data-update-token="{update_token}">
   <title>{document_title}</title>
   <script>
     (function () {{
@@ -16721,7 +18863,10 @@ def build_html(data):
     }}
 
     .side-nav-group {{
-      margin: 12px 8px 3px;
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      margin: 12px 8px 4px;
       color: var(--subtle);
       font-size: 11px;
       font-weight: 800;
@@ -16733,15 +18878,42 @@ def build_html(data):
       color: var(--teal);
     }}
 
-    .side-nav-group.is-active::before {{
+    .side-nav-group-icon {{
+      display: inline-grid;
+      place-items: center;
+      width: 18px;
+      height: 18px;
+      flex: 0 0 auto;
+      color: currentColor;
+      background: transparent;
+      border: 0;
+      box-shadow: none;
+      overflow: visible;
+      transition: filter 160ms ease, transform 160ms ease;
+    }}
+
+    .side-nav-group-icon svg {{
+      width: 100%;
+      height: 100%;
+      display: block;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 1.9;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }}
+
+    .side-nav-group-icon.is-fallback::before {{
       content: "";
-      display: inline-block;
-      width: 6px;
-      height: 6px;
-      margin-right: 6px;
+      width: 8px;
+      height: 8px;
       border-radius: 999px;
       background: var(--teal);
-      vertical-align: 1px;
+    }}
+
+    .side-nav-group.is-active .side-nav-group-icon {{
+      filter: drop-shadow(0 3px 8px rgba(0, 113, 227, 0.24));
+      transform: translateY(-1px);
     }}
 
     .side-nav-group:first-child {{
@@ -19171,6 +21343,537 @@ def build_html(data):
       color: var(--muted);
       font-size: 16px;
       line-height: 1.58;
+    }}
+
+    .work-asset-desk-panel {{
+      display: grid;
+      gap: 18px;
+      overflow: visible;
+    }}
+
+    .work-desk-head {{
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+      min-width: 0;
+    }}
+
+    .work-desk-title-block {{
+      display: grid;
+      gap: 10px;
+      min-width: 0;
+    }}
+
+    .work-desk-summary {{
+      margin: 0;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 700;
+      line-height: 1.35;
+      overflow-wrap: anywhere;
+    }}
+
+    .work-desk-lead {{
+      max-width: 760px;
+      margin: 0;
+      color: var(--ink);
+      font-size: 15px;
+      font-weight: 720;
+      line-height: 1.55;
+      overflow-wrap: anywhere;
+    }}
+
+    .work-desk-evidence-link {{
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      min-height: 36px;
+      padding: 8px 12px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: var(--control);
+      color: var(--teal);
+      font-size: 12px;
+      font-weight: 760;
+      line-height: 1;
+      text-decoration: none;
+      white-space: nowrap;
+    }}
+
+    .work-desk-evidence-link::after,
+    .work-project-action::after {{
+      content: "›";
+      font-size: 16px;
+      line-height: 1;
+    }}
+
+    .work-desk-grid {{
+      display: grid;
+      grid-template-columns: minmax(0, 1.05fr) minmax(320px, 0.95fr);
+      gap: 18px;
+      align-items: stretch;
+    }}
+
+    .work-desk-column,
+    .work-project-strip {{
+      display: grid;
+      gap: 10px;
+      align-content: start;
+      min-width: 0;
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: color-mix(in srgb, var(--panel) 72%, transparent);
+    }}
+
+    .work-desk-column.is-secondary {{
+      align-content: start;
+    }}
+
+    .work-desk-subsection {{
+      display: grid;
+      gap: 8px;
+      min-width: 0;
+    }}
+
+    .work-desk-subsection + .work-desk-subsection {{
+      padding-top: 10px;
+      border-top: 1px solid var(--line);
+    }}
+
+    .work-desk-subhead {{
+      color: var(--ink);
+      font-size: 15px;
+      font-weight: 780;
+      line-height: 1.25;
+    }}
+
+    .work-outcome-list,
+    .work-task-list,
+    .work-candidate-list {{
+      display: grid;
+      gap: 8px;
+      align-content: start;
+      min-width: 0;
+    }}
+
+    .work-outcome-card {{
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      gap: 10px 12px;
+      align-items: start;
+      min-width: 0;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--control);
+      transition: border-color 160ms ease, background 160ms ease, transform 160ms ease;
+    }}
+
+    .work-outcome-card:hover {{
+      border-color: rgba(0, 113, 227, 0.20);
+      background: var(--control-strong);
+      transform: translateY(-1px);
+    }}
+
+    .work-outcome-status-row {{
+      display: grid;
+      gap: 6px;
+      min-width: 82px;
+    }}
+
+    .work-task-card {{
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      gap: 10px 12px;
+      align-items: start;
+      min-width: 0;
+      padding: 10px;
+      border: 1px solid rgba(255, 159, 10, 0.22);
+      border-radius: 11px;
+      background: color-mix(in srgb, var(--control) 86%, rgba(255, 159, 10, 0.08));
+    }}
+
+    .work-task-card[data-work-task-state="done"],
+    .work-task-card[data-work-task-state="ignored"] {{
+      opacity: 0.62;
+    }}
+
+    .work-task-status-row {{
+      display: grid;
+      gap: 6px;
+      min-width: 74px;
+    }}
+
+    .work-task-main {{
+      display: grid;
+      gap: 4px;
+      min-width: 0;
+    }}
+
+    .work-task-main h3 {{
+      color: var(--ink);
+      font-size: 13px;
+      font-weight: 780;
+      line-height: 1.35;
+      overflow-wrap: anywhere;
+    }}
+
+    .work-task-main p,
+    .work-task-meta {{
+      margin: 0;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 650;
+      line-height: 1.45;
+      overflow-wrap: anywhere;
+    }}
+
+    .work-task-actions {{
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: 5px;
+    }}
+
+    .work-status-pill,
+    .work-score-pill,
+    .work-state-pill,
+    .work-horizon-pill,
+    .work-asset-tag,
+    .work-evidence-chip,
+    .work-evidence-link {{
+      display: inline-flex;
+      align-items: center;
+      width: fit-content;
+      max-width: 100%;
+      min-height: 24px;
+      padding: 5px 8px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: var(--soft);
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 760;
+      line-height: 1;
+      text-decoration: none;
+      overflow-wrap: anywhere;
+    }}
+
+    .work-status-pill.is-confirmed {{
+      border-color: rgba(52, 199, 89, 0.26);
+      background: rgba(52, 199, 89, 0.12);
+      color: var(--green);
+    }}
+
+    .work-status-pill.is-plan {{
+      border-color: rgba(0, 113, 227, 0.24);
+      background: rgba(0, 113, 227, 0.10);
+      color: var(--teal);
+    }}
+
+    .work-horizon-pill {{
+      border-color: rgba(52, 199, 89, 0.22);
+      background: rgba(52, 199, 89, 0.10);
+      color: var(--green);
+    }}
+
+    .work-status-pill.is-capture,
+    .work-status-pill.is-pending {{
+      border-color: rgba(255, 159, 10, 0.26);
+      background: rgba(255, 159, 10, 0.13);
+      color: var(--amber);
+    }}
+
+    .work-score-pill {{
+      color: var(--slate);
+      background: transparent;
+    }}
+
+    .work-outcome-main {{
+      display: grid;
+      gap: 5px;
+      min-width: 0;
+    }}
+
+    .work-outcome-main h3 {{
+      color: var(--ink);
+      font-size: 14px;
+      font-weight: 780;
+      line-height: 1.35;
+      overflow-wrap: anywhere;
+    }}
+
+    .work-outcome-main p {{
+      margin: 0;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+      overflow-wrap: anywhere;
+    }}
+
+    .work-tag-row {{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+      justify-content: flex-start;
+      min-width: 0;
+    }}
+
+    .work-asset-tag {{
+      color: var(--teal);
+      background: rgba(0, 113, 227, 0.08);
+      border-color: rgba(0, 113, 227, 0.15);
+    }}
+
+    .work-evidence-details {{
+      grid-column: 2 / -1;
+      min-width: 0;
+    }}
+
+    .work-evidence-details summary {{
+      width: fit-content;
+      color: var(--teal);
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 760;
+      line-height: 1.35;
+      list-style: none;
+    }}
+
+    .work-evidence-details summary::-webkit-details-marker {{
+      display: none;
+    }}
+
+    .work-evidence-row {{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 8px;
+      min-width: 0;
+    }}
+
+    .work-evidence-link {{
+      color: var(--teal);
+      background: rgba(0, 113, 227, 0.08);
+      border-color: rgba(0, 113, 227, 0.16);
+    }}
+
+    .work-asset-candidate {{
+      display: grid;
+      grid-template-columns: 34px minmax(0, 1fr) auto;
+      gap: 10px;
+      align-items: center;
+      min-width: 0;
+      padding: 9px 10px;
+      border: 1px solid var(--line);
+      border-radius: 11px;
+      background: var(--control);
+    }}
+
+    .work-candidate-icon {{
+      display: inline-grid;
+      place-items: center;
+      width: 28px;
+      height: 28px;
+      border-radius: 8px;
+      background: linear-gradient(135deg, rgba(0, 113, 227, 0.96), rgba(52, 199, 89, 0.78));
+      color: #fff;
+      font-size: 12px;
+      font-weight: 820;
+      line-height: 1;
+      box-shadow: 0 8px 16px rgba(0, 113, 227, 0.16);
+    }}
+
+    .work-candidate-icon[data-kind="key_memory"] {{
+      background: linear-gradient(135deg, rgba(98, 94, 222, 0.96), rgba(0, 113, 227, 0.72));
+    }}
+
+    .work-candidate-icon[data-kind="playbook"],
+    .work-candidate-icon[data-kind="template"] {{
+      background: linear-gradient(135deg, rgba(52, 199, 89, 0.94), rgba(0, 113, 227, 0.74));
+    }}
+
+    .work-candidate-copy {{
+      display: grid;
+      gap: 5px;
+      min-width: 0;
+    }}
+
+    .work-candidate-title {{
+      color: var(--ink);
+      font-size: 13px;
+      font-weight: 760;
+      line-height: 1.3;
+      overflow-wrap: anywhere;
+    }}
+
+    .work-candidate-meta {{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 650;
+      line-height: 1.25;
+    }}
+
+    .work-candidate-actions {{
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: 5px;
+    }}
+
+    .work-asset-mini-button {{
+      appearance: none;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 28px;
+      padding: 6px 9px;
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+      font: inherit;
+      font-size: 11px;
+      font-weight: 760;
+      line-height: 1;
+      text-decoration: none;
+      white-space: nowrap;
+    }}
+
+    .work-asset-mini-button:hover {{
+      border-color: rgba(0, 113, 227, 0.24);
+      color: var(--teal);
+      background: var(--accent-soft);
+    }}
+
+    .work-asset-mini-button.is-active {{
+      border-color: rgba(0, 113, 227, 0.32);
+      background: rgba(0, 113, 227, 0.10);
+      color: var(--teal);
+    }}
+
+    .work-asset-mini-button.is-primary {{
+      min-width: 52px;
+      border-color: rgba(0, 113, 227, 0.28);
+      background: rgba(0, 113, 227, 0.08);
+      color: var(--teal);
+    }}
+
+    .work-asset-mini-button.is-disabled,
+    .work-asset-mini-button[disabled] {{
+      cursor: not-allowed;
+      opacity: 0.55;
+    }}
+
+    .work-asset-candidate[data-work-asset-state="resolved"] .work-state-pill {{
+      color: var(--green);
+      background: rgba(52, 199, 89, 0.12);
+      border-color: rgba(52, 199, 89, 0.22);
+    }}
+
+    .work-task-card[data-work-task-state="done"] .work-state-pill {{
+      color: var(--green);
+      background: rgba(52, 199, 89, 0.12);
+      border-color: rgba(52, 199, 89, 0.22);
+    }}
+
+    .work-task-card[data-work-task-state="snoozed"] .work-state-pill {{
+      color: var(--amber);
+      background: rgba(255, 159, 10, 0.12);
+      border-color: rgba(255, 159, 10, 0.24);
+    }}
+
+    .work-asset-candidate[data-work-asset-state="ignored"] {{
+      opacity: 0.58;
+    }}
+
+    .work-project-strip {{
+      padding: 12px 14px;
+    }}
+
+    .work-project-list {{
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(min(230px, 100%), 1fr));
+      gap: 8px;
+      min-width: 0;
+    }}
+
+    .work-project-card {{
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      gap: 10px;
+      align-items: center;
+      min-width: 0;
+      min-height: 50px;
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--control);
+      color: var(--ink);
+      text-decoration: none;
+    }}
+
+    .work-project-card:hover,
+    .work-project-card.is-active {{
+      border-color: rgba(0, 113, 227, 0.24);
+      background: var(--accent-soft);
+    }}
+
+    .work-project-dot {{
+      width: 22px;
+      height: 22px;
+      border-radius: 8px;
+      background: linear-gradient(135deg, rgba(0, 113, 227, 0.94), rgba(52, 199, 89, 0.78));
+      box-shadow: 0 8px 16px rgba(0, 113, 227, 0.16);
+    }}
+
+    .work-project-copy {{
+      display: grid;
+      gap: 4px;
+      min-width: 0;
+    }}
+
+    .work-project-copy strong {{
+      color: var(--ink);
+      font-size: 13px;
+      font-weight: 780;
+      line-height: 1.2;
+      overflow-wrap: anywhere;
+    }}
+
+    .work-project-copy small {{
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 650;
+      line-height: 1.3;
+      overflow-wrap: anywhere;
+    }}
+
+    .work-project-action {{
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      color: var(--teal);
+      font-size: 12px;
+      font-weight: 760;
+      white-space: nowrap;
+    }}
+
+    .work-asset-empty {{
+      margin: 0;
+    }}
+
+    .context-card.is-work-project-highlight,
+    .window-card.is-work-project-highlight {{
+      border-color: rgba(0, 113, 227, 0.34);
+      box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.10);
     }}
 
     .panel-head {{
@@ -22844,6 +25547,37 @@ def build_html(data):
         grid-template-columns: 1fr;
       }}
 
+      .work-desk-head {{
+        display: grid;
+        gap: 12px;
+      }}
+
+      .work-desk-evidence-link {{
+        width: fit-content;
+      }}
+
+      .work-desk-grid {{
+        grid-template-columns: 1fr;
+      }}
+
+      .work-outcome-card,
+      .work-task-card,
+      .work-asset-candidate {{
+        grid-template-columns: 1fr;
+      }}
+
+      .work-outcome-status-row,
+      .work-task-status-row,
+      .work-tag-row,
+      .work-task-actions,
+      .work-candidate-actions {{
+        justify-content: flex-start;
+      }}
+
+      .work-evidence-details {{
+        grid-column: 1;
+      }}
+
       .nightly-kicker-row {{
         align-items: flex-start;
         flex-direction: column;
@@ -23444,8 +26178,9 @@ def build_html(data):
         windowOverviewProjectsExpanded: false,
         activeWindowDateField: "",
         windowDatePickerMonth: null,
-        selectedNightlyDate: snapshot.daily_summary_default_date || "",
+        selectedNightlyDate: snapshot.daily_work_desk_default_date || snapshot.daily_summary_default_date || "",
         selectedWindowOverviewDate: snapshot.window_overview_default_date || "",
+        activeWorkProjectKey: "",
         pipelineStatus: snapshot.pipeline_status || null,
         pipelineHistoryExpanded: false,
         refreshStatusKind: "",
@@ -23484,6 +26219,12 @@ def build_html(data):
         nightlyContextRow: document.getElementById("nightly-context-row"),
         nightlyStatGrid: document.getElementById("nightly-stat-grid"),
         nightlyRailNote: document.getElementById("nightly-rail-note"),
+        workDeskSummary: document.getElementById("work-desk-summary"),
+        workDeskLead: document.getElementById("work-desk-lead"),
+        workOutcomeList: document.getElementById("work-outcome-list"),
+        workTaskList: document.getElementById("work-task-list"),
+        workCandidateList: document.getElementById("work-candidate-list"),
+        workProjectList: document.getElementById("work-project-list"),
         backfillPanel: document.getElementById("nightly-backfill-panel"),
         backfillTitle: document.getElementById("nightly-backfill-title"),
         backfillNote: document.getElementById("nightly-backfill-note"),
@@ -23550,6 +26291,10 @@ def build_html(data):
 
       function localizeValue(zh, en) {{
         return currentLanguage === "en" ? (en || zh || "") : (zh || en || "");
+      }}
+
+      function workProjectKey(value) {{
+        return String(value || "").trim().toLowerCase().replace(/[^0-9a-z\u4e00-\u9fff]+/g, "");
       }}
 
       function pipelineStatusLabel(status) {{
@@ -24059,6 +26804,464 @@ def build_html(data):
         return summaries.find(function (summary) {{
           return summary && summary.date === dateValue;
         }}) || null;
+      }}
+
+      function findWorkAssetDesk(dateValue) {{
+        const views = Array.isArray(snapshot.daily_work_desk_views) ? snapshot.daily_work_desk_views : [];
+        return views.find(function (view) {{
+          return view && view.date === dateValue;
+        }}) || (views.length ? views[0] : null);
+      }}
+
+      function workAssetSummaryLine(view) {{
+        const summary = (view && view.summary) || {{}};
+        const outcomeCount = Number(summary.outcome_count) || 0;
+        const pendingCount = Number(summary.pending_count) || 0;
+        const candidateCount = Number(summary.asset_candidate_count) || 0;
+        const evidenceCount = Number(summary.evidence_window_count) || 0;
+        if (currentLanguage === "en") {{
+          return pluralEn(outcomeCount, "important outcome") + " · " +
+            pluralEn(pendingCount, "follow-up") + " · " +
+            pluralEn(candidateCount, "asset candidate") + " · " +
+            pluralEn(evidenceCount, "evidence window");
+        }}
+        return outcomeCount + " 件重要事项 · " + pendingCount + " 个待办/中断 · " + candidateCount + " 个资产候选 · " + evidenceCount + " 个证据窗口";
+      }}
+
+      function workAssetStateLabel(state) {{
+        const labels = {{
+          pending_review: ["待确认", "Pending"],
+          resolved: ["已沉淀", "Captured"],
+          merge_suggested: ["待合并", "Merge Suggested"],
+          ignored: ["已忽略", "Ignored"],
+          done: ["已完成", "Done"],
+          snoozed: ["稍后提醒", "Snoozed"],
+        }};
+        const pair = labels[String(state || "pending_review")] || labels.pending_review;
+        return localizeValue(pair[0], pair[1]);
+      }}
+
+      function workAssetActionStorageKey(candidateId) {{
+        return "openrelix-work-asset-action:" + String(candidateId || "");
+      }}
+
+      function safeLocalStorage() {{
+        try {{
+          return window.localStorage || null;
+        }} catch (error) {{
+          return null;
+        }}
+      }}
+
+      function loadWorkAssetStoredState(candidateId) {{
+        const storage = safeLocalStorage();
+        if (!candidateId || !storage) return "";
+        try {{
+          const raw = storage.getItem(workAssetActionStorageKey(candidateId));
+          if (!raw) return "";
+          const payload = JSON.parse(raw);
+          return String((payload && payload.state) || "");
+        }} catch (error) {{
+          return "";
+        }}
+      }}
+
+      function storeWorkAssetState(candidateId, stateValue) {{
+        const storage = safeLocalStorage();
+        if (!candidateId || !storage) return;
+        try {{
+          storage.setItem(
+            workAssetActionStorageKey(candidateId),
+            JSON.stringify({{ state: stateValue, updated_at: new Date().toISOString() }})
+          );
+        }} catch (error) {{
+          // localStorage can be unavailable in hardened webviews; the visual state still updates.
+        }}
+      }}
+
+      function workAssetStateForAction(action) {{
+        const mapping = {{
+          capture: "resolved",
+          merge: "merge_suggested",
+          ignore: "ignored",
+          done: "done",
+          snooze: "snoozed",
+        }};
+        return mapping[String(action || "")] || "pending_review";
+      }}
+
+      function renderWorkEvidenceRefs(refs) {{
+        const items = Array.isArray(refs) ? refs : [];
+        if (!items.length) {{
+          return '<span class="work-evidence-chip">' + escapeHtml(localizeValue("暂无证据入口", "No evidence entry")) + '</span>';
+        }}
+        return items.map(function (ref) {{
+          const label = escapeHtml((ref && ref.label) || "");
+          const anchor = String((ref && ref.anchor_id) || "").trim();
+          if (anchor) {{
+            return '<a class="work-evidence-link" href="#' + escapeHtml(anchor) + '" data-window-target="' + escapeHtml(anchor) + '">' + label + '</a>';
+          }}
+          return '<span class="work-evidence-chip">' + label + '</span>';
+        }}).join("");
+      }}
+
+      function renderWorkOutcome(outcome) {{
+        const projects = Array.isArray(outcome && outcome.projects) ? outcome.projects : [];
+        const score = Math.round((Number(outcome && outcome.importance_score) || 0) * 100);
+        const tags = projects.map(function (project) {{
+          return '<span class="work-asset-tag">' + escapeHtml(project || "") + '</span>';
+        }}).join("");
+        return (
+          '<article class="work-outcome-card" data-work-outcome-id="' + escapeHtml((outcome && outcome.id) || "") + '" data-work-project-key="' + escapeHtml((outcome && outcome.project_key) || "") + '">' +
+            '<div class="work-outcome-status-row">' +
+              '<span class="work-status-pill is-' + escapeHtml((outcome && outcome.status) || "pending") + '">' + escapeHtml((outcome && outcome.status_label) || "") + '</span>' +
+              '<span class="work-score-pill">' + escapeHtml(currentLanguage === "en" ? ("Score " + score) : ("重要性 " + score)) + '</span>' +
+            '</div>' +
+            '<div class="work-outcome-main">' +
+              '<h3>' + escapeHtml((outcome && outcome.title) || "") + '</h3>' +
+              '<p>' + escapeHtml((outcome && outcome.summary) || "") + '</p>' +
+            '</div>' +
+            '<div class="work-tag-row">' + tags + '</div>' +
+            '<details class="work-evidence-details">' +
+              '<summary>' + escapeHtml(localizeValue("查看证据", "View Evidence")) + '</summary>' +
+              '<div class="work-evidence-row">' + renderWorkEvidenceRefs((outcome && outcome.evidence_refs) || []) + '</div>' +
+            '</details>' +
+          '</article>'
+        );
+      }}
+
+      function renderWorkCandidate(candidate) {{
+        const candidateId = String((candidate && candidate.id) || "");
+        const storedState = loadWorkAssetStoredState(candidateId);
+        const stateValue = storedState || String((candidate && candidate.action_state) || "pending_review");
+        const sourceWindowIds = Array.isArray(candidate && candidate.source_window_ids) ? candidate.source_window_ids : [];
+        let openTarget = "";
+        if (candidate && candidate.open_url) {{
+          openTarget = '<a class="work-asset-mini-button is-primary" href="' + escapeHtml(candidate.open_url) + '">' + escapeHtml(localizeValue("打开", "Open")) + '</a>';
+        }} else if (candidate && candidate.open_path) {{
+          openTarget = '<button class="work-asset-mini-button is-primary" type="button" data-open-finder-path="' + escapeHtml(candidate.open_path) + '">' + escapeHtml(localizeValue("打开", "Open")) + '</button>';
+        }} else if (sourceWindowIds.length) {{
+          const anchor = "window-" + String(sourceWindowIds[0] || "");
+          openTarget = '<a class="work-asset-mini-button is-primary" href="#' + escapeHtml(anchor) + '" data-window-target="' + escapeHtml(anchor) + '">' + escapeHtml(localizeValue("打开", "Open")) + '</a>';
+        }} else {{
+          openTarget = '<button class="work-asset-mini-button is-disabled" type="button" disabled>' + escapeHtml(localizeValue("打开", "Open")) + '</button>';
+        }}
+        const kindLabel = String((candidate && candidate.kind_label) || "?");
+        const scopeLabel = String((candidate && (candidate.project_label || candidate.scope)) || "");
+        const horizonLabel = String((candidate && candidate.reuse_horizon_label) || "");
+        return (
+          '<article class="work-asset-candidate" data-work-candidate-id="' + escapeHtml(candidateId) + '" data-work-candidate-title="' + escapeHtml((candidate && candidate.title) || "") + '" data-work-candidate-kind="' + escapeHtml((candidate && candidate.kind) || "") + '" data-work-source-outcome-id="' + escapeHtml((candidate && candidate.source_outcome_id) || "") + '" data-work-source-window-ids="' + escapeHtml(sourceWindowIds.join(",")) + '" data-work-project-key="' + escapeHtml((candidate && candidate.project_key) || "") + '" data-work-asset-state="' + escapeHtml(stateValue) + '">' +
+            '<div class="work-candidate-icon" data-kind="' + escapeHtml((candidate && candidate.kind) || "") + '">' + escapeHtml(kindLabel.slice(0, 1)) + '</div>' +
+            '<div class="work-candidate-copy">' +
+              '<div class="work-candidate-title">' + escapeHtml(kindLabel + " · " + ((candidate && candidate.title) || "")) + '</div>' +
+              '<div class="work-candidate-meta"><span class="work-state-pill">' + escapeHtml(workAssetStateLabel(stateValue)) + '</span><span class="work-horizon-pill">' + escapeHtml(horizonLabel) + '</span><span>' + escapeHtml(scopeLabel) + '</span></div>' +
+            '</div>' +
+            '<div class="work-candidate-actions">' +
+              openTarget +
+              '<button class="work-asset-mini-button" type="button" data-work-asset-action="capture" data-label="' + escapeHtml(localizeValue("沉淀", "Capture")) + '">' + escapeHtml(localizeValue("沉淀", "Capture")) + '</button>' +
+              '<button class="work-asset-mini-button" type="button" data-work-asset-action="merge" data-label="' + escapeHtml(localizeValue("合并", "Merge")) + '">' + escapeHtml(localizeValue("合并", "Merge")) + '</button>' +
+              '<button class="work-asset-mini-button" type="button" data-work-asset-action="ignore" data-label="' + escapeHtml(localizeValue("忽略", "Ignore")) + '">' + escapeHtml(localizeValue("忽略", "Ignore")) + '</button>' +
+            '</div>' +
+          '</article>'
+        );
+      }}
+
+      function renderWorkTask(task) {{
+        const taskId = String((task && task.id) || "");
+        const storedState = loadWorkAssetStoredState(taskId);
+        const stateValue = storedState || String((task && task.action_state) || "pending_review");
+        const sourceWindowIds = Array.isArray(task && task.source_window_ids) ? task.source_window_ids : [];
+        let openTarget = "";
+        if (sourceWindowIds.length) {{
+          const anchor = "window-" + String(sourceWindowIds[0] || "");
+          openTarget = '<a class="work-asset-mini-button is-primary" href="#' + escapeHtml(anchor) + '" data-window-target="' + escapeHtml(anchor) + '">' + escapeHtml(localizeValue("打开", "Open")) + '</a>';
+        }} else {{
+          openTarget = '<button class="work-asset-mini-button is-disabled" type="button" disabled>' + escapeHtml(localizeValue("打开", "Open")) + '</button>';
+        }}
+        return (
+          '<article class="work-task-card" data-work-task-id="' + escapeHtml(taskId) + '" data-work-task-title="' + escapeHtml((task && task.title) || "") + '" data-work-source-window-ids="' + escapeHtml(sourceWindowIds.join(",")) + '" data-work-project-key="' + escapeHtml((task && task.project_key) || "") + '" data-work-task-state="' + escapeHtml(stateValue) + '">' +
+            '<div class="work-task-status-row">' +
+              '<span class="work-status-pill is-' + escapeHtml((task && task.status) || "pending") + '">' + escapeHtml((task && task.status_label) || "") + '</span>' +
+              '<span class="work-state-pill">' + escapeHtml(workAssetStateLabel(stateValue)) + '</span>' +
+            '</div>' +
+            '<div class="work-task-main">' +
+              '<h3>' + escapeHtml((task && task.title) || "") + '</h3>' +
+              '<p>' + escapeHtml((task && task.summary) || "") + '</p>' +
+              '<div class="work-task-meta">' + escapeHtml((task && task.project_label) || "") + '</div>' +
+            '</div>' +
+            '<div class="work-task-actions">' +
+              openTarget +
+              '<button class="work-asset-mini-button" type="button" data-work-task-action="done" data-label="' + escapeHtml(localizeValue("完成", "Done")) + '">' + escapeHtml(localizeValue("完成", "Done")) + '</button>' +
+              '<button class="work-asset-mini-button" type="button" data-work-task-action="snooze" data-label="' + escapeHtml(localizeValue("稍后", "Snooze")) + '">' + escapeHtml(localizeValue("稍后", "Snooze")) + '</button>' +
+              '<button class="work-asset-mini-button" type="button" data-work-task-action="ignore" data-label="' + escapeHtml(localizeValue("忽略", "Ignore")) + '">' + escapeHtml(localizeValue("忽略", "Ignore")) + '</button>' +
+            '</div>' +
+          '</article>'
+        );
+      }}
+
+      function renderWorkProjectLink(project) {{
+        const outcomeCount = Number(project && project.item_count) || 0;
+        const assetCount = Number(project && project.asset_count) || 0;
+        const windowCount = Number(project && project.window_count) || 0;
+        const meta = currentLanguage === "en"
+          ? pluralEn(outcomeCount, "outcome") + " · " + pluralEn(assetCount, "asset") + " · " + pluralEn(windowCount, "window")
+          : outcomeCount + " 事项 · " + assetCount + " 资产 · " + windowCount + " 窗口";
+        return (
+          '<a class="work-project-card" href="#project-context-section" data-work-desk-project="' + escapeHtml((project && project.project_key) || "") + '">' +
+            '<span class="work-project-dot" aria-hidden="true"></span>' +
+            '<span class="work-project-copy"><strong>' + escapeHtml((project && project.label) || "") + '</strong><small>' + escapeHtml(meta) + '</small></span>' +
+            '<span class="work-project-action">' + escapeHtml(localizeValue("查看", "View")) + '</span>' +
+          '</a>'
+        );
+      }}
+
+      function renderWorkAssetDesk(dateValue) {{
+        const view = findWorkAssetDesk(dateValue);
+        if (elements.workDeskSummary) {{
+          elements.workDeskSummary.textContent = view ? workAssetSummaryLine(view) : localizeValue("暂无工作资产台数据", "No work asset desk data");
+        }}
+        if (elements.workDeskLead) {{
+          elements.workDeskLead.textContent = view ? String(view.lead_text || "") : "";
+        }}
+        const outcomes = view && Array.isArray(view.outcomes) ? view.outcomes : [];
+        if (elements.workOutcomeList) {{
+          elements.workOutcomeList.innerHTML = outcomes.length
+              ? outcomes.map(renderWorkOutcome).join("")
+            : '<p class="empty work-asset-empty">' + escapeHtml((view && view.empty_note) || localizeValue("今天暂无可确认的重要事项。", "No confirmed important outcomes today.")) + '</p>';
+        }}
+        const tasks = view && Array.isArray(view.pending_items) ? view.pending_items : [];
+        if (elements.workTaskList) {{
+          elements.workTaskList.innerHTML = tasks.length
+            ? tasks.map(renderWorkTask).join("")
+            : '<p class="empty work-asset-empty">' + escapeHtml(localizeValue("暂无明确待办或中断项。", "No clear follow-ups or interruptions.")) + '</p>';
+        }}
+        const candidates = view && Array.isArray(view.asset_candidates) ? view.asset_candidates : [];
+        if (elements.workCandidateList) {{
+          elements.workCandidateList.innerHTML = candidates.length
+            ? candidates.map(renderWorkCandidate).join("")
+            : '<p class="empty work-asset-empty">' + escapeHtml(localizeValue("暂无资产候选，待更多证据进入窗口整理。", "No asset candidates yet; more evidence is needed.")) + '</p>';
+        }}
+        const projects = view && Array.isArray(view.project_links) ? view.project_links : [];
+        if (elements.workProjectList) {{
+          elements.workProjectList.innerHTML = projects.length
+            ? projects.map(renderWorkProjectLink).join("")
+            : '<p class="empty work-asset-empty">' + escapeHtml(localizeValue("暂无可联动项目。", "No linked projects yet.")) + '</p>';
+        }}
+        if (state.activeWorkProjectKey) {{
+          highlightWorkProject(state.activeWorkProjectKey, false);
+        }}
+      }}
+
+      function updateWorkAssetCandidateCard(card, stateValue) {{
+        if (!card) return;
+        const resolvedState = String(stateValue || "pending_review");
+        card.setAttribute("data-work-asset-state", resolvedState);
+        const pill = card.querySelector(".work-state-pill");
+        if (pill) {{
+          pill.textContent = workAssetStateLabel(resolvedState);
+        }}
+        card.querySelectorAll("[data-work-asset-action]").forEach(function (candidate) {{
+          const active = workAssetStateForAction(candidate.getAttribute("data-work-asset-action")) === resolvedState;
+          candidate.classList.toggle("is-active", active);
+          candidate.setAttribute("aria-pressed", active ? "true" : "false");
+        }});
+      }}
+
+      function workAssetSavedLabel(stateValue) {{
+        const state = String(stateValue || "");
+        if (state === "resolved") {{
+          return currentLanguage === "en" ? "Captured" : "已沉淀";
+        }}
+        if (state === "merge_suggested") {{
+          return currentLanguage === "en" ? "Queued" : "待合并";
+        }}
+        if (state === "ignored") {{
+          return currentLanguage === "en" ? "Ignored" : "已忽略";
+        }}
+        if (state === "done") {{
+          return currentLanguage === "en" ? "Done" : "已完成";
+        }}
+        if (state === "snoozed") {{
+          return currentLanguage === "en" ? "Snoozed" : "稍后提醒";
+        }}
+        return currentLanguage === "en" ? "Saved" : "已记录";
+      }}
+
+      function submitWorkAssetAction(button) {{
+        const card = button ? button.closest(".work-asset-candidate") : null;
+        const candidateId = card ? (card.getAttribute("data-work-candidate-id") || "").trim() : "";
+        const action = button ? (button.getAttribute("data-work-asset-action") || "").trim() : "";
+        const nextState = workAssetStateForAction(action);
+        if (!card || !candidateId || !action) {{
+          return;
+        }}
+        updateWorkAssetCandidateCard(card, nextState);
+        storeWorkAssetState(candidateId, nextState);
+
+        const endpoint = openrelixMetaAttr("data-work-asset-feedback-endpoint");
+        const token = openrelixMetaAttr("data-update-token");
+        if (!endpoint || !token || !window.fetch) {{
+          flashButtonLabel(button, workAssetSavedLabel(nextState));
+          return;
+        }}
+
+        const buttons = Array.from(card.querySelectorAll("[data-work-asset-action]"));
+        buttons.forEach(function (candidate) {{
+          candidate.disabled = true;
+        }});
+        const headers = {{ "Content-Type": "application/json" }};
+        headers["X-OpenRelix-Token"] = token;
+        fetch(endpoint, {{
+          method: "POST",
+          headers: headers,
+          body: JSON.stringify({{
+            candidate_id: candidateId,
+            action: action,
+            title: card.getAttribute("data-work-candidate-title") || "",
+            kind: card.getAttribute("data-work-candidate-kind") || "",
+            project_key: card.getAttribute("data-work-project-key") || "",
+            source_outcome_id: card.getAttribute("data-work-source-outcome-id") || "",
+            source_window_ids: String(card.getAttribute("data-work-source-window-ids") || "")
+              .split(",")
+              .map(function (item) {{ return item.trim(); }})
+              .filter(Boolean),
+            source: "panel"
+          }})
+        }})
+          .then(function (response) {{
+            return response.json().catch(function () {{
+              return null;
+            }}).then(function (payload) {{
+              if (!response.ok || !payload || payload.ok === false) {{
+                throw new Error((payload && payload.error) || ("HTTP " + response.status));
+              }}
+              return payload;
+            }});
+          }})
+          .then(function (payload) {{
+            const savedState = (payload && payload.feedback && payload.feedback.state) || nextState;
+            updateWorkAssetCandidateCard(card, savedState);
+            storeWorkAssetState(candidateId, savedState);
+            flashButtonLabel(button, workAssetSavedLabel(savedState));
+          }})
+          .catch(function () {{
+            flashButtonLabel(button, currentLanguage === "en" ? "Saved Locally" : "已本地记录");
+          }})
+          .finally(function () {{
+            buttons.forEach(function (candidate) {{
+              candidate.disabled = false;
+            }});
+          }});
+      }}
+
+      function updateWorkTaskCard(card, stateValue) {{
+        if (!card) return;
+        const resolvedState = String(stateValue || "pending_review");
+        card.setAttribute("data-work-task-state", resolvedState);
+        const pill = card.querySelector(".work-state-pill");
+        if (pill) {{
+          pill.textContent = workAssetStateLabel(resolvedState);
+        }}
+        card.querySelectorAll("[data-work-task-action]").forEach(function (candidate) {{
+          const active = workAssetStateForAction(candidate.getAttribute("data-work-task-action")) === resolvedState;
+          candidate.classList.toggle("is-active", active);
+          candidate.setAttribute("aria-pressed", active ? "true" : "false");
+        }});
+      }}
+
+      function submitWorkTaskAction(button) {{
+        const card = button ? button.closest(".work-task-card") : null;
+        const taskId = card ? (card.getAttribute("data-work-task-id") || "").trim() : "";
+        const action = button ? (button.getAttribute("data-work-task-action") || "").trim() : "";
+        const nextState = workAssetStateForAction(action);
+        if (!card || !taskId || !action) {{
+          return;
+        }}
+        updateWorkTaskCard(card, nextState);
+        storeWorkAssetState(taskId, nextState);
+
+        const endpoint = openrelixMetaAttr("data-work-asset-feedback-endpoint");
+        const token = openrelixMetaAttr("data-update-token");
+        if (!endpoint || !token || !window.fetch) {{
+          flashButtonLabel(button, workAssetSavedLabel(nextState));
+          return;
+        }}
+
+        const buttons = Array.from(card.querySelectorAll("[data-work-task-action]"));
+        buttons.forEach(function (candidate) {{
+          candidate.disabled = true;
+        }});
+        const headers = {{ "Content-Type": "application/json" }};
+        headers["X-OpenRelix-Token"] = token;
+        fetch(endpoint, {{
+          method: "POST",
+          headers: headers,
+          body: JSON.stringify({{
+            candidate_id: taskId,
+            action: action,
+            title: card.getAttribute("data-work-task-title") || "",
+            kind: "follow_up",
+            project_key: card.getAttribute("data-work-project-key") || "",
+            source_window_ids: String(card.getAttribute("data-work-source-window-ids") || "")
+              .split(",")
+              .map(function (item) {{ return item.trim(); }})
+              .filter(Boolean),
+            source: "panel_task"
+          }})
+        }})
+          .then(function (response) {{
+            return response.json().catch(function () {{
+              return null;
+            }}).then(function (payload) {{
+              if (!response.ok || !payload || payload.ok === false) {{
+                throw new Error((payload && payload.error) || ("HTTP " + response.status));
+              }}
+              return payload;
+            }});
+          }})
+          .then(function (payload) {{
+            const savedState = (payload && payload.feedback && payload.feedback.state) || nextState;
+            updateWorkTaskCard(card, savedState);
+            storeWorkAssetState(taskId, savedState);
+            flashButtonLabel(button, workAssetSavedLabel(savedState));
+          }})
+          .catch(function () {{
+            flashButtonLabel(button, currentLanguage === "en" ? "Saved Locally" : "已本地记录");
+          }})
+          .finally(function () {{
+            buttons.forEach(function (candidate) {{
+              candidate.disabled = false;
+            }});
+          }});
+      }}
+
+      function highlightWorkProject(projectKey, shouldScroll) {{
+        const key = workProjectKey(projectKey);
+        if (!key) return;
+        state.activeWorkProjectKey = key;
+        document.querySelectorAll("[data-work-desk-project]").forEach(function (card) {{
+          const isActive = workProjectKey(card.getAttribute("data-work-desk-project")) === key;
+          card.classList.toggle("is-active", isActive);
+        }});
+        const highlightSelectors = ["[data-context-project]", "[data-window-card]"];
+        highlightSelectors.forEach(function (selector) {{
+          document.querySelectorAll(selector).forEach(function (node) {{
+            const nodeKey = selector === "[data-window-card]"
+              ? workProjectKey(node.getAttribute("data-window-project"))
+              : workProjectKey(node.getAttribute("data-context-project"));
+            const matched = nodeKey === key;
+            node.classList.toggle("is-work-project-highlight", matched);
+          }});
+        }});
+        const target = document.querySelector('[data-context-project="' + key + '"]') || document.getElementById("project-context-section");
+        if (target && shouldScroll) {{
+          target.scrollIntoView({{ behavior: "smooth", block: "start" }});
+        }}
+        window.setTimeout(function () {{
+          document.querySelectorAll(".context-card.is-work-project-highlight, .window-card.is-work-project-highlight").forEach(function (node) {{
+            node.classList.remove("is-work-project-highlight");
+          }});
+        }}, 2600);
       }}
 
       function dailySummaryTokenValueForDate(dateValue) {{
@@ -25028,6 +28231,7 @@ def build_html(data):
           const projectKey = meta.project + "\\u0000" + meta.cwd;
           if (!projectsByKey.has(projectKey)) {{
             projectsByKey.set(projectKey, {{
+              key: workProjectKey(meta.project),
               label: meta.project,
               cwd: meta.cwd,
               windowCount: 0,
@@ -25105,7 +28309,7 @@ def build_html(data):
           ? project.topics.map(renderDynamicContextTaskRow).join("")
           : '<span class="context-task-empty">' + escapeHtml(localizeValue("暂无并行任务", "No parallel tasks")) + '</span>';
         return (
-          '<article class="context-card" style="--context-weight: ' + escapeHtml(String(weight)) + '%;">' +
+          '<article class="context-card" data-context-project="' + escapeHtml(project.key || "") + '" style="--context-weight: ' + escapeHtml(String(weight)) + '%;">' +
             '<div class="context-card-rail" aria-hidden="true"><span></span></div>' +
             '<div class="context-project-row">' +
               '<div class="context-card-copy">' +
@@ -25602,15 +28806,17 @@ def build_html(data):
       }}
 
       function renderNightlySummary(dateValue) {{
-        const summary = findDailySummary(dateValue);
-        state.selectedNightlyDate = dateValue || state.selectedNightlyDate;
-        if (elements.nightlyDateInput && elements.nightlyDateInput.value !== dateValue) {{
-          elements.nightlyDateInput.value = dateValue || "";
+        const resolvedDate = dateValue || state.selectedNightlyDate || snapshot.daily_work_desk_default_date || snapshot.daily_summary_default_date || "";
+        const summary = findDailySummary(resolvedDate);
+        state.selectedNightlyDate = resolvedDate || state.selectedNightlyDate;
+        renderWorkAssetDesk(state.selectedNightlyDate);
+        if (elements.nightlyDateInput && elements.nightlyDateInput.value !== resolvedDate) {{
+          elements.nightlyDateInput.value = resolvedDate || "";
         }}
         syncDateControlValue(elements.nightlyDateInput);
         if (!summary) {{
           renderNightlyBadges(null);
-          renderBackfillPanel(dateValue, null);
+          renderBackfillPanel(resolvedDate, null);
           if (elements.nightlyLead) {{
             elements.nightlyLead.textContent = t("该日期暂无整理结果。");
           }}
@@ -25630,7 +28836,7 @@ def build_html(data):
           return;
         }}
 
-        renderBackfillPanel(dateValue, summary);
+        renderBackfillPanel(resolvedDate, summary);
         renderNightlyBadges(summary);
         if (elements.nightlyLead) {{
           elements.nightlyLead.textContent = getLocalizedSummaryText(summary, "lead_text");
@@ -26208,6 +29414,40 @@ def build_html(data):
           event.preventDefault();
           event.stopPropagation();
           submitMemoryFeedback(button);
+        }});
+      }}
+
+      function wireWorkAssetActions() {{
+        document.addEventListener("click", function (event) {{
+          const actionButton = event.target.closest("[data-work-asset-action]");
+          if (actionButton) {{
+            event.preventDefault();
+            event.stopPropagation();
+            submitWorkAssetAction(actionButton);
+            return;
+          }}
+          const taskActionButton = event.target.closest("[data-work-task-action]");
+          if (taskActionButton) {{
+            event.preventDefault();
+            event.stopPropagation();
+            submitWorkTaskAction(taskActionButton);
+            return;
+          }}
+          const projectCard = event.target.closest("[data-work-desk-project]");
+          if (!projectCard) {{
+            return;
+          }}
+          const projectKey = projectCard.getAttribute("data-work-desk-project") || "";
+          if (!projectKey) {{
+            return;
+          }}
+          event.preventDefault();
+          highlightWorkProject(projectKey, true);
+          try {{
+            window.history.replaceState(null, "", "#project-context-section");
+          }} catch (error) {{
+            window.location.hash = "project-context-section";
+          }}
         }});
       }}
 
@@ -28475,6 +31715,7 @@ def build_html(data):
       wireBackfillCopyButtons();
       wireFinderOpenActions();
       wireMemoryFeedbackActions();
+      wireWorkAssetActions();
       wireExternalPanelLinks();
       wireWindowResumeActions();
       wireSideNav();
@@ -29048,6 +32289,14 @@ def build_html(data):
             "http://{}:{}/memory-feedback".format(LIVE_TOKEN_HOST, LIVE_TOKEN_PORT),
             quote=True,
         ),
+        work_asset_feedback_endpoint=escape(
+            "http://{}:{}{}".format(
+                LIVE_TOKEN_HOST,
+                LIVE_TOKEN_PORT,
+                overview_work_asset_feedback.WORK_ASSET_FEEDBACK_PATH,
+            ),
+            quote=True,
+        ),
         claude_desktop_endpoint=escape(
             "http://{}:{}{}".format(
                 LIVE_TOKEN_HOST,
@@ -29343,6 +32592,86 @@ def build_html(data):
     )
 
 
+def collect_work_asset_report_urls(data):
+    urls = set()
+
+    def add_url(value):
+        value = str(value or "").strip()
+        if value.startswith(("http://", "https://")):
+            urls.add(value)
+
+    for view in list(data.get("daily_work_desk_views", []) or []) + [data.get("daily_work_desk", {}) or {}]:
+        if not isinstance(view, dict):
+            continue
+        for candidate in view.get("asset_candidates", []) or []:
+            if isinstance(candidate, dict):
+                add_url(candidate.get("open_url", ""))
+        for window in view.get("work_asset_windows", []) or []:
+            if not isinstance(window, dict):
+                continue
+            for ref in window.get("artifact_refs", []) or []:
+                if isinstance(ref, dict):
+                    add_url(ref.get("url", ""))
+    for view in data.get("window_overview_views", []) or []:
+        if not isinstance(view, dict):
+            continue
+        for window in view.get("work_asset_windows", []) or []:
+            if not isinstance(window, dict):
+                continue
+            for ref in window.get("artifact_refs", []) or []:
+                if isinstance(ref, dict):
+                    add_url(ref.get("url", ""))
+    return sorted(urls, key=len, reverse=True)
+
+
+def work_asset_url_placeholder_pairs(urls):
+    pairs = []
+    seen = set()
+    for index, url in enumerate(urls or []):
+        variants = [url]
+        escaped_url = escape(url, quote=True)
+        if escaped_url != url:
+            variants.append(escaped_url)
+        for variant_index, variant in enumerate(variants):
+            if not variant or variant in seen:
+                continue
+            seen.add(variant)
+            placeholder = "OPENRELIX_WORK_ASSET_URL_{}_{}".format(index, variant_index)
+            pairs.append((placeholder, variant))
+    return pairs
+
+
+def protect_work_asset_urls_in_text(value, placeholder_pairs):
+    if not isinstance(value, str) or not value:
+        return value
+    text = value
+    for placeholder, original in placeholder_pairs or []:
+        text = text.replace(original, placeholder)
+    return text
+
+
+def restore_work_asset_urls_in_text(value, placeholder_pairs):
+    if not isinstance(value, str) or not value:
+        return value
+    text = value
+    for placeholder, original in placeholder_pairs or []:
+        text = text.replace(placeholder, original)
+    return text
+
+
+def protect_work_asset_urls_in_payload(value, placeholder_pairs):
+    if isinstance(value, dict):
+        return {
+            key: protect_work_asset_urls_in_payload(item, placeholder_pairs)
+            for key, item in value.items()
+        }
+    if isinstance(value, list):
+        return [protect_work_asset_urls_in_payload(item, placeholder_pairs) for item in value]
+    if isinstance(value, tuple):
+        return tuple(protect_work_asset_urls_in_payload(item, placeholder_pairs) for item in value)
+    return protect_work_asset_urls_in_text(value, placeholder_pairs)
+
+
 def main():
     ensure_state_layout(PATHS)
     assets = load_jsonl(REGISTRY_DIR / "assets.jsonl")
@@ -29355,13 +32684,20 @@ def main():
     overview_md = REPORTS_DIR / "overview.md"
     overview_csv = REPORTS_DIR / "overview.csv"
     panel_html = REPORTS_DIR / "panel.html"
+    work_asset_url_placeholders = work_asset_url_placeholder_pairs(collect_work_asset_report_urls(data))
+    protected_data = protect_work_asset_urls_in_payload(data, work_asset_url_placeholders)
     overview_json_content = json.dumps(
-        normalize_brand_display_payload(data),
+        normalize_brand_display_payload(protected_data),
         ensure_ascii=False,
         indent=2,
     )
+    overview_json_content = restore_work_asset_urls_in_text(overview_json_content, work_asset_url_placeholders)
     overview_md_content = normalize_brand_display_text(build_markdown(data))
-    panel_html_content = normalize_brand_display_text(build_html(data))
+    protected_panel_html = protect_work_asset_urls_in_text(build_html(data), work_asset_url_placeholders)
+    panel_html_content = restore_work_asset_urls_in_text(
+        normalize_brand_display_text(protected_panel_html),
+        work_asset_url_placeholders,
+    )
 
     atomic_write_text(overview_json, overview_json_content + "\n")
     atomic_write_text(overview_md, overview_md_content)

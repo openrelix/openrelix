@@ -223,7 +223,7 @@ state root 的主要目录：
 
 - 默认 `model_cli=codex` 时使用 `codex exec --ephemeral --model <codex_model>` 和隔离的 nightly `CODEX_HOME`
 - `model_cli=claude` 时使用 `claude -p --output-format json --json-schema ...`，`CLAUDE_HOME` / `CLAUDE_CONFIG_DIR` 指向配置的 Claude Code home
-- 默认 `codex_model` 是 `gpt-5.4-mini`，默认 `claude_model` 是 `sonnet`；`openrelix models` 通过 `codex debug models` 读取当前本机 Codex catalog，`openrelix config --codex-model <model>`、`openrelix config --model-cli claude --claude-model <model>` 负责切换
+- 默认 `codex_model` 是 `gpt-5.5`，默认 `claude_model` 是 `auto`；`openrelix models` 通过 `codex debug models` 读取当前本机 Codex catalog，`openrelix config --codex-model <model>`、`openrelix config --model-cli claude --claude-model <model>` 负责切换
 - 通过 `templates/nightly-summary-schema.json` 约束输出 JSON
 - 在 prompt 前加安全前缀，声明这是纯整理任务，不允许读额外文件、调用 shell、web、MCP 或 patch
 

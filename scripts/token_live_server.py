@@ -38,6 +38,10 @@ from openrelix_overview.token_fetcher import (
 )
 from openrelix_overview.token_usage import build_token_usage_view, normalize_token_group_by
 from openrelix_overview.update_secret import read_or_create_update_token
+from openrelix_overview.work_asset_feedback import (
+    WORK_ASSET_FEEDBACK_PATH,
+    append_work_asset_feedback,
+)
 
 
 PATHS = get_runtime_paths()
@@ -87,6 +91,7 @@ TRUSTED_POST_PATHS = {
     PANEL_REFRESH_PATH,
     CODEX_DESKTOP_OPEN_PATH,
     MEMORY_FEEDBACK_PATH,
+    WORK_ASSET_FEEDBACK_PATH,
     CLAUDE_DESKTOP_OPEN_PATH,
     FINDER_REVEAL_PATH,
 }
@@ -841,6 +846,32 @@ class TokenLiveHandler(BaseHTTPRequestHandler):
                 memory_feedback_accepted_payload(feedback, refresh_snapshot, refresh_started),
                 allow_origin=origin or None,
             )
+            return
+        if parsed.path == WORK_ASSET_FEEDBACK_PATH:
+            try:
+                payload = json.loads(body.decode("utf-8")) if body else {}
+            except (UnicodeDecodeError, json.JSONDecodeError):
+                payload = {}
+            try:
+                feedback = append_work_asset_feedback(
+                    PATHS,
+                    payload.get("candidate_id", ""),
+                    payload.get("action", ""),
+                    title=payload.get("title", ""),
+                    kind=payload.get("kind", ""),
+                    project_key=payload.get("project_key", ""),
+                    source_outcome_id=payload.get("source_outcome_id", ""),
+                    source_window_ids=payload.get("source_window_ids", []),
+                    source=payload.get("source", "panel"),
+                )
+            except ValueError as exc:
+                self._send_json(
+                    400,
+                    {"ok": False, "status": "failed", "error": str(exc)},
+                    allow_origin=origin or None,
+                )
+                return
+            self._send_json(200, {"ok": True, "feedback": feedback}, allow_origin=origin or None)
             return
         if parsed.path == PANEL_REFRESH_PATH:
             try:
