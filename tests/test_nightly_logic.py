@@ -6963,6 +6963,98 @@ Native Codex profile.
             [("newer", 2), ("older", 1)],
         )
 
+    def test_context_window_overview_uses_historical_date_summary(self):
+        old_raw_daily_dir = build_overview.RAW_DAILY_DIR
+        old_consolidated_dir = build_overview.CONSOLIDATED_DIR
+        try:
+            with TemporaryDirectory() as tmpdir:
+                root = Path(tmpdir)
+                raw_daily_dir = root / "raw" / "daily"
+                consolidated_dir = root / "consolidated" / "daily"
+                raw_daily_dir.mkdir(parents=True, exist_ok=True)
+                (consolidated_dir / "2026-05-07").mkdir(parents=True, exist_ok=True)
+                build_overview.RAW_DAILY_DIR = raw_daily_dir
+                build_overview.CONSOLIDATED_DIR = consolidated_dir
+
+                (raw_daily_dir / "2026-05-11.json").write_text(
+                    json.dumps({"date": "2026-05-11", "window_count": 0, "windows": []}),
+                    encoding="utf-8",
+                )
+                (raw_daily_dir / "2026-05-07.json").write_text(
+                    json.dumps(
+                        {
+                            "date": "2026-05-07",
+                            "window_count": 1,
+                            "windows": [
+                                {
+                                    "window_id": "w-history",
+                                    "cwd": "/tmp/OpenRelix",
+                                    "started_at": "2026-05-07T09:00:00+08:00",
+                                    "prompt_count": 1,
+                                    "conclusion_count": 1,
+                                    "prompts": [
+                                        {
+                                            "local_time": "2026-05-07T09:01:00+08:00",
+                                            "text": "raw question with noisy file path",
+                                        }
+                                    ],
+                                    "conclusions": [
+                                        {
+                                            "completed_at": "2026-05-07T09:02:00+08:00",
+                                            "text": "raw conclusion with implementation details",
+                                        }
+                                    ],
+                                }
+                            ],
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+                (consolidated_dir / "2026-05-07" / "summary.json").write_text(
+                    json.dumps(
+                        {
+                            "date": "2026-05-07",
+                            "stage": "final",
+                            "model_status": "completed",
+                            "window_summaries": [
+                                {
+                                    "window_id": "w-history",
+                                    "cwd": "/tmp/OpenRelix",
+                                    "window_title": "Historical AI title",
+                                    "question_summary": "Historical AI question",
+                                    "question_count": 1,
+                                    "conclusion_count": 1,
+                                    "main_takeaway": "Historical AI takeaway",
+                                    "summary_pairs": [
+                                        {
+                                            "question": "Historical AI pair question",
+                                            "conclusion": "Historical AI pair conclusion",
+                                        }
+                                    ],
+                                }
+                            ],
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+
+                overview = build_overview.build_context_window_overview_for_days(
+                    "2026-05-11",
+                    5,
+                    latest_nightly={"date": "2026-05-11", "stage": "preliminary", "window_summaries": []},
+                )
+        finally:
+            build_overview.RAW_DAILY_DIR = old_raw_daily_dir
+            build_overview.CONSOLIDATED_DIR = old_consolidated_dir
+
+        item = next(window for window in overview["windows"] if window["window_id"] == "w-history")
+        self.assertEqual(item["summary_status"], "summarized")
+        self.assertEqual(item["window_title"], "Historical AI title")
+        self.assertEqual(item["question_summary"], "Historical AI question")
+        self.assertEqual(item["main_takeaway"], "Historical AI takeaway")
+        self.assertEqual(item["summary_pairs"][0]["question"], "Historical AI pair question")
+        self.assertEqual(item["raw_summary_pairs"][0]["question"], "raw question with noisy file path")
+
     def test_window_overview_uses_history_fallback_when_daily_capture_missing(self):
         history_capture = {
             "source_kind": "history_fallback",

@@ -2539,6 +2539,16 @@ def select_best_nightly_summary_for_date(candidates, date_str):
     return sorted(matches, key=daily_nightly_sort_key)[-1]
 
 
+def select_context_nightly_summary_for_date(date_str, latest_nightly=None, candidates=None):
+    if latest_nightly:
+        latest_date = parse_nightly_summary_date(latest_nightly)
+        if latest_date is not None and latest_date.isoformat() == date_str:
+            return latest_nightly
+    if not candidates:
+        return None
+    return select_best_nightly_summary_for_date(candidates, date_str)
+
+
 def select_primary_and_active_nightly_summaries(candidates, today=None):
     valid_candidates = [
         payload for payload in candidates
@@ -3689,6 +3699,7 @@ def build_summary_term_views(
             days,
             latest_nightly=latest_nightly,
             language=language,
+            nightly_candidates=nightly_candidates,
         )
         rows = build_summary_terms(
             range_assets,
@@ -7685,19 +7696,32 @@ def filter_window_overview_by_date_range(window_overview, start_date="", end_dat
     return window_overview
 
 
-def build_context_window_overview_for_days(anchor_date, days, latest_nightly=None, language=None):
+def build_context_window_overview_for_days(
+    anchor_date,
+    days,
+    latest_nightly=None,
+    language=None,
+    nightly_candidates=None,
+):
     language = current_language(language)
     scanned_dates = date_strings_ending_at(anchor_date, days)
     windows = []
     source_dates = []
     excluded_window_count = 0
     review_like_window_count = 0
+    summary_candidates = nightly_candidates
 
     for date_str in scanned_dates:
         daily_capture = load_daily_capture(date_str)
         if not daily_capture:
             continue
-        capture_latest_nightly = latest_nightly if date_str == anchor_date else None
+        if summary_candidates is None:
+            summary_candidates = load_nightly_summary_candidates()
+        capture_latest_nightly = select_context_nightly_summary_for_date(
+            date_str,
+            latest_nightly=latest_nightly,
+            candidates=summary_candidates,
+        )
         date_windows = build_window_items_from_daily_capture(
             daily_capture,
             capture_latest_nightly,
@@ -7736,7 +7760,13 @@ def build_context_window_overview_for_days(anchor_date, days, latest_nightly=Non
     }
 
 
-def build_project_context_views(anchor_date, latest_nightly=None, max_days=PROJECT_CONTEXT_MAX_DAYS, language=None):
+def build_project_context_views(
+    anchor_date,
+    latest_nightly=None,
+    max_days=PROJECT_CONTEXT_MAX_DAYS,
+    language=None,
+    nightly_candidates=None,
+):
     language = current_language(language)
     views = {}
     for days in range(1, max_days + 1):
@@ -7745,6 +7775,7 @@ def build_project_context_views(anchor_date, latest_nightly=None, max_days=PROJE
             days,
             latest_nightly=latest_nightly,
             language=language,
+            nightly_candidates=nightly_candidates,
         )
         contexts = build_project_contexts(window_overview, language=language)
         views[str(days)] = {
@@ -8545,6 +8576,7 @@ def build_data(assets, usage_events, reviews, language=None):
         MEMORY_USAGE_WINDOW_DAYS,
         latest_nightly=window_anchor_nightly,
         language=language,
+        nightly_candidates=nightly_candidates,
     )
     memory_registry = build_memory_registry(
         memory_items,
@@ -8700,6 +8732,7 @@ def build_data(assets, usage_events, reviews, language=None):
         WINDOW_FILTER_MAX_DAYS,
         latest_nightly=window_anchor_nightly,
         language=language,
+        nightly_candidates=nightly_candidates,
     )
     window_filter_default_overview = filter_window_overview_by_date_range(
         window_filter_overview,
@@ -8710,11 +8743,13 @@ def build_data(assets, usage_events, reviews, language=None):
         project_context_anchor_date,
         latest_nightly=window_anchor_nightly,
         language="zh",
+        nightly_candidates=nightly_candidates,
     )
     project_context_views_en = build_project_context_views(
         project_context_anchor_date,
         latest_nightly=window_anchor_nightly,
         language="en",
+        nightly_candidates=nightly_candidates,
     )
     project_context_views = project_context_views_en if is_english(language) else project_context_views_zh
     project_contexts = build_project_contexts(window_filter_default_overview, language=language)
