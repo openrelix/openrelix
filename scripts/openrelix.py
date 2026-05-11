@@ -101,6 +101,12 @@ RENDER_TEMPLATE_SCRIPT = REPO_ROOT / "install" / "render_template.py"
 MACOS_CLIENT_APP_NAME = "OpenRelix.app"
 NPM_PACKAGE_NAME = PROJECT_PACKAGE_NAME
 NPM_LATEST_SPEC = "{}@latest".format(NPM_PACKAGE_NAME)
+COMMON_CLI_TOOL_PATHS = (
+    "/opt/homebrew/bin",
+    "/usr/local/bin",
+    "/usr/bin",
+    "/bin",
+)
 TOKEN_LIVE_LABEL = "io.github.openrelix.token-live"
 TOKEN_LIVE_PLIST_NAME = "{}.plist".format(TOKEN_LIVE_LABEL)
 TOKEN_LIVE_TEMPLATE = REPO_ROOT / "ops" / "launchd" / "{}.tmpl".format(TOKEN_LIVE_PLIST_NAME)
@@ -1465,6 +1471,25 @@ def read_local_package_version():
     return get_project_version(REPO_ROOT, fallback="")
 
 
+def cli_tool_search_path():
+    current = os.environ.get("PATH") or os.defpath
+    parts = [part for part in current.split(os.pathsep) if part]
+    for path in COMMON_CLI_TOOL_PATHS:
+        if path not in parts:
+            parts.append(path)
+    return os.pathsep.join(parts)
+
+
+def cli_tool_env():
+    env = os.environ.copy()
+    env["PATH"] = cli_tool_search_path()
+    return env
+
+
+def resolve_cli_tool(tool_name):
+    return shutil.which(tool_name, path=cli_tool_search_path())
+
+
 def fetch_latest_npm_version(package_name=NPM_PACKAGE_NAME, timeout=8):
     url = "https://registry.npmjs.org/{}/latest".format(package_name)
     request = urllib.request.Request(
@@ -1474,6 +1499,32 @@ def fetch_latest_npm_version(package_name=NPM_PACKAGE_NAME, timeout=8):
     with urllib.request.urlopen(request, timeout=timeout) as response:
         payload = json.loads(response.read().decode("utf-8"))
     return str(payload.get("version") or "").strip()
+
+
+def check_npm_package_version_installable(package_name, version, timeout=12):
+    npm_bin = resolve_cli_tool("npm")
+    if not npm_bin or not version:
+        return ""
+    spec = "{}@{}".format(package_name, version)
+    try:
+        proc = subprocess.run(
+            [npm_bin, "view", spec, "version"],
+            cwd=str(REPO_ROOT),
+            env=cli_tool_env(),
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    if proc.returncode == 0 and proc.stdout.strip() == version:
+        return ""
+    output = "\n".join(line for line in ((proc.stderr or "") + (proc.stdout or "")).splitlines()[-8:] if line)
+    lowered = output.lower()
+    if "etarget" in lowered or "notarget" in lowered or "no matching version" in lowered:
+        return output
+    return ""
 
 
 def semantic_version_key(version):
@@ -1667,9 +1718,9 @@ def detected_update_install_flags():
     return flags
 
 
-def build_update_install_command(recommended=False):
+def build_update_install_command(recommended=False, npx_bin=None):
     cmd = [
-        "npx",
+        npx_bin or "npx",
         "-y",
         NPM_LATEST_SPEC,
         "install",
@@ -3315,7 +3366,8 @@ def command_update(args):
     status = "unknown"
     if latest_version:
         status = "update_available" if update_available else "up_to_date"
-    command = build_update_install_command(recommended=args.recommended)
+    npx_bin = resolve_cli_tool("npx")
+    command = build_update_install_command(recommended=args.recommended, npx_bin=npx_bin)
     command_text = shlex.join(command)
     payload = {
         "package": NPM_PACKAGE_NAME,
@@ -3355,7 +3407,7 @@ def command_update(args):
     if latest_version and not update_available and not args.force:
         return
 
-    if not shutil.which("npx"):
+    if not npx_bin:
         raise SystemExit(localized(
             "未找到 npx；请先安装 Node.js/npm，或手动运行上面的更新命令。",
             "npx was not found; install Node.js/npm first, or run the update command above manually.",
@@ -3369,7 +3421,23 @@ def command_update(args):
             ))
         return
 
-    subprocess.run(command, cwd=str(REPO_ROOT), check=True)
+    installability_error = check_npm_package_version_installable(NPM_PACKAGE_NAME, latest_version) if latest_version else ""
+    if installability_error:
+        raise SystemExit("{}\n{}".format(
+            localized(
+                "当前 npm registry 暂时还不能安装 {}@{}；可能是镜像同步延迟。请稍后重试，或临时切到官方 npm registry 后再运行更新。".format(
+                    NPM_PACKAGE_NAME,
+                    latest_version,
+                ),
+                "The current npm registry cannot install {}@{} yet; it may still be syncing. Retry later, or temporarily switch to the official npm registry before updating.".format(
+                    NPM_PACKAGE_NAME,
+                    latest_version,
+                ),
+            ),
+            installability_error,
+        ))
+
+    subprocess.run(command, cwd=str(REPO_ROOT), env=cli_tool_env(), check=True)
 
 
 def resolve_memory_migration_dates(window_days, end_date=None):

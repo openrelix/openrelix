@@ -8603,6 +8603,84 @@ Native Codex profile.
             self.assertEqual(payload["reload_after_ms"], 1500)
             self.assertIn("installed", payload["log_tail"])
 
+    def test_openrelix_update_finds_npx_from_common_tool_paths(self):
+        with TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            bin_dir = root / "bin"
+            bin_dir.mkdir()
+            npx_bin = bin_dir / "npx"
+            npx_bin.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+            npx_bin.chmod(0o755)
+            args = argparse.Namespace(
+                check=False,
+                print_command=False,
+                recommended=False,
+                yes=True,
+                json=False,
+                force=False,
+            )
+
+            with mock.patch.object(openrelix, "COMMON_CLI_TOOL_PATHS", (str(bin_dir),)), mock.patch.dict(
+                os.environ,
+                {"PATH": "/usr/bin"},
+                clear=False,
+            ), mock.patch.object(openrelix, "read_local_package_version", return_value="0.2.10"), mock.patch.object(
+                openrelix,
+                "fetch_latest_npm_version",
+                return_value="0.3.0",
+            ), mock.patch.object(
+                openrelix,
+                "check_npm_package_version_installable",
+                return_value="",
+            ), mock.patch.object(
+                openrelix.subprocess,
+                "run",
+                return_value=subprocess.CompletedProcess(args=[], returncode=0),
+            ) as run, mock.patch(
+                "sys.stdout",
+                new_callable=io.StringIO,
+            ):
+                openrelix.command_update(args)
+
+            command = run.call_args.args[0]
+            self.assertEqual(command[0], str(npx_bin))
+            self.assertIn(str(bin_dir), run.call_args.kwargs["env"]["PATH"])
+            self.assertEqual(run.call_args.kwargs["cwd"], str(openrelix.REPO_ROOT))
+
+    def test_openrelix_update_reports_registry_lag_without_running_npx(self):
+        args = argparse.Namespace(
+            check=False,
+            print_command=False,
+            recommended=False,
+            yes=True,
+            json=False,
+            force=True,
+        )
+        with mock.patch.object(openrelix, "read_local_package_version", return_value="0.2.10"), mock.patch.object(
+            openrelix,
+            "fetch_latest_npm_version",
+            return_value="0.3.0",
+        ), mock.patch.object(
+            openrelix,
+            "resolve_cli_tool",
+            side_effect=lambda tool_name: "/tmp/{}".format(tool_name),
+        ), mock.patch.object(
+            openrelix,
+            "check_npm_package_version_installable",
+            return_value="npm ERR! code ETARGET\nnpm ERR! notarget No matching version found for openrelix@0.3.0.",
+        ), mock.patch.object(
+            openrelix.subprocess,
+            "run",
+        ) as run, mock.patch(
+            "sys.stdout",
+            new_callable=io.StringIO,
+        ):
+            with self.assertRaises(SystemExit) as raised:
+                openrelix.command_update(args)
+
+        self.assertIn("openrelix@0.3.0", str(raised.exception))
+        run.assert_not_called()
+
     def test_openrelix_models_uses_codex_debug_models_and_sanitizes_catalog(self):
         with TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
