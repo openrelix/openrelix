@@ -508,6 +508,48 @@ class NightlyLogicTests(unittest.TestCase):
         self.assertNotIn("质量信号", html)
         self.assertNotIn("curated-memory-diagnostic-grid", html)
 
+    def test_curated_memory_panel_hides_downvoted_items(self):
+        sections = {section: [] for section in overview_curated_memory.SECTION_ORDER}
+        sections[overview_curated_memory.SECTION_PROJECT_PLAYBOOKS] = [
+            {
+                "section": overview_curated_memory.SECTION_PROJECT_PLAYBOOKS,
+                "title": "可见项目打法 {}".format(index),
+                "value_note": "可复用做法 {}".format(index),
+                "project_label": "OpenRelix",
+                "injection_policy": "project_context",
+                "memory_key": "visible-memory-key-{}".format(index),
+            }
+            for index in range(4)
+        ] + [
+            {
+                "section": overview_curated_memory.SECTION_PROJECT_PLAYBOOKS,
+                "title": "被标记无用的项目打法",
+                "value_note": "这条不应继续占据个人资产记忆面板。",
+                "project_label": "OpenRelix",
+                "injection_policy": "project_context",
+                "memory_key": "downvoted-memory-key",
+                "user_feedback": overview_memory_feedback.FEEDBACK_DOWNVOTED,
+            }
+        ]
+
+        html = build_overview.make_curated_memory_panel_body(
+            {
+                "schema_version": 1,
+                "source": "registry/memory_entries.jsonl",
+                "model_calls": 0,
+                "entry_count": 5,
+                "sections": sections,
+                "diagnostics": {},
+                "artifact": {},
+            }
+        )
+
+        self.assertIn("4 条", html)
+        self.assertIn("查看更多 1 条", html)
+        self.assertIn("可见项目打法 3", html)
+        self.assertNotIn("被标记无用的项目打法", html)
+        self.assertNotIn("downvoted-memory-key", html)
+
     def test_curated_memory_badge_only_marks_injected_policy(self):
         sections = {section: [] for section in overview_curated_memory.SECTION_ORDER}
         sections[overview_curated_memory.SECTION_LOCAL_VOLATILE] = [
@@ -5992,6 +6034,7 @@ Native Codex profile.
         self.assertIn("findMemoryFeedbackTopGrid", html)
         self.assertIn("findCuratedMemoryTopList", html)
         self.assertIn("moveCuratedMemoryItem(row, feedback)", html)
+        self.assertIn("removeCuratedMemoryItem(row);", html)
         self.assertIn("rememberMemoryFeedback(memoryKey, savedFeedback);", html)
         self.assertIn("applyStoredMemoryFeedback();", html)
         self.assertIn("removeMemoryFeedbackCard(row);", html)

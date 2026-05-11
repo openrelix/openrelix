@@ -12557,7 +12557,12 @@ def make_curated_memory_panel_body(pack):
     section_cards = []
     for section in overview_curated_memory.SECTION_ORDER:
         label_zh, label_en = curated_memory_section_label(section)
-        items = sections.get(section) or []
+        items = [
+            item
+            for item in (sections.get(section) or [])
+            if normalize_feedback_state(item.get("user_feedback") or "")
+            != overview_memory_feedback.FEEDBACK_DOWNVOTED
+        ]
         preview_items = items[:3]
         item_rows = [render_curated_memory_item(item) for item in preview_items]
         extra_rows = "".join(render_curated_memory_item(item) for item in items[3:])
@@ -26373,6 +26378,17 @@ def build_html(data):
         }}
       }}
 
+      function removeCuratedMemoryItem(row) {{
+        const item = row ? row.closest(".curated-memory-item") : null;
+        if (!item) {{
+          return false;
+        }}
+        const sourceExpandable = item.closest("details.content-more");
+        item.remove();
+        removeEmptyCuratedMemoryExpander(sourceExpandable);
+        return true;
+      }}
+
       function removeMemoryFeedbackCard(row) {{
         const card = row ? row.closest(".memory-brief-card") : null;
         if (!card) {{
@@ -26396,9 +26412,7 @@ def build_html(data):
           }}
           removeEmptyCuratedMemoryExpander(sourceExpandable);
         }} else if (feedback === "downvoted") {{
-          if (targetList && item.parentElement === targetList && targetList.lastElementChild !== item) {{
-            targetList.appendChild(item);
-          }}
+          removeCuratedMemoryItem(row);
         }}
         return true;
       }}
