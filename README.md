@@ -31,6 +31,7 @@ GitHub project page: [openrelix/openrelix](https://github.com/openrelix/openreli
 - [Learning Guide](docs/learning-guide.md): a practical path for users, contributors, and maintainers to understand and validate the project.
 - [Open Source Install And Project Overview](docs/open-source-install-and-project-overview.md): Chinese install guide and project explanation for the current macOS preview release.
 - [Product Showcase](docs/product-showcase.html): visual product introduction and sanitized panel previews.
+- [Getting Started Guide](docs/getting-started.html): user-facing panel guide with real Chinese / English UI example screenshots and section-by-section usage notes for the core panel modules.
 - [System Overview](docs/system-overview.md): layered operating model for AI hosts, repo source, runtime state, and local memory.
 - [Privacy And Distribution Boundary](docs/privacy-and-distribution.md): what belongs in the public repo and what must stay local.
 - [Trademark Filing Kit](docs/trademark-filing-kit.md): filing checklist and open source brand boundary notes.
@@ -227,7 +228,7 @@ The integrated profile does this:
 5. Installs the global `openrelix` shell command and ensures the chosen user bin directory is on `PATH`.
 6. Builds the lightweight macOS client in the state root, then installs a real app bundle at `~/Applications/OpenRelix.app` when `swiftc` is available.
 7. Renders and bootstraps macOS LaunchAgents for:
-   - overview refresh every hour; with `--enable-learning-refresh`, this reads the configured activity host and runs model-backed consolidation through the configured `model_cli`
+   - overview refresh every hour by default; with `--enable-learning-refresh`, this reads the configured activity host and runs model-backed consolidation through the configured `model_cli`. Use `--overview-refresh-interval-minutes` to change the interval
    - token live server
    - nightly preview at `23:00`
    - nightly finalize for the previous day at `00:10`
@@ -253,13 +254,13 @@ After the installer finishes, it prints recommended next steps. The first action
 openrelix app
 ```
 
-Recommended after install: the installer can enable automatic learning refresh every hour:
+Recommended after install: the installer can enable automatic learning refresh every hour by default:
 
 ```bash
 npx openrelix install --enable-learning-refresh
 ```
 
-This option is intentionally explicit: the default background `overview-refresh` does not learn memory from recent windows, while `--enable-learning-refresh` makes that hourly LaunchAgent read the configured activity host, learn from recent AI host windows, update this system's local memory and overview, and keep host-context injection bounded. Chinese runtime language may still maintain the small Codex-native display cache described above. If the global `openrelix` command was not installed, the installer prints a direct `python3 scripts/openrelix.py ...` fallback command with the selected state root and host homes.
+This option is intentionally explicit: the default background `overview-refresh` does not learn memory from recent windows, while `--enable-learning-refresh` makes that LaunchAgent read the configured activity host, learn from recent AI host windows, update this system's local memory and overview, and keep host-context injection bounded. It runs every 60 minutes by default; after installation, use `openrelix schedule --overview-refresh-interval-minutes 30` or another positive minute value to change the interval. Chinese runtime language may still maintain the small Codex-native display cache described above. If the global `openrelix` command was not installed, the installer prints a direct `python3 scripts/openrelix.py ...` fallback command with the selected state root and host homes.
 
 The integrated installer also provides a shell entrypoint:
 
@@ -354,6 +355,14 @@ Refresh and immediately synthesize memory from today's windows with the last 7 d
 
 ```bash
 openrelix refresh --learn-memory --learn-window-days 7
+```
+
+Show or adjust the schedule for already-installed background jobs:
+
+```bash
+openrelix schedule
+openrelix schedule --overview-refresh-interval-minutes 30
+openrelix schedule --nightly-organize-time 22:30 --nightly-finalize-time 01:00
 ```
 
 Open the generated panel:

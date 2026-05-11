@@ -62,14 +62,16 @@ Examples:
   npx openrelix index search-memory sqlite
   npx openrelix recall worktree
   npx openrelix install --nightly-organize-time 22:30 --nightly-finalize-time 01:00
+  npx openrelix install --overview-refresh-interval-minutes 30
 
 This npm command is a thin wrapper around install/install.sh.
 Interactive installs prompt for 中文 (zh) or English (en) when --language is omitted.
 Install profile defaults to integrated: the installer sets up the openrelix shell command, user-level Codex skill symlink, bounded history config, lightweight macOS client, overview refresh service, nightly organization LaunchAgents, and local reports. Use --minimal for a local-only bootstrap without shell command, macOS client, or LaunchAgents.
 Memory mode defaults to integrated: local personal memory stays on and a bounded summary is injected into enabled host context. Use --record-memory-only for strict local-only recording, or --disable-personal-memory to only visualize AI CLI memory.
-Add --enable-learning-refresh when you want the hourly overview-refresh LaunchAgent to call the configured activity host adapter and learn from a 7-day window automatically.
+Add --enable-learning-refresh when you want the overview-refresh LaunchAgent to call the configured activity host adapter and learn from a 7-day window automatically.
 Activity source defaults to auto: try Codex app-server first, then fall back to CLI history/session. Add --activity-source history to force CLI files only.
 Nightly defaults to 23:00 preview and 00:10 previous-day finalize. Use --nightly-organize-time and --nightly-finalize-time with HH:MM to override.
+Panel refresh defaults to every 60 minutes. Use --overview-refresh-interval-minutes to re-render the LaunchAgent with a different interval.
 Daily update check defaults to 09:30 when --enable-update-check is passed; it checks npm only and does not auto-install updates.
 Uninstall removes OpenRelix LaunchAgents, the macOS app, shell command, user-level skill, and prompt. It asks before deleting the local state root; use --delete-local-memory for a full purge or --keep-local-memory for unattended removal that keeps memory.
 Run "npx openrelix install --help" to show installer options.`);

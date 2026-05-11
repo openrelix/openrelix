@@ -1,6 +1,6 @@
 {
   "name": "openrelix",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "OpenRelix™ v0.3 preview: open-source personal memory relics for AI coding agent workflows.",
   "license": "MIT",
   "author": {
@@ -44,6 +44,8 @@
     ".agents/skills/memory-review/",
     "docs/*.md",
     "docs/index.html",
+    "docs/getting-started.html",
+    "docs/assets/getting-started-*.png",
     "docs/openrelix-icon.png",
     "docs/product-showcase.html",
     "docs/changelog/v0.x.html",

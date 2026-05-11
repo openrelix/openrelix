@@ -4,12 +4,14 @@ import argparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import json
 import os
+import plistlib
 import re
 import shlex
 import shutil
 import signal
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import urllib.error
@@ -110,6 +112,14 @@ COMMON_CLI_TOOL_PATHS = (
 TOKEN_LIVE_LABEL = "io.github.openrelix.token-live"
 TOKEN_LIVE_PLIST_NAME = "{}.plist".format(TOKEN_LIVE_LABEL)
 TOKEN_LIVE_TEMPLATE = REPO_ROOT / "ops" / "launchd" / "{}.tmpl".format(TOKEN_LIVE_PLIST_NAME)
+OVERVIEW_REFRESH_LABEL = "io.github.openrelix.overview-refresh"
+OVERVIEW_REFRESH_PLIST_NAME = "{}.plist".format(OVERVIEW_REFRESH_LABEL)
+NIGHTLY_ORGANIZE_LABEL = "io.github.openrelix.nightly-organize"
+NIGHTLY_ORGANIZE_PLIST_NAME = "{}.plist".format(NIGHTLY_ORGANIZE_LABEL)
+NIGHTLY_FINALIZE_LABEL = "io.github.openrelix.nightly-finalize-previous-day"
+NIGHTLY_FINALIZE_PLIST_NAME = "{}.plist".format(NIGHTLY_FINALIZE_LABEL)
+UPDATE_CHECK_LABEL = "io.github.openrelix.update-check"
+UPDATE_CHECK_PLIST_NAME = "{}.plist".format(UPDATE_CHECK_LABEL)
 TOKEN_LIVE_HEALTH_URL = "http://127.0.0.1:8765/healthz"
 TOKEN_LIVE_STARTUP_TIMEOUT_SECONDS = 8.0
 STAGE_PRIORITY = {"manual": 0, "preliminary": 1, "final": 2}
@@ -595,6 +605,49 @@ def build_parser():
             "以 JSON 打印模式信息。",
             "Print mode information as JSON.",
         ),
+    )
+
+    schedule = subparsers.add_parser(
+        "schedule",
+        help=localized(
+            "查看或调整已安装后台任务的运行时间。",
+            "Show or adjust installed background job schedules.",
+        ),
+    )
+    schedule.add_argument(
+        "--overview-refresh-interval-minutes",
+        type=int,
+        help=localized(
+            "调整面板自动刷新间隔，单位分钟；默认安装值为 60。",
+            "Set the panel auto-refresh interval in minutes; the default installed value is 60.",
+        ),
+    )
+    schedule.add_argument(
+        "--nightly-organize-time",
+        help=localized(
+            "调整当天预览整理时间，格式 HH:MM；默认安装值为 23:00。",
+            "Set the same-day nightly preview time in HH:MM; the default installed value is 23:00.",
+        ),
+    )
+    schedule.add_argument(
+        "--nightly-finalize-time",
+        help=localized(
+            "调整前一日终版整理时间，格式 HH:MM；默认安装值为 00:10。",
+            "Set the previous-day finalize time in HH:MM; the default installed value is 00:10.",
+        ),
+    )
+    schedule.add_argument(
+        "--no-bootstrap",
+        action="store_true",
+        help=localized(
+            "只写入 plist，不重新加载 LaunchAgent。",
+            "Only write plist files; do not reload LaunchAgents.",
+        ),
+    )
+    schedule.add_argument(
+        "--json",
+        action="store_true",
+        help=localized("以 JSON 打印结果。", "Print result as JSON."),
     )
 
     config = subparsers.add_parser(
@@ -1544,7 +1597,7 @@ def compare_versions(current, latest):
 
 
 def launch_agent_path(filename):
-    return Path.home() / "Library" / "LaunchAgents" / filename
+    return PATHS.launch_agents_dir / filename
 
 
 def read_launch_agent(filename):
@@ -1685,16 +1738,29 @@ def plist_calendar_time(text):
     return "{:02d}:{:02d}".format(int(hour_match.group(1)), int(minute_match.group(1)))
 
 
+def plist_interval_minutes(text):
+    interval_match = re.search(r"<key>StartInterval</key>\s*<integer>(\d+)</integer>", text)
+    if not interval_match:
+        return None
+    seconds = int(interval_match.group(1))
+    if seconds <= 0:
+        return None
+    return max(1, int(round(seconds / 60)))
+
+
 def detected_update_install_flags():
     flags = []
-    overview_text = read_launch_agent("io.github.openrelix.overview-refresh.plist")
+    overview_text = read_launch_agent(OVERVIEW_REFRESH_PLIST_NAME)
     if overview_text:
         if plist_string_value(overview_text, "OPENRELIX_REFRESH_LEARN_MEMORY") == "1":
             flags.append("--enable-learning-refresh")
         else:
             flags.append("--enable-background-services")
+        overview_interval = plist_interval_minutes(overview_text)
+        if overview_interval:
+            flags.extend(["--overview-refresh-interval-minutes", str(overview_interval)])
 
-    nightly_text = read_launch_agent("io.github.openrelix.nightly-organize.plist")
+    nightly_text = read_launch_agent(NIGHTLY_ORGANIZE_PLIST_NAME)
     if nightly_text:
         flags.append("--enable-nightly")
         keep_awake = plist_string_value(nightly_text, "AI_ASSET_KEEP_AWAKE")
@@ -1704,12 +1770,12 @@ def detected_update_install_flags():
         if nightly_time:
             flags.extend(["--nightly-organize-time", nightly_time])
 
-    nightly_finalize_text = read_launch_agent("io.github.openrelix.nightly-finalize-previous-day.plist")
+    nightly_finalize_text = read_launch_agent(NIGHTLY_FINALIZE_PLIST_NAME)
     nightly_finalize_time = plist_calendar_time(nightly_finalize_text)
     if nightly_finalize_time:
         flags.extend(["--nightly-finalize-time", nightly_finalize_time])
 
-    update_check_text = read_launch_agent("io.github.openrelix.update-check.plist")
+    update_check_text = read_launch_agent(UPDATE_CHECK_PLIST_NAME)
     if update_check_text:
         flags.append("--enable-update-check")
         update_check_time = plist_calendar_time(update_check_text)
@@ -3660,6 +3726,208 @@ def command_mode(args):
         print(localized("- overview 和面板已刷新。", "- Overview and panel refreshed."))
 
 
+def parse_schedule_time(value, option_name):
+    text = str(value or "").strip()
+    if not re.fullmatch(r"([01][0-9]|2[0-3]):[0-5][0-9]", text):
+        raise SystemExit(
+            localized(
+                "{} 必须使用 24 小时 HH:MM 格式，例如 23:00 或 00:10。".format(option_name),
+                "{} must use 24-hour HH:MM format, for example 23:00 or 00:10.".format(option_name),
+            )
+        )
+    hour, minute = text.split(":", 1)
+    return int(hour), int(minute), text
+
+
+def load_plist_file(path):
+    try:
+        with path.open("rb") as handle:
+            payload = plistlib.load(handle)
+    except FileNotFoundError as exc:
+        raise SystemExit(
+            localized(
+                "未找到 LaunchAgent：{}。请先确认后台服务已安装。".format(path),
+                "LaunchAgent not found: {}. Confirm background services are installed first.".format(path),
+            )
+        ) from exc
+    except (OSError, plistlib.InvalidFileException) as exc:
+        raise SystemExit(
+            localized(
+                "无法读取 LaunchAgent：{} ({})".format(path, exc),
+                "Could not read LaunchAgent: {} ({})".format(path, exc),
+            )
+        ) from exc
+    return payload
+
+
+def write_plist_file(path, payload):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(prefix=".tmp-", suffix=".plist", dir=str(path.parent))
+    tmp_path = Path(tmp_name)
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            plistlib.dump(payload, handle)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(tmp_path, path)
+    finally:
+        try:
+            if tmp_path.exists():
+                tmp_path.unlink()
+        except OSError:
+            pass
+
+
+def plist_calendar_time_from_payload(payload):
+    value = payload.get("StartCalendarInterval")
+    if isinstance(value, list):
+        value = value[0] if value else None
+    if not isinstance(value, dict):
+        return ""
+    hour = value.get("Hour")
+    minute = value.get("Minute")
+    if hour is None or minute is None:
+        return ""
+    return "{:02d}:{:02d}".format(int(hour), int(minute))
+
+
+def launch_agent_status(label, plist_name, kind):
+    path = launch_agent_path(plist_name)
+    row = {
+        "label": label,
+        "path": str(path),
+        "installed": path.exists(),
+        "kind": kind,
+    }
+    if not path.exists():
+        return row
+    payload = load_plist_file(path)
+    if kind == "interval":
+        seconds = int(payload.get("StartInterval") or 0)
+        row["interval_seconds"] = seconds
+        row["interval_minutes"] = max(1, int(round(seconds / 60))) if seconds > 0 else 0
+    else:
+        row["time"] = plist_calendar_time_from_payload(payload)
+    return row
+
+
+def schedule_payload():
+    return {
+        "overview_refresh": launch_agent_status(OVERVIEW_REFRESH_LABEL, OVERVIEW_REFRESH_PLIST_NAME, "interval"),
+        "nightly_organize": launch_agent_status(NIGHTLY_ORGANIZE_LABEL, NIGHTLY_ORGANIZE_PLIST_NAME, "calendar"),
+        "nightly_finalize": launch_agent_status(NIGHTLY_FINALIZE_LABEL, NIGHTLY_FINALIZE_PLIST_NAME, "calendar"),
+        "update_check": launch_agent_status(UPDATE_CHECK_LABEL, UPDATE_CHECK_PLIST_NAME, "calendar"),
+    }
+
+
+def set_plist_interval_minutes(plist_name, minutes):
+    if minutes is None:
+        return None
+    if minutes < 1:
+        raise SystemExit(
+            localized(
+                "--overview-refresh-interval-minutes 必须大于等于 1。",
+                "--overview-refresh-interval-minutes must be at least 1.",
+            )
+        )
+    path = launch_agent_path(plist_name)
+    payload = load_plist_file(path)
+    payload["StartInterval"] = int(minutes) * 60
+    write_plist_file(path, payload)
+    return path
+
+
+def set_plist_calendar_time(plist_name, hour, minute):
+    path = launch_agent_path(plist_name)
+    payload = load_plist_file(path)
+    payload["StartCalendarInterval"] = {"Hour": int(hour), "Minute": int(minute)}
+    write_plist_file(path, payload)
+    return path
+
+
+def reload_launch_agent(label, plist_path):
+    if sys.platform != "darwin" or not shutil.which("launchctl"):
+        return False
+    uid = os.getuid()
+    subprocess.run(
+        ["launchctl", "bootout", "gui/{}/{}".format(uid, label)],
+        check=False,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    subprocess.run(
+        ["launchctl", "bootout", "gui/{}".format(uid), str(plist_path)],
+        check=False,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    subprocess.run(["launchctl", "bootstrap", "gui/{}".format(uid), str(plist_path)], check=True)
+    return True
+
+
+def print_schedule_payload(payload, updated=None, reloaded=None):
+    updated = set(updated or [])
+    reloaded = set(reloaded or [])
+    print(localized("OpenRelix 后台任务时间", "OpenRelix background schedule"))
+    overview = payload.get("overview_refresh") or {}
+    nightly = payload.get("nightly_organize") or {}
+    finalize = payload.get("nightly_finalize") or {}
+    update_check = payload.get("update_check") or {}
+    print(
+        "- overview-refresh: {}".format(
+            localized(
+                "每 {} 分钟".format(overview.get("interval_minutes") or "unknown"),
+                "every {} minutes".format(overview.get("interval_minutes") or "unknown"),
+            )
+            if overview.get("installed")
+            else localized("未安装", "not installed")
+        )
+    )
+    print("- nightly preview: {}".format(nightly.get("time") if nightly.get("installed") else localized("未安装", "not installed")))
+    print("- nightly finalize: {}".format(finalize.get("time") if finalize.get("installed") else localized("未安装", "not installed")))
+    print("- update check: {}".format(update_check.get("time") if update_check.get("installed") else localized("未安装", "not installed")))
+    if updated:
+        print("- {}: {}".format(localized("已更新", "Updated"), ", ".join(sorted(updated))))
+    if reloaded:
+        print("- {}: {}".format(localized("已重新加载", "Reloaded"), ", ".join(sorted(reloaded))))
+
+
+def command_schedule(args):
+    updated = []
+    reloaded = []
+
+    if args.overview_refresh_interval_minutes is not None:
+        path = set_plist_interval_minutes(
+            OVERVIEW_REFRESH_PLIST_NAME,
+            int(args.overview_refresh_interval_minutes),
+        )
+        updated.append(OVERVIEW_REFRESH_LABEL)
+        if not args.no_bootstrap and reload_launch_agent(OVERVIEW_REFRESH_LABEL, path):
+            reloaded.append(OVERVIEW_REFRESH_LABEL)
+
+    if args.nightly_organize_time:
+        hour, minute, _ = parse_schedule_time(args.nightly_organize_time, "--nightly-organize-time")
+        path = set_plist_calendar_time(NIGHTLY_ORGANIZE_PLIST_NAME, hour, minute)
+        updated.append(NIGHTLY_ORGANIZE_LABEL)
+        if not args.no_bootstrap and reload_launch_agent(NIGHTLY_ORGANIZE_LABEL, path):
+            reloaded.append(NIGHTLY_ORGANIZE_LABEL)
+
+    if args.nightly_finalize_time:
+        hour, minute, _ = parse_schedule_time(args.nightly_finalize_time, "--nightly-finalize-time")
+        path = set_plist_calendar_time(NIGHTLY_FINALIZE_PLIST_NAME, hour, minute)
+        updated.append(NIGHTLY_FINALIZE_LABEL)
+        if not args.no_bootstrap and reload_launch_agent(NIGHTLY_FINALIZE_LABEL, path):
+            reloaded.append(NIGHTLY_FINALIZE_LABEL)
+
+    payload = schedule_payload()
+    if args.json:
+        payload["updated"] = updated
+        payload["reloaded"] = reloaded
+        print_json(payload)
+        return
+    print_schedule_payload(payload, updated=updated, reloaded=reloaded)
+
+
 def memory_summary_budget_payload(config=None):
     config = config or load_runtime_config(PATHS)
     budget = get_memory_summary_budget(PATHS)
@@ -4861,6 +5129,9 @@ def main():
         return
     if args.command == "mode":
         command_mode(args)
+        return
+    if args.command == "schedule":
+        command_schedule(args)
         return
     if args.command == "config":
         command_config(args)

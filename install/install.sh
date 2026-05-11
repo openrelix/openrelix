@@ -40,6 +40,8 @@ ENABLE_NIGHTLY=0
 ENABLE_LEARNING_REFRESH=0
 ENABLE_UPDATE_CHECK=0
 LEARNING_REFRESH_WINDOW_DAYS="${OPENRELIX_REFRESH_LEARN_WINDOW_DAYS:-7}"
+OVERVIEW_REFRESH_INTERVAL_MINUTES="${OPENRELIX_OVERVIEW_REFRESH_INTERVAL_MINUTES:-60}"
+OVERVIEW_REFRESH_INTERVAL_SECONDS=3600
 INSTALL_LEARN_JOBS="${OPENRELIX_INSTALL_LEARN_JOBS:-2}"
 INSTALL_DEEP_LEARN_JOBS=1
 MEMORY_MODE_EXPLICIT=0
@@ -148,10 +150,13 @@ Options:
                                 Integrated installs enable nightly by default.
   --enable-update-check         Install a daily no-mutation npm update check LaunchAgent.
   --update-check-time HH:MM     Time for the daily update check. Default: 09:30
-  --enable-learning-refresh     Make the hourly overview refresh call the
+  --overview-refresh-interval-minutes N
+                                Panel refresh interval for the overview LaunchAgent.
+                                Default: 60.
+  --enable-learning-refresh     Make the overview refresh call the
                                 configured activity host adapter and learn memory with a 7-day
                                 window. Implies --enable-background-services.
-  --disable-learning-refresh    Keep the hourly overview refresh from learning
+  --disable-learning-refresh    Keep the overview refresh from learning
                                 recent windows. Chinese display polish can still
                                 run unless OPENRELIX_ENABLE_NATIVE_DISPLAY_POLISH=0.
   --learning-refresh-window-days N
@@ -715,6 +720,15 @@ while [[ $# -gt 0 ]]; do
       UPDATE_CHECK_TIME="${1#*=}"
       shift
       ;;
+    --overview-refresh-interval-minutes)
+      require_option_value "$1" "${2-}"
+      OVERVIEW_REFRESH_INTERVAL_MINUTES="$2"
+      shift 2
+      ;;
+    --overview-refresh-interval-minutes=*)
+      OVERVIEW_REFRESH_INTERVAL_MINUTES="${1#*=}"
+      shift
+      ;;
     --enable-learning-refresh)
       ENABLE_LEARNING_REFRESH=1
       ENABLE_BACKGROUND_SERVICES=1
@@ -1076,6 +1090,15 @@ if ! [[ "$LEARNING_REFRESH_WINDOW_DAYS" =~ '^[0-9]+$' ]]; then
   echo "--learning-refresh-window-days must be a non-negative integer: $LEARNING_REFRESH_WINDOW_DAYS" >&2
   exit 1
 fi
+if ! [[ "$OVERVIEW_REFRESH_INTERVAL_MINUTES" =~ '^[0-9]+$' ]]; then
+  echo "--overview-refresh-interval-minutes must be a positive integer: $OVERVIEW_REFRESH_INTERVAL_MINUTES" >&2
+  exit 1
+fi
+if (( OVERVIEW_REFRESH_INTERVAL_MINUTES < 1 )); then
+  echo "--overview-refresh-interval-minutes must be at least 1 minute: $OVERVIEW_REFRESH_INTERVAL_MINUTES" >&2
+  exit 1
+fi
+OVERVIEW_REFRESH_INTERVAL_SECONDS=$((OVERVIEW_REFRESH_INTERVAL_MINUTES * 60))
 if ! [[ "$INSTALL_LEARN_JOBS" =~ '^[0-9]+$' ]]; then
   echo "--install-learn-jobs must be a positive integer: $INSTALL_LEARN_JOBS" >&2
   exit 1
@@ -1147,6 +1170,7 @@ render_plist() {
     --set "CLAUDE_ENV_FILE=$CLAUDE_ENV_FILE" \
     --set "LEARNING_REFRESH=$ENABLE_LEARNING_REFRESH" \
     --set "LEARNING_REFRESH_WINDOW_DAYS=$LEARNING_REFRESH_WINDOW_DAYS" \
+    --set "OVERVIEW_REFRESH_INTERVAL_SECONDS=$OVERVIEW_REFRESH_INTERVAL_SECONDS" \
     --set "OVERVIEW_RUN_AT_LOAD=$OVERVIEW_RUN_AT_LOAD" \
     --set "KEEP_AWAKE=$KEEP_AWAKE" \
     --set "NIGHTLY_ORGANIZE_HOUR=$NIGHTLY_ORGANIZE_HOUR" \
@@ -1717,13 +1741,13 @@ EOF
       cat <<EOF
 
 后台刷新：
-  overview-refresh 已安装为每 1 小时自动学习刷新一次，会读取当前 activity host，并用 $MODEL_CLI 回溯最近 ${LEARNING_REFRESH_WINDOW_DAYS} 天窗口。
+  overview-refresh 已安装为每 ${OVERVIEW_REFRESH_INTERVAL_MINUTES} 分钟自动学习刷新一次，会读取当前 activity host，并用 $MODEL_CLI 回溯最近 ${LEARNING_REFRESH_WINDOW_DAYS} 天窗口。
 EOF
     else
       cat <<EOF
 
 后台刷新：
-  overview-refresh 已安装为每 1 小时刷新一次；当前不会从最近窗口自动学习。中文展示润色仍会按需维护缓存；如需自动学习刷新，重新安装时加 --enable-learning-refresh。
+  overview-refresh 已安装为每 ${OVERVIEW_REFRESH_INTERVAL_MINUTES} 分钟刷新一次；当前不会从最近窗口自动学习。中文展示润色仍会按需维护缓存；如需自动学习刷新，重新安装时加 --enable-learning-refresh。
 EOF
     fi
   fi
@@ -1770,7 +1794,7 @@ EOF
 
   if (( ENABLE_LEARNING_REFRESH )); then
     cat <<EOF
-  2. Automatic learning refresh is enabled; the first learning run will happen on the next hourly interval.
+  2. Automatic learning refresh is enabled; the first learning run will happen on the next configured interval.
      Current activity host: $ACTIVITY_HOST; model backfill CLI: $MODEL_CLI. Codex windows try app-server first and fall back to CLI history/session; add --activity-source history to force stable CLI files only.
 EOF
   else
@@ -1825,13 +1849,13 @@ EOF
       cat <<EOF
 
 Background refresh:
-  overview-refresh is installed to learn automatically every hour. It reads the current activity host and uses $MODEL_CLI for the last ${LEARNING_REFRESH_WINDOW_DAYS} days of memory backfill.
+  overview-refresh is installed to learn automatically every ${OVERVIEW_REFRESH_INTERVAL_MINUTES} minutes. It reads the current activity host and uses $MODEL_CLI for the last ${LEARNING_REFRESH_WINDOW_DAYS} days of memory backfill.
 EOF
     else
       cat <<EOF
 
 Background refresh:
-  overview-refresh is installed to refresh every hour without learning from recent windows. Chinese display polish still maintains its cache as needed. Reinstall with --enable-learning-refresh for automatic learning refresh.
+  overview-refresh is installed to refresh every ${OVERVIEW_REFRESH_INTERVAL_MINUTES} minutes without learning from recent windows. Chinese display polish still maintains its cache as needed. Reinstall with --enable-learning-refresh for automatic learning refresh.
 EOF
     fi
   fi
