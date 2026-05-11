@@ -8772,6 +8772,8 @@ def build_data(assets, usage_events, reviews, language=None):
     token_usage = build_token_usage_view(
         resolve_ccusage_daily(start_date=token_filter_start_date, end_date=token_filter_end_date),
         language=language,
+        start_date=token_filter_start_date,
+        end_date=token_filter_end_date,
     )
     pipeline_status = overview_pipeline_status.load_status(PATHS)
     daily_summary_views = build_daily_summary_views(
@@ -23617,6 +23619,7 @@ def build_html(data):
         tokenRefreshedAt: (snapshot.token_usage && snapshot.token_usage.refreshed_at) || "",
         tokenSourceKind: "snapshot",
         tokenUsageCache: {{}},
+        tokenStaleRetryTimer: null,
         tokenFilters: {{
           provider: (snapshot.token_usage && snapshot.token_usage.provider) || "all",
           startDate: defaultTokenDateRange.startDate,
@@ -28700,6 +28703,16 @@ def build_html(data):
           message.includes("networkerror");
       }}
 
+      function scheduleTokenStaleRetry() {{
+        if (state.tokenStaleRetryTimer) {{
+          return;
+        }}
+        state.tokenStaleRetryTimer = window.setTimeout(function () {{
+          state.tokenStaleRetryTimer = null;
+          refreshTokenUsage(false);
+        }}, 2500);
+      }}
+
       async function refreshTokenUsage(forceRefresh) {{
         const filters = state.tokenFilters || {{}};
         const windowDays = tokenEffectiveWindowDays(
@@ -28749,9 +28762,12 @@ def build_html(data):
           if (!payload.token_usage.available && !payload.stale) {{
             throw new Error(payload.error || "ccusage 当前不可用");
           }}
-          rememberTokenUsage(cacheKey, payload.token_usage);
+          if (!payload.stale) {{
+            rememberTokenUsage(cacheKey, payload.token_usage);
+          }}
           updateTokenVisuals(payload.token_usage, payload.stale ? "stale" : "live");
           if (payload.stale) {{
+            scheduleTokenStaleRetry();
             setStatus("warn", "", "warn_stale");
           }} else {{
             setStatus("live", "", "live_refreshed");

@@ -10,7 +10,7 @@ from pathlib import Path
 from asset_runtime import atomic_write_json, get_runtime_paths
 
 from .common import current_local_datetime
-from .config import CCUSAGE_TIMEZONE, CCUSAGE_WINDOW_DAYS
+from .config import CCUSAGE_CACHE_WINDOW_DAYS, CCUSAGE_TIMEZONE, CCUSAGE_WINDOW_DAYS
 
 
 TOKEN_PROVIDER_ALIASES = {
@@ -102,6 +102,25 @@ def resolve_token_date_range(window_days=CCUSAGE_WINDOW_DAYS, now_func=current_l
         resolved_start, resolved_end = resolved_end, resolved_start
     resolved_window_days = max((resolved_end - resolved_start).days + 1, 1)
     return resolved_start, resolved_end, resolved_window_days
+
+
+def resolve_token_cache_fetch_range(
+    window_days=CCUSAGE_WINDOW_DAYS,
+    now_func=current_local_datetime,
+    start_date=None,
+    end_date=None,
+    cache_window_days=CCUSAGE_CACHE_WINDOW_DAYS,
+):
+    requested_start, requested_end, requested_window_days = resolve_token_date_range(
+        window_days=window_days,
+        now_func=now_func,
+        start_date=start_date,
+        end_date=end_date,
+    )
+    cache_days = max(int(cache_window_days or CCUSAGE_CACHE_WINDOW_DAYS), requested_window_days, 1)
+    cache_start = min(requested_start, requested_end - timedelta(days=cache_days - 1))
+    cache_window_days = max((requested_end - cache_start).days + 1, 1)
+    return cache_start, requested_end, cache_window_days
 
 
 def provider_package(provider):
@@ -263,6 +282,66 @@ def merge_provider_payloads(provider_results):
     }
 
 
+def token_result_for_provider(result, provider):
+    provider = normalize_token_provider(provider)
+    if not isinstance(result, dict):
+        return None
+    result_provider = normalize_token_provider(result.get("provider"))
+    if result_provider == provider:
+        return dict(result)
+    if result_provider == "all" and provider in {"codex", "claude"}:
+        provider_result = (result.get("provider_results") or {}).get(provider)
+        if isinstance(provider_result, dict) and provider_result.get("available"):
+            return dict(provider_result)
+    return None
+
+
+def token_result_covers_request(
+    result,
+    provider,
+    window_days,
+    start_date=None,
+    end_date=None,
+    now_func=current_local_datetime,
+):
+    candidate = token_result_for_provider(result, provider)
+    if not candidate or not candidate.get("available"):
+        return False
+    requested_start, requested_end, _ = resolve_token_date_range(
+        window_days=window_days,
+        now_func=now_func,
+        start_date=start_date,
+        end_date=end_date,
+    )
+    cached_start = parse_token_date(candidate.get("range_start"))
+    cached_end = parse_token_date(candidate.get("range_end"))
+    if not cached_start or not cached_end:
+        return False
+    return cached_start <= requested_start and cached_end >= requested_end
+
+
+def token_result_with_request_range(
+    result,
+    window_days=CCUSAGE_WINDOW_DAYS,
+    start_date=None,
+    end_date=None,
+    now_func=current_local_datetime,
+):
+    if not isinstance(result, dict):
+        return result
+    requested_start, requested_end, requested_window_days = resolve_token_date_range(
+        window_days=window_days,
+        now_func=now_func,
+        start_date=start_date,
+        end_date=end_date,
+    )
+    scoped = dict(result)
+    scoped["range_start"] = requested_start.isoformat()
+    scoped["range_end"] = requested_end.isoformat()
+    scoped["window_days"] = requested_window_days
+    return scoped
+
+
 def fetch_provider_ccusage_daily(
     provider,
     window_days=CCUSAGE_WINDOW_DAYS,
@@ -419,7 +498,18 @@ def token_cache_matches_request(
     end_date=None,
     now_func=current_local_datetime,
 ):
-    if not cached or normalize_token_provider(cached.get("provider")) != normalize_token_provider(provider):
+    if not cached:
+        return False
+    if token_result_covers_request(
+        cached,
+        provider,
+        window_days,
+        start_date=start_date,
+        end_date=end_date,
+        now_func=now_func,
+    ):
+        return True
+    if normalize_token_provider(cached.get("provider")) != normalize_token_provider(provider):
         return False
     requested_start = parse_token_date(start_date)
     requested_end = parse_token_date(end_date)
@@ -456,12 +546,32 @@ def resolve_ccusage_daily(
         start_date=start_date,
         end_date=end_date,
     ):
-        return cached
+        return token_result_with_request_range(
+            token_result_for_provider(cached, provider) or cached,
+            window_days=window_days,
+            start_date=start_date,
+            end_date=end_date,
+        )
 
-    live = fetch_func(provider=provider, window_days=window_days, start_date=start_date, end_date=end_date)
+    fetch_start, fetch_end, fetch_window_days = resolve_token_cache_fetch_range(
+        window_days=window_days,
+        start_date=start_date,
+        end_date=end_date,
+    )
+    live = fetch_func(
+        provider=provider,
+        window_days=fetch_window_days,
+        start_date=fetch_start,
+        end_date=fetch_end,
+    )
     if live.get("available"):
         write_token_usage_cache(live, cache_path)
-        return live
+        return token_result_with_request_range(
+            token_result_for_provider(live, provider) or live,
+            window_days=window_days,
+            start_date=start_date,
+            end_date=end_date,
+        )
 
     if cached and token_cache_matches_request(
         cached,
@@ -470,5 +580,10 @@ def resolve_ccusage_daily(
         start_date=start_date,
         end_date=end_date,
     ):
-        return cached
+        return token_result_with_request_range(
+            token_result_for_provider(cached, provider) or cached,
+            window_days=window_days,
+            start_date=start_date,
+            end_date=end_date,
+        )
     return live

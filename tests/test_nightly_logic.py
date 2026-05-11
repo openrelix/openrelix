@@ -911,6 +911,7 @@ class NightlyLogicTests(unittest.TestCase):
             return datetime.fromisoformat("2026-05-04T10:00:00+08:00")
 
         payload = {
+            "available": True,
             "provider": "codex",
             "window_days": 34,
             "range_start": "2026-04-01",
@@ -936,7 +937,7 @@ class NightlyLogicTests(unittest.TestCase):
                 now_func=fake_now,
             )
         )
-        self.assertFalse(
+        self.assertTrue(
             token_fetcher.token_cache_matches_request(
                 payload,
                 "codex",
@@ -945,6 +946,240 @@ class NightlyLogicTests(unittest.TestCase):
                 now_func=fake_now,
             )
         )
+        self.assertFalse(
+            token_fetcher.token_cache_matches_request(
+                payload,
+                "codex",
+                7,
+                start_date="2026-03-31",
+                end_date="2026-05-03",
+                now_func=fake_now,
+            )
+        )
+
+    def test_token_resolver_uses_month_cache_for_provider_switch(self):
+        cached = {
+            "available": True,
+            "provider": "all",
+            "provider_label": "Codex + Claude Code",
+            "window_days": 30,
+            "range_start": "2026-04-05",
+            "range_end": "2026-05-04",
+            "payload": {"daily": []},
+            "provider_results": {
+                "codex": {
+                    "available": True,
+                    "provider": "codex",
+                    "provider_label": "Codex",
+                    "window_days": 30,
+                    "range_start": "2026-04-05",
+                    "range_end": "2026-05-04",
+                    "payload": {
+                        "daily": [
+                            {
+                                "date": "2026-05-04",
+                                "provider": "codex",
+                                "inputTokens": 100,
+                                "cachedInputTokens": 20,
+                                "outputTokens": 10,
+                                "totalTokens": 110,
+                                "costUSD": 1.0,
+                            }
+                        ]
+                    },
+                    "error": "",
+                },
+                "claude": {
+                    "available": True,
+                    "provider": "claude",
+                    "provider_label": "Claude Code",
+                    "window_days": 30,
+                    "range_start": "2026-04-05",
+                    "range_end": "2026-05-04",
+                    "payload": {"daily": []},
+                    "error": "",
+                },
+            },
+            "error": "",
+        }
+
+        with TemporaryDirectory() as tmpdir:
+            cache_path = Path(tmpdir) / "token-cache.json"
+            cache_path.write_text(json.dumps(cached), encoding="utf-8")
+            result = token_fetcher.resolve_ccusage_daily(
+                cache_path=cache_path,
+                refresh_requested=False,
+                fetch_func=mock.Mock(side_effect=AssertionError("should not fetch")),
+                provider="codex",
+                window_days=7,
+                start_date="2026-05-01",
+                end_date="2026-05-04",
+            )
+
+        self.assertEqual(result["provider"], "codex")
+        self.assertEqual(result["range_start"], "2026-05-01")
+        self.assertEqual(result["range_end"], "2026-05-04")
+        self.assertEqual(result["window_days"], 4)
+        self.assertEqual(result["payload"]["daily"][0]["totalTokens"], 110)
+
+    def test_token_resolver_fetches_month_cache_for_short_range(self):
+        calls = []
+
+        def fake_fetch(**kwargs):
+            calls.append(kwargs)
+            return {
+                "available": True,
+                "provider": kwargs.get("provider", "all"),
+                "provider_label": "Codex + Claude Code",
+                "payload": {"daily": []},
+                "error": "",
+                "window_days": kwargs.get("window_days"),
+                "range_start": kwargs.get("start_date").isoformat(),
+                "range_end": kwargs.get("end_date").isoformat(),
+            }
+
+        with TemporaryDirectory() as tmpdir:
+            cache_path = Path(tmpdir) / "token-cache.json"
+            result = token_fetcher.resolve_ccusage_daily(
+                cache_path=cache_path,
+                refresh_requested=False,
+                fetch_func=fake_fetch,
+                provider="all",
+                window_days=4,
+                start_date="2026-05-01",
+                end_date="2026-05-04",
+            )
+            cached = json.loads(cache_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(calls[0]["start_date"], date(2026, 4, 5))
+        self.assertEqual(calls[0]["end_date"], date(2026, 5, 4))
+        self.assertEqual(calls[0]["window_days"], 30)
+        self.assertEqual(cached["range_start"], "2026-04-05")
+        self.assertEqual(result["range_start"], "2026-05-01")
+        self.assertEqual(result["window_days"], 4)
+
+    def test_token_live_server_reuses_month_cache_for_provider_switch(self):
+        cached = {
+            "ok": True,
+            "provider": "all",
+            "group_by": "day",
+            "window_days": 7,
+            "range_start": "2026-05-05",
+            "range_end": "2026-05-11",
+            "_cached_at_epoch": token_live_server.time.time(),
+            "ccusage_result": {
+                "available": True,
+                "provider": "all",
+                "provider_label": "Codex + Claude Code",
+                "window_days": 30,
+                "range_start": "2026-04-12",
+                "range_end": "2026-05-11",
+                "payload": {"daily": []},
+                "provider_results": {
+                    "codex": {
+                        "available": True,
+                        "provider": "codex",
+                        "provider_label": "Codex",
+                        "window_days": 30,
+                        "range_start": "2026-04-12",
+                        "range_end": "2026-05-11",
+                        "payload": {
+                            "daily": [
+                                {
+                                    "date": "2026-05-10",
+                                    "provider": "codex",
+                                    "inputTokens": 100,
+                                    "cachedInputTokens": 25,
+                                    "outputTokens": 20,
+                                    "reasoningOutputTokens": 5,
+                                    "totalTokens": 125,
+                                    "costUSD": 2.0,
+                                }
+                            ]
+                        },
+                        "error": "",
+                    }
+                },
+                "error": "",
+            },
+        }
+
+        with mock.patch.object(token_live_server, "load_cache", return_value=cached), mock.patch.object(
+            token_live_server,
+            "fetch_ccusage_daily",
+            side_effect=AssertionError("should not fetch"),
+        ):
+            payload = token_live_server.fetch_token_payload(
+                window_days=7,
+                provider="codex",
+                start_date="2026-05-05",
+                end_date="2026-05-11",
+                group_by="day",
+            )
+
+        self.assertTrue(payload["served_from_cache"])
+        self.assertFalse(payload["stale"])
+        self.assertEqual(payload["provider"], "codex")
+        self.assertEqual(payload["token_usage"]["provider"], "codex")
+        self.assertEqual(payload["token_usage"]["range_start"], "2026-05-05")
+        self.assertEqual(payload["token_usage"]["range_end"], "2026-05-11")
+        self.assertEqual(payload["token_usage"]["daily_rows"][0]["value"], 125)
+
+    def test_token_live_server_returns_stale_cache_and_refreshes_in_background(self):
+        cached = {
+            "ok": True,
+            "provider": "codex",
+            "group_by": "day",
+            "window_days": 7,
+            "range_start": "2026-05-05",
+            "range_end": "2026-05-11",
+            "_cached_at_epoch": token_live_server.time.time() - token_live_server.CACHE_TTL_SECONDS - 1,
+            "ccusage_result": {
+                "available": True,
+                "provider": "codex",
+                "provider_label": "Codex",
+                "window_days": 30,
+                "range_start": "2026-04-12",
+                "range_end": "2026-05-11",
+                "payload": {
+                    "daily": [
+                        {
+                            "date": "2026-05-11",
+                            "provider": "codex",
+                            "inputTokens": 100,
+                            "cachedInputTokens": 10,
+                            "outputTokens": 20,
+                            "reasoningOutputTokens": 0,
+                            "totalTokens": 120,
+                            "costUSD": 2.0,
+                        }
+                    ]
+                },
+                "error": "",
+            },
+        }
+
+        with mock.patch.object(token_live_server, "load_cache", return_value=cached), mock.patch.object(
+            token_live_server,
+            "start_token_cache_refresh_async",
+            return_value=True,
+        ) as start_refresh, mock.patch.object(
+            token_live_server,
+            "fetch_ccusage_daily",
+            side_effect=AssertionError("stale cache should return immediately"),
+        ):
+            payload = token_live_server.fetch_token_payload(
+                window_days=7,
+                provider="codex",
+                start_date="2026-05-05",
+                end_date="2026-05-11",
+                group_by="day",
+            )
+
+        self.assertTrue(payload["served_from_cache"])
+        self.assertTrue(payload["stale"])
+        self.assertEqual(payload["token_usage"]["today_total_tokens"], 120)
+        start_refresh.assert_called_once()
 
     def test_token_resolver_does_not_fall_back_to_mismatched_cache(self):
         cached = {
