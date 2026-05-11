@@ -27,7 +27,7 @@ GitHub project page: [openrelix/openrelix](https://github.com/openrelix/openreli
 ## Documentation
 
 - [Technical Solution](docs/technical-solution.md): architecture, data flow, module responsibilities, runtime state, and release boundaries.
-- [Developer Guide](docs/developer-guide.md): contributor-oriented guide for the v0.2.10 code structure, edit boundaries, and validation workflow.
+- [Developer Guide](docs/developer-guide.md): contributor-oriented guide for the v0.3.0 code structure, edit boundaries, and validation workflow.
 - [Learning Guide](docs/learning-guide.md): a practical path for users, contributors, and maintainers to understand and validate the project.
 - [Open Source Install And Project Overview](docs/open-source-install-and-project-overview.md): Chinese install guide and project explanation for the current macOS preview release.
 - [Product Showcase](docs/product-showcase.html): visual product introduction and sanitized panel previews.

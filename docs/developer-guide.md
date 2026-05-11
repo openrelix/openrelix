@@ -1,6 +1,6 @@
 # OpenRelix 开发者指南
 
-本文基于 `package.json` 中标记为 `0.2.10` 的代码结构整理，面向需要维护、扩展或发布 OpenRelix 的开发者。它不替代 [技术方案](technical-solution.md) 和 [系统概览](system-overview.md)，而是把“改代码时该从哪里下手、如何验证、哪些边界不能破坏”收束成一份可执行指南。
+本文基于 `package.json` 中标记为 `0.3.0` 的代码结构整理，面向需要维护、扩展或发布 OpenRelix 的开发者。它不替代 [技术方案](technical-solution.md) 和 [系统概览](system-overview.md)，而是把“改代码时该从哪里下手、如何验证、哪些边界不能破坏”收束成一份可执行指南。
 
 ## 先理解项目边界
 
@@ -128,7 +128,7 @@ scripts/collect_codex_activity.py
   -> raw/windows/<date>/*.json
 ```
 
-脚本名保留 `codex` 是兼容历史入口；0.2.10 代码已经用 `--activity-host codex|claude|all` 支持多 host。采集逻辑要保持“只读 host history、写 state root”的边界。
+脚本名保留 `codex` 是兼容历史入口；0.3.0 代码已经用 `--activity-host codex|claude|all` 支持多 host。采集逻辑要保持“只读 host history、写 state root”的边界。
 
 ### 夜间整理链路
 
@@ -255,7 +255,7 @@ npm pack --dry-run --json
 
 ## 发布和 package surface
 
-0.2.10 的 npm 包通过 `package.json` 的 `files` 白名单发布必要源码：
+0.3.0 的 npm 包通过 `package.json` 的 `files` 白名单发布必要源码：
 
 - README、许可证、贡献和安全文档。
 - `.agents/skills/memory-review/` 和 plugin metadata。
