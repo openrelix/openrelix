@@ -12105,7 +12105,7 @@ def make_side_nav():
         ("group", "运行视图", "Runtime View"),
         ("link", "overview-top", "总览", "Overview", "总览", "Overview"),
         ("link", "nightly-summary", "整理摘要", "Synthesis", "整理摘要", "Synthesis"),
-        ("link", "token-section", "Token", "Token", "Token", "Token"),
+        ("link", "token-filter-panel", "Token", "Token", "Token", "Token"),
         ("link", "pipeline-section", "后台运行监控", "Background Monitor", "后台运行监控", "Background Monitor"),
         ("group", "记忆层", "Memory Layer"),
         ("link", "memory-section", "个人资产记忆", "Personal Asset Memory", "个人资产记忆", "Personal Asset Memory"),

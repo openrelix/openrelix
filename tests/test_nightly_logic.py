@@ -6117,6 +6117,8 @@ Native Codex profile.
         self.assertIn('data-nav-target="asset-overview-section"', html)
         self.assertIn('data-nav-target="top-assets-section"', html)
         self.assertNotIn('data-nav-target="asset-stats-snapshot-section"', html)
+        self.assertIn('data-nav-target="token-filter-panel"', html)
+        self.assertNotIn('data-nav-target="token-section"', html)
         self.assertIn("skills 热度", html)
         self.assertNotIn("本期小结", html)
         self.assertNotIn("highlight-list", html)
