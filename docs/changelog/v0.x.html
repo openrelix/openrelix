@@ -621,16 +621,32 @@
           <article class="changelog-entry is-released" id="v0-3-0">
             <div class="changelog-meta">
               <span class="changelog-version">v0.3.0</span>
-              <span class="changelog-date">2026-05-06</span>
+              <span class="changelog-date">2026-05-11</span>
               <span class="changelog-chip">已发布</span>
             </div>
             <div class="changelog-body">
-              <p>账本概览补齐"已发现资产"扫描与模型真实使用频率。</p>
-              <span class="group-title">功能</span>
+              <h3>支持 Claude Code 啦，并重做记忆系统</h3>
+              <p>0.3.0 是 OpenRelix 记忆体系的一次大整理：它会更谨慎地挑选该注入给 AI 的记忆，也把 Claude Code、多 Codex Home、资产热度、Token 和 Pipeline 状态都收进同一个面板里。</p>
+              <span class="group-title">新功能</span>
               <ul>
-                <li>账本概览扫描本机已安装的 Codex / Claude 技能、仓库技能、自定义提示词、Rules、插件与启动项；同时把过去 30 天里被模型读取过的项目内 / 跨仓库技能也纳入，按名字汇总，给出"已发现资产"卡片合计；原"资产总数"仍只反映手动登记的 assets.jsonl。</li>
-                <li>使用频率改为统计 Codex 会话与 Claude 项目 session 中模型读取 SKILL.md 的事件，按会话去重，列出 7 天 / 30 天活动数与最近活动日期；非技能类显示 "—"。技能名可点击跳转到对应的 SKILL.md 文件。</li>
-                <li>整理资产层看板：「资产类型分布」改为按高级类型（技能 / 提示词 / Rules / 插件 / 启动项）汇总，新增「月度活动」与「近 30 天高频技能 Top 10」，删除原来留空的「月度新增」「适用层级」「项目分布」「最近更新」面板。</li>
+                <li>记忆注入 v2：统一 host memory context，按项目、证据和预算挑记忆；不该带进来的项目记忆不会轻易混进当前上下文。</li>
+                <li>Claude Code 接入：支持读取 Claude Code 的项目记忆，面板里能分清 Claude / Codex 原生记忆和 OpenRelix 注入记忆。</li>
+                <li>多环境支持：可以同时管理多个 Codex Home / 桌面 Profile，运行中的 profile 能复用，resume 路由也更准确。</li>
+                <li>资产发现与热度：自动发现技能、提示词、Rules、插件、启动项，并用真实 LLM 激活频率和技能读取次数判断哪些资产真的常用。</li>
+              </ul>
+              <span class="group-title">优化</span>
+              <ul>
+                <li>Token 面板加了 provider、日期、月维度筛选，默认看近 7 天；月统计、cache write 和空闲日期零值口径也一起修顺。</li>
+                <li>Pipeline 面板能看到运行状态、历史记录、完成状态和下次运行时间，历史数量也做了限制，不再越积越乱。</li>
+                <li>Project / Window Overview 重做：过滤器联动、日期选择器、sticky filters、窗口 hover 详情和项目数量限制都补齐。</li>
+                <li>Asset 面板加了刷新控件、自动刷新、相对刷新时间和更轻量的统计卡片，看状态更直接。</li>
+              </ul>
+              <span class="group-title">修复</span>
+              <ul>
+                <li>安装 / 更新更稳：更新入口改为强制重装 worker，installer 会主动执行必要的 memory migration / backfill，并用迁移版本避免旧数据卡住。</li>
+                <li>记忆质量门禁更严：新增 evidence gate 和轻量 summary 标注，降低低质量记忆被带进上下文的概率。</li>
+                <li>面板反馈和 Native Memory 展示修正：反馈控件更快更稳，重复 host memory bullet 被清掉；Native Memory 视图隐藏注入记忆，保留 Codex native summary。</li>
+                <li>窗口计数忽略 Claude tool events，Claude windows 可以直接打开到桌面 app，减少“看起来多算了一堆窗口”的错觉。</li>
               </ul>
             </div>
           </article>
@@ -900,6 +916,20 @@
         "Unreleased": "Unreleased",
         "主线开发中的改动": "Mainline Changes In Progress",
         "以下改动已合入 main 分支，但尚未单独发布版本号；下一次版本号上调时这些条目会归入对应版本。": "These changes are merged into main but have not received their own version bump yet; the next release will absorb them.",
+        "支持 Claude Code 啦，并重做记忆系统": "Claude Code Is Here, and Memory Has Been Rebuilt",
+        "0.3.0 是 OpenRelix 记忆体系的一次大整理：它会更谨慎地挑选该注入给 AI 的记忆，也把 Claude Code、多 Codex Home、资产热度、Token 和 Pipeline 状态都收进同一个面板里。": "0.3.0 is a major cleanup of the OpenRelix memory system: it is more careful about which memories get injected into AI context, and it brings Claude Code, multiple Codex Homes, asset heat, Token usage, and Pipeline status into one panel.",
+        "记忆注入 v2：统一 host memory context，按项目、证据和预算挑记忆；不该带进来的项目记忆不会轻易混进当前上下文。": "Memory injection v2: unify host memory context and select memories by project, evidence, and budget; project memories that do not belong are much less likely to leak into the current context.",
+        "Claude Code 接入：支持读取 Claude Code 的项目记忆，面板里能分清 Claude / Codex 原生记忆和 OpenRelix 注入记忆。": "Claude Code support: read Claude Code project memory, and show a clearer split between Claude / Codex native memory and OpenRelix-injected memory.",
+        "多环境支持：可以同时管理多个 Codex Home / 桌面 Profile，运行中的 profile 能复用，resume 路由也更准确。": "Multi-environment support: manage multiple Codex Homes / desktop Profiles at once, reuse running profiles, and route resume more accurately.",
+        "资产发现与热度：自动发现技能、提示词、Rules、插件、启动项，并用真实 LLM 激活频率和技能读取次数判断哪些资产真的常用。": "Asset discovery and heat: discover skills, prompts, Rules, plugins, and launch entries automatically, then use real LLM activation frequency and skill read counts to tell which assets are actually used.",
+        "Token 面板加了 provider、日期、月维度筛选，默认看近 7 天；月统计、cache write 和空闲日期零值口径也一起修顺。": "The Token panel now has provider, date, and monthly filters, defaults to the last 7 days, and fixes monthly accounting, cache write, and idle-day zero values.",
+        "Pipeline 面板能看到运行状态、历史记录、完成状态和下次运行时间，历史数量也做了限制，不再越积越乱。": "The Pipeline panel now shows run status, history, completion state, and next run time, with a history limit so old runs do not pile up endlessly.",
+        "Project / Window Overview 重做：过滤器联动、日期选择器、sticky filters、窗口 hover 详情和项目数量限制都补齐。": "Project / Window Overview was rebuilt with linked filters, a date picker, sticky filters, window hover details, and project-count limits.",
+        "Asset 面板加了刷新控件、自动刷新、相对刷新时间和更轻量的统计卡片，看状态更直接。": "The Asset panel now has refresh controls, automatic refresh, relative refresh time, and lighter metric cards, making status easier to read.",
+        "安装 / 更新更稳：更新入口改为强制重装 worker，installer 会主动执行必要的 memory migration / backfill，并用迁移版本避免旧数据卡住。": "Install / update is steadier: updates force-reinstall the worker, the installer runs required memory migration / backfill, and migration versions prevent old data from getting stuck.",
+        "记忆质量门禁更严：新增 evidence gate 和轻量 summary 标注，降低低质量记忆被带进上下文的概率。": "Memory quality gates are stricter: evidence gates and lightweight summary labels reduce the chance that weak memories enter context.",
+        "面板反馈和 Native Memory 展示修正：反馈控件更快更稳，重复 host memory bullet 被清掉；Native Memory 视图隐藏注入记忆，保留 Codex native summary。": "Panel feedback and Native Memory display were fixed: feedback controls are faster and steadier, duplicate host memory bullets are removed, and Native Memory hides injected memory while preserving the Codex native summary.",
+        "窗口计数忽略 Claude tool events，Claude windows 可以直接打开到桌面 app，减少“看起来多算了一堆窗口”的错觉。": "Window counts now ignore Claude tool events, and Claude windows can open directly in the desktop app, reducing the impression that the app counted too many windows.",
         "首次安装记忆整理提速。": "Speed up first-install memory organization.",
         "优化首次安装后的记忆整理路径，让新用户更快看到可用面板和本地记忆结果。": "Optimize the memory organization path after first install, so new users can see a usable panel and local memory results sooner.",
         "修复已知问题。": "Fix known issues.",
