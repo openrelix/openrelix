@@ -24,7 +24,7 @@ GitHub 项目页：[openrelix/openrelix](https://github.com/openrelix/openrelix)
 - `zsh`
 - Python 3.10+
 - Codex CLI，以及可写的 `CODEX_HOME`，默认是 `~/.codex`
-- 可选 Claude Code CLI，以及可写的 `CLAUDE_HOME` / `CLAUDE_CONFIG_DIR`，默认是 `~/.claude`
+- 可选 Claude Code CLI，以及可写的 `CLAUDE_HOME`，默认是 `~/.claude`；如需自定义 Claude CLI auth/config 目录，通过仓库外 env 文件和 `--claude-env-file` 传入
 
 Linux / Windows 暂时作为后续目标，不在当前预览版对外承诺里。底层 Python 脚本仍尽量保留可配置路径，但一键安装、后台刷新、夜间整理和防睡眠策略都先按 macOS 收口。
 
@@ -287,7 +287,7 @@ bounded summary 的压缩策略保持轻量：同签名记忆跨天归并，只�
 - `--codex-home PATH`
   指定自定义 `CODEX_HOME`
 - `--claude-home PATH`
-  指定自定义 `CLAUDE_HOME` / `CLAUDE_CONFIG_DIR`
+  指定自定义 `CLAUDE_HOME`
 - `--activity-host codex|claude|all`
   指定窗口采集 host，默认 `all`
 - `--model-cli codex|claude`

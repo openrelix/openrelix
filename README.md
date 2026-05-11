@@ -64,7 +64,7 @@ The current preview is macOS-only. The supported install path assumes:
 - `zsh`
 - Python 3.10+
 - Codex CLI with a writable `CODEX_HOME`, defaulting to `~/.codex`
-- Optional Claude Code CLI with a writable `CLAUDE_HOME` / `CLAUDE_CONFIG_DIR`, defaulting to `~/.claude`, when you want Claude Code windows, Token usage, native context, or model-backed consolidation.
+- Optional Claude Code CLI with a writable `CLAUDE_HOME`, defaulting to `~/.claude`, when you want Claude Code windows, Token usage, native context, or model-backed consolidation. If your Claude CLI auth depends on a custom `CLAUDE_CONFIG_DIR`, pass it through an external env file with `--claude-env-file`.
 - For model-backed learning refresh, a working `model_cli`. The default is Codex through `codex exec --model gpt-5.4-mini`; `--model-cli claude` uses `claude -p --model <claude_model>` instead. OpenRelix passes the model explicitly for review, backfill, hourly learning refresh, and nightly summaries without changing either host's global default. If Codex reports `401`, `Unauthorized`, or `invalid_issuer`, first confirm `codex exec` works in a normal terminal. Shared/proxy Codex providers must keep `CODEX_HOME/auth.json` and `CODEX_HOME/config.toml` together because `model_provider/base_url` is not stored in `auth.json`; official OpenAI API key setups should also check or clear an invalid `OPENAI_API_KEY`.
 
 Linux and Windows support are future work. Some lower-level Python scripts are written to keep paths configurable, but the public installer and background automation should be treated as macOS-only for this release.

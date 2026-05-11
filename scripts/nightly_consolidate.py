@@ -17,6 +17,7 @@ from pathlib import Path
 from asset_runtime import (
     atomic_write_json,
     atomic_write_text,
+    build_claude_cli_env,
     ensure_state_layout,
     get_claude_env_file,
     get_claude_model,
@@ -2056,11 +2057,10 @@ def load_env_file(path):
 
 
 def build_claude_env():
-    env = dict(os.environ)
-    env.update(load_env_file(CLAUDE_ENV_FILE))
-    env.setdefault("CLAUDE_HOME", str(MAIN_CLAUDE_HOME))
-    env.setdefault("CLAUDE_CONFIG_DIR", str(MAIN_CLAUDE_HOME))
-    return env
+    return build_claude_cli_env(
+        claude_home=MAIN_CLAUDE_HOME,
+        env_file_values=load_env_file(CLAUDE_ENV_FILE),
+    )
 
 
 def build_claude_command(include_schema=True):
