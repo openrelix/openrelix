@@ -6,7 +6,7 @@
   <meta name="color-scheme" content="light dark">
   <title>OpenRelix™ 产品展示</title>
   <meta name="description" content="OpenRelix™ 是一套开源的个人记忆珍藏系统，面向 AI coding agents / AI CLI，把重复工作沉淀成可复用技能、记忆、模板、复盘和可视化面板。">
-  <meta name="openrelix:version" content="0.3.0" data-pkg="openrelix">
+  <meta name="openrelix:version" content="0.3.1" data-pkg="openrelix">
   <script>
     (() => {
       try {
@@ -830,6 +830,121 @@
 
     .tile > .chip + h3 {
       margin-top: 14px;
+    }
+
+    .guide-module {
+      display: grid;
+      grid-template-columns: minmax(0, 1.1fr) minmax(320px, 0.72fr);
+      gap: 22px;
+      align-items: stretch;
+    }
+
+    .guide-card,
+    .guide-panel {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--paper);
+      padding: 28px;
+      box-shadow: var(--shadow-card);
+    }
+
+    .guide-card.featured {
+      background: linear-gradient(135deg, var(--paper) 0%, var(--accent-tint) 100%);
+      box-shadow: var(--shadow-card-strong);
+    }
+
+    .guide-card h3,
+    .guide-panel h3 {
+      margin: 0 0 12px;
+      color: var(--ink);
+      font-size: 24px;
+      line-height: 1.24;
+    }
+
+    .guide-card p,
+    .guide-panel p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 15px;
+      line-height: 1.72;
+    }
+
+    .guide-jump-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+      margin: 24px 0;
+    }
+
+    .guide-jump {
+      min-height: 118px;
+      display: grid;
+      align-content: space-between;
+      gap: 12px;
+      padding: 14px;
+      border: 1px solid var(--accent-line);
+      border-radius: 8px;
+      background: var(--paper);
+    }
+
+    .guide-jump strong {
+      color: var(--ink);
+      font-size: 14px;
+      line-height: 1.35;
+    }
+
+    .guide-jump span {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .guide-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    .guide-actions .guide-primary-action {
+      min-height: 58px;
+      padding: 0 28px;
+      border-radius: 10px;
+      font-size: 18px;
+      font-weight: 800;
+    }
+
+    .guide-panel ul {
+      display: grid;
+      gap: 14px;
+      margin: 18px 0 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .guide-panel li {
+      position: relative;
+      padding-left: 18px;
+      color: var(--muted);
+      font-size: 15px;
+      line-height: 1.62;
+    }
+
+    .guide-panel li::before {
+      content: "";
+      position: absolute;
+      top: 0.72em;
+      left: 0;
+      width: 7px;
+      height: 7px;
+      border-radius: 999px;
+      background: var(--accent);
+    }
+
+    @media (max-width: 960px) {
+      .guide-module,
+      .guide-jump-grid {
+        grid-template-columns: 1fr;
+      }
     }
 
     .chip {
@@ -3223,6 +3338,7 @@
           <a href="#tour">导览</a>
           <a href="#install">安装</a>
           <a href="#tips">快速上手</a>
+          <a href="getting-started.html">使用指南</a>
           <a href="#roadmap">更新计划</a>
           <a href="changelog/v0.x.html">更新日志</a>
           <a href="#open">开源边界</a>
@@ -3249,6 +3365,7 @@
       <a href="#tour">导览</a>
       <a href="#install">安装</a>
       <a href="#tips">快速上手</a>
+      <a href="getting-started.html">使用指南</a>
       <a href="#roadmap">更新计划</a>
       <a href="changelog/v0.x.html">更新日志</a>
       <a href="#open">开源边界</a>
@@ -3864,6 +3981,53 @@
       </div>
     </section>
 
+    <section class="section" id="guide">
+      <div class="inner">
+        <div class="section-head">
+          <div>
+            <div class="section-kicker">使用指南</div>
+            <h2>打开面板后，按核心板块逐块上手。</h2>
+          </div>
+          <p class="lead">如果已经打开 OpenRelix，不用从命令开始；指南按运行视图、Token、后台监控、记忆层、资产层、工具热度、复盘、窗口层逐块解释，并配真实 UI 示例截图。</p>
+        </div>
+        <div class="guide-module" aria-label="OpenRelix 使用指南模块">
+          <article class="guide-card featured">
+            <span class="chip">使用指南</span>
+            <h3>从核心板块开始，不再猜面板含义。</h3>
+            <p>指南页保留真实 UI 结构和操作密度，中文和英文都有示例截图，适合第一次打开面板时跟着读。</p>
+            <div class="guide-jump-grid">
+              <a class="guide-jump" href="getting-started.html#runtime-guide">
+                <strong>运行视图 / Token / 后台监控</strong>
+                <span>先确认快照新鲜度、成本信号和后台任务是否正常。</span>
+              </a>
+              <a class="guide-jump" href="getting-started.html#usage-guide">
+                <strong>记忆层 / 资产层 / 工具热度</strong>
+                <span>判断哪些经验进记忆，哪些能力值得补文档或清理。</span>
+              </a>
+              <a class="guide-jump" href="getting-started.html#window-details-guide">
+                <strong>复盘 / 窗口层 / 窗口明细</strong>
+                <span>把结论追回来源窗口，确认资产化是否有证据。</span>
+              </a>
+            </div>
+            <div class="guide-actions">
+              <a class="button guide-primary-action" href="getting-started.html">打开使用指南</a>
+              <a class="button secondary" href="getting-started.html#window-details-guide">直接看窗口明细</a>
+            </div>
+          </article>
+          <aside class="guide-panel">
+            <h3>适合什么时候看</h3>
+            <p>它不是安装说明，而是面板使用说明。遇到这些场景时，从产品页跳过去最快。</p>
+            <ul>
+              <li>第一次打开面板，不确定应该先看运行视图、记忆层还是资产层。</li>
+              <li>想控制后台学习成本，需要读懂 Token 和后台运行监控。</li>
+              <li>准备清理或升级技能，需要参考工具热度和复盘记录。</li>
+              <li>某条记忆或复盘结论看起来不稳，需要进入窗口明细核验证据。</li>
+            </ul>
+          </aside>
+        </div>
+      </div>
+    </section>
+
     <section class="section" id="roadmap">
       <div class="inner">
         <div class="section-head">
@@ -3895,7 +4059,7 @@
           <article class="roadmap-item is-released">
             <div class="roadmap-marker" aria-hidden="true"></div>
             <div class="roadmap-content">
-              <span class="chip amber">v0.3.0 已发布</span>
+              <span class="chip amber">v0.3.1 已发布</span>
               <span class="roadmap-status">已发布 · 2026/05/04</span>
               <h3>适配 Claude Code CLI + Claude 软件</h3>
               <p>新增 Claude Code CLI adapter，把 transcript、Token、`CLAUDE.md` 原生上下文和模型回溯映射到同一套本地资产模型，并与 Codex 共用一份个人记忆摘要。</p>
@@ -4017,6 +4181,8 @@
         "记忆系统": "Memory System",
         "导览": "Tour",
         "安装": "Install",
+        "上手指南": "Guide",
+        "使用指南": "Guide",
         "快速上手": "Quick Start",
         "开源边界": "Open Boundary",
         "授权": "License",
@@ -4073,7 +4239,7 @@
         "深度适配 Codex 软件": "Deep Codex App Adaptation",
         "把 Codex CLI 与 Codex 软件的活动来源、线程读取、上下文同步和异常回退做得更稳定，同时优化记忆去重、压缩预算、工作/长期分层和面板呈现。": "Make Codex CLI and the Codex app more stable across activity sources, thread reading, context sync, and fallback behavior, while improving memory deduplication, compression budgets, work/long-term layering, and panel presentation.",
         "已发布 · 2026/05/04": "Released · 2026/05/04",
-        "v0.3.0 已发布": "v0.3.0 Released",
+        "v0.3.1 已发布": "v0.3.1 Released",
         "适配 Claude Code CLI + Claude 软件": "Adapt Claude Code CLI + Claude App",
         "新增 Claude Code CLI adapter，把 transcript、Token、`CLAUDE.md` 原生上下文和模型回溯映射到同一套本地资产模型，并与 Codex 共用一份个人记忆摘要。": "Add the Claude Code CLI adapter, mapping transcripts, Token usage, `CLAUDE.md` native context, and model backfill into the same local asset model while sharing one personal-memory summary with Codex.",
         "预计 1-2 周 · 约 2026/05/05 - 2026/05/12": "Expected in 1-2 weeks · around 2026/05/05 - 2026/05/12",
@@ -4386,6 +4552,25 @@
         "当同类复盘、排障或发布动作重复出现时，把步骤固化到 `.agents/skills/`，比继续写长提示词更稳定。": "When the same review, debugging, or release actions repeat, capture the steps in `.agents/skills/` instead of writing another long prompt.",
         "把“固定格式输出”升级成模板": "Promote fixed-format output into templates",
         "周报、复盘、代码审查报告、发布检查表这类稳定产物，适合放进 `templates/`。": "Weekly reports, reviews, code review reports, and release checklists are stable artifacts that fit in `templates/`.",
+        "打开面板后，按核心板块逐块上手。": "After opening the panel, walk through the core sections.",
+        "如果已经打开 OpenRelix，不用从命令开始；指南按运行视图、Token、后台监控、记忆层、资产层、工具热度、复盘、窗口层逐块解释，并配真实 UI 示例截图。": "If OpenRelix is already open, do not start with commands; the guide explains runtime, Token, background monitoring, memory, assets, tool heat, reviews, and windows section by section with real UI example screenshots.",
+        "v0.3.0 指南": "v0.3.0 Guide",
+        "从核心板块开始，不再猜面板含义。": "Start from the core sections instead of guessing what the panel means.",
+        "指南页保留真实 UI 结构和操作密度，中文和英文都有示例截图，适合第一次打开面板时跟着读。": "The guide keeps the real UI structure and interaction density, with example screenshots in both Chinese and English for first-time panel reading.",
+        "运行视图 / Token / 后台监控": "Runtime / Token / Background Monitor",
+        "先确认快照新鲜度、成本信号和后台任务是否正常。": "Confirm snapshot freshness, cost signals, and background jobs first.",
+        "记忆层 / 资产层 / 工具热度": "Memory / Assets / Tool Heat",
+        "判断哪些经验进记忆，哪些能力值得补文档或清理。": "Decide what should become memory and which capabilities need docs or cleanup.",
+        "复盘 / 窗口层 / 窗口明细": "Reviews / Windows / Window Details",
+        "把结论追回来源窗口，确认资产化是否有证据。": "Trace conclusions back to source windows and confirm assetization evidence.",
+        "打开使用指南": "Open Guide",
+        "直接看窗口明细": "Jump To Window Details",
+        "适合什么时候看": "When To Use It",
+        "它不是安装说明，而是面板使用说明。遇到这些场景时，从产品页跳过去最快。": "It is not installation help; it is panel usage guidance. Jump from the product page when these cases appear.",
+        "第一次打开面板，不确定应该先看运行视图、记忆层还是资产层。": "You opened the panel for the first time and are unsure whether to start with runtime, memory, or assets.",
+        "想控制后台学习成本，需要读懂 Token 和后台运行监控。": "You want to control background-learning cost and need to understand Token plus background monitoring.",
+        "准备清理或升级技能，需要参考工具热度和复盘记录。": "You are cleaning up or upgrading skills and need tool heat plus review records.",
+        "某条记忆或复盘结论看起来不稳，需要进入窗口明细核验证据。": "A memory or review claim looks shaky, so you need window details to verify evidence.",
         "开源的是能力层，不是你的个人数据。": "Open source the capability layer, not your personal data.",
         "项目的公开可信度来自边界清晰：源码在 GitHub 公开，用户状态默认在仓库外，公开展示只使用示例数据；如果有帮助，欢迎点星支持。": "Public trust comes from clear boundaries: the source is public on GitHub, user state stays outside the repo by default, and public displays use sample data. If it helps, stars are welcome.",
         "可以公开": "Shareable",
@@ -4429,6 +4614,7 @@
         "主题切换": "Theme switch",
         "安装和使用命令": "Install and usage commands",
         "安装方式": "Install options",
+        "OpenRelix 使用指南模块": "OpenRelix guide module",
         "npx 安装命令": "npx install command",
         "复制 npx 安装命令": "Copy npx install command",
         "Codex 应用安装命令": "Codex app install command",

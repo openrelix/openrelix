@@ -31,6 +31,7 @@ GitHub 项目页：[openrelix/openrelix](https://github.com/openrelix/openrelix)
 - [学习指南](docs/learning-guide.md)：给使用者、贡献者和维护者的阅读与验证路径。
 - [开源安装说明与项目说明](docs/open-source-install-and-project-overview.md)：当前 macOS 预览版的中文安装指南和项目解释。
 - [产品展示页](docs/product-showcase.html)：可部署到 GitHub Pages 的中英双语展示页和脱敏面板预览。
+- [上手指南](docs/getting-started.html)：面向用户的面板使用指南，配中英双语真实面板 UI 示例截图和核心板块逐块说明。
 - [系统概览](docs/system-overview.md)：AI host、repo source、runtime state 和本地 memory 的分层模型。
 - [隐私和分发边界](docs/privacy-and-distribution.md)：哪些内容属于公开仓库，哪些必须留在本地。
 - [商标申请包](docs/trademark-filing-kit.md)：开源品牌边界和商标申请检查清单。
@@ -223,7 +224,7 @@ context sync 会做压缩：重复个人记忆按签名合并，由 injection po
 5. 安装全局 `openrelix` shell command，并确保用户选择的 bin 目录在 `PATH` 中。
 6. 如果本机有 `swiftc`，先在 state root 构建轻量 macOS 客户端，再把真实 app bundle 安装到 `~/Applications/OpenRelix.app`。
 7. 渲染并 bootstrap macOS LaunchAgents：
-   - 每 1 小时刷新 overview；如果开启 `--enable-learning-refresh`，会读取配置的 activity host，并通过配置的 `model_cli` 做模型回溯
+   - 默认每 1 小时刷新 overview；如果开启 `--enable-learning-refresh`，会读取配置的 activity host，并通过配置的 `model_cli` 做模型回溯。用 `--overview-refresh-interval-minutes` 可调整间隔
    - token live server
    - 每天 `23:00` 生成当日预览
    - 每天 `00:10` 生成前一日终版
@@ -312,6 +313,14 @@ openrelix refresh
 
 ```bash
 openrelix refresh --learn-memory --learn-window-days 7
+```
+
+查看或调整已安装后台任务的时间：
+
+```bash
+openrelix schedule
+openrelix schedule --overview-refresh-interval-minutes 30
+openrelix schedule --nightly-organize-time 22:30 --nightly-finalize-time 01:00
 ```
 
 打开生成的面板：

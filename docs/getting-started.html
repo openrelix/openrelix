@@ -1,0 +1,1652 @@
+<!doctype html>
+<html lang="zh-CN" data-language="zh">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>OpenRelix™ 上手指南</title>
+  <meta name="description" content="OpenRelix™ 上手指南：从真实面板出发，逐块读懂运行视图、Token、后台监控、记忆层、资产层、工具热度、复盘记录、窗口总览和窗口明细。">
+  <link rel="icon" href="openrelix-icon.png">
+  <script>
+    (() => {
+      try {
+        const theme = window.localStorage.getItem("openrelix-showcase-theme");
+        if (theme === "light" || theme === "dark") {
+          document.documentElement.dataset.theme = theme;
+        }
+        const language = window.localStorage.getItem("openrelix-showcase-language");
+        if (language === "en") {
+          document.documentElement.dataset.language = "en";
+          document.documentElement.lang = "en";
+        }
+      } catch (_) {
+        // Keep defaults when storage is unavailable.
+      }
+    })();
+  </script>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --ink: #171717;
+      --muted: #62626a;
+      --soft: #f5f5f7;
+      --paper: #ffffff;
+      --paper-soft: #f8fafc;
+      --paper-alt: #fbfbfd;
+      --line: #dedee3;
+      --line-strong: #c9c9d1;
+      --accent: #0f766e;
+      --accent-soft: #e8f4f1;
+      --accent-tint: #eefaf6;
+      --accent-line: #cfe7df;
+      --accent-ink: #12413d;
+      --on-accent: #ffffff;
+      --blue: #2563eb;
+      --blue-strong: #1d4ed8;
+      --blue-soft: #eff6ff;
+      --blue-line: #d8e3fb;
+      --system-blue: #0a84ff;
+      --system-blue-end: #64d2ff;
+      --system-blue-soft: #eef7ff;
+      --system-blue-line: #b7dbff;
+      --success: #34c759;
+      --success-soft: #98edaa;
+      --bar-neutral: #a1a1aa;
+      --amber: #b45309;
+      --amber-soft: #fff7ed;
+      --amber-line: #f1dec2;
+      --rose: #be123c;
+      --rose-soft: #fff1f2;
+      --rose-line: #f5cbd5;
+      --danger: #d70015;
+      --nav-bg: rgba(255, 255, 255, 0.93);
+      --nav-border: rgba(222, 222, 227, 0.82);
+      --button-primary-bg: #111827;
+      --button-primary-fg: #ffffff;
+      --button-secondary-border: #cbd5e1;
+      --button-github-bg: #f7fffd;
+      --button-github-border: #b7d8d2;
+      --tag-line: #e5e7eb;
+      --shadow-card: 0 10px 28px rgba(15, 23, 42, 0.05);
+      --shadow-card-strong: 0 10px 28px rgba(15, 23, 42, 0.08);
+      --shadow-shot: 0 18px 42px rgba(17, 24, 39, 0.11);
+      --shadow-hover: 0 14px 28px rgba(15, 23, 42, 0.09);
+      --code-bg: #111827;
+      --code-fg: #f8fafc;
+      --code-muted: #a7b0c0;
+      --code-copy-border: rgba(248, 250, 252, 0.2);
+      --code-copy-bg: rgba(248, 250, 252, 0.08);
+      --anchor-offset: 92px;
+      --radius: 8px;
+      --max: 1160px;
+    }
+
+    :root[data-theme="dark"] {
+      color-scheme: dark;
+      --ink: #f8fafc;
+      --muted: #a7b0c0;
+      --soft: #0d121a;
+      --paper: #151c26;
+      --paper-soft: #111827;
+      --paper-alt: #17202b;
+      --line: #2b3645;
+      --line-strong: #3f4d61;
+      --accent: #5eead4;
+      --accent-soft: #0e2a29;
+      --accent-tint: #113a36;
+      --accent-line: #24534e;
+      --accent-ink: #d1fae5;
+      --on-accent: #042f2e;
+      --blue: #8ab4ff;
+      --blue-strong: #93c5fd;
+      --blue-soft: #10233f;
+      --blue-line: #28496f;
+      --system-blue: #64d2ff;
+      --system-blue-end: #38bdf8;
+      --system-blue-soft: #10283a;
+      --system-blue-line: #255472;
+      --success: #4ade80;
+      --success-soft: #86efac;
+      --bar-neutral: #64748b;
+      --amber: #fbbf24;
+      --amber-soft: #33250f;
+      --amber-line: #5c4215;
+      --rose: #fb7185;
+      --rose-soft: #35151d;
+      --rose-line: #693040;
+      --danger: #ff6b7a;
+      --nav-bg: rgba(18, 25, 35, 0.92);
+      --nav-border: rgba(68, 80, 96, 0.76);
+      --button-primary-bg: #f8fafc;
+      --button-primary-fg: #0f172a;
+      --button-secondary-border: #475569;
+      --button-github-bg: #112d2a;
+      --button-github-border: #24534e;
+      --tag-line: #334155;
+      --shadow-card: 0 10px 28px rgba(0, 0, 0, 0.24);
+      --shadow-card-strong: 0 10px 28px rgba(0, 0, 0, 0.35);
+      --shadow-shot: 0 18px 42px rgba(0, 0, 0, 0.34);
+      --shadow-hover: 0 14px 28px rgba(0, 0, 0, 0.32);
+      --code-bg: #090d14;
+      --code-fg: #f8fafc;
+      --code-muted: #9aa6b6;
+      --code-copy-border: rgba(248, 250, 252, 0.18);
+      --code-copy-bg: rgba(248, 250, 252, 0.07);
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) {
+        color-scheme: dark;
+        --ink: #f8fafc;
+        --muted: #a7b0c0;
+        --soft: #0d121a;
+        --paper: #151c26;
+        --paper-soft: #111827;
+        --paper-alt: #17202b;
+        --line: #2b3645;
+        --line-strong: #3f4d61;
+        --accent: #5eead4;
+        --accent-soft: #0e2a29;
+        --accent-tint: #113a36;
+        --accent-line: #24534e;
+        --accent-ink: #d1fae5;
+        --on-accent: #042f2e;
+        --blue: #8ab4ff;
+        --blue-strong: #93c5fd;
+        --blue-soft: #10233f;
+        --blue-line: #28496f;
+        --system-blue: #64d2ff;
+        --system-blue-end: #38bdf8;
+        --system-blue-soft: #10283a;
+        --system-blue-line: #255472;
+        --success: #4ade80;
+        --success-soft: #86efac;
+        --bar-neutral: #64748b;
+        --amber: #fbbf24;
+        --amber-soft: #33250f;
+        --amber-line: #5c4215;
+        --rose: #fb7185;
+        --rose-soft: #35151d;
+        --rose-line: #693040;
+        --danger: #ff6b7a;
+        --nav-bg: rgba(18, 25, 35, 0.92);
+        --nav-border: rgba(68, 80, 96, 0.76);
+        --button-primary-bg: #f8fafc;
+        --button-primary-fg: #0f172a;
+        --button-secondary-border: #475569;
+        --button-github-bg: #112d2a;
+        --button-github-border: #24534e;
+        --tag-line: #334155;
+        --shadow-card: 0 10px 28px rgba(0, 0, 0, 0.24);
+        --shadow-card-strong: 0 10px 28px rgba(0, 0, 0, 0.35);
+        --shadow-shot: 0 18px 42px rgba(0, 0, 0, 0.34);
+        --shadow-hover: 0 14px 28px rgba(0, 0, 0, 0.32);
+        --code-bg: #090d14;
+        --code-fg: #f8fafc;
+        --code-muted: #9aa6b6;
+        --code-copy-border: rgba(248, 250, 252, 0.18);
+        --code-copy-bg: rgba(248, 250, 252, 0.07);
+      }
+    }
+
+    * { box-sizing: border-box; }
+
+    html {
+      scroll-behavior: smooth;
+      scroll-padding-top: var(--anchor-offset);
+    }
+
+    body {
+      margin: 0;
+      background: var(--soft);
+      color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", sans-serif;
+      letter-spacing: 0;
+      overflow-x: hidden;
+    }
+
+    a { color: inherit; text-decoration: none; }
+
+    .site-nav {
+      position: sticky;
+      top: 0;
+      z-index: 30;
+      height: 64px;
+      border-bottom: 1px solid var(--nav-border);
+      background: var(--nav-bg);
+      backdrop-filter: saturate(180%) blur(18px);
+    }
+
+    .nav-inner {
+      width: min(1680px, calc(100% - 44px));
+      height: 100%;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 20px;
+    }
+
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 12px;
+      font-weight: 780;
+      white-space: nowrap;
+    }
+
+    .mark {
+      width: 34px;
+      height: 34px;
+      border-radius: 8px;
+      display: grid;
+      place-items: center;
+      overflow: hidden;
+    }
+
+    .mark img {
+      width: 100%;
+      height: 100%;
+      border-radius: inherit;
+      display: block;
+      object-fit: cover;
+    }
+
+    .nav-links,
+    .nav-utility,
+    .mobile-nav-links,
+    .theme-switch,
+    .lang-switch {
+      display: flex;
+      align-items: center;
+    }
+
+    .nav-links {
+      justify-content: flex-end;
+      gap: 6px;
+      color: var(--muted);
+      font-size: 14px;
+      white-space: nowrap;
+    }
+
+    .nav-links a,
+    .mobile-nav-links a {
+      padding: 8px 10px;
+      border-radius: 8px;
+    }
+
+    .nav-links a:hover,
+    .nav-links a.is-active,
+    .mobile-nav-links a.is-active {
+      background: var(--paper-soft);
+      color: var(--ink);
+    }
+
+    .nav-utility {
+      gap: 10px;
+      justify-content: flex-end;
+    }
+
+    .theme-switch,
+    .lang-switch {
+      padding: 3px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: var(--paper);
+      color: var(--muted);
+      gap: 3px;
+    }
+
+    .theme-switch button,
+    .lang-switch button {
+      border: 0;
+      border-radius: 999px;
+      padding: 7px 9px;
+      background: transparent;
+      color: inherit;
+      font: inherit;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    .theme-switch button[aria-pressed="true"],
+    .lang-switch button[aria-pressed="true"] {
+      background: var(--accent);
+      color: var(--on-accent);
+    }
+
+    .button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 42px;
+      padding: 0 16px;
+      border-radius: 8px;
+      border: 1px solid var(--button-primary-bg);
+      background: var(--button-primary-bg);
+      color: var(--button-primary-fg);
+      font-size: 14px;
+      font-weight: 760;
+      white-space: nowrap;
+    }
+
+    .button.secondary {
+      border-color: var(--button-secondary-border);
+      background: var(--paper);
+      color: var(--ink);
+    }
+
+    .github-button {
+      border-color: var(--button-github-border);
+      background: var(--button-github-bg);
+      color: var(--accent);
+      border-radius: 999px;
+    }
+
+    .mobile-nav-links {
+      display: none;
+      gap: 6px;
+      padding: 8px 18px;
+      overflow-x: auto;
+      border-top: 1px solid var(--nav-border);
+      background: var(--nav-bg);
+      color: var(--muted);
+      font-size: 13px;
+      white-space: nowrap;
+    }
+
+    .hero {
+      position: relative;
+      min-height: min(680px, calc(100vh - 64px));
+      display: flex;
+      align-items: center;
+      overflow: hidden;
+      background: #0d1622;
+      isolation: isolate;
+    }
+
+    .hero::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+      background: linear-gradient(90deg, rgba(8, 13, 22, 0.94) 0%, rgba(8, 13, 22, 0.86) 46%, rgba(8, 13, 22, 0.38) 78%, rgba(8, 13, 22, 0.14) 100%);
+      pointer-events: none;
+    }
+
+    .hero-panel-preview {
+      position: absolute;
+      inset: 74px 28px 36px max(430px, 27vw);
+      z-index: 0;
+      display: grid;
+      grid-template-columns: 170px minmax(520px, 1fr);
+      gap: 16px;
+      color: #111827;
+      opacity: 0.72;
+      transform: rotate(-0.4deg);
+      pointer-events: none;
+    }
+
+    .hero-preview-sidebar,
+    .hero-preview-main {
+      border: 1px solid rgba(203, 213, 225, 0.7);
+      background: rgba(255, 255, 255, 0.9);
+      box-shadow: 0 22px 70px rgba(15, 23, 42, 0.28);
+    }
+
+    .hero-preview-sidebar {
+      border-radius: 18px;
+      padding: 18px 16px;
+      display: grid;
+      align-content: start;
+      gap: 12px;
+      font-size: 13px;
+      font-weight: 720;
+      color: #6b7280;
+    }
+
+    .hero-preview-group-title {
+      margin-top: 8px;
+      color: #111827;
+      font-size: 12px;
+      text-transform: uppercase;
+    }
+
+    .hero-preview-pill {
+      padding: 8px 10px;
+      border-radius: 10px;
+    }
+
+    .hero-preview-pill.is-active {
+      background: #dbeafe;
+      color: #0b6fdc;
+    }
+
+    .hero-preview-main {
+      border-radius: 22px;
+      padding: 24px;
+      overflow: hidden;
+      display: grid;
+      gap: 18px;
+    }
+
+    .hero-preview-toolbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 18px;
+      color: #6b7280;
+      font-size: 14px;
+      font-weight: 720;
+    }
+
+    .hero-preview-title {
+      color: #111827;
+      font-size: 25px;
+      font-weight: 860;
+    }
+
+    .hero-preview-metrics {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .hero-preview-card,
+    .hero-preview-wide {
+      border: 1px solid #d9dee8;
+      border-radius: 16px;
+      background: rgba(249, 250, 251, 0.92);
+      padding: 16px;
+    }
+
+    .hero-preview-card span,
+    .hero-preview-wide span {
+      display: block;
+      color: #6b7280;
+      font-size: 12px;
+      font-weight: 720;
+    }
+
+    .hero-preview-card strong {
+      display: block;
+      margin-top: 8px;
+      color: #111827;
+      font-size: 34px;
+      line-height: 1;
+    }
+
+    .hero-preview-wide h3 {
+      margin: 0 0 12px;
+      font-size: 20px;
+    }
+
+    .hero-preview-line {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      align-items: center;
+      gap: 14px;
+      padding: 10px 0;
+      border-top: 1px solid #e5e7eb;
+      font-size: 14px;
+      font-weight: 720;
+      color: #374151;
+    }
+
+    .hero-preview-line:first-of-type {
+      border-top: 0;
+    }
+
+    .hero-preview-tag {
+      padding: 5px 8px;
+      border-radius: 999px;
+      background: #e7f8f3;
+      color: #087f70;
+      font-size: 12px;
+      white-space: nowrap;
+    }
+
+    .hero-inner {
+      position: relative;
+      z-index: 2;
+      width: min(var(--max), calc(100% - 44px));
+      margin: 0 auto;
+      padding: 84px 0 92px;
+      color: #f8fafc;
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      min-height: 30px;
+      padding: 0 12px;
+      border-radius: 999px;
+      background: rgba(94, 234, 212, 0.16);
+      border: 1px solid rgba(94, 234, 212, 0.36);
+      color: #99f6e4;
+      font-size: 13px;
+      font-weight: 760;
+    }
+
+    .hero h1 {
+      max-width: 720px;
+      margin: 22px 0 18px;
+      font-size: clamp(40px, 7vw, 82px);
+      line-height: 0.98;
+      letter-spacing: 0;
+    }
+
+    .hero-copy {
+      max-width: 680px;
+      margin: 0;
+      color: #cbd5e1;
+      font-size: 19px;
+      line-height: 1.78;
+    }
+
+    .hero-actions {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-top: 30px;
+    }
+
+    .hero-actions .button.secondary {
+      background: rgba(255, 255, 255, 0.08);
+      color: #f8fafc;
+      border-color: rgba(255, 255, 255, 0.24);
+    }
+
+    .hero-foot {
+      max-width: 720px;
+      margin: 22px 0 0;
+      color: #9fb0c4;
+      font-size: 13px;
+      line-height: 1.7;
+    }
+
+    .section {
+      padding: 76px 22px;
+      scroll-margin-top: var(--anchor-offset);
+    }
+
+    .section.alt {
+      background: var(--paper);
+      border-top: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+    }
+
+    .inner {
+      max-width: var(--max);
+      margin: 0 auto;
+    }
+
+    .section-head {
+      display: grid;
+      grid-template-columns: minmax(0, 0.92fr) minmax(300px, 0.58fr);
+      gap: 48px;
+      align-items: end;
+      margin-bottom: 30px;
+    }
+
+    .sub-section-head {
+      margin-top: 64px;
+    }
+
+    .section-kicker {
+      margin-bottom: 10px;
+      color: var(--accent);
+      font-size: 13px;
+      font-weight: 800;
+    }
+
+    h2 {
+      margin: 0;
+      font-size: clamp(30px, 4vw, 50px);
+      line-height: 1.08;
+      letter-spacing: 0;
+    }
+
+    h3 {
+      margin: 0 0 10px;
+      font-size: 21px;
+      line-height: 1.28;
+      letter-spacing: 0;
+    }
+
+    p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 15px;
+      line-height: 1.76;
+    }
+
+    .lead {
+      color: var(--muted);
+      font-size: 17px;
+      line-height: 1.78;
+    }
+
+    .grid {
+      display: grid;
+      gap: 18px;
+    }
+
+    .guide-cards {
+      margin-bottom: 34px;
+    }
+
+    .cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+    .tile,
+    .step-card,
+    .callout {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--paper);
+      box-shadow: var(--shadow-card);
+    }
+
+    .tile,
+    .callout {
+      padding: 22px;
+    }
+
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      min-height: 26px;
+      padding: 0 10px;
+      margin-bottom: 16px;
+      border-radius: 999px;
+      background: var(--accent-tint);
+      border: 1px solid var(--accent-line);
+      color: var(--accent);
+      font-size: 12px;
+      font-weight: 760;
+    }
+
+    .chip.blue {
+      background: var(--blue-soft);
+      border-color: var(--blue-line);
+      color: var(--blue);
+    }
+
+    .chip.amber {
+      background: var(--amber-soft);
+      border-color: var(--amber-line);
+      color: var(--amber);
+    }
+
+    .chip.rose {
+      background: var(--rose-soft);
+      border-color: var(--rose-line);
+      color: var(--rose);
+    }
+
+    .guide-flow {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 22px;
+      align-items: start;
+    }
+
+    .step-card {
+      padding: 24px;
+    }
+
+    .step-number {
+      width: 34px;
+      height: 34px;
+      display: grid;
+      place-items: center;
+      margin-bottom: 16px;
+      border-radius: 8px;
+      background: var(--ink);
+      color: var(--paper);
+      font-weight: 820;
+    }
+
+    .shot {
+      margin: 0;
+      border: 1px solid var(--line-strong);
+      border-radius: 12px;
+      background: var(--paper);
+      box-shadow: var(--shadow-shot);
+      overflow: hidden;
+    }
+
+    .shot img {
+      display: block;
+      width: 100%;
+      height: auto;
+    }
+
+    .shot figcaption {
+      padding: 13px 16px 15px;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.62;
+    }
+
+    .command-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 10px;
+      align-items: center;
+      margin-top: 16px;
+      padding: 10px;
+      border: 1px solid rgba(248, 250, 252, 0.14);
+      border-radius: 8px;
+      background: var(--code-bg);
+      color: var(--code-fg);
+    }
+
+    .command-code {
+      overflow-x: auto;
+      white-space: nowrap;
+      padding: 6px 8px;
+      font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+      font-size: 13px;
+      line-height: 1.55;
+    }
+
+    p code,
+    li code,
+    figcaption code {
+      padding: 2px 5px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: rgba(15, 23, 42, 0.05);
+      color: var(--ink);
+      font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+      font-size: 0.92em;
+    }
+
+    .command-copy {
+      min-height: 32px;
+      padding: 0 10px;
+      border: 1px solid rgba(248, 250, 252, 0.22);
+      border-radius: 7px;
+      background: rgba(248, 250, 252, 0.08);
+      color: var(--code-fg);
+      font: inherit;
+      font-size: 12px;
+      font-weight: 760;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    .note-list {
+      display: grid;
+      gap: 12px;
+      margin: 18px 0 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .note-list li {
+      display: grid;
+      grid-template-columns: 24px minmax(0, 1fr);
+      gap: 10px;
+      align-items: start;
+      color: var(--muted);
+      font-size: 15px;
+      line-height: 1.7;
+    }
+
+    .note-list li::before {
+      content: "";
+      width: 8px;
+      height: 8px;
+      margin-top: 9px;
+      border-radius: 999px;
+      background: var(--accent);
+      box-shadow: 0 0 0 5px var(--accent-tint);
+    }
+
+    .mode-table {
+      display: grid;
+      gap: 12px;
+    }
+
+    .mode-row {
+      display: grid;
+      grid-template-columns: 180px minmax(0, 1fr);
+      gap: 18px;
+      padding: 18px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--paper);
+    }
+
+    .mode-row strong {
+      font-size: 16px;
+    }
+
+    .timeline {
+      display: grid;
+      gap: 14px;
+    }
+
+    .timeline-item {
+      display: grid;
+      grid-template-columns: 118px minmax(0, 1fr);
+      gap: 18px;
+      padding: 18px 0;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .timeline-item:last-child {
+      border-bottom: 0;
+    }
+
+    .timeline-time {
+      color: var(--accent);
+      font-size: 13px;
+      font-weight: 800;
+    }
+
+    .footer {
+      padding: 46px 22px 60px;
+      border-top: 1px solid var(--line);
+      background: var(--paper);
+      color: var(--muted);
+    }
+
+    .footer .inner {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 20px;
+      flex-wrap: wrap;
+    }
+
+    .text-link {
+      color: var(--accent);
+      font-weight: 720;
+      text-decoration: underline;
+      text-underline-offset: 3px;
+    }
+
+    @media (max-width: 1180px) {
+      .nav-links { display: none; }
+      .mobile-nav-links { display: flex; }
+      .site-nav { height: auto; }
+      .nav-inner { height: 64px; }
+      .hero { min-height: 620px; }
+    }
+
+    @media (max-width: 920px) {
+      .section-head,
+      .guide-flow,
+      .cols-4,
+      .cols-3,
+      .cols-2 {
+        grid-template-columns: 1fr;
+      }
+
+      .hero::before { background: linear-gradient(180deg, rgba(8, 13, 22, 0.95) 0%, rgba(8, 13, 22, 0.84) 54%, rgba(8, 13, 22, 0.48) 100%); }
+      .hero-panel-preview {
+        inset: 170px 16px 22px;
+        grid-template-columns: 1fr;
+        opacity: 0.34;
+      }
+      .hero-preview-sidebar { display: none; }
+      .hero-preview-main { padding: 18px; }
+
+      .hero-copy { font-size: 17px; }
+    }
+
+    @media (max-width: 680px) {
+      .nav-inner { width: calc(100% - 28px); gap: 12px; }
+      .brand > span:last-child { display: none; }
+      .nav-utility { gap: 6px; }
+      .theme-switch { display: none; }
+      .button.github-button { display: none; }
+      .hero-inner { width: calc(100% - 32px); padding: 66px 0 84px; }
+      .hero-panel-preview { inset: 235px 10px 18px; opacity: 0.22; }
+      .hero-preview-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .section { padding: 54px 16px; }
+      .mode-row,
+      .timeline-item {
+        grid-template-columns: 1fr;
+        gap: 8px;
+      }
+      .command-row {
+        grid-template-columns: 1fr;
+      }
+      .command-copy {
+        justify-self: start;
+      }
+    }
+  </style>
+</head>
+<body>
+  <nav class="site-nav" aria-label="页面导航">
+    <div class="nav-inner">
+      <a class="brand" href="index.html" aria-label="OpenRelix 首页">
+        <span class="mark" aria-hidden="true"><img src="openrelix-icon.png" alt=""></span>
+        <span>OpenRelix</span>
+      </a>
+      <div class="nav-links">
+        <a href="index.html" data-en="Product">产品</a>
+        <a href="#runtime-guide" class="is-active" data-en="Runtime">运行视图</a>
+        <a href="#memory-guide" data-en="Memory">记忆层</a>
+        <a href="#asset-guide" data-en="Assets">资产层</a>
+        <a href="#usage-guide" data-en="Tool Heat">工具热度</a>
+        <a href="#review-guide" data-en="Reviews">复盘</a>
+        <a href="#window-guide" data-en="Windows">窗口层</a>
+        <a href="#daily" data-en="Daily Use">日常使用</a>
+        <a href="#troubleshooting" data-en="FAQ">常见问题</a>
+      </div>
+      <div class="nav-utility" aria-label="页面设置">
+        <div class="theme-switch" aria-label="主题切换">
+          <button type="button" data-theme-option="system" aria-pressed="true" data-en="System">系统</button>
+          <button type="button" data-theme-option="light" aria-pressed="false" data-en="Light">浅色</button>
+          <button type="button" data-theme-option="dark" aria-pressed="false" data-en="Dark">深色</button>
+        </div>
+        <div class="lang-switch" aria-label="语言切换">
+          <button type="button" data-language-option="zh" aria-pressed="true">中文</button>
+          <button type="button" data-language-option="en" aria-pressed="false">EN</button>
+        </div>
+        <a class="button secondary github-button" href="https://github.com/openrelix/openrelix" target="_blank" rel="noopener noreferrer" data-en="Star on GitHub">GitHub 点星支持</a>
+      </div>
+    </div>
+    <div class="mobile-nav-links" aria-label="移动端页面导航">
+      <a href="index.html" data-en="Product">产品</a>
+      <a href="#runtime-guide" class="is-active" data-en="Runtime">运行视图</a>
+      <a href="#memory-guide" data-en="Memory">记忆层</a>
+      <a href="#asset-guide" data-en="Assets">资产层</a>
+      <a href="#usage-guide" data-en="Tool Heat">工具热度</a>
+      <a href="#review-guide" data-en="Reviews">复盘</a>
+      <a href="#window-guide" data-en="Windows">窗口层</a>
+      <a href="#daily" data-en="Daily Use">日常使用</a>
+      <a href="#troubleshooting" data-en="FAQ">常见问题</a>
+    </div>
+  </nav>
+
+  <main id="top">
+    <section class="hero">
+      <div class="hero-panel-preview" aria-hidden="true">
+        <aside class="hero-preview-sidebar">
+          <span data-en="Guide">导览</span>
+          <span class="hero-preview-pill is-active" data-en="Runtime View">运行视图</span>
+          <span class="hero-preview-pill" data-en="Token">Token</span>
+          <span class="hero-preview-group-title" data-en="Memory Layer">记忆层</span>
+          <span class="hero-preview-pill" data-en="Personal Asset Memory">个人资产记忆</span>
+          <span class="hero-preview-pill" data-en="Native Memory">原生记忆</span>
+          <span class="hero-preview-group-title" data-en="Window Layer">窗口层</span>
+          <span class="hero-preview-pill" data-en="Window Details">窗口明细</span>
+        </aside>
+        <div class="hero-preview-main">
+          <div class="hero-preview-toolbar">
+            <span class="hero-preview-title" data-en="OpenRelix Panel">OpenRelix 面板</span>
+            <span data-en="Fresh snapshot">最新快照</span>
+          </div>
+          <div class="hero-preview-metrics">
+            <div class="hero-preview-card">
+              <span data-en="Work Windows">工作窗口</span>
+              <strong>12</strong>
+            </div>
+            <div class="hero-preview-card">
+              <span data-en="Memory Items">记忆条目</span>
+              <strong>8</strong>
+            </div>
+            <div class="hero-preview-card">
+              <span data-en="Reusable Assets">可复用资产</span>
+              <strong>6</strong>
+            </div>
+            <div class="hero-preview-card">
+              <span data-en="Today Token">今日 Token</span>
+              <strong>149M</strong>
+            </div>
+          </div>
+          <div class="hero-preview-wide">
+            <h3 data-en="What to read first">先看什么</h3>
+            <div class="hero-preview-line">
+              <span data-en="Runtime status and Token filters">运行状态和 Token 筛选</span>
+              <span class="hero-preview-tag" data-en="Start">先看</span>
+            </div>
+            <div class="hero-preview-line">
+              <span data-en="Personal memory feedback">个人记忆反馈</span>
+              <span class="hero-preview-tag" data-en="Clean Up">收敛</span>
+            </div>
+            <div class="hero-preview-line">
+              <span data-en="Trace evidence in window details">到窗口明细追证据</span>
+              <span class="hero-preview-tag" data-en="Verify">验证</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="hero-inner">
+        <span class="eyebrow" data-en="Panel Guide">面板使用指南</span>
+        <h1 data-en="Start here after opening the panel.">打开面板后，先看这几个地方。</h1>
+        <p class="hero-copy" data-en="This page assumes OpenRelix is already available on your machine. It explains what each section means, what to click first, and how to trace a conclusion back to its source window.">
+          这页默认你已经能打开 OpenRelix，直接讲每个板块看什么、先点哪里、怎么把结论追溯回来源窗口。
+        </p>
+        <div class="hero-actions">
+          <a class="button" href="#runtime-guide" data-en="Start With Runtime">先看运行视图</a>
+          <a class="button secondary" href="#memory-guide" data-en="Read Core Sections">逐块看核心板块</a>
+          <a class="button secondary" href="#window-details-guide" data-en="Trace Window Details">看窗口明细</a>
+        </div>
+        <p class="hero-foot" data-en="Screenshots on this page are captured from the real OpenRelix panel UI with example content. They do not contain real accounts, local paths, session text, logs, or private project data.">
+          本页截图来自真实 OpenRelix 面板 UI，内容已替换为示例；不包含真实账号、本机路径、会话正文、日志或私有项目内容。
+        </p>
+      </div>
+    </section>
+
+    <section class="section" id="core-map">
+      <div class="inner">
+        <div class="section-head">
+          <div>
+            <div class="section-kicker" data-en="Panel Map">核心板块导览</div>
+            <h2 data-en="Follow the real panel sections directly.">按核心板块导览，直接上手。</h2>
+          </div>
+          <p class="lead" data-en="The guide follows the panel's working order: runtime first, memory second, assets third, tool heat fourth, then reviews and windows for proof.">
+            这份指南按面板的真实工作流来读：先看运行视图，再看记忆层、资产层、工具热度，最后用复盘和窗口层追证据。
+          </p>
+        </div>
+        <div class="grid cols-3">
+          <article class="tile">
+            <span class="chip" data-en="Runtime">运行视图</span>
+            <h3 data-en="Is the current snapshot trustworthy?">当前快照可靠吗？</h3>
+            <p data-en="Check snapshot time, daily ledger, Token filter, and background pipeline before reading conclusions.">先看快照时间、每日资产账本、Token 筛选和后台流水线，再读结论。</p>
+            <a class="text-link" href="#runtime-guide" data-en="Read runtime guide">查看运行视图</a>
+          </article>
+          <article class="tile">
+            <span class="chip blue" data-en="Memory">记忆层</span>
+            <h3 data-en="Which memory is local, and which reaches the host?">哪些记忆留本地，哪些会进 host？</h3>
+            <p data-en="Read personal asset memory first, then compare Codex / Claude native memory and feedback behavior.">先看个人资产记忆，再对比 Codex / Claude 原生记忆和反馈按钮效果。</p>
+            <a class="text-link" href="#memory-guide" data-en="Read memory guide">查看记忆层</a>
+          </article>
+          <article class="tile">
+            <span class="chip amber" data-en="Assets">资产层</span>
+            <h3 data-en="What reusable materials exist locally?">本机有哪些可复用材料？</h3>
+            <p data-en="Separate manually registered assets from discovered skills, prompts, rules, plugins, and launch tasks.">区分手动登记资产与自动发现的 skills、提示词、Rules、插件和启动项。</p>
+            <a class="text-link" href="#asset-guide" data-en="Read asset guide">查看资产层</a>
+          </article>
+          <article class="tile">
+            <span class="chip rose" data-en="Tool Heat">工具热度</span>
+            <h3 data-en="Which tools are actually used?">哪些工具真的被用过？</h3>
+            <p data-en="Use skill and MCP tool heat to decide what deserves docs, templates, and cleanup.">用 skill 和 MCP 工具热度决定哪些能力值得补文档、模板或清理。</p>
+            <a class="text-link" href="#usage-guide" data-en="Read tool heat guide">查看工具热度</a>
+          </article>
+          <article class="tile">
+            <span class="chip" data-en="Reviews">复盘</span>
+            <h3 data-en="Which tasks became reusable assets?">哪些任务已经资产化？</h3>
+            <p data-en="Review records and usage events prove whether a playbook, skill, template, or checklist was created and reused.">复盘记录和复用事件能证明 playbook、skill、template 或 checklist 是否真的产生并复用。</p>
+            <a class="text-link" href="#review-guide" data-en="Read review guide">查看复盘</a>
+          </article>
+          <article class="tile">
+            <span class="chip blue" data-en="Windows">窗口层</span>
+            <h3 data-en="Where is the source evidence?">原始证据在哪里？</h3>
+            <p data-en="Use window overview before details so you can trace a claim without reading every raw conversation.">先用窗口总览定位，再进窗口明细追证据，避免逐条翻原始会话。</p>
+            <a class="text-link" href="#window-guide" data-en="Read window guide">查看窗口层</a>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section alt" id="runtime-guide">
+      <div class="inner">
+        <div class="section-head">
+          <div>
+            <div class="section-kicker" data-en="Core Section 1">核心板块 1</div>
+            <h2 data-en="Runtime view: confirm the panel is fresh before trusting it.">运行视图：先确认面板新鲜，再相信结论。</h2>
+          </div>
+          <p class="lead" data-en="Runtime view combines the workbench header, daily asset ledger, Token filters, and background pipeline status. It answers whether the current panel is safe to interpret.">
+            运行视图把工作台顶部、每日资产账本、Token 筛选和后台流水线放在一起，回答一个问题：当前面板是否值得继续读。
+          </p>
+        </div>
+        <div class="guide-flow">
+          <figure class="shot">
+            <img src="assets/getting-started-runtime.png" data-zh-src="assets/getting-started-runtime.png" data-en-src="assets/getting-started-runtime-en.png" alt="OpenRelix 运行视图 UI 截图" data-zh-alt="OpenRelix 运行视图 UI 截图" data-en-alt="OpenRelix runtime UI screenshot in English">
+            <figcaption data-en="Runtime screenshot: daily ledger, key metrics, Token filters, and background status entry points.">
+              运行视图截图：展示每日资产账本、关键指标、Token 筛选和后台状态入口。
+            </figcaption>
+          </figure>
+          <div class="step-card">
+            <div class="step-number">1</div>
+            <h3 data-en="Read it in four passes">按四步读</h3>
+            <ul class="note-list">
+              <li data-en="Header and snapshot: confirm version, latest check status, and generated time. Old snapshots should be refreshed first.">顶部和快照：确认版本、更新状态和生成时间；快照旧就先刷新。</li>
+              <li data-en="Daily asset ledger: read what today produced, then check work windows, context counts, and token count on the right.">每日资产账本：先看当天产出了什么，再看右侧工作窗口、上下文和 Token 数。</li>
+              <li data-en="Token filters: use source, date range, and granularity before deciding whether a model-backed job is too expensive.">Token 筛选：先定来源、日期范围和粒度，再判断模型任务是否过重。</li>
+              <li data-en="Background pipeline: check phase, last run, next run, and failure hints before blaming memory or asset logic.">后台流水线：看阶段、上次运行、下次运行和失败提示，再判断是否是记忆或资产逻辑问题。</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="token-guide">
+      <div class="inner">
+        <div class="section-head">
+          <div>
+            <div class="section-kicker" data-en="Runtime Module">运行模块</div>
+            <h2 data-en="Token: read usage and cost before expanding history.">Token：先看消耗，再决定是否扩大范围。</h2>
+          </div>
+          <p class="lead" data-en="The Token module is for understanding local usage trends. It is not a billing page; treat it as a practical cost and pressure signal for Codex / Claude Code activity.">
+            Token 模块用来看本机使用趋势，不是账单页；把它当成 Codex / Claude Code 活动的成本和压力信号。
+          </p>
+        </div>
+        <div class="guide-flow">
+          <figure class="shot">
+            <img src="assets/getting-started-token.png" data-zh-src="assets/getting-started-token.png" data-en-src="assets/getting-started-token-en.png" alt="OpenRelix Token 模块 UI 与示例数据截图" data-zh-alt="OpenRelix Token 模块 UI 与示例数据截图" data-en-alt="OpenRelix Token module UI screenshot with sample data in English">
+            <figcaption data-en="Token module UI with sample data: source filters, daily / monthly granularity, date range, totals, trend, and token composition.">
+              Token 模块 UI + 示例数据：展示来源筛选、日/月粒度、日期范围、总量、趋势和构成。
+            </figcaption>
+          </figure>
+          <div class="step-card">
+            <div class="step-number">1A</div>
+            <h3 data-en="Use it for cost awareness, not daily reading.">它适合看成本感知，不必每天盯。</h3>
+            <ul class="note-list">
+              <li data-en="Source: switch All / Codex / Claude when you need to know which host produced the pressure.">来源：想知道压力来自哪个 host 时，再切全部 / Codex / Claude。</li>
+              <li data-en="Granularity: daily view is for short-term spikes; monthly view is for broader trend and provider comparison.">粒度：按日看短期峰值；按月看长期趋势和来源对比。</li>
+              <li data-en="Date range: choose the smallest range that answers the question before reading totals.">日期范围：先选能回答问题的最小范围，再看总量。</li>
+              <li data-en="Composition: if cache or output grows unexpectedly, check whether a recent task changed model behavior.">构成：如果缓存或输出突然变多，再回看近期任务是否改变了模型行为。</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section alt" id="pipeline-guide">
+      <div class="inner">
+        <div class="section-head">
+          <div>
+            <div class="section-kicker" data-en="Runtime Module">运行模块</div>
+            <h2 data-en="Background monitor: know whether automation is healthy.">后台运行监控：判断自动整理有没有正常工作。</h2>
+          </div>
+          <p class="lead" data-en="The background monitor is useful when the panel looks stale, a memory item did not appear, or you want to know whether the scheduled refresh actually ran.">
+            当面板看起来过旧、记忆没有出现，或者你想确认定时刷新是否真的跑过，就看后台运行监控。
+          </p>
+        </div>
+        <div class="guide-flow">
+          <figure class="shot">
+            <img src="assets/getting-started-background-monitor.png" data-zh-src="assets/getting-started-background-monitor.png" data-en-src="assets/getting-started-background-monitor-en.png" alt="OpenRelix 后台运行监控 UI 截图" data-zh-alt="OpenRelix 后台运行监控 UI 截图" data-en-alt="OpenRelix background monitor UI screenshot in English">
+            <figcaption data-en="Background-monitor screenshot: latest run status, next run, stage checklist, and recent run history.">
+              后台运行监控截图：展示最近运行状态、下次运行、阶段检查和历史运行记录。
+            </figcaption>
+          </figure>
+          <div class="step-card">
+            <div class="step-number">1B</div>
+            <h3 data-en="Read status before rerunning anything.">先看状态，再决定是否手动触发。</h3>
+            <ul class="note-list">
+              <li data-en="Current status: Completed means the pipeline finished; Failed means read the failed stage before changing settings.">当前状态：Completed 表示流水线完成；Failed 时先看失败阶段，不要先改配置。</li>
+              <li data-en="Next run: use it to decide whether waiting for the scheduled refresh is enough.">下次运行：判断等下一次定时刷新是否就够了。</li>
+              <li data-en="Stage checklist: locate whether the issue is collection, synthesis, index rebuild, host summary sync, asset refresh, or panel rebuild.">阶段检查：定位问题在采集、整理、索引、host 摘要同步、资产刷新还是面板重建。</li>
+              <li data-en="Recent history: repeated failures in the same stage are stronger evidence than one stale snapshot.">历史记录：同一阶段反复失败，比单次快照旧更值得排查。</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="memory-guide">
+      <div class="inner">
+        <div class="section-head">
+          <div>
+            <div class="section-kicker" data-en="Core Section 2">核心板块 2</div>
+            <h2 data-en="Personal asset memory: keep useful patterns, clean up the rest.">个人资产记忆：留下有用经验，清掉噪声。</h2>
+          </div>
+          <p class="lead" data-en="This view is the main place to manage OpenRelix personal memory: what was generated, what is useful, what should be hidden, and what may be injected into host context.">
+            这里是管理 OpenRelix 个人资产记忆的主入口：看哪些记忆被生成、哪些有用、哪些该隐藏，以及哪些可能进入 host context。
+          </p>
+        </div>
+        <div class="guide-flow">
+          <figure class="shot">
+            <img src="assets/getting-started-memory.png" data-zh-src="assets/getting-started-memory.png" data-en-src="assets/getting-started-memory-en.png" alt="OpenRelix 记忆层 UI 截图" data-zh-alt="OpenRelix 记忆层 UI 截图" data-en-alt="OpenRelix memory-layer UI screenshot in English">
+            <figcaption data-en="Personal-memory screenshot: memory cards, useful / useless feedback, local counts, and host-context status.">
+              个人资产记忆截图：展示记忆卡片、有用/无用反馈、本地统计和 host context 状态。
+            </figcaption>
+          </figure>
+          <div class="step-card">
+            <div class="step-number">2A</div>
+            <h3 data-en="Read cards first, then train the panel with feedback.">先读卡片，再用反馈训练面板。</h3>
+            <ul class="note-list">
+              <li data-en="UI: each card is a reusable preference, rule, playbook, project habit, or task cluster distilled from local work.">UI：每张卡片是一条从本机工作中提炼出的可复用偏好、规则、手册、项目习惯或任务簇。</li>
+              <li data-en="Useful: keeps the item visible and gives it stronger priority for later summaries and panel ranking.">有用：保留并强化这条记忆，后续摘要和面板排序会更愿意采用它。</li>
+              <li data-en="Useless: hides noisy candidates from the current view so stale or accidental memories do not keep occupying space.">无用：把噪声候选从当前视图移走，避免过期或误生成的记忆长期占位置。</li>
+              <li data-en="Generation: OpenRelix reads recent windows and uses a model to condense reusable rules, then writes structured local memory items.">生成原理：OpenRelix 读取近期窗口，用大模型归纳可复用规则，再写成本地结构化记忆。</li>
+              <li data-en="Injection: when memory mode allows it, only a bounded summary is synced into managed host-context blocks; raw windows stay local.">注入原理：只有记忆模式允许时，OpenRelix 才把有界摘要同步到受控 host-context 块；原始窗口仍留在本地。</li>
+              <li data-en="Cost: model-generated memory consumes tokens. If you only want visualization for now, switch memory mode off.">成本：记忆生成由大模型完成，会消耗 token。如果暂时只想看面板，可以关闭记忆模式。</li>
+            </ul>
+            <div class="command-row">
+              <code class="command-code">openrelix mode off</code>
+              <button class="command-copy" type="button" data-copy-default="复制" data-copy-default-en="Copy" data-copy-done="已复制" data-copy-done-en="Copied">复制</button>
+            </div>
+          </div>
+        </div>
+        <div class="section-head sub-section-head" id="native-memory-guide">
+          <div>
+            <div class="section-kicker" data-en="Core Section 2B">核心板块 2B</div>
+            <h2 data-en="Native memory: see what Codex and Claude already know.">原生记忆：看 Codex 和 Claude 自己记住了什么。</h2>
+          </div>
+          <p class="lead" data-en="Native-memory views are comparison views. They help you understand what the host can read directly, and where OpenRelix personal memory is only a local supplement.">
+            原生记忆视图是对照视图。它帮助你看清 host 自己能直接读到什么，以及 OpenRelix 个人资产记忆在哪些地方只是本地补充。
+          </p>
+        </div>
+        <div class="guide-flow">
+          <figure class="shot">
+            <img src="assets/getting-started-memory.png" data-zh-src="assets/getting-started-memory.png" data-en-src="assets/getting-started-memory-en.png" alt="OpenRelix 原生记忆入口 UI 截图" data-zh-alt="OpenRelix 原生记忆入口 UI 截图" data-en-alt="OpenRelix native-memory entry UI screenshot in English">
+            <figcaption data-en="Native-memory entry points: Codex native memory and Claude native memory are shown beside personal asset memory for comparison.">
+              原生记忆入口：Codex 原生记忆和 Claude 原生记忆与个人资产记忆并列展示，方便对照。
+            </figcaption>
+          </figure>
+          <div class="step-card">
+            <div class="step-number">2B</div>
+            <h3 data-en="Use it to check the host boundary.">用它检查 host 边界。</h3>
+            <ul class="note-list">
+              <li data-en="Codex native memory: shows host-readable Codex memory, including managed OpenRelix summary blocks when enabled.">Codex 原生记忆：展示 Codex 侧可读的记忆，包括启用时的 OpenRelix 受控摘要块。</li>
+              <li data-en="Claude native memory: shows Claude Code-side memory sources when Claude activity is available locally.">Claude 原生记忆：当本机能读取 Claude Code 活动时，展示 Claude Code 侧的记忆来源。</li>
+              <li data-en="Extraction: OpenRelix reads host-owned memory files, managed blocks, and local display cache, then normalizes them for the panel.">提取原理：OpenRelix 读取 host 自己拥有的记忆文件、受控块和本地展示缓存，再整理成面板可读格式。</li>
+              <li data-en="Boundary: OpenRelix does not turn every raw window into host-native memory; it only syncs its managed summary when the current mode permits it.">边界：OpenRelix 不会把每个原始窗口都塞进 host 原生记忆；只有当前模式允许时才同步自己的受控摘要。</li>
+              <li data-en="Use case: compare native memory with personal asset memory when the agent misses a stable rule or repeats an old mistake.">使用场景：当 agent 漏掉稳定规则、重复旧问题时，用它对比原生记忆和个人资产记忆差在哪里。</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section alt" id="asset-guide">
+      <div class="inner">
+        <div class="section-head">
+          <div>
+            <div class="section-kicker" data-en="Core Section 3">核心板块 3</div>
+            <h2 data-en="Asset layer: see what exists before deciding what to promote.">资产层：先看存量，再决定升级什么。</h2>
+          </div>
+          <p class="lead" data-en="The asset layer is not the same as memory injection. It is an inventory of reusable material: registered assets, discovered assets, reviews, usage events, and repo-scoped entries.">
+            资产层不是记忆注入层，而是可复用材料盘点：登记册资产、已发现资产、复盘、复用事件和仓库范围资产都在这里看。
+          </p>
+        </div>
+        <div class="guide-flow">
+          <figure class="shot">
+            <img src="assets/getting-started-asset-layer.png" data-zh-src="assets/getting-started-asset-layer.png" data-en-src="assets/getting-started-asset-layer-en.png" alt="OpenRelix 资产层 UI 截图" data-zh-alt="OpenRelix 资产层 UI 截图" data-en-alt="OpenRelix asset-layer UI screenshot in English">
+            <figcaption data-en="Asset-layer screenshot: registered assets, discovered assets, asset filters, and the baseline that drives tool heat lists.">
+              资产层截图：展示登记册资产、已发现资产、资产筛选，以及驱动工具热度列表的资产基线。
+            </figcaption>
+          </figure>
+          <div class="step-card">
+            <div class="step-number">3</div>
+            <h3 data-en="Read inventory before tool heat">先看盘点，再看工具热度</h3>
+            <ul class="note-list">
+              <li data-en="Registered assets: only stable rows intentionally written to registry/assets.jsonl. This is your curated library.">登记册资产：只统计写入 registry/assets.jsonl 的稳定资产，这是刻意沉淀的书架。</li>
+              <li data-en="Discovered assets: skills, prompts, rules, plugins, launch tasks, and recently-read project skills found by scanning.">已发现资产：扫描到的 skills、提示词、Rules、插件、启动项，以及近期被读取的项目 skills。</li>
+              <li data-en="Asset filters: changing the date range changes tool heat, activity, and trend interpretation, not the whole local history.">资产筛选：日期范围会影响工具热度、活跃度和趋势解读，不代表全部历史消失。</li>
+              <li data-en="Promotion decision: promote only assets that are useful, reusable, and clear enough for another future task.">升级判断：只有有用、可复用、下次任务也看得懂的内容，才值得升级成正式资产。</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="usage-guide">
+      <div class="inner">
+        <div class="section-head">
+          <div>
+            <div class="section-kicker" data-en="Core Section 4">核心板块 4</div>
+            <h2 data-en="Tool heat: optimize what agents actually use.">工具热度：优化 agent 真正在用的东西。</h2>
+          </div>
+          <p class="lead" data-en="Tool heat shows real usage signals for skills and MCP tools. Use it to decide what deserves better documentation, templates, examples, or cleanup.">
+            工具热度展示 skills 和 MCP 工具的真实使用信号。用它决定哪些能力值得补文档、模板、示例，哪些该清理。
+          </p>
+        </div>
+        <div class="guide-flow">
+          <figure class="shot">
+            <img src="assets/getting-started-usage-heat.png" data-zh-src="assets/getting-started-usage-heat.png" data-en-src="assets/getting-started-usage-heat-en.png" alt="OpenRelix skills 和 MCP 工具热度 UI 截图" data-zh-alt="OpenRelix skills 和 MCP 工具热度 UI 截图" data-en-alt="OpenRelix skill and MCP tool heat UI screenshot in English">
+            <figcaption data-en="Tool heat screenshot: skills read frequency, 7 / 30 day sessions, and MCP call heat.">
+              工具热度截图：展示 skill 读取频率、7 / 30 天会话数，以及 MCP 调用热度。
+            </figcaption>
+          </figure>
+          <div class="step-card">
+            <div class="step-number">4</div>
+            <h3 data-en="Look for three patterns">重点看三种模式</h3>
+            <ul class="note-list">
+              <li data-en="High 7-day and high 30-day usage: this is a living workflow; improve docs and examples first.">7 天和 30 天都高：这是正在活跃的工作流，优先补文档和示例。</li>
+              <li data-en="High 30-day but low 7-day usage: it may be stale; check whether the workflow has changed.">30 天高但 7 天低：可能开始过期，要看工作流是否已经变化。</li>
+              <li data-en="Unexpected MCP spikes: inspect related windows to see whether the tool is useful or being retried after failures.">MCP 工具突然变热：回到窗口层看它是真有用，还是失败后反复重试。</li>
+              <li data-en="Low usage but high value: keep it local until another task proves it deserves promotion.">低频但高价值：先留本地，等另一个任务证明它值得升级。</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section alt" id="review-guide">
+      <div class="inner">
+        <div class="section-head">
+          <div>
+            <div class="section-kicker" data-en="Core Section 5">核心板块 5</div>
+            <h2 data-en="Review records: turn finished work into reusable assets.">复盘记录：把做完的事变成可复用资产。</h2>
+          </div>
+          <p class="lead" data-en="Review records are for assetization, not raw logging. They show which finished tasks produced durable playbooks, skills, templates, automations, or checklists.">
+            复盘记录不是原始日志，而是资产化入口。它展示哪些任务产出了稳定 playbook、skill、template、automation 或 checklist。
+          </p>
+        </div>
+        <div class="guide-flow">
+          <figure class="shot">
+            <img src="assets/getting-started-reviews.png" data-zh-src="assets/getting-started-reviews.png" data-en-src="assets/getting-started-reviews-en.png" alt="OpenRelix 复盘记录 UI 截图" data-zh-alt="OpenRelix 复盘记录 UI 截图" data-en-alt="OpenRelix review-area UI screenshot in English">
+            <figcaption data-en="Review-area screenshot: review records, reuse events, and the transition into the window layer.">
+              复盘区域截图：展示复盘记录、复用事件，以及进入窗口层追证据的过渡。
+            </figcaption>
+          </figure>
+          <div class="step-card">
+            <div class="step-number">5</div>
+            <h3 data-en="Use reviews only when a task has reusable value">任务有复用价值时才复盘</h3>
+            <ul class="note-list">
+              <li data-en="Run a review when the task produced a stable method, troubleshooting path, template, or checklist.">当任务产出稳定方法、排障路径、模板或检查清单时，再做复盘。</li>
+              <li data-en="Check reuse events to see whether an existing asset actually helped later work.">看复用事件，确认某个已有资产是否真的帮助了后续任务。</li>
+              <li data-en="Empty review area is normal for a fresh setup; it means no review artifact has been saved yet.">新环境里复盘区域为空是正常的，表示还没有保存过复盘产物。</li>
+              <li data-en="After a useful review, confirm registry, usage events, and overview are all updated.">一次有价值复盘后，要确认登记册、使用事件和 overview 都更新了。</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="window-guide">
+      <div class="inner">
+        <div class="section-head">
+          <div>
+            <div class="section-kicker" data-en="Core Section 6">核心板块 6</div>
+            <h2 data-en="Window layer: trace claims back to real work context.">窗口层：把结论追溯到真实工作上下文。</h2>
+          </div>
+          <p class="lead" data-en="The window layer is the evidence layer. Use overview first to find the right project and task, then open details only when you need source-level proof.">
+            窗口层是证据层。先用窗口总览定位项目和任务；只有需要原始证据时，再打开窗口明细。
+          </p>
+        </div>
+        <div class="guide-flow">
+          <figure class="shot">
+            <img src="assets/getting-started-window-layer.png" data-zh-src="assets/getting-started-window-layer.png" data-en-src="assets/getting-started-window-layer-en.png" alt="OpenRelix 窗口总览 UI 截图" data-zh-alt="OpenRelix 窗口总览 UI 截图" data-en-alt="OpenRelix window-overview UI screenshot in English">
+            <figcaption data-en="Window-overview screenshot: window filters, project map, task grouping, and trace links.">
+              窗口总览截图：展示窗口筛选、项目地图、任务分组和追溯入口。
+            </figcaption>
+          </figure>
+          <div class="step-card">
+            <div class="step-number">6</div>
+            <h3 data-en="Trace without reading everything">不要逐条翻，先定位再下钻</h3>
+            <ul class="note-list">
+              <li data-en="Window filters: narrow by date before reading tasks, especially after a long backfill.">窗口筛选：尤其在长周期回溯后，先按日期缩小范围。</li>
+              <li data-en="Window map: use project count, parallel tasks, windows, and discussions to find dense work areas.">窗口地图：用项目数、并行任务、窗口数和讨论数定位工作密集区。</li>
+              <li data-en="Trace buttons: jump from a grouped task to the exact window details instead of scanning all cards.">追溯按钮：从聚合任务跳到对应窗口明细，不要从头扫所有卡片。</li>
+              <li data-en="Details: verify why a memory item, review claim, or tool heat signal exists.">窗口明细：验证某条记忆、复盘结论或工具热度信号为什么存在。</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section alt" id="window-details-guide">
+      <div class="inner">
+        <div class="section-head">
+          <div>
+            <div class="section-kicker" data-en="Window Details">窗口明细</div>
+            <h2 data-en="Window details: inspect one task only when you need evidence.">窗口明细：需要证据时，再看单次任务。</h2>
+          </div>
+          <p class="lead" data-en="Window details are for verification, not daily browsing. Open them when you need to understand why a memory, review, or tool heat signal exists.">
+            窗口明细用于核验，不是每天逐条浏览。只有想知道某条记忆、复盘或工具热度信号为什么出现时，再进入这里。
+          </p>
+        </div>
+        <div class="guide-flow">
+          <figure class="shot">
+            <img src="assets/getting-started-window-details.png" data-zh-src="assets/getting-started-window-details.png" data-en-src="assets/getting-started-window-details-en.png" alt="OpenRelix 窗口明细 UI 截图" data-zh-alt="OpenRelix 窗口明细 UI 截图" data-en-alt="OpenRelix window-details UI screenshot in English">
+            <figcaption data-en="Window-details screenshot: one window card, source metadata, questions, conclusions, and traceable context.">
+              窗口明细截图：展示单个窗口卡片、来源元数据、问题、结论和可追溯上下文。
+            </figcaption>
+          </figure>
+          <div class="step-card">
+            <div class="step-number">7</div>
+            <h3 data-en="Use details for verification, not scanning.">把明细当证据页，不当列表刷。</h3>
+            <ul class="note-list">
+              <li data-en="Start from the task title and source metadata: host, collection source, time, and working directory explain where the signal came from.">先看任务标题和来源元数据：host、采集来源、时间、工作目录能说明信号从哪里来。</li>
+              <li data-en="Read questions and conclusions together; a conclusion without its question is easy to over-trust.">问题和结论要一起看；脱离问题的结论很容易被误读。</li>
+              <li data-en="Use details when a memory candidate feels wrong, a review claim needs proof, or a tool heat entry looks surprising.">当记忆候选看起来不对、复盘结论需要证明、某个工具热度条目异常时，再打开明细。</li>
+              <li data-en="Avoid reading every card. Go back to the overview when the detail page has answered the specific question.">不要逐条读完所有卡片；明细回答了具体疑问，就回到总览。</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="daily">
+      <div class="inner">
+        <div class="section-head">
+          <div>
+            <div class="section-kicker" data-en="Daily Use">日常使用</div>
+            <h2 data-en="A simple rhythm is enough.">保持一个很简单的节奏。</h2>
+          </div>
+          <p class="lead" data-en="OpenRelix works best when you let routine jobs do the boring work and only step in when you want to review, promote, or troubleshoot something.">
+            OpenRelix 最好用的方式，是让例行任务做重复工作；你只在要复盘、升级资产或排障时介入。
+          </p>
+        </div>
+        <div class="grid cols-3 guide-cards">
+          <article class="tile">
+            <span class="chip" data-en="Open Panel">打开面板</span>
+            <h3 data-en="Start with runtime, not memory.">先看运行视图，不要先翻记忆。</h3>
+            <p data-en="Confirm snapshot time, background status, and Token pressure before interpreting any memory or asset conclusion.">先确认快照时间、后台状态和 Token 压力，再解读记忆或资产结论。</p>
+            <a class="text-link" href="#runtime-guide" data-en="Go to runtime guide">去运行视图</a>
+          </article>
+          <article class="tile">
+            <span class="chip blue" data-en="Reusable Task">可复用任务</span>
+            <h3 data-en="Review right after the task ends.">任务刚结束时复盘。</h3>
+            <p data-en="If the work produced a method, checklist, template, or troubleshooting path, capture it while the context is still fresh.">如果产出了方法、清单、模板或排障路径，趁上下文还新鲜时沉淀。</p>
+            <a class="text-link" href="#review-guide" data-en="Go to review guide">去复盘记录</a>
+          </article>
+          <article class="tile">
+            <span class="chip amber" data-en="Something Off">结果不对</span>
+            <h3 data-en="Go from monitor to windows.">从后台状态追到窗口证据。</h3>
+            <p data-en="When memory or asset conclusions look wrong, check the pipeline first, then trace the original window.">记忆或资产结论不对时，先看流水线，再追原始窗口。</p>
+            <a class="text-link" href="#pipeline-guide" data-en="Go to background monitor">去后台监控</a>
+          </article>
+        </div>
+        <div class="timeline">
+          <div class="timeline-item">
+            <div class="timeline-time" data-en="During work">工作中</div>
+            <div>
+              <h3 data-en="Do normal AI-agent work">正常使用 AI agent</h3>
+              <p data-en="OpenRelix reads saved local host activity later. You do not need to paste every conversation into a separate tool.">OpenRelix 之后读取本地保存的 host 活动；你不需要把每段对话另存到别的工具里。</p>
+            </div>
+          </div>
+          <div class="timeline-item">
+            <div class="timeline-time" data-en="After a task">任务后</div>
+            <div>
+              <h3 data-en="Run an immediate review when the task is reusable">可复用任务就做一次即时复盘</h3>
+              <p data-en-html="Use <code>memory-review</code> when a task produced a playbook, skill, template, automation, checklist, or stable troubleshooting path.">当任务产出了方法手册、skill、模板、自动化、检查清单或稳定排障路径时，用 <code>memory-review</code> 复盘。</p>
+              <div class="command-row">
+                <code class="command-code">memory-review</code>
+                <button class="command-copy" type="button" data-copy-default="复制" data-copy-default-en="Copy" data-copy-done="已复制" data-copy-done-en="Copied">复制</button>
+              </div>
+            </div>
+          </div>
+          <div class="timeline-item">
+            <div class="timeline-time" data-en="Default 60 min">默认 60 分钟</div>
+            <div>
+              <h3 data-en="Panel refresh can run automatically">面板刷新可以自动跑</h3>
+              <p data-en="The overview LaunchAgent refreshes the panel every 60 minutes by default. After installation, use schedule to change the already-installed LaunchAgent interval.">overview LaunchAgent 默认每 60 分钟刷新面板。安装完成后，用 schedule 直接调整已安装的 LaunchAgent 间隔。</p>
+              <div class="command-row">
+                <code class="command-code">openrelix schedule --overview-refresh-interval-minutes 30</code>
+                <button class="command-copy" type="button" data-copy-default="复制" data-copy-default-en="Copy" data-copy-done="已复制" data-copy-done-en="Copied">复制</button>
+              </div>
+            </div>
+          </div>
+          <div class="timeline-item">
+            <div class="timeline-time" data-en="Nightly">夜间</div>
+            <div>
+              <h3 data-en="Daily windows become staged summaries">当天窗口分阶段整理</h3>
+              <p data-en="The default same-day preview runs at 23:00, and previous-day finalize runs at 00:10. After installation, schedule can move both LaunchAgent times directly.">默认 23:00 生成当天预览，00:10 生成前一日终版。安装完成后，用 schedule 直接调整这两个 LaunchAgent 时间。</p>
+              <div class="command-row">
+                <code class="command-code">openrelix schedule --nightly-organize-time 22:30 --nightly-finalize-time 01:00</code>
+                <button class="command-copy" type="button" data-copy-default="复制" data-copy-default-en="Copy" data-copy-done="已复制" data-copy-done-en="Copied">复制</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="troubleshooting">
+      <div class="inner">
+        <div class="section-head">
+          <div>
+            <div class="section-kicker" data-en="Troubleshooting">常见问题</div>
+            <h2 data-en="When something looks wrong, check the narrowest thing first.">遇到异常时，先查最窄的证据。</h2>
+          </div>
+          <p class="lead" data-en="The goal is to avoid guessing. These checks keep the first debugging pass concrete and local.">
+            目标是少猜。下面这些检查能把第一轮排障收在本机、收在具体链路上。
+          </p>
+        </div>
+        <div class="grid cols-3">
+          <article class="tile">
+            <span class="chip" data-en="Empty Panel">面板为空</span>
+            <h3 data-en="Check collection first">先查采集</h3>
+            <p data-en="Run doctor with app-server check. If Codex app-server is unavailable, OpenRelix should fall back to history/session where possible.">先跑 app-server 检查；如果 Codex app-server 不可用，OpenRelix 应尽量回退到 history/session。</p>
+            <a class="text-link" href="#pipeline-guide" data-en="Then check background monitor">再看后台监控</a>
+            <div class="command-row">
+              <code class="command-code">openrelix doctor --app-server-check</code>
+              <button class="command-copy" type="button" data-copy-default="复制" data-copy-default-en="Copy" data-copy-done="已复制" data-copy-done-en="Copied">复制</button>
+            </div>
+          </article>
+          <article class="tile">
+            <span class="chip blue" data-en="No Memory">记忆没刷新</span>
+            <h3 data-en="Check model credentials">查模型认证</h3>
+            <p data-en="Learning refresh needs the configured model CLI. Confirm it can run before changing memory settings.">学习刷新依赖配置好的 model CLI；改记忆设置前先确认模型链路能跑。</p>
+            <a class="text-link" href="#memory-guide" data-en="Then read memory guide">再看记忆导览</a>
+            <div class="command-row">
+              <code class="command-code">openrelix doctor --model-check</code>
+              <button class="command-copy" type="button" data-copy-default="复制" data-copy-default-en="Copy" data-copy-done="已复制" data-copy-done-en="Copied">复制</button>
+            </div>
+          </article>
+          <article class="tile">
+            <span class="chip amber" data-en="Update">升级修复</span>
+            <h3 data-en="Repair local integrations">重同步本地集成</h3>
+            <p data-en="When npm is current but the app, LaunchAgents, or generated panel look stale, force the repair path.">当 npm 包已是最新但 app、LaunchAgent 或面板像是旧的，走 force 修复路径。</p>
+            <a class="text-link" href="#runtime-guide" data-en="Then re-check runtime">再看运行视图</a>
+            <div class="command-row">
+              <code class="command-code">openrelix update --yes --force</code>
+              <button class="command-copy" type="button" data-copy-default="复制" data-copy-default-en="Copy" data-copy-done="已复制" data-copy-done-en="Copied">复制</button>
+            </div>
+          </article>
+          <article class="tile">
+            <span class="chip rose" data-en="Schedule">时间不合适</span>
+            <h3 data-en="Move scheduled jobs deliberately">按节奏调整定时任务</h3>
+            <p data-en="Nightly preview defaults to 23:00; panel refresh defaults to every 60 minutes. Adjust them from Daily Use when the default rhythm does not fit your workday.">夜间预览默认 23:00，面板刷新默认 60 分钟。默认节奏不适合时，从日常使用里的指令调整。</p>
+            <a class="text-link" href="#daily" data-en="See schedule commands">查看定时指令</a>
+          </article>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="inner">
+      <span data-en="OpenRelix™ getting started guide. Screenshots are captured from the real panel UI with example content.">OpenRelix™ 上手指南。截图来自真实面板 UI，内容已替换为示例。</span>
+      <a class="text-link" href="index.html#guide" data-en="Back to product page">返回产品页</a>
+    </div>
+  </footer>
+
+  <script>
+    (() => {
+      const root = document.documentElement;
+      const translateNodes = Array.from(document.querySelectorAll("[data-en], [data-en-html]"));
+      const shotImages = Array.from(document.querySelectorAll("img[data-zh-src][data-en-src]"));
+      translateNodes.forEach((node) => {
+        if (node.dataset.en && !node.dataset.zh) {
+          node.dataset.zh = node.textContent;
+        }
+        if (node.dataset.enHtml && !node.dataset.zhHtml) {
+          node.dataset.zhHtml = node.innerHTML;
+        }
+      });
+
+      const setTheme = (theme) => {
+        try {
+          if (theme === "system") {
+            root.removeAttribute("data-theme");
+            window.localStorage.removeItem("openrelix-showcase-theme");
+          } else {
+            root.dataset.theme = theme;
+            window.localStorage.setItem("openrelix-showcase-theme", theme);
+          }
+        } catch (_) {
+          if (theme === "system") root.removeAttribute("data-theme");
+          else root.dataset.theme = theme;
+        }
+        document.querySelectorAll("[data-theme-option]").forEach((button) => {
+          button.setAttribute("aria-pressed", String(button.dataset.themeOption === theme));
+        });
+      };
+
+      const setLanguage = (language) => {
+        root.dataset.language = language;
+        root.lang = language === "en" ? "en" : "zh-CN";
+        try {
+          window.localStorage.setItem("openrelix-showcase-language", language);
+        } catch (_) {}
+        translateNodes.forEach((node) => {
+          if (node.dataset.enHtml) {
+            node.innerHTML = language === "en" ? node.dataset.enHtml : node.dataset.zhHtml;
+          } else if (node.dataset.en) {
+            node.textContent = language === "en" ? node.dataset.en : node.dataset.zh;
+          }
+        });
+        shotImages.forEach((image) => {
+          const nextSrc = language === "en" ? image.dataset.enSrc : image.dataset.zhSrc;
+          const nextAlt = language === "en" ? image.dataset.enAlt : image.dataset.zhAlt;
+          if (nextSrc && image.getAttribute("src") !== nextSrc) {
+            image.setAttribute("src", nextSrc);
+          }
+          if (nextAlt) {
+            image.setAttribute("alt", nextAlt);
+          }
+        });
+        document.querySelectorAll("[data-language-option]").forEach((button) => {
+          button.setAttribute("aria-pressed", String(button.dataset.languageOption === language));
+        });
+        document.querySelectorAll(".command-copy").forEach((button) => {
+          const label = language === "en" ? (button.dataset.copyDefaultEn || "Copy") : (button.dataset.copyDefault || "复制");
+          button.textContent = label;
+        });
+      };
+
+      document.querySelectorAll("[data-theme-option]").forEach((button) => {
+        button.addEventListener("click", () => setTheme(button.dataset.themeOption || "system"));
+      });
+
+      document.querySelectorAll("[data-language-option]").forEach((button) => {
+        button.addEventListener("click", () => setLanguage(button.dataset.languageOption || "zh"));
+      });
+
+      document.querySelectorAll(".command-copy").forEach((button) => {
+        button.addEventListener("click", async () => {
+          const row = button.closest(".command-row");
+          const code = row ? row.querySelector(".command-code") : null;
+          if (!code) return;
+          try {
+            await navigator.clipboard.writeText(code.textContent.trim());
+            const language = root.dataset.language === "en" ? "en" : "zh";
+            button.textContent = language === "en" ? (button.dataset.copyDoneEn || "Copied") : (button.dataset.copyDone || "已复制");
+            window.setTimeout(() => {
+              button.textContent = language === "en" ? (button.dataset.copyDefaultEn || "Copy") : (button.dataset.copyDefault || "复制");
+            }, 1400);
+          } catch (_) {}
+        });
+      });
+
+      let initialTheme = "system";
+      try {
+        const storedTheme = window.localStorage.getItem("openrelix-showcase-theme");
+        if (storedTheme === "light" || storedTheme === "dark") initialTheme = storedTheme;
+      } catch (_) {}
+      setTheme(initialTheme);
+      setLanguage(root.dataset.language === "en" ? "en" : "zh");
+    })();
+  </script>
+</body>
+</html>
