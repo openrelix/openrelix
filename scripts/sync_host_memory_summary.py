@@ -57,6 +57,8 @@ def build_host_context_summary():
         str(output_path),
     ]
     run_summary_builder(cmd)
+    if not output_path.exists():
+        return output_path, ""
     return output_path, output_path.read_text(encoding="utf-8")
 
 
@@ -273,18 +275,25 @@ def main():
     summary_text = ""
     if targets:
         summary_path, summary_text = build_host_context_summary()
+    has_summary = bool(summary_text.strip())
 
     if "codex" in targets:
-        codex_result = sync_codex_summary(summary_text)
-        if codex_result.get("status") == "synced":
-            synced.append(codex_result)
+        if has_summary:
+            codex_result = sync_codex_summary(summary_text)
+            if codex_result.get("status") == "synced":
+                synced.append(codex_result)
+            else:
+                skipped.append(codex_result)
         else:
-            skipped.append(codex_result)
+            cleared.append(clear_codex_summary())
     else:
         cleared.append(clear_codex_summary())
 
     if "claude" in targets:
-        synced.append(sync_claude_summary(summary_text))
+        if has_summary:
+            synced.append(sync_claude_summary(summary_text))
+        else:
+            cleared.append(clear_claude_summary())
     else:
         cleared.append(clear_claude_summary())
 

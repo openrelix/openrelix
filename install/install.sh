@@ -6,6 +6,10 @@ REPO_ROOT="${SCRIPT_DIR:h}"
 PYTHON_BIN="${PYTHON_BIN:-}"
 CODEX_HOME="${CODEX_HOME:-$HOME/.codex}"
 CODEX_BIN="${CODEX_BIN:-}"
+CODEX_BIN_EXPLICIT=0
+if [[ -n "$CODEX_BIN" ]]; then
+  CODEX_BIN_EXPLICIT=1
+fi
 CLAUDE_HOME="${CLAUDE_HOME:-$HOME/.claude}"
 CLAUDE_BIN="${CLAUDE_BIN:-}"
 CLAUDE_MODEL="${OPENRELIX_CLAUDE_MODEL:-${AI_ASSET_CLAUDE_MODEL:-auto}}"
@@ -21,6 +25,8 @@ STATE_DIR_EXPLICIT=0
 if [[ -n "${AI_ASSET_STATE_DIR:-}" ]]; then
   STATE_DIR_EXPLICIT=1
 fi
+CODEX_BIN_AVAILABLE=0
+CLAUDE_BIN_AVAILABLE=0
 
 INSTALL_PROFILE="integrated"
 INSTALL_GLOBAL_SKILLS=0
@@ -541,6 +547,7 @@ while [[ $# -gt 0 ]]; do
     --codex-bin)
       require_option_value "$1" "${2-}"
       CODEX_BIN="$2"
+      CODEX_BIN_EXPLICIT=1
       shift 2
       ;;
     --claude-home)
@@ -882,12 +889,8 @@ then
   exit 1
 fi
 
-# Resolve the Codex CLI binary so LaunchAgents (which run with a narrow PATH)
-# can still reach app-server. Falls back to default_codex_binary() candidates,
-# which include npm-global/volta/nvm/brew locations.
-if [[ -z "$CODEX_BIN" ]]; then
-  CODEX_BIN="$(
-    CODEX_BIN="" "$PYTHON_BIN" - "$REPO_ROOT" <<'PY'
+resolve_default_codex_bin() {
+  CODEX_BIN="" "$PYTHON_BIN" - "$REPO_ROOT" <<'PY'
 import os
 import sys
 
@@ -899,15 +902,94 @@ from asset_runtime import default_codex_binary  # noqa: E402
 
 print(default_codex_binary())
 PY
-  )"
-fi
-if [[ -z "$CODEX_BIN" || ! -x "$CODEX_BIN" ]]; then
-  echo "Could not locate the Codex CLI binary." >&2
-  echo "Install Codex CLI (e.g. \`npm install -g @openai/codex\`) or pass --codex-bin /full/path/to/codex." >&2
+}
+
+refresh_codex_bin_state() {
+  local codex_bin_dir=""
+  CODEX_BIN_AVAILABLE=0
+  if [[ -n "$CODEX_BIN" && -x "$CODEX_BIN" ]]; then
+    CODEX_BIN_AVAILABLE=1
+    codex_bin_dir="${CODEX_BIN:h}"
+    SAFE_PATH="$codex_bin_dir:$SAFE_PATH"
+  fi
+}
+
+codex_app_installed() {
+  [[ -d "$HOME/Applications/Codex.app" || -d "/Applications/Codex.app" ]]
+}
+
+install_codex_cli_now() {
+  local npm_bin=""
+  npm_bin="$(command -v npm || true)"
+  if [[ -z "$npm_bin" ]]; then
+    echo "$(localized_text "未找到 npm，无法自动安装 Codex CLI。请先安装 Node.js/npm，再运行：" "npm was not found, so the installer cannot install Codex CLI automatically. Install Node.js/npm first, then run:")" >&2
+    echo "  npm install -g @openai/codex@latest" >&2
+    return 1
+  fi
+  "$npm_bin" install -g @openai/codex@latest
+}
+
+prompt_install_codex_cli_if_needed() {
+  local answer=""
+  if [[ "$MODEL_CLI" != "codex" || "$CODEX_BIN_AVAILABLE" == "1" ]]; then
+    return 0
+  fi
+  if (( CODEX_BIN_EXPLICIT )); then
+    echo "$(localized_text "指定的 Codex CLI 路径不可执行：" "The specified Codex CLI path is not executable:") $CODEX_BIN" >&2
+    echo "$(localized_text "请修正 --codex-bin，或安装最新版 Codex CLI：" "Fix --codex-bin, or install the latest Codex CLI:")" >&2
+    echo "  npm install -g @openai/codex@latest" >&2
+    exit 1
+  fi
+
+  if codex_app_installed; then
+    echo "$(localized_text "检测到 Codex App，但没有找到 codex CLI。" "Codex App was detected, but the codex CLI was not found.")" >&2
+  else
+    echo "$(localized_text "没有找到 codex CLI。" "The codex CLI was not found.")" >&2
+  fi
+  echo "$(localized_text "Codex App 本身不提供 OpenRelix 记忆回溯需要的命令行能力。" "Codex App itself does not provide the command-line capability OpenRelix needs for memory backfill.")" >&2
+
+  if [[ -t 0 && -z "${CI:-}" ]]; then
+    printf "%s " "$(localized_text "是否现在安装最新版 Codex CLI？将运行：npm install -g @openai/codex@latest [Y/n]" "Install the latest Codex CLI now? This will run: npm install -g @openai/codex@latest [Y/n]")" >&2
+    if ! IFS= read -r answer; then
+      answer="n"
+    fi
+    answer="${answer:l}"
+    case "$answer" in
+      ""|y|yes|1|是|好|安装)
+        if install_codex_cli_now; then
+          CODEX_BIN="$(resolve_default_codex_bin)"
+          refresh_codex_bin_state
+          if [[ "$CODEX_BIN_AVAILABLE" == "1" ]]; then
+            echo "$(localized_text "Codex CLI 已安装：" "Codex CLI installed:") $CODEX_BIN" >&2
+            return 0
+          fi
+        fi
+        echo "$(localized_text "Codex CLI 自动安装后仍未找到可执行文件。请确认 npm global bin 在 PATH 中，或通过 --codex-bin 指定路径。" "Codex CLI still could not be found after installation. Make sure npm global bin is on PATH, or pass --codex-bin.")" >&2
+        exit 1
+        ;;
+      *)
+        echo "$(localized_text "已跳过自动安装。要使用 Codex 做记忆回溯，请先运行：" "Skipped automatic installation. To use Codex for memory backfill, run:")" >&2
+        echo "  npm install -g @openai/codex@latest" >&2
+        echo "$(localized_text "也可以改用 Claude Code：重新运行 installer 并选择 --model-cli claude。" "Or use Claude Code instead: rerun the installer with --model-cli claude.")" >&2
+        exit 1
+        ;;
+    esac
+  fi
+
+  echo "$(localized_text "非交互环境无法自动确认安装。请先运行：" "This non-interactive environment cannot confirm installation automatically. Run:")" >&2
+  echo "  npm install -g @openai/codex@latest" >&2
+  echo "$(localized_text "然后重新运行 installer，或通过 --codex-bin /full/path/to/codex 指定路径。" "Then rerun the installer, or pass --codex-bin /full/path/to/codex.")" >&2
   exit 1
+}
+
+# Resolve the Codex CLI binary so LaunchAgents (which run with a narrow PATH)
+# can still reach app-server when the CLI is installed. Codex App alone does
+# not provide the headless CLI used for model backfill.
+if [[ -z "$CODEX_BIN" ]]; then
+  CODEX_BIN="$(resolve_default_codex_bin)"
 fi
-CODEX_BIN_DIR="${CODEX_BIN:h}"
-SAFE_PATH="$CODEX_BIN_DIR:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+SAFE_PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+refresh_codex_bin_state
 
 if (( ! STATE_DIR_EXPLICIT )); then
   STATE_DIR="$(
@@ -1030,17 +1112,19 @@ print(default_claude_binary())
 PY
   )"
 fi
-if [[ "$MODEL_CLI" == "claude" ]]; then
-  if [[ -z "$CLAUDE_BIN" || ! -x "$CLAUDE_BIN" ]]; then
-    echo "Could not locate the Claude Code CLI binary." >&2
-    echo "Install Claude Code CLI or pass --claude-bin /full/path/to/claude." >&2
-    exit 1
-  fi
-fi
 CLAUDE_BIN_DIR=""
 if [[ -n "$CLAUDE_BIN" && -x "$CLAUDE_BIN" ]]; then
+  CLAUDE_BIN_AVAILABLE=1
   CLAUDE_BIN_DIR="${CLAUDE_BIN:h}"
   SAFE_PATH="$CLAUDE_BIN_DIR:$SAFE_PATH"
+fi
+
+prompt_install_codex_cli_if_needed
+if [[ "$MODEL_CLI" == "claude" && "$CLAUDE_BIN_AVAILABLE" != "1" ]]; then
+  echo "Could not locate the Claude Code CLI binary for memory backfill." >&2
+  echo "Install Claude Code CLI or pass --claude-bin /full/path/to/claude." >&2
+  echo "If you use Codex for backfill, rerun with --model-cli codex after installing Codex CLI." >&2
+  exit 1
 fi
 
 if (( CODEX_MEMORY_SUMMARY_EXPLICIT )) && (( ! ENABLE_CODEX_MEMORY_SUMMARY )) && [[ "$MEMORY_MODE" == "integrated" ]]; then
@@ -1318,14 +1402,6 @@ PY
 run_step "$(localized_text "初始化状态目录、语言配置和第一份概览..." "Initializing state root, language config, and first overview...")" \
   initialize_state_root
 
-if (( ENABLE_CODEX_MEMORY_SUMMARY )); then
-  run_step "$(localized_text "同步受控的 host 记忆摘要..." "Syncing the bounded host memory summary...")" \
-    "$PYTHON_BIN" "$REPO_ROOT/scripts/sync_host_memory_summary.py"
-elif [[ "$MEMORY_MODE" != "integrated" ]]; then
-  run_step "$(localized_text "清理受控的 host 记忆摘要..." "Clearing managed host memory summaries...")" \
-    "$PYTHON_BIN" "$REPO_ROOT/scripts/sync_host_memory_summary.py"
-fi
-
 config_args=()
 if (( DISABLE_CODEX_MEMORIES )); then
   config_args+=(--disable-codex-memories)
@@ -1340,6 +1416,14 @@ if (( ${#config_args[@]} > 0 )); then
     "$PYTHON_BIN" "$REPO_ROOT/install/configure_codex_user.py" \
     --config "$CODEX_HOME/config.toml" \
     "${config_args[@]}"
+fi
+
+if (( ENABLE_CODEX_MEMORY_SUMMARY )); then
+  run_step "$(localized_text "同步受控的 host 记忆摘要..." "Syncing the bounded host memory summary...")" \
+    "$PYTHON_BIN" "$REPO_ROOT/scripts/sync_host_memory_summary.py"
+elif [[ "$MEMORY_MODE" != "integrated" ]]; then
+  run_step "$(localized_text "清理受控的 host 记忆摘要..." "Clearing managed host memory summaries...")" \
+    "$PYTHON_BIN" "$REPO_ROOT/scripts/sync_host_memory_summary.py"
 fi
 
 if (( INSTALL_GLOBAL_SKILLS )); then

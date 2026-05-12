@@ -4331,6 +4331,68 @@ Native Codex profile.
         self.assertNotIn("- Shared item", second)
         self.assertEqual(second.count(sync_host_memory_summary.MANAGED_START), 1)
 
+    def test_build_host_context_summary_tolerates_empty_initial_state(self):
+        with TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            paths = replace(
+                sync_host_memory_summary.PATHS,
+                runtime_dir=root / "runtime",
+            )
+
+            with (
+                mock.patch.object(sync_host_memory_summary, "PATHS", paths),
+                mock.patch.object(sync_host_memory_summary, "run_summary_builder", return_value=None),
+            ):
+                summary_path, summary_text = sync_host_memory_summary.build_host_context_summary()
+
+            self.assertEqual(summary_path, paths.runtime_dir / "host-context" / "memory_summary.md")
+            self.assertEqual(summary_text, "")
+
+    def test_sync_host_memory_summary_clears_managed_blocks_when_summary_is_empty(self):
+        with TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            paths = replace(
+                sync_host_memory_summary.PATHS,
+                codex_home=root / "codex-home",
+                claude_home=root / "claude-home",
+                runtime_dir=root / "runtime",
+            )
+            codex_summary = paths.codex_home / "memories" / "memory_summary.md"
+            claude_summary = paths.claude_home / "CLAUDE.md"
+            codex_summary.parent.mkdir(parents=True)
+            claude_summary.parent.mkdir(parents=True)
+            codex_summary.write_text(
+                "## User Profile\n\n"
+                "Native Codex memory.\n\n"
+                + sync_host_memory_summary.managed_codex_block("## What's in Memory\n\n- stale shared item\n"),
+                encoding="utf-8",
+            )
+            claude_summary.write_text(
+                "# User notes\n\n"
+                + sync_host_memory_summary.managed_claude_block("## What's in Memory\n\n- stale shared item\n"),
+                encoding="utf-8",
+            )
+
+            with (
+                mock.patch.object(sync_host_memory_summary, "PATHS", paths),
+                mock.patch.object(sync_host_memory_summary, "get_memory_mode", return_value="integrated"),
+                mock.patch.object(sync_host_memory_summary, "get_host_context_targets", return_value=["codex", "claude"]),
+                mock.patch.object(
+                    sync_host_memory_summary,
+                    "build_host_context_summary",
+                    return_value=(paths.runtime_dir / "host-context" / "memory_summary.md", ""),
+                ),
+                mock.patch.object(sys, "argv", ["sync_host_memory_summary.py"]),
+            ):
+                sync_host_memory_summary.main()
+
+            codex_text = codex_summary.read_text(encoding="utf-8")
+            claude_text = claude_summary.read_text(encoding="utf-8")
+            self.assertIn("Native Codex memory.", codex_text)
+            self.assertIn("# User notes", claude_text)
+            self.assertNotIn(sync_host_memory_summary.MANAGED_START, codex_text)
+            self.assertNotIn(sync_host_memory_summary.MANAGED_START, claude_text)
+
     def test_sync_host_memory_summary_preserves_codex_native_memory_content(self):
         with TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -10162,6 +10224,9 @@ Native Codex profile.
         self.assertIn("--claude-home PATH", installer)
         self.assertIn("sync_host_memory_summary.py", installer)
         self.assertIn("Default: auto.", installer)
+        self.assertIn("prompt_install_codex_cli_if_needed", installer)
+        self.assertIn("Codex App 本身不提供 OpenRelix 记忆回溯需要的命令行能力。", installer)
+        self.assertIn("npm install -g @openai/codex@latest", installer)
         self.assertIn("OPENRELIX_ACTIVITY_HOST", launchd_template)
         self.assertIn("OPENRELIX_MODEL_CLI", launchd_template)
         self.assertIn("CLAUDE_HOME", launchd_template)
@@ -10170,6 +10235,14 @@ Native Codex profile.
         self.assertIn("OPENRELIX_REFRESH_SKIP_UNCHANGED", launchd_template)
         self.assertIn("OPENRELIX_REFRESH_STAGE", launchd_template)
         self.assertIn("preliminary", launchd_template)
+
+    def test_installer_configures_codex_memories_before_host_summary_sync(self):
+        installer = (ROOT / "install" / "install.sh").read_text(encoding="utf-8")
+
+        self.assertLess(
+            installer.index('localized_text "配置 Codex 用户设置..."'),
+            installer.index('localized_text "同步受控的 host 记忆摘要..."'),
+        )
 
     def test_learning_refresh_install_avoids_duplicate_immediate_model_runs(self):
         installer = (ROOT / "install" / "install.sh").read_text(encoding="utf-8")
