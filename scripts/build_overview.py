@@ -20048,6 +20048,8 @@ def build_html(data):
     }}
 
     .token-filter-panel {{
+      position: relative;
+      overflow: visible;
       margin: 0 0 18px;
       padding: 18px;
       border: 1px solid var(--line);
@@ -20240,8 +20242,8 @@ def build_html(data):
       border: 1px solid color-mix(in srgb, var(--line-strong) 78%, rgba(255, 255, 255, 0.38));
       border-radius: 12px;
       background:
-        linear-gradient(145deg, rgba(255, 255, 255, 0.46), rgba(255, 255, 255, 0.10) 34%, rgba(102, 170, 255, 0.12)),
-        color-mix(in srgb, var(--control-strong) 90%, transparent);
+        linear-gradient(180deg, rgba(255, 255, 255, 0.48), rgba(255, 255, 255, 0.16)),
+        color-mix(in srgb, var(--elevated) 88%, rgba(231, 240, 255, 0.72));
       color: var(--ink);
       font: inherit;
       font-size: 13px;
@@ -20267,23 +20269,14 @@ def build_html(data):
       inset: 1px 1px auto 1px;
       height: 46%;
       border-radius: 11px 11px 8px 8px;
-      background: linear-gradient(180deg, rgba(255, 255, 255, 0.52), rgba(255, 255, 255, 0));
-      opacity: 0.72;
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.44), rgba(255, 255, 255, 0));
+      opacity: 0.58;
       pointer-events: none;
       z-index: -1;
     }}
 
     .apple-date-button::after {{
-      content: "";
-      position: absolute;
-      inset: 0;
-      border-radius: inherit;
-      background:
-        linear-gradient(115deg, transparent 0 18%, rgba(255, 255, 255, 0.36) 28%, transparent 42%),
-        linear-gradient(160deg, transparent 0 58%, rgba(102, 170, 255, 0.18) 76%, transparent 100%);
-      opacity: 0.5;
-      pointer-events: none;
-      z-index: -1;
+      display: none;
     }}
 
     body[data-theme="dark"] .apple-date-button {{
@@ -20314,6 +20307,10 @@ def build_html(data):
     }}
 
     .apple-date-value {{
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
       font-variant-numeric: tabular-nums;
     }}
 
@@ -20323,8 +20320,8 @@ def build_html(data):
       border-radius: 50%;
       display: inline-grid;
       place-items: center;
-      color: var(--muted);
-      background: rgba(118, 118, 128, 0.12);
+      color: var(--accent);
+      background: rgba(0, 113, 227, 0.12);
       font-size: 12px;
       line-height: 1;
       flex: none;
@@ -20485,13 +20482,6 @@ def build_html(data):
     .token-reset-button:hover,
     .token-segment-button:hover {{
       transform: translateY(-1px);
-    }}
-
-    .token-filter-panel.is-loading .token-date-input,
-    .token-filter-panel.is-loading .token-segment-button,
-    .token-filter-panel.is-loading .token-reset-button {{
-      opacity: 0.62;
-      pointer-events: none;
     }}
 
     .token-panel {{
@@ -23986,6 +23976,7 @@ def build_html(data):
         tokenSourceKind: "snapshot",
         tokenUsageCache: {{}},
         tokenStaleRetryTimer: null,
+        tokenRequestSeq: 0,
         tokenFilters: {{
           provider: (snapshot.token_usage && snapshot.token_usage.provider) || "all",
           startDate: defaultTokenDateRange.startDate,
@@ -27731,25 +27722,8 @@ def build_html(data):
         }});
         if (elements.tokenFilterPanel) {{
           elements.tokenFilterPanel.classList.toggle("is-loading", isLoading);
+          elements.tokenFilterPanel.setAttribute("aria-busy", isLoading ? "true" : "false");
         }}
-	        [
-	          elements.tokenStartDateInput,
-	          elements.tokenEndDateInput,
-	          elements.tokenResetButton,
-	        ].forEach(function (control) {{
-          if (control) {{
-            control.disabled = isLoading;
-	          }}
-	        }});
-	        elements.datePickerButtons.forEach(function (button) {{
-	          const parsed = parseDatePickerKey(button.getAttribute("data-date-picker-button"));
-	          if (parsed.scope === "token") {{
-	            button.disabled = isLoading;
-	          }}
-	        }});
-	        elements.tokenRangeButtons.concat(elements.tokenProviderButtons, elements.tokenGroupButtons).forEach(function (button) {{
-	          button.disabled = isLoading;
-	        }});
         liveCards.forEach(function (card) {{
           card.classList.toggle("is-loading", isLoading);
         }});
@@ -29272,11 +29246,14 @@ def build_html(data):
           (state.tokenUsage && state.tokenUsage.window_days) || {window_days}
         );
         const cacheKey = tokenRequestCacheKey(filters, windowDays);
+        const requestSeq = state.tokenRequestSeq + 1;
+        state.tokenRequestSeq = requestSeq;
         if (!forceRefresh) {{
           const cachedTokenUsage = getCachedTokenUsage(cacheKey);
           if (cachedTokenUsage) {{
             updateTokenVisuals(cachedTokenUsage, "cache");
             setStatus("live", "", "live_refreshed");
+            setLoading(false);
             return;
           }}
         }}
@@ -29317,6 +29294,9 @@ def build_html(data):
           if (!payload.stale) {{
             rememberTokenUsage(cacheKey, payload.token_usage);
           }}
+          if (requestSeq !== state.tokenRequestSeq) {{
+            return;
+          }}
           updateTokenVisuals(payload.token_usage, payload.stale ? "stale" : "live");
           if (payload.stale) {{
             scheduleTokenStaleRetry();
@@ -29325,6 +29305,9 @@ def build_html(data):
             setStatus("live", "", "live_refreshed");
           }}
         }} catch (error) {{
+          if (requestSeq !== state.tokenRequestSeq) {{
+            return;
+          }}
           if (!state.tokenUsage && snapshot.token_usage) {{
             updateTokenVisuals(snapshot.token_usage, "snapshot");
           }} else {{
@@ -29336,7 +29319,9 @@ def build_html(data):
             isLikelyTokenServiceUnavailable(error) ? "offline_service" : "offline_snapshot"
           );
         }} finally {{
-          setLoading(false);
+          if (requestSeq === state.tokenRequestSeq) {{
+            setLoading(false);
+          }}
         }}
       }}
 
