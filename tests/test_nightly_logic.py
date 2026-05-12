@@ -2130,7 +2130,7 @@ wire_api = "responses"
         self.assertEqual(contexts[0]["topic_count"], 2)
         topic_labels = {topic["label"] for topic in contexts[0]["topics"]}
         self.assertIn("移动端扫描/录制链路", topic_labels)
-        self.assertIn("性能与体验评审", topic_labels)
+        self.assertIn("移动端性能与体验评审", topic_labels)
 
     def test_project_context_window_links_carry_hover_tooltip_metadata(self):
         window_overview = {
@@ -2169,6 +2169,8 @@ wire_api = "responses"
         self.assertIn('data-window-tooltip-takeaway="先停底层录制，再清理片段状态。"', html)
         self.assertIn('data-window-tooltip-created="05-08 16:50"', html)
         self.assertIn('data-window-tooltip-meta="3 问题 · 2 结论"', html)
+        self.assertIn(">移动端录制链路<", html)
+        self.assertNotIn(">窗口 7<", html)
 
     def test_project_contexts_sort_projects_by_discussion_count(self):
         window_overview = {
@@ -2245,6 +2247,113 @@ wire_api = "responses"
                 }
             ),
             "Codex 命令参数",
+        )
+        self.assertNotEqual(
+            build_overview.infer_context_topic_label(
+                {
+                    "project_label": "OpenRelix",
+                    "cwd": "/tmp/openrelix",
+                    "question_summary": "把核心功能做成真实页面演示录屏，追加到汇报文档里",
+                    "main_takeaway": "已经生成 4 个独立 mp4 功能演示，放到 OpenRelix 文档最后。",
+                    "keywords": [],
+                    "recent_prompts": [],
+                    "recent_conclusions": [],
+                }
+            ),
+            "移动端扫描/录制链路",
+        )
+        self.assertNotEqual(
+            build_overview.infer_context_topic_label(
+                {
+                    "project_label": "OpenRelix",
+                    "cwd": "/tmp/openrelix",
+                    "question_summary": "项目与窗口标题展示修正",
+                    "main_takeaway": (
+                        "项目和窗口看起来对不上的根因是过宽的分类规则和不稳定的追溯展示，"
+                        "OpenRelix 的录屏窗口被误分到移动端扫描/录制链路。"
+                    ),
+                    "keywords": [],
+                    "recent_prompts": [],
+                    "recent_conclusions": [
+                        {
+                            "text": "收紧移动端扫描/录制链路的聚合规则，并把追溯 chip 改成窗口标题。"
+                        }
+                    ],
+                }
+            ),
+            "移动端扫描/录制链路",
+        )
+        self.assertEqual(
+            build_overview.infer_context_topic_label(
+                {
+                    "project_label": "OpenRelix",
+                    "cwd": "/tmp/openrelix",
+                    "question_summary": "用户希望把产品规划写给不熟背景的人看，后续还追加了演示录屏。",
+                    "main_takeaway": "OpenRelix 的产品规划、阶段说明和演示素材都被整理成对外材料。",
+                    "keywords": ["产品规划", "截图", "录屏", "路线图"],
+                    "recent_prompts": [],
+                    "recent_conclusions": [
+                        {"text": "正文包含历史窗口检索，但任务本身是产品文档和真实演示素材。"}
+                    ],
+                }
+            ),
+            "产品文档与演示素材",
+        )
+        self.assertEqual(
+            build_overview.infer_context_topic_label(
+                {
+                    "project_label": "OpenRelix",
+                    "cwd": "/tmp/openrelix",
+                    "question_summary": "用户给了飞书文档链接，希望按照当前逻辑更新一版开发者指南。",
+                    "main_takeaway": "开发者指南已经刷新到 0.3.1 口径，补了当前真实逻辑和边界。",
+                    "keywords": ["开发者指南", "0.3.1", "记忆边界", "fallback"],
+                    "recent_prompts": [],
+                    "recent_conclusions": [],
+                }
+            ),
+            "OpenRelix 文档与发布",
+        )
+        self.assertEqual(
+            build_overview.infer_context_topic_label(
+                {
+                    "project_label": "OpenRelix",
+                    "cwd": "/tmp/openrelix",
+                    "question_summary": "用户从 worktree 打包后发现深度回溯窗口没有智能总结。",
+                    "main_takeaway": "历史窗口没做智能总结的根因是跨天渲染层没接历史 summary。",
+                    "keywords": ["历史 summary", "跨天", "窗口筛选", "打包"],
+                    "recent_prompts": [],
+                    "recent_conclusions": [],
+                }
+            ),
+            "历史窗口摘要修复",
+        )
+        self.assertEqual(
+            build_overview.infer_context_topic_label(
+                {
+                    "project_label": "OpenRelix",
+                    "cwd": "/tmp/openrelix",
+                    "question_summary": "用户要求把日期弹层做得更像液态玻璃。",
+                    "main_takeaway": "OpenRelix 的日期弹层和本机运行态都做了修正。",
+                    "keywords": ["液态玻璃", "日期选择器", "build_overview", "LaunchAgent"],
+                    "recent_prompts": [],
+                    "recent_conclusions": [],
+                }
+            ),
+            "面板交互与视觉优化",
+        )
+        self.assertEqual(
+            build_overview.infer_context_topic_label(
+                {
+                    "project_label": "Douyin",
+                    "cwd": "/tmp/Douyin",
+                    "question_summary": "视搜结果页点击内容反馈后没有删除对应卡片。",
+                    "main_takeaway": "反馈页只打开 schema 不删卡的问题已定位到 JSB 路由。",
+                    "keywords": ["视搜", "反馈", "删卡", "bugfix"],
+                    "recent_prompts": [],
+                    "recent_conclusions": [],
+                }
+            ),
+            "移动端反馈交互修复",
         )
 
     def test_project_context_views_scan_recent_days_and_group_windows(self):
@@ -2401,11 +2510,31 @@ wire_api = "responses"
                                     "window_id": "w-context",
                                     "anchor_id": "window-w-context",
                                     "display_label": "3",
+                                    "title": "窗口筛选联动",
                                 },
                                 {
                                     "window_id": "w-followup",
                                     "anchor_id": "window-w-followup",
                                     "display_label": "4",
+                                    "title": "追溯标题展示",
+                                },
+                                {
+                                    "window_id": "w-third",
+                                    "anchor_id": "window-w-third",
+                                    "display_label": "5",
+                                    "title": "项目聚合修复",
+                                },
+                                {
+                                    "window_id": "w-fourth",
+                                    "anchor_id": "window-w-fourth",
+                                    "display_label": "6",
+                                    "title": "窗口标题截断",
+                                },
+                                {
+                                    "window_id": "w-fifth",
+                                    "anchor_id": "window-w-fifth",
+                                    "display_label": "7",
+                                    "title": "超出两行展开",
                                 }
                             ],
                         }
@@ -2416,8 +2545,45 @@ wire_api = "responses"
 
         self.assertIn('href="#window-w-context"', cards_html)
         self.assertIn('href="#window-w-followup"', cards_html)
+        self.assertIn('href="#window-w-fifth"', cards_html)
         self.assertIn('data-window-target="window-w-context"', cards_html)
+        self.assertIn(">窗口筛选联动<", cards_html)
+        self.assertIn("查看更多 1 个窗口", cards_html)
         self.assertIn("追溯", cards_html)
+
+    def test_project_context_cards_limit_topics_and_expand_extra(self):
+        topics = [
+            {
+                "label": "任务 {}".format(index),
+                "window_count": 7 - index,
+                "question_count": 1,
+                "conclusion_count": 0,
+                "latest_activity_display": "05-07 21:4{}".format(index),
+                "source_windows": [],
+            }
+            for index in range(1, 7)
+        ]
+        cards_html = build_overview.make_project_context_cards(
+            [
+                {
+                    "label": "OpenRelix",
+                    "window_count": 6,
+                    "question_count": 6,
+                    "conclusion_count": 0,
+                    "latest_activity_display": "05-07 21:40",
+                    "cwd_preview": "OpenRelix",
+                    "topics": topics,
+                }
+            ]
+        )
+
+        self.assertIn("任务 1", cards_html)
+        self.assertIn("任务 5", cards_html)
+        self.assertIn("任务 6", cards_html)
+        self.assertIn("查看更多 1 个任务", cards_html)
+        self.assertIn("收起更多任务", cards_html)
+        self.assertLess(cards_html.index("任务 5"), cards_html.index("查看更多 1 个任务"))
+        self.assertGreater(cards_html.index("任务 6"), cards_html.index("查看更多 1 个任务"))
 
     def test_parse_nightly_summary_date_fails_closed(self):
         self.assertIsNone(build_overview.parse_nightly_summary_date({"date": "bad-date"}))
@@ -6873,6 +7039,7 @@ Native Codex profile.
         self.assertIn("窗口创建 刚刚", html)
         self.assertLess(html.index("窗口创建 刚刚"), html.index("最近活动 刚刚"))
         self.assertIn('data-window-started-display="刚刚"', html)
+        self.assertIn('data-window-display-label="1"', html)
         self.assertIn('data-window-takeaway="**结论**：执行 codex resume', html)
         self.assertIn('data-window-topic=', html)
         self.assertIn('class="window-summary-pair-list"', html)

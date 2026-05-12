@@ -108,7 +108,9 @@ SUMMARY_TERM_DEFAULT_DAYS = 1
 SUMMARY_TERM_RANGE_DAYS = (1, 7)
 MEMORY_USAGE_WINDOW_DAYS = 7
 UPDATE_COMMAND_TEXT = "openrelix update --yes --force"
-PROJECT_CONTEXT_TOPIC_VISIBLE_COUNT = 4
+PROJECT_CONTEXT_TOPIC_VISIBLE_COUNT = 5
+CONTEXT_WINDOW_LINK_LABEL_LIMIT = 14
+CONTEXT_WINDOW_LINK_VISIBLE_COUNT = 4
 TOKEN_METRIC_KEYS = {"today_token", "today_cost"}
 DISCOVERED_KIND_ORDER = overview_asset_discovery.DISCOVERED_KIND_ORDER
 DISCOVERED_TYPE_ORDER = overview_asset_discovery.HIGH_LEVEL_TYPE_ORDER
@@ -1450,15 +1452,24 @@ CONTEXT_TOPIC_RULES = [
         ),
     ),
     (
-        "性能与体验评审",
+        "移动端反馈交互修复",
         (
-            "视觉搜索",
-            "视搜",
-            "visual search",
-            "visualsearch",
+            "内容反馈",
+            "反馈",
+            "删卡",
+            "删除卡片",
+            "searchdeleteitem",
+            "jsb",
+            "bugfix",
+        ),
+    ),
+    (
+        "移动端性能与体验评审",
+        (
             "blur",
             "blurProgress",
             "性能",
+            "体验评审",
         ),
     ),
     (
@@ -1483,6 +1494,49 @@ CONTEXT_TOPIC_RULES = [
         ),
     ),
     (
+        "产品文档与演示素材",
+        (
+            "产品规划",
+            "阶段性说明",
+            "演示录屏",
+            "真实演示",
+            "路线图",
+            "截图",
+        ),
+    ),
+    (
+        "OpenRelix 文档与发布",
+        (
+            "开发者指南",
+            "发布说明",
+            "changelog",
+            "github release",
+        ),
+    ),
+    (
+        "历史窗口摘要修复",
+        (
+            "历史 summary",
+            "历史窗口",
+            "跨天",
+            "窗口筛选",
+            "智能总结",
+            "summary 补接",
+        ),
+    ),
+    (
+        "面板交互与视觉优化",
+        (
+            "日期选择器",
+            "液态玻璃",
+            "自绘日历",
+            "日历",
+            "弹层",
+            "build_overview",
+            "launchagent",
+        ),
+    ),
+    (
         "面板可视化与数据同步",
         (
             "面板",
@@ -1502,14 +1556,13 @@ CONTEXT_TOPIC_RULES = [
     (
         "记忆机制与注入预算",
         (
-            "memory",
-            "记忆",
-            "长期",
-            "工作",
-            "低优",
-            "注入",
-            "预算",
-            "原生",
+            "memory_summary",
+            "memory.md",
+            "bounded summary",
+            "context 预算",
+            "注入预算",
+            "记忆注入",
+            "长期记忆",
         ),
     ),
     (
@@ -1532,8 +1585,6 @@ CONTEXT_TOPIC_RULES = [
             "开源评审",
             "适合开源",
             "公开发布",
-            "README",
-            "installer",
         ),
     ),
     (
@@ -1607,9 +1658,14 @@ CONTEXT_TOPIC_RULES = [
 CONTEXT_TOPIC_LABEL_EN = {
     "移动端扫描/录制链路": "Mobile scan / recording workflow",
     "移动端编译/类型错误": "Mobile compile / type errors",
-    "性能与体验评审": "Performance / UX review",
+    "移动端反馈交互修复": "Mobile feedback interaction fixes",
+    "移动端性能与体验评审": "Mobile performance / UX review",
     "实验参数与请求文档": "Experiment parameters / request docs",
     "近 7 天窗口学习": "7-day window learning",
+    "产品文档与演示素材": "Product docs / demo assets",
+    "OpenRelix 文档与发布": "OpenRelix docs / release",
+    "历史窗口摘要修复": "Historical window summary fixes",
+    "面板交互与视觉优化": "Panel interaction / visual polish",
     "面板可视化与数据同步": "Panel visualization / data sync",
     "记忆机制与注入预算": "Memory mechanism / injection budget",
     "独立 Review 流程": "Independent review workflow",
@@ -1640,6 +1696,56 @@ CONTEXT_TOPIC_NOISY_MARKERS = (
     "exception:",
     "error:",
     "e: file:",
+)
+MOBILE_SCAN_RECORDING_TOPIC_LABEL = "移动端扫描/录制链路"
+MOBILE_SCAN_RECORDING_WEAK_KEYWORDS = {"录制", "record"}
+MOBILE_SCAN_RECORDING_CONTEXT_HINTS = (
+    "移动端",
+    "长按",
+    "扫一扫",
+    "扫描",
+    "二维码",
+    "相机",
+    "camera",
+    "scan",
+    "视觉搜索",
+    "视搜",
+    "visual search",
+    "visualvideo",
+    "asr",
+    "ve",
+)
+MOBILE_SCAN_RECORDING_PROJECT_HINTS = (
+    "android",
+    "douyin",
+    "creative",
+    "search",
+)
+MOBILE_SCAN_RECORDING_META_PROJECT_HINTS = (
+    "openrelix",
+    "codex-personal-assets",
+    "ai-personal-assets",
+)
+MOBILE_SCAN_RECORDING_META_DISCUSSION_HINTS = (
+    "误分",
+    "归类",
+    "分类规则",
+    "聚合规则",
+    "项目/任务聚合",
+    "项目和窗口",
+    "窗口标题",
+    "追溯",
+    "data-window-topic",
+    "build_overview",
+    "panel.html",
+)
+MOBILE_FEEDBACK_INTERACTION_TOPIC_LABEL = "移动端反馈交互修复"
+MOBILE_PERFORMANCE_UX_TOPIC_LABEL = "移动端性能与体验评审"
+MOBILE_PERFORMANCE_UX_REQUIRED_HINTS = (
+    "性能",
+    "blur",
+    "blurprogress",
+    "体验评审",
 )
 
 PROJECT_ROOT_MARKERS = (
@@ -3797,6 +3903,19 @@ def compact_preview_text(text, limit=220, strip_markdown=True):
     return normalized[: max(limit - 1, 1)].rstrip() + "…"
 
 
+def clean_window_trace_title(title):
+    cleaned = re.sub(r"(?:^|\s)<link>(?:\s|$)", " ", str(title or ""))
+    return re.sub(r"\s+", " ", cleaned).strip(" ，,。:：-—")
+
+
+def compact_window_trace_label(title, fallback="", limit=CONTEXT_WINDOW_LINK_LABEL_LIMIT):
+    label = compact_preview_text(clean_window_trace_title(title), limit=limit)
+    if label:
+        return label
+    fallback_label = compact_preview_text(fallback, limit=limit)
+    return fallback_label or localized("未命名窗口", "Untitled window")
+
+
 def render_markdown_inline(text):
     raw = str(text or "")
     if not raw:
@@ -4399,10 +4518,49 @@ def infer_context_topic_label(item, language=None):
     text = context_window_text(item)
     lowered = " ".join(text.split()).lower()
     for label, keywords in CONTEXT_TOPIC_RULES:
-        if any(keyword.lower() in lowered for keyword in keywords):
+        if context_topic_rule_matches(label, keywords, lowered, item):
             return localized_topic_label(label, language)
 
     return fallback_context_topic_label(item, language=language)
+
+
+def context_topic_rule_matches(label, keywords, lowered_text, item):
+    project_text = " ".join(
+        str(item.get(key, "") or "")
+        for key in ("project_label", "cwd", "cwd_display")
+    ).lower()
+    is_mobile_project = any(
+        hint in project_text for hint in MOBILE_SCAN_RECORDING_PROJECT_HINTS
+    )
+    if label == MOBILE_FEEDBACK_INTERACTION_TOPIC_LABEL:
+        return is_mobile_project and any(keyword.lower() in lowered_text for keyword in keywords)
+    if label == MOBILE_PERFORMANCE_UX_TOPIC_LABEL:
+        return is_mobile_project and any(
+            hint in lowered_text for hint in MOBILE_PERFORMANCE_UX_REQUIRED_HINTS
+        )
+    if label != MOBILE_SCAN_RECORDING_TOPIC_LABEL:
+        return any(keyword.lower() in lowered_text for keyword in keywords)
+
+    is_meta_project = any(
+        hint in project_text for hint in MOBILE_SCAN_RECORDING_META_PROJECT_HINTS
+    )
+    if is_meta_project and any(
+        hint in lowered_text for hint in MOBILE_SCAN_RECORDING_META_DISCUSSION_HINTS
+    ):
+        return False
+
+    strong_keywords = [
+        keyword
+        for keyword in keywords
+        if keyword.lower() not in MOBILE_SCAN_RECORDING_WEAK_KEYWORDS
+    ]
+    if any(keyword.lower() in lowered_text for keyword in strong_keywords):
+        return True
+
+    if not any(keyword in lowered_text for keyword in MOBILE_SCAN_RECORDING_WEAK_KEYWORDS):
+        return False
+
+    return any(hint in lowered_text for hint in MOBILE_SCAN_RECORDING_CONTEXT_HINTS) or is_mobile_project
 
 
 def resolve_asset_context(asset, known_project_names):
@@ -9156,6 +9314,7 @@ def build_data(assets, usage_events, reviews, language=None):
         "window_filter_overview": window_filter_overview,
         "window_filter_default_overview": window_filter_default_overview,
         "window_overview": window_overview,
+        "context_window_link_visible_count": CONTEXT_WINDOW_LINK_VISIBLE_COUNT,
         "memory_items": memory_items,
         "memory_registry": memory_registry["rows"],
         "memory_policy_views": memory_policy_views,
@@ -11507,22 +11666,21 @@ def make_project_context_cards(items, language=None):
         source_windows = source_windows or []
         if not source_windows:
             return ""
-        visible_windows = source_windows
-        links = []
-        for index, ref in enumerate(visible_windows, 1):
+
+        def render_link(ref, index):
             window_id = str(ref.get("window_id", "") or "").strip()
             anchor_id = str(ref.get("anchor_id", "") or "").strip()
             if not anchor_id and window_id:
                 anchor_id = "window-{}".format(window_id)
             if not anchor_id:
-                continue
+                return ""
             display_label = str(ref.get("display_label", "") or "").strip() or str(index)
-            link_label = localized(
-                "窗口 {}".format(display_label),
-                "Window {}".format(display_label),
-                language,
-            )
             tooltip_title = str(ref.get("title", "") or "").strip()
+            tooltip_title_display = clean_window_trace_title(tooltip_title)
+            link_label = compact_window_trace_label(
+                tooltip_title,
+                fallback=localized("未命名窗口", "Untitled window", language),
+            )
             tooltip_takeaway = str(ref.get("takeaway", "") or ref.get("main_takeaway", "") or "").strip()
             tooltip_created = str(ref.get("started_at_display", "") or ref.get("created_at_display", "") or "").strip()
             tooltip_latest = str(ref.get("latest_activity_display", "") or "").strip()
@@ -11539,9 +11697,13 @@ def make_project_context_cards(items, language=None):
                     language,
                 )
             aria_parts = [link_label]
-            if tooltip_title:
+            if display_label:
                 aria_parts.append(
-                    localized("标题：{}", "Title: {}", language).format(tooltip_title)
+                    localized("窗口序号：{}", "Window number: {}", language).format(display_label)
+                )
+            if tooltip_title_display:
+                aria_parts.append(
+                    localized("标题：{}", "Title: {}", language).format(tooltip_title_display)
                 )
             if tooltip_takeaway:
                 aria_parts.append(
@@ -11561,7 +11723,7 @@ def make_project_context_cards(items, language=None):
                 "href": "#{}".format(anchor_id),
                 "data-window-target": anchor_id,
                 "data-window-tooltip": "true",
-                "data-window-tooltip-title": tooltip_title,
+                "data-window-tooltip-title": tooltip_title_display,
                 "data-window-tooltip-takeaway": tooltip_takeaway,
                 "data-window-tooltip-created": tooltip_created,
                 "data-window-tooltip-latest": tooltip_latest,
@@ -11575,23 +11737,52 @@ def make_project_context_cards(items, language=None):
                 for name, value in link_attrs.items()
                 if value
             )
-            links.append(
-                '<a class="context-window-link" {attrs}>{label}</a>'.format(
+            return (
+                '<a class="context-window-link" {attrs} title="{full_title}">{label}</a>'.format(
                     attrs=attr_html,
+                    full_title=escape(tooltip_title_display or link_label, quote=True),
                     label=escape(link_label),
                 )
             )
+
+        visible_windows = source_windows[:CONTEXT_WINDOW_LINK_VISIBLE_COUNT]
+        hidden_windows = source_windows[len(visible_windows):]
+        links = [
+            link
+            for link in (render_link(ref, index) for index, ref in enumerate(visible_windows, 1))
+            if link
+        ]
+        hidden_links = [
+            link
+            for link in (
+                render_link(ref, index + len(visible_windows))
+                for index, ref in enumerate(hidden_windows, 1)
+            )
+            if link
+        ]
         if not links:
             return ""
         label = localized("追溯", "Trace", language)
+        link_list = '<div class="context-window-link-list">{}</div>'.format("".join(links))
+        if hidden_links:
+            link_list = wrap_expandable_block(
+                link_list,
+                "".join(hidden_links),
+                len(hidden_links),
+                localized("个窗口", "windows", language),
+                "context-window-link-list context-window-link-more-list content-more-grid",
+                expanded_label=localized("收起更多窗口", "Collapse more windows", language),
+                item_label_en="windows",
+                expanded_label_en="Collapse more windows",
+            )
         return """
             <div class="context-window-links">
               <span>{label}</span>
-              <div>{links}</div>
+              <div class="context-window-link-stack">{links}</div>
             </div>
             """.format(
             label=escape(label),
-            links="".join(links),
+            links=link_list,
         )
 
     def render_task_chips(topics):
@@ -11607,7 +11798,7 @@ def make_project_context_cards(items, language=None):
             ),
             reverse=True,
         )
-        visible_topics = topics[:5]
+        visible_topics = topics[:PROJECT_CONTEXT_TOPIC_VISIBLE_COUNT]
         hidden_topics = topics[len(visible_topics):]
 
         def render_task_row(topic):
@@ -15211,7 +15402,7 @@ def make_window_summary_cards(
             "data-window-takeaway": compact_preview_text(main_takeaway, limit=180),
             "data-window-topic": topic_label,
             "data-window-anchor": card_dom_id,
-            "data-window-display-label": item.get("display_label", card_index),
+            "data-window-display-label": item.get("display_label") or item.get("display_index") or card_index,
             "data-window-question-count": str(question_count),
             "data-window-conclusion-count": str(conclusion_count),
         }
@@ -15973,6 +16164,8 @@ def build_html(data):
             "window_filter_end_date": window_filter_end_date,
             "window_filter_default_days": data.get("window_filter_default_days", WINDOW_FILTER_DEFAULT_DAYS),
             "window_filter_max_days": data.get("window_filter_max_days", WINDOW_FILTER_MAX_DAYS),
+            "context_window_link_visible_count": data.get("context_window_link_visible_count", CONTEXT_WINDOW_LINK_VISIBLE_COUNT),
+            "project_context_topic_visible_count": PROJECT_CONTEXT_TOPIC_VISIBLE_COUNT,
             "asset_filter_start_date": data.get("asset_filter_start_date", ""),
             "asset_filter_end_date": data.get("asset_filter_end_date", ""),
             "asset_filter_default_days": data.get("asset_filter_default_days", ASSET_FILTER_DEFAULT_DAYS),
@@ -21454,7 +21647,7 @@ def build_html(data):
 
     .context-task-row {{
       display: grid;
-      grid-template-columns: minmax(0, 1fr) minmax(240px, 0.9fr);
+      grid-template-columns: minmax(0, 1fr) minmax(300px, 0.95fr);
       align-items: center;
       gap: 10px;
       min-width: 0;
@@ -21594,18 +21787,37 @@ def build_html(data):
       line-height: 1.35;
     }}
 
-    .context-window-links > div {{
+    .context-window-link-stack {{
+      display: grid;
+      gap: 7px;
+      min-width: 0;
+    }}
+
+    .context-window-link-list {{
       display: flex;
       flex-wrap: wrap;
-      gap: 8px;
+      gap: 7px;
       min-width: 0;
+    }}
+
+    .context-window-link-more-list {{
+      max-height: none;
+      overflow: visible;
+    }}
+
+    .context-window-link-stack > .content-more {{
+      margin-top: 0;
+    }}
+
+    .context-window-link-stack .content-more-trigger {{
+      padding-top: 0;
     }}
 
     .context-window-link,
     .context-window-more {{
       display: inline-flex;
       align-items: center;
-      max-width: 100%;
+      max-width: 150px;
       border: 1px solid rgba(0, 113, 227, 0.22);
       border-radius: 999px;
       background: var(--accent-soft);
@@ -21615,6 +21827,8 @@ def build_html(data):
       padding: 7px 10px;
       text-decoration: none;
       white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }}
 
     .context-window-link:hover,
@@ -23764,6 +23978,8 @@ def build_html(data):
       const defaultAssetFilterStart = String(snapshot.asset_filter_start_date || "");
       const defaultAssetFilterEnd = String(snapshot.asset_filter_end_date || "");
       const windowOverviewProjectVisibleCount = Math.max(Number(snapshot.window_overview_project_visible_count) || 3, 1);
+      const contextWindowLinkVisibleCount = Math.max(Number(snapshot.context_window_link_visible_count) || 4, 1);
+      const projectContextTopicVisibleCount = Math.max(Number(snapshot.project_context_topic_visible_count) || 5, 1);
       const state = {{
         tokenUsage: snapshot.token_usage || null,
         tokenRefreshedAt: (snapshot.token_usage && snapshot.token_usage.refreshed_at) || "",
@@ -25481,6 +25697,19 @@ def build_html(data):
         return text.slice(0, resolvedLimit - 3) + "...";
       }}
 
+      function cleanWindowTraceText(value) {{
+        return String(value || "")
+          .replace(/(^|\\s)<link>(\\s|$)/g, " ")
+          .replace(/\\s+/g, " ")
+          .replace(/^[\\s，,。:：\\-]+|[\\s，,。:：\\-]+$/g, "")
+          .trim();
+      }}
+
+      function contextWindowLinkLabel(sourceWindow) {{
+        const title = cleanWindowTraceText(sourceWindow.task || sourceWindow.title || "");
+        return compactWindowLabel(title || localizeValue("未命名窗口", "Untitled window"), {context_window_link_label_limit});
+      }}
+
       function renderDynamicContextStat(value, label, extraClass) {{
         return (
           '<div class="context-stat' + (extraClass || "") + '">' +
@@ -25502,12 +25731,16 @@ def build_html(data):
       }}
 
       function buildContextWindowLinkAttrs(sourceWindow, label, anchor) {{
-        const title = String(sourceWindow.task || sourceWindow.title || "").trim();
+        const title = cleanWindowTraceText(sourceWindow.task || sourceWindow.title || "");
         const takeaway = String(sourceWindow.takeaway || sourceWindow.mainTakeaway || "").trim();
         const created = String(sourceWindow.createdDisplay || sourceWindow.startedDisplay || "").trim();
         const latest = String(sourceWindow.latestDisplay || "").trim();
+        const displayLabel = String(sourceWindow.displayLabel || "").trim();
         const meta = windowTooltipMetaText(sourceWindow);
         const ariaParts = [label];
+        if (displayLabel) {{
+          ariaParts.push(localizeValue("窗口序号：" + displayLabel, "Window number: " + displayLabel));
+        }}
         if (title) {{
           ariaParts.push(localizeValue("标题：" + title, "Title: " + title));
         }}
@@ -25532,6 +25765,7 @@ def build_html(data):
           "data-window-tooltip-created": created,
           "data-window-tooltip-latest": latest,
           "data-window-tooltip-meta": meta,
+          title: title || label,
           "aria-label": ariaParts.filter(Boolean).join(currentLanguage === "en" ? ", " : "，"),
         }};
         return Object.keys(attrs).map(function (name) {{
@@ -25547,26 +25781,40 @@ def build_html(data):
         if (!windows.length) {{
           return "";
         }}
-        const links = windows.map(function (sourceWindow, index) {{
+        function renderLink(sourceWindow) {{
           const anchor = String(sourceWindow.anchor || "");
           if (!anchor) {{
             return "";
           }}
-          const displayLabel = sourceWindow.displayLabel || String(index + 1);
-          const label = localizeValue("窗口 " + displayLabel, "Window " + displayLabel);
+          const label = contextWindowLinkLabel(sourceWindow);
           return (
             '<a class="context-window-link" ' + buildContextWindowLinkAttrs(sourceWindow, label, anchor) + '>' +
               escapeHtml(label) +
             '</a>'
           );
-        }}).join("");
-        if (!links) {{
+        }}
+        const visibleLinks = windows.slice(0, contextWindowLinkVisibleCount).map(renderLink).filter(Boolean).join("");
+        const hiddenLinks = windows.slice(contextWindowLinkVisibleCount).map(renderLink).filter(Boolean).join("");
+        const hiddenCount = Math.max(windows.length - contextWindowLinkVisibleCount, 0);
+        if (!visibleLinks && !hiddenLinks) {{
           return "";
+        }}
+        let links = '<div class="context-window-link-list">' + visibleLinks + '</div>';
+        if (hiddenLinks) {{
+          links += (
+            '<details class="content-more context-window-link-more">' +
+              '<summary class="content-more-trigger">' +
+                '<span class="content-more-collapsed">' + escapeHtml(currentLanguage === "en" ? "Show " + hiddenCount + " more windows" : "查看更多 " + hiddenCount + " 个窗口") + '</span>' +
+                '<span class="content-more-expanded">' + escapeHtml(localizeValue("收起更多窗口", "Collapse more windows")) + '</span>' +
+              '</summary>' +
+              '<div class="context-window-link-list context-window-link-more-list content-more-grid">' + hiddenLinks + '</div>' +
+            '</details>'
+          );
         }}
         return (
           '<div class="context-window-links">' +
             '<span>' + escapeHtml(localizeValue("追溯", "Trace")) + '</span>' +
-            '<div>' + links + '</div>' +
+            '<div class="context-window-link-stack">' + links + '</div>' +
           '</div>'
         );
       }}
@@ -25589,6 +25837,29 @@ def build_html(data):
             renderDynamicContextWindowLinks(topic) +
           '</div>'
         );
+      }}
+
+      function renderDynamicContextTaskRows(topics) {{
+        if (!topics.length) {{
+          return '<span class="context-task-empty">' + escapeHtml(localizeValue("暂无并行任务", "No parallel tasks")) + '</span>';
+        }}
+        const visibleTopics = topics.slice(0, projectContextTopicVisibleCount);
+        const hiddenTopics = topics.slice(projectContextTopicVisibleCount);
+        let rows = visibleTopics.map(renderDynamicContextTaskRow).join("");
+        if (hiddenTopics.length) {{
+          rows += (
+            '<details class="content-more context-task-more">' +
+              '<summary class="content-more-trigger">' +
+                '<span class="content-more-collapsed">' + escapeHtml(currentLanguage === "en" ? "Show " + hiddenTopics.length + " more tasks" : "查看更多 " + hiddenTopics.length + " 个任务") + '</span>' +
+                '<span class="content-more-expanded">' + escapeHtml(localizeValue("收起更多任务", "Collapse more tasks")) + '</span>' +
+              '</summary>' +
+              '<div class="context-task-list context-task-more-list content-more-grid">' +
+                hiddenTopics.map(renderDynamicContextTaskRow).join("") +
+              '</div>' +
+            '</details>'
+          );
+        }}
+        return rows;
       }}
 
       function buildWindowOverviewGroups(cards) {{
@@ -25671,9 +25942,7 @@ def build_html(data):
         const weight = maxWindowCount > 0 && project.windowCount > 0
           ? Math.max(12, Math.min(100, Math.round((project.windowCount / maxWindowCount) * 100)))
           : 0;
-        const topicRows = project.topics.length
-          ? project.topics.map(renderDynamicContextTaskRow).join("")
-          : '<span class="context-task-empty">' + escapeHtml(localizeValue("暂无并行任务", "No parallel tasks")) + '</span>';
+        const topicRows = renderDynamicContextTaskRows(project.topics);
         return (
           '<article class="context-card" style="--context-weight: ' + escapeHtml(String(weight)) + '%;">' +
             '<div class="context-card-rail" aria-hidden="true"><span></span></div>' +
@@ -29721,6 +29990,7 @@ def build_html(data):
         window_days=token_usage.get("window_days", CCUSAGE_WINDOW_DAYS),
         asset_hotness_visible_count=ASSET_HOTNESS_VISIBLE_COUNT,
         token_filter_default_days=TOKEN_FILTER_DEFAULT_DAYS,
+        context_window_link_label_limit=CONTEXT_WINDOW_LINK_LABEL_LIMIT,
         token_daily_display_days=CCUSAGE_WINDOW_DAYS,
         token_metric_cards="".join(token_metric_cards),
         asset_metric_cards="".join(asset_metric_cards),
