@@ -425,6 +425,7 @@ python3 scripts/migrate_legacy_state.py
 - 当 active AI host 支持 repo-local skill discovery 时，`.agents/skills/` 下的 skills 会自动被发现。当前预览版 adapter 面向 Codex discovery。
 - 如果希望同一个 skill 在任意仓库都可用，需要安装到 active host 的用户级 skill root。默认 `integrated` profile 会自动安装；自定义 profile 时可用 `--install-global-skills` 安装 Codex symlink。
 - 本仓库不依赖 hooks 实现全局 skill discovery。Hooks 只是可选生命周期自动化；skill 可用性来自 repo-local discovery 或 user-level installation。
+- `.agents/skills/openrelix-*-harness/` 下的开发 harness skills 只用于维护 OpenRelix 本仓库，覆盖产品设计、技术方案、实现、测试和合规检查。它们不会进入 npm 包；公开安装包里的 skill surface 仍只包含 `.agents/skills/memory-review/`。
 
 ## Plugin 状态
 

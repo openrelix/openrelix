@@ -336,6 +336,7 @@ The license allows free personal use, copying, modification, distribution, and s
 - When the active AI host supports repo-local skills, skills under `.agents/skills/` are discoverable automatically. The current preview adapter targets Codex discovery.
 - If you want the same skill to be available from any repo, install it into the user-level skill root for the active host. The default `integrated` profile does this automatically; use `--install-global-skills` when building a custom profile.
 - This repository does not rely on hooks to make skills discoverable globally. Hooks are optional lifecycle automation; skill availability comes from repo-local discovery or user-level installation.
+- Development harness skills under `.agents/skills/openrelix-*-harness/` are repo-maintenance helpers for designing, implementing, testing, and compliance-checking OpenRelix itself. They are intentionally excluded from the npm package; the public package skill surface remains `.agents/skills/memory-review/`.
 
 ## Plugin status
 

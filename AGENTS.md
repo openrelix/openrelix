@@ -11,6 +11,13 @@
 - macOS launchd templates live under `ops/launchd/`.
 - Runtime path resolution lives in `scripts/asset_runtime.py`.
 
+## Development Harness Skills
+
+- OpenRelix repo-maintenance harness skills may live under `.agents/skills/openrelix-*-harness/`.
+- These harness skills are for developing this repository, not for the public npm install surface.
+- Do not add development-only harness skills to `plugins/openrelix/` or the `package.json` `files` allowlist unless there is an explicit release decision.
+- The npm package should continue to ship only the public reusable skill surface, currently `.agents/skills/memory-review/`, unless the package-surface decision is intentionally changed.
+
 ## Editing Rules
 
 - Do not reintroduce hard-coded user paths like `/Users/<name>/...` into reusable scripts or docs.

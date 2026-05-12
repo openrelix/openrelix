@@ -18,4 +18,8 @@ log/
 
 # Local-only private skills that should not be packaged.
 .agents/skills/personal-asset-librarian/
+.agents/skills/openrelix-product-design-harness/
+.agents/skills/openrelix-technical-design-harness/
+.agents/skills/openrelix-implementation-harness/
+.agents/skills/openrelix-verification-compliance-harness/
 plugins/openrelix/skills/personal-asset-librarian

@@ -46,6 +46,7 @@ External state root
 | --- | --- | --- |
 | `AGENTS.md` | 维护本仓库的稳定规则 | 需要固化贡献、隐私、worktree、验证规则 |
 | `.agents/skills/memory-review/` | repo-local 的即时复盘 skill | 复盘流程、资产登记流程、skill 暴露方式变化 |
+| `.agents/skills/openrelix-*-harness/` | 维护 OpenRelix 本仓库的开发 harness skills | 产品设计、技术方案、实现闭环、测试或合规检查流程变化；这些 skill 不进入 npm 包 |
 | `.agents/plugins/` | Codex plugin marketplace metadata | plugin 发布信息、入口声明、展示信息变化 |
 | `plugins/openrelix/` | 随包发布的 Codex plugin bundle | plugin 形态和 packaged skill route 变化 |
 | `install/` | 安装器、模板渲染、Codex 配置、shell path 配置 | 安装参数、profile、host home、命令入口变化 |
