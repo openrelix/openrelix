@@ -10219,6 +10219,10 @@ Native Codex profile.
         self.assertIn("scripts/openrelix.py", command_template)
         self.assertIn("OPENRELIX_ACTIVITY_SOURCE", command_template)
 
+        token_live_template = expected_templates[2].read_text(encoding="utf-8")
+        self.assertIn("<key>PATH</key>", token_live_template)
+        self.assertIn("__SAFE_PATH__", token_live_template)
+
     def test_openrelix_uninstall_command_is_exposed_through_cli_and_npm(self):
         openrelix_cli = (ROOT / "scripts" / "openrelix.py").read_text(encoding="utf-8")
         npm_bin = (ROOT / "install" / "npm-bin.js").read_text(encoding="utf-8")
