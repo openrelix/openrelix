@@ -619,6 +619,21 @@
     <section class="section">
       <div class="inner">
         <div class="changelog-list">
+          <article class="changelog-entry is-released" id="v0-3-2">
+            <div class="changelog-meta">
+              <span class="changelog-version">v0.3.2</span>
+              <span class="changelog-date">2026-05-12</span>
+              <span class="changelog-chip">已发布</span>
+            </div>
+            <div class="changelog-body">
+              <p>修复 Token 筛选看不清的问题。</p>
+              <span class="group-title">筛选交互</span>
+              <ul>
+                <li>Token 筛选区的日期按钮更清晰，日期弹层能稳定打开；Token 刷新时也不会把筛选控件临时禁用。</li>
+              </ul>
+            </div>
+          </article>
+
           <article class="changelog-entry is-released" id="v0-3-1">
             <div class="changelog-meta">
               <span class="changelog-version">v0.3.1</span>
@@ -928,6 +943,9 @@
         "Unreleased": "Unreleased",
         "主线开发中的改动": "Mainline Changes In Progress",
         "以下改动已合入 main 分支，但尚未单独发布版本号；下一次版本号上调时这些条目会归入对应版本。": "These changes are merged into main but have not received their own version bump yet; the next release will absorb them.",
+        "修复 Token 筛选看不清的问题。": "Fix Token filter readability issues.",
+        "筛选交互": "Filter Interaction",
+        "Token 筛选区的日期按钮更清晰，日期弹层能稳定打开；Token 刷新时也不会把筛选控件临时禁用。": "Make the Token filter date buttons clearer, keep the date popover opening reliably, and avoid temporarily disabling filter controls during Token refresh.",
         "支持 Claude Code 啦，并重做记忆系统": "Claude Code Is Here, and Memory Has Been Rebuilt",
         "0.3.0 是 OpenRelix 记忆体系的一次大整理：它会更谨慎地挑选该注入给 AI 的记忆，也把 Claude Code、多 Codex Home、资产热度、Token 和 Pipeline 状态都收进同一个面板里。": "0.3.0 is a major cleanup of the OpenRelix memory system: it is more careful about which memories get injected into AI context, and it brings Claude Code, multiple Codex Homes, asset heat, Token usage, and Pipeline status into one panel.",
         "记忆注入 v2：统一 host memory context，按项目、证据和预算挑记忆；不该带进来的项目记忆不会轻易混进当前上下文。": "Memory injection v2: unify host memory context and select memories by project, evidence, and budget; project memories that do not belong are much less likely to leak into the current context.",
