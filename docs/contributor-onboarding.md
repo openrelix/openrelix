@@ -20,7 +20,13 @@ This is intentionally not a release roadmap. Use it to prepare the project for m
 
 ## Ten-Minute Local Loop
 
-Start from a clean checkout or a dedicated worktree:
+Run this once per clone so the pre-commit hook activates automatically:
+
+```bash
+./scripts/setup-dev.sh
+```
+
+Then start from a clean checkout or a dedicated worktree. Use `codex/<task>` from Codex sessions and `claude/<task>` from Claude Code sessions so log entries make the producing agent obvious:
 
 ```bash
 git status --short --branch
