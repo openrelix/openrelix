@@ -1,5 +1,8 @@
 # OpenRelix 学习指南
 
+> 语言版本：[English](learning-guide.en.md) | 简体中文
+
+
 ## 适合谁读
 
 这份指南面向三类读者：

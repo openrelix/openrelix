@@ -10,6 +10,16 @@ reports/
 runtime/
 log/
 
+# Sanitized fixtures intentionally mirror state-root directory names.
+!tests/fixtures/
+!tests/fixtures/sample-state/
+!tests/fixtures/sample-state/raw/
+!tests/fixtures/sample-state/raw/**
+!tests/fixtures/sample-state/consolidated/
+!tests/fixtures/sample-state/consolidated/**
+!tests/fixtures/sample-state/registry/
+!tests/fixtures/sample-state/registry/**
+
 # Local scratch artifacts.
 .tmp/
 dist/

@@ -1,5 +1,8 @@
 # build_overview 隔离重构方案
 
+> 语言版本：[English](build-overview-isolation-plan.en.md) | 简体中文
+
+
 状态：渐进实施中。Phase 1 已先落地 token/live-update 相关的最小有效隔离；其余阶段仍按本文计划推进。
 
 本方案针对 `scripts/build_overview.py` 的职责膨胀问题，目标是在不破坏现有命令、测试和生成结果的前提下，把 overview 构建器逐步拆成清晰的内部模块。方案已经过独立 Codex subreview 审阅，最终结果为 10/10 PASS，Must Fix 和 Should Fix 均已清空。

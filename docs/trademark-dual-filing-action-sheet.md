@@ -1,5 +1,8 @@
 # Dual Trademark Filing Action Sheet
 
+> Languages: English | [简体中文](trademark-dual-filing-action-sheet.zh-CN.md)
+
+
 This sheet is for quickly moving the `OPENRELIX` word mark into filing
 in both the United States and China. It is not legal advice.
 

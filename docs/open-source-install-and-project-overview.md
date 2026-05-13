@@ -1,5 +1,8 @@
 # OpenRelix™ 开源安装说明与项目说明
 
+> 语言版本：[English](open-source-install-and-project-overview.en.md) | 简体中文
+
+
 ## 一句话说明
 
 `OpenRelix™` 意为开源的个人记忆珍藏，是一套面向 AI coding agents / AI CLI 的本地优先资产层，当前公开版本以 `package.json` 为准。它不绑定某一个 AI host；当前公开适配器覆盖 Codex CLI / Codex app-server 和 Claude Code CLI，并把不同 host 的窗口、Token、原生上下文和模型回溯映射到同一套本地资产模型。

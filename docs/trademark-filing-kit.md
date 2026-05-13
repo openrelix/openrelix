@@ -1,5 +1,8 @@
 # Trademark Filing Kit
 
+> Languages: English | [简体中文](trademark-filing-kit.zh-CN.md)
+
+
 This is an operational checklist for preparing a fast trademark filing for the
 open source OpenRelix project. It is not legal advice.
 

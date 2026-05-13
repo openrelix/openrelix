@@ -1,5 +1,8 @@
 # OpenRelix System Overview
 
+> Languages: English | [简体中文](system-overview.zh-CN.md)
+
+
 Local-first memory and asset system for AI coding agents
 
 ## Goal

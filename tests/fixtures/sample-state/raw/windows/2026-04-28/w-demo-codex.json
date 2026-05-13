@@ -1,0 +1,37 @@
+{
+  "date": "2026-04-28",
+  "window_id": "w-demo-codex",
+  "ai_host": "codex",
+  "cwd": "/tmp/openrelix-demo",
+  "originator": "codex_cli",
+  "source": "history",
+  "started_at": "2026-04-28T10:00:00+08:00",
+  "session_file": "/tmp/openrelix-demo/codex-session.jsonl",
+  "thread_id": "thread-demo",
+  "session_id": "session-demo",
+  "resume_id": "session-demo",
+  "window_summary": "Synthetic contributor fixture",
+  "thread_title": "Sample state fixture",
+  "prompt_count": 1,
+  "conclusion_count": 1,
+  "raw_conclusion_count": 1,
+  "review_like_window": false,
+  "review_related_window": false,
+  "filtered_review_conclusion_count": 0,
+  "conclusion_policy": "included",
+  "prompts": [
+    {
+      "turn_id": "turn-demo-1",
+      "ts": "2026-04-28T10:00:00+08:00",
+      "local_time": "2026-04-28T10:00:00+08:00",
+      "text": "Design a sanitized sample state fixture for contributor tests."
+    }
+  ],
+  "conclusions": [
+    {
+      "turn_id": "turn-demo-1",
+      "completed_at": "2026-04-28T10:05:00+08:00",
+      "text": "The fixture should cover raw windows, summaries, registry rows, and index rebuilds."
+    }
+  ]
+}

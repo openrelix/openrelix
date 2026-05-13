@@ -1,6 +1,11 @@
 # Privacy And Distribution Boundary
 
+> Languages: English | [简体中文](privacy-and-distribution.zh-CN.md)
+
+
 This repository is designed to be shareable without bundling one person's local machine state.
+
+For contributor and connector risk review, see [Privacy Threat Model](privacy-threat-model.md).
 
 ## What should be shared
 

@@ -1,0 +1,40 @@
+{
+  "date": "2026-04-28",
+  "stage": "manual",
+  "summary_generation": "fixture",
+  "model_status": "completed",
+  "day_summary": "A contributor created a sanitized fixture that documents OpenRelix state contracts.",
+  "window_summaries": [
+    {
+      "window_id": "w-demo-codex",
+      "cwd": "/tmp/openrelix-demo",
+      "window_title": "Sample state fixture",
+      "question_summary": "Create a safe fixture for contributor tests.",
+      "question_count": 1,
+      "conclusion_count": 1,
+      "keywords": [
+        "fixture",
+        "data-contract"
+      ],
+      "main_takeaway": "Synthetic state should cover raw, consolidated, registry, and index paths without private data.",
+      "summary_pairs": [
+        {
+          "question": "Design a sanitized sample state fixture for contributor tests.",
+          "conclusion": "Cover raw windows, summaries, registry rows, and index rebuilds with artificial data."
+        }
+      ]
+    }
+  ],
+  "durable_memories": [],
+  "session_memories": [],
+  "low_priority_memories": [],
+  "global_context_memories": [],
+  "keywords": [
+    "fixture",
+    "privacy",
+    "contracts"
+  ],
+  "next_actions": [
+    "Use this fixture when changing data contracts."
+  ]
+}

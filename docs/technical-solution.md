@@ -1,5 +1,8 @@
 # OpenRelix 技术方案
 
+> 语言版本：[English](technical-solution.en.md) | 简体中文
+
+
 ## 定位
 
 `OpenRelix` 意为开源的个人记忆珍藏，是一套面向 AI coding agents / AI CLI 的本地优先个人资产系统。它解决的问题不是“再做一个聊天记录备份”，而是把重复出现的工作方法、检查清单、技能、模板和自动化沉淀成可复用资产，并在本地持续整理、可视化和回看。

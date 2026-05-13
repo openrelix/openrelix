@@ -1,5 +1,8 @@
 # Metric Dictionary
 
+> Languages: English | [简体中文](metric-dictionary.zh-CN.md)
+
+
 ## Core metrics
 
 - `total_assets`: count of assets in the active state's `registry/assets.jsonl`

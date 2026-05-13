@@ -1,6 +1,9 @@
 # OpenRelix 开发者指南
 
-本文基于 `package.json` 中标记为 `0.3.0` 的代码结构整理，面向需要维护、扩展或发布 OpenRelix 的开发者。它不替代 [技术方案](technical-solution.md) 和 [系统概览](system-overview.md)，而是把“改代码时该从哪里下手、如何验证、哪些边界不能破坏”收束成一份可执行指南。
+> 语言版本：[English](developer-guide.en.md) | 简体中文
+
+
+本文基于 `package.json` 中标记为 `0.3.3` 的代码结构整理，面向需要维护、扩展或发布 OpenRelix 的开发者。它不替代 [技术方案](technical-solution.md)、[系统概览](system-overview.md)、[贡献者快速上手](contributor-onboarding.md)、[数据契约](data-contracts.md)、[验证矩阵](validation-matrix.md) 和 [隐私威胁模型](privacy-threat-model.md)，而是把“改代码时该从哪里下手、如何验证、哪些边界不能破坏”收束成一份可执行指南。
 
 ## 先理解项目边界
 
@@ -291,7 +294,11 @@ npm pack --dry-run --json
 
 1. [系统概览](system-overview.md)：先建立三层模型。
 2. [技术方案](technical-solution.md)：理解完整数据流和模块职责。
-3. 本文：把架构映射到日常开发动作。
-4. [学习指南](learning-guide.md)：按角色走一遍使用和验证路径。
-5. [隐私和分发边界](privacy-and-distribution.md)：提交前确认公开边界。
-6. [build_overview 隔离重构方案](build-overview-isolation-plan.md)：处理 overview builder 时再深入。
+3. [贡献者快速上手](contributor-onboarding.md)：按 10 分钟闭环和任务卡模板跑第一单。
+4. [数据契约](data-contracts.md)：改 raw、registry、summary、overview 或 host context 前先看字段边界。
+5. 本文：把架构映射到日常开发动作。
+6. [学习指南](learning-guide.md)：按角色走一遍使用和验证路径。
+7. [验证矩阵](validation-matrix.md)：按改动类型选择最小但足够的检查命令。
+8. [隐私和分发边界](privacy-and-distribution.md) 与 [隐私威胁模型](privacy-threat-model.md)：提交前确认公开边界和 connector / host-context 风险。
+9. [发布检查清单](release-checklist.md)：发布、npm、GitHub Release 或 package surface 变更时使用。
+10. [build_overview 隔离重构方案](build-overview-isolation-plan.md)：处理 overview builder 时再深入。

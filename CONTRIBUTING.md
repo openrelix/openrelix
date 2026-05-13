@@ -2,6 +2,10 @@
 
 Thanks for helping improve OpenRelix.
 
+Start with [Contributor Onboarding](docs/contributor-onboarding.md) for the 10-minute local loop, task card template, and review checklist. Use [Validation Matrix](docs/validation-matrix.md) to pick checks by change type, [Data Contracts](docs/data-contracts.md) for state shapes, and [Privacy Threat Model](docs/privacy-threat-model.md) for host, connector, package, and release boundaries.
+
+Docs under `docs/` are bilingual by default. Use [Docs Index](docs/README.md) for the Markdown companion naming rule and the boundary between agent-readable Markdown and rich bilingual HTML pages.
+
 ## Scope
 
 This project keeps reusable capabilities in the repository and user-specific state outside the repository.
@@ -25,12 +29,14 @@ Avoid contributing:
 
 ## Development
 
-Run focused validation before sending a change:
+Run common validation before sending a change:
 
 ```bash
-python3 -m unittest discover -s tests
-zsh -n install/install.sh
+python3 scripts/check_personal_info.py
+git diff --check
 ```
+
+Then add focused tests based on the files you touched. See [Validation Matrix](docs/validation-matrix.md).
 
 When you need to verify the install-to-panel path without writing to your real
 state root or real `CODEX_HOME`, run:
@@ -63,3 +69,5 @@ Keep pull requests small and explain:
 - any migration needed for existing local installs
 
 Use sanitized examples in issues and pull requests.
+
+Use the pull request template when available. If a change touches release or package surface, also follow [Release Checklist](docs/release-checklist.md).

@@ -1,5 +1,8 @@
 # China Trademark Filing Kit
 
+> Languages: English | [简体中文](china-chinese-trademark-filing-kit.zh-CN.md)
+
+
 This is an operational checklist for preparing a fast China trademark filing for
 the OpenRelix word mark. It is not legal advice.
 
