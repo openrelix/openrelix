@@ -1,3 +1,5 @@
+> This file is the canonical project rules file for AI coding agents. `CLAUDE.md` imports it inline via `@AGENTS.md`, so Claude Code agents see the same rules. Edit this file for shared rules; put host-specific notes in `CLAUDE.md` (Claude Code).
+
 ## Project Intent
 
 - This repo packages reusable Codex skills, installer scripts, templates, and automation for a local-first personal asset system.

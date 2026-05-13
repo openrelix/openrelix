@@ -619,6 +619,21 @@
     <section class="section">
       <div class="inner">
         <div class="changelog-list">
+          <article class="changelog-entry is-unreleased" id="unreleased">
+            <div class="changelog-meta">
+              <span class="changelog-version">主线开发中 · 候选下一版本</span>
+              <span class="changelog-chip">未发布</span>
+            </div>
+            <div class="changelog-body">
+              <p>新增 Claude Code 项目级指令文件 <code>CLAUDE.md</code>。</p>
+              <span class="group-title">协作</span>
+              <ul>
+                <li>新增 <code>CLAUDE.md</code>：通过 <code>@AGENTS.md</code> import 复用项目规则，并补充 Claude Code 专属说明（<code>.agents/skills/</code> 不被 Claude Code 自动发现、host context 受管理块 markers、worktree 分支前缀 <code>claude/&lt;task&gt;</code>）。</li>
+                <li><code>AGENTS.md</code> 顶部标注 canonical 关系；<code>CLAUDE.md</code> 加入 npm 包 <code>files</code> 允许列表。</li>
+              </ul>
+            </div>
+          </article>
+
           <article class="changelog-entry is-released" id="v0-3-3">
             <div class="changelog-meta">
               <span class="changelog-version">v0.3.3</span>
@@ -954,6 +969,10 @@
         "Unreleased": "Unreleased",
         "主线开发中的改动": "Mainline Changes In Progress",
         "以下改动已合入 main 分支，但尚未单独发布版本号；下一次版本号上调时这些条目会归入对应版本。": "These changes are merged into main but have not received their own version bump yet; the next release will absorb them.",
+        "新增 Claude Code 项目级指令文件 <code>CLAUDE.md</code>。": "Add a Claude Code project-level instructions file: <code>CLAUDE.md</code>.",
+        "协作": "Collaboration",
+        "新增 <code>CLAUDE.md</code>：通过 <code>@AGENTS.md</code> import 复用项目规则，并补充 Claude Code 专属说明（<code>.agents/skills/</code> 不被 Claude Code 自动发现、host context 受管理块 markers、worktree 分支前缀 <code>claude/&lt;task&gt;</code>）。": "Add <code>CLAUDE.md</code>: imports the canonical project rules from <code>@AGENTS.md</code> and adds Claude Code-specific notes (<code>.agents/skills/</code> is not auto-discovered by Claude Code, host context managed block markers, and worktree branch prefix <code>claude/&lt;task&gt;</code>).",
+        "<code>AGENTS.md</code> 顶部标注 canonical 关系；<code>CLAUDE.md</code> 加入 npm 包 <code>files</code> 允许列表。": "Mark <code>AGENTS.md</code> as the canonical project rules file at the top; add <code>CLAUDE.md</code> to the npm package <code>files</code> allowlist.",
         "修复安装失败的问题。": "Fix install failure.",
         "修复 Token 筛选看不清的问题。": "Fix Token filter readability issues.",
         "筛选交互": "Filter Interaction",
