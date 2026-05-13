@@ -28,6 +28,10 @@ LOCAL_EXECUTION_ATTR_PATTERNS = (
     r"href=\\([\"'])file://[^\\]+?\\\1",
     r"data-open-finder-path=([\"'])[^\"']+\1",
     r"data-open-finder-path=\\([\"'])[^\\]+?\\\1",
+    r"data-resume-command=([\"'])[^\"']+\1",
+    r"data-resume-command=\\([\"'])[^\\]+?\\\1",
+    r"data-claude-cwd=([\"'])[^\"']+\1",
+    r"data-claude-cwd=\\([\"'])[^\\]+?\\\1",
 )
 
 

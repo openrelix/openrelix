@@ -1075,7 +1075,11 @@ class TokenLiveHandler(BaseHTTPRequestHandler):
                 payload = json.loads(body.decode("utf-8")) if body else {}
             except (UnicodeDecodeError, json.JSONDecodeError):
                 payload = {}
-            snapshot = start_claude_desktop_resume(payload.get("resume_id", ""), paths=PATHS)
+            snapshot = start_claude_desktop_resume(
+                payload.get("resume_id", ""),
+                cwd=payload.get("cwd", ""),
+                paths=PATHS,
+            )
             status_code = 202 if snapshot.get("ok") else 400
             if snapshot.get("error") in {"claude_desktop_app_not_found", "claude_cli_not_found"}:
                 status_code = 503

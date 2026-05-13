@@ -625,11 +625,17 @@
               <span class="changelog-chip">未发布</span>
             </div>
             <div class="changelog-body">
-              <p>新增 Claude Code 项目级指令文件 <code>CLAUDE.md</code>。</p>
+              <p>新增 Claude Code 项目级指令文件 <code>CLAUDE.md</code>；修复 Claude 窗口的「复制 resume 命令」与「在 Claude App 打开」按钮跨目录无效。</p>
               <span class="group-title">协作</span>
               <ul>
                 <li>新增 <code>CLAUDE.md</code>：通过 <code>@AGENTS.md</code> import 复用项目规则，并补充 Claude Code 专属说明（<code>.agents/skills/</code> 不被 Claude Code 自动发现、host context 受管理块 markers、worktree 分支前缀 <code>claude/&lt;task&gt;</code>）。</li>
                 <li><code>AGENTS.md</code> 顶部标注 canonical 关系；<code>CLAUDE.md</code> 加入 npm 包 <code>files</code> 允许列表。</li>
+              </ul>
+              <span class="group-title">面板按钮</span>
+              <ul>
+                <li>「复制 resume 命令」现在会按窗口原 cwd 拼上 <code>cd &lt;path&gt; &amp;&amp;</code> 前缀，粘到任意终端都能定位到对应 project 文件夹再 resume。</li>
+                <li>「在 Claude App 打开」按钮把窗口 cwd 一并传给本地服务端，避免 <code>claude --resume</code> 在错误工作目录里找不到 session 直接退出，进而导致 <code>/desktop</code> 没机会执行。</li>
+                <li>渲染时保护 <code>data-resume-command</code> / <code>data-claude-cwd</code> 不被路径脱敏改成 <code>~</code>，确保按钮里的绝对路径在 shell 单引号中可用。</li>
               </ul>
             </div>
           </article>

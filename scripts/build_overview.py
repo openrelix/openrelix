@@ -7365,16 +7365,26 @@ def codex_resume_command(resume_id, codex_home=""):
     return command
 
 
-def claude_resume_command(resume_id):
+def claude_resume_command(resume_id, cwd=""):
     resume_id = str(resume_id or "").strip()
     if not resume_id:
         return ""
-    return "claude --resume {}".format(shlex.quote(resume_id))
+    command = "claude --resume {}".format(shlex.quote(resume_id))
+    cwd_str = str(cwd or "").strip()
+    if not cwd_str:
+        return command
+    try:
+        expanded = str(Path(cwd_str).expanduser())
+    except (OSError, RuntimeError):
+        expanded = cwd_str
+    if not expanded or expanded == str(Path.home()):
+        return command
+    return "cd {} && {}".format(shlex.quote(expanded), command)
 
 
-def window_resume_command(ai_host, resume_id, codex_home=""):
+def window_resume_command(ai_host, resume_id, codex_home="", cwd=""):
     if ai_host == "claude":
-        return claude_resume_command(resume_id)
+        return claude_resume_command(resume_id, cwd=cwd)
     return codex_resume_command(resume_id, codex_home=codex_home)
 
 
@@ -7640,7 +7650,7 @@ def build_window_items_from_daily_capture(daily_capture, latest_nightly=None, la
                 "thread_source": thread_source,
                 "window_summary": window_summary,
                 "resume_id": resume_id,
-                "resume_command": window_resume_command(ai_host, resume_id, codex_home=codex_home),
+                "resume_command": window_resume_command(ai_host, resume_id, codex_home=codex_home, cwd=cwd),
                 "resume_url": codex_resume_url(resume_id) if ai_host == "codex" else "",
                 "codex_home": codex_home,
                 "codex_electron_user_data_path": codex_electron_user_data_path,
@@ -7750,7 +7760,7 @@ def build_window_overview(latest_nightly, language=None, target_date=""):
                         or localized("未捕获窗口摘要", "No captured window summary", language)
                     ),
                     "resume_id": resume_id,
-                    "resume_command": window_resume_command(ai_host, resume_id, codex_home=codex_home),
+                    "resume_command": window_resume_command(ai_host, resume_id, codex_home=codex_home, cwd=cwd),
                     "resume_url": codex_resume_url(resume_id) if ai_host == "codex" else "",
                     "codex_home": codex_home,
                     "codex_electron_user_data_path": codex_electron_user_data_path,
@@ -14809,6 +14819,7 @@ def make_window_summary_cards(
         resume_app_session_id="",
         codex_home="",
         codex_electron_user_data_path="",
+        cwd="",
     ):
         copy_button = ""
         if resume_command:
@@ -14900,12 +14911,14 @@ def make_window_summary_cards(
             class="window-resume-button is-secondary"
             data-window-resume-claude-desktop
             data-claude-resume-id="{resume_app_session_id}"
+            data-claude-cwd="{claude_cwd}"
             data-label="{open_label}"
             data-opening-label="{opening_label}"
             data-opened-label="{opened_label}"
             data-error-label="{error_label}"
           >{open_label}</button>""".format(
                 resume_app_session_id=escape(resume_app_session_id, quote=True),
+                claude_cwd=escape(str(cwd or ""), quote=True),
                 open_label=escape(localized("在 Claude App 打开", "Open in Claude App", language), quote=True),
                 opening_label=escape(localized("正在打开", "Opening", language), quote=True),
                 opened_label=escape(localized("已发送", "Sent", language), quote=True),
@@ -15344,6 +15357,7 @@ def make_window_summary_cards(
             ai_host,
             resume_id,
             codex_home=item.get("codex_home", ""),
+            cwd=item.get("cwd", ""),
         )
         resume_url = item.get("resume_url", "") or (codex_resume_url(resume_id) if ai_host == "codex" else "")
         resume_app_action = item.get("resume_app_action", "") or claude_desktop_resume_action(ai_host, resume_id)
@@ -15369,6 +15383,7 @@ def make_window_summary_cards(
             resume_app_session_id=resume_app_session_id,
             codex_home=item.get("codex_home", ""),
             codex_electron_user_data_path=item.get("codex_electron_user_data_path", ""),
+            cwd=item.get("cwd", ""),
         )
         review_prompt_template = ""
         if review_prompt:
@@ -26732,6 +26747,7 @@ def build_html(data):
 
       function openClaudeDesktopResume(button) {{
         const resumeId = (button.getAttribute("data-claude-resume-id") || "").trim();
+        const cwd = (button.getAttribute("data-claude-cwd") || "").trim();
         const endpoint = openrelixMetaAttr("data-claude-desktop-endpoint");
         const token = openrelixMetaAttr("data-update-token");
         const originalLabel = button.getAttribute("data-label") || button.textContent;
@@ -26748,10 +26764,14 @@ def build_html(data):
         if (token) {{
           headers["X-OpenRelix-Token"] = token;
         }}
+        const requestBody = {{ resume_id: resumeId }};
+        if (cwd) {{
+          requestBody.cwd = cwd;
+        }}
         fetch(endpoint, {{
           method: "POST",
           headers: headers,
-          body: JSON.stringify({{ resume_id: resumeId }})
+          body: JSON.stringify(requestBody)
         }})
           .then(function (response) {{
             return response.json().catch(function () {{
