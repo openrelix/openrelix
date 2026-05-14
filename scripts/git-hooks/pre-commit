@@ -2,8 +2,13 @@
 # OpenRelix pre-commit hook — block commits that leak personal info.
 #
 # Install once per clone:
-#   ln -s ../../scripts/git-hooks/pre-commit .git/hooks/pre-commit
-#   chmod +x .git/hooks/pre-commit
+#   ./scripts/setup-dev.sh
+#
+# That command points git's core.hooksPath at scripts/git-hooks/ (recorded
+# in .git/config and shared across all worktrees) so this hook and any
+# future hooks run automatically without per-hook symlinks. A pre-existing
+# .git/hooks/pre-commit symlink becomes inert under core.hooksPath; behavior
+# does not regress, the old symlink is just unused.
 #
 # The hook runs scripts/check_personal_info.py. The check uses built-in
 # regexes (user-home paths, hardcoded credentials, personal-email tails) plus

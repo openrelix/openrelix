@@ -2,7 +2,7 @@
 
 [English](README.md) | [简体中文](https://github.com/openrelix/openrelix/blob/main/README.zh-CN.md)
 
-Open-source personal memory relics for AI coding agents, currently published as a v0.3.3 preview.
+Open-source personal memory relics for AI coding agents, currently published as a v0.3.4 preview.
 
 OpenRelix™ is a local-first asset layer for AI coding agents. It turns finished agent work into reusable task reviews, skills, templates, bounded memory summaries, and a private dashboard instead of leaving useful patterns buried in old chats.
 
@@ -28,7 +28,7 @@ GitHub project page: [openrelix/openrelix](https://github.com/openrelix/openreli
 
 - [Docs Index](docs/README.md): bilingual map for agent-readable Markdown docs and rich HTML pages.
 - [Technical Solution](docs/technical-solution.md): architecture, data flow, module responsibilities, runtime state, and release boundaries.
-- [Developer Guide](docs/developer-guide.md): contributor-oriented guide for the v0.3.3 code structure, edit boundaries, and validation workflow.
+- [Developer Guide](docs/developer-guide.md): contributor-oriented guide for the v0.3.4 code structure, edit boundaries, and validation workflow.
 - [Contributor Onboarding](docs/contributor-onboarding.md): 10-minute local loop, task card template, review checklist, and contributor handoff rules.
 - [Validation Matrix](docs/validation-matrix.md): change-type specific checks for docs, scripts, installer, memory, overview, package, and release work.
 - [Data Contracts](docs/data-contracts.md): state-root layout, raw windows, summaries, registries, curated pack, host context, overview data, and sample fixture contracts.

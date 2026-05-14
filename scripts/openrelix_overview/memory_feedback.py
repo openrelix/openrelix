@@ -121,14 +121,28 @@ def append_memory_feedback(paths, memory_key, feedback, title="", source="panel"
     return row
 
 
+def clear_memory_feedback(item, feedback=None):
+    if not isinstance(item, dict):
+        return item
+    row = dict(item)
+    row["user_feedback"] = ""
+    row["user_feedback_updated_at"] = (
+        str(feedback.get("updated_at") or "") if isinstance(feedback, dict) else ""
+    )
+    row["user_pinned"] = False
+    return row
+
+
 def apply_memory_feedback(item, feedback=None):
     if not isinstance(item, dict):
         return item
     if not feedback:
         return item
     state = normalize_feedback(feedback.get("feedback") if isinstance(feedback, dict) else feedback)
-    if not state or state == FEEDBACK_NEUTRAL:
+    if not state:
         return item
+    if state == FEEDBACK_NEUTRAL:
+        return clear_memory_feedback(item, feedback)
 
     row = dict(item)
     row["memory_key"] = memory_key_for_record(item)

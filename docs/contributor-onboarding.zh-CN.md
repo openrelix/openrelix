@@ -19,7 +19,13 @@
 
 ## 10 分钟本地闭环
 
-从干净 checkout 或专用 worktree 开始：
+每个 clone 运行一次，让 pre-commit hook 自动生效：
+
+```bash
+./scripts/setup-dev.sh
+```
+
+之后从干净 checkout 或专用 worktree 开始。Codex 会话用 `codex/<task>`、Claude Code 会话用 `claude/<task>`，让 log 里能直接看出 PR 是哪类 agent 产出的：
 
 ```bash
 git status --short --branch

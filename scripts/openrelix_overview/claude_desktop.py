@@ -246,7 +246,32 @@ def _run_claude_desktop_resume(cmd, env, cwd, input_delay_seconds=1.5, wait_afte
         _run_pipe_resume(cmd, env, cwd, wait_after_seconds)
 
 
-def start_claude_desktop_resume(resume_id, paths=None):
+def _resolve_session_cwd(cwd, paths):
+    """Pick the cwd for `claude --resume`.
+
+    Why: Claude CLI scopes --resume lookups to the project folder derived from
+    the current cwd. Falling back to paths.runtime_dir loses the session.
+    """
+    candidate = str(cwd or "").strip()
+    if candidate:
+        try:
+            expanded = Path(candidate).expanduser()
+        except (OSError, RuntimeError):
+            expanded = None
+        if expanded is not None:
+            try:
+                resolved = expanded.resolve(strict=False)
+            except OSError:
+                resolved = expanded
+            parts = resolved.parts
+            if resolved.is_absolute() and ".." not in parts and len(parts) > 1 and resolved.is_dir():
+                return resolved
+    fallback = paths.runtime_dir
+    fallback.mkdir(parents=True, exist_ok=True)
+    return fallback
+
+
+def start_claude_desktop_resume(resume_id, cwd=None, paths=None):
     paths = paths or get_runtime_paths()
     resume_id = str(resume_id or "").strip()
     if not is_valid_claude_session_id(resume_id):
@@ -261,11 +286,10 @@ def start_claude_desktop_resume(resume_id, paths=None):
     except (OSError, ValueError) as exc:
         return {"ok": False, "error": str(exc) or "invalid_claude_resume_command"}
     env = build_claude_desktop_resume_env(paths)
-    cwd = paths.runtime_dir
-    cwd.mkdir(parents=True, exist_ok=True)
+    worker_cwd = _resolve_session_cwd(cwd, paths)
     worker = threading.Thread(
         target=_run_claude_desktop_resume,
-        args=(cmd, env, cwd),
+        args=(cmd, env, worker_cwd),
         daemon=True,
     )
     worker.start()

@@ -1,0 +1,48 @@
+# OpenRelix CODEOWNERS
+#
+# Purpose: route review requests to the right humans/agents when a PR touches
+# a given path. The owner placeholder is a single maintainer for now; expand
+# when the team grows. Pair this file with branch protection that requires
+# code-owner approval, otherwise these entries are advisory only.
+#
+# AI-agent note: agent-authored PRs still need a human reviewer here.
+# CODEOWNERS does not auto-approve AI PRs; it ensures the right reviewer
+# gets pinged so multi-window AI work converges.
+
+# Catch-all
+*                                       @Ray1Ren
+
+# CI, release plumbing, repo governance
+/.github/                               @Ray1Ren
+/AGENTS.md                              @Ray1Ren
+/CLAUDE.md                              @Ray1Ren
+/package.json                           @Ray1Ren
+
+# Installer / runtime / packaging
+/install/                               @Ray1Ren
+/ops/launchd/                           @Ray1Ren
+/macos/                                 @Ray1Ren
+/scripts/asset_runtime.py               @Ray1Ren
+/scripts/sync_host_memory_summary.py    @Ray1Ren
+/scripts/build_codex_memory_summary.py  @Ray1Ren
+
+# Hot files — high conflict risk under parallel AI windows.
+# When two windows want to edit these, claim via a draft PR title
+# `[wip:hot-file] <file>` before starting; later worktrees rebase or wait.
+/scripts/build_overview.py              @Ray1Ren
+/scripts/openrelix.py                   @Ray1Ren
+
+# Overview internals
+/scripts/openrelix_overview/            @Ray1Ren
+
+# Tests
+/tests/                                 @Ray1Ren
+
+# Docs (bilingual)
+/docs/                                  @Ray1Ren
+/README.md                              @Ray1Ren
+/README.zh-CN.md                        @Ray1Ren
+
+# Repo-shipped skills
+/.agents/skills/                        @Ray1Ren
+/plugins/openrelix/                     @Ray1Ren

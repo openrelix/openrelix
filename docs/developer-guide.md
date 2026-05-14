@@ -3,7 +3,7 @@
 > 语言版本：[English](developer-guide.en.md) | 简体中文
 
 
-本文基于 `package.json` 中标记为 `0.3.3` 的代码结构整理，面向需要维护、扩展或发布 OpenRelix 的开发者。它不替代 [技术方案](technical-solution.md)、[系统概览](system-overview.md)、[贡献者快速上手](contributor-onboarding.md)、[数据契约](data-contracts.md)、[验证矩阵](validation-matrix.md) 和 [隐私威胁模型](privacy-threat-model.md)，而是把“改代码时该从哪里下手、如何验证、哪些边界不能破坏”收束成一份可执行指南。
+本文基于 `package.json` 中标记为 `0.3.4` 的代码结构整理，面向需要维护、扩展或发布 OpenRelix 的开发者。它不替代 [技术方案](technical-solution.md)、[系统概览](system-overview.md)、[贡献者快速上手](contributor-onboarding.md)、[数据契约](data-contracts.md)、[验证矩阵](validation-matrix.md) 和 [隐私威胁模型](privacy-threat-model.md)，而是把“改代码时该从哪里下手、如何验证、哪些边界不能破坏”收束成一份可执行指南。
 
 ## 先理解项目边界
 
