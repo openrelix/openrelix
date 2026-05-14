@@ -619,10 +619,11 @@
     <section class="section">
       <div class="inner">
         <div class="changelog-list">
-          <article class="changelog-entry is-unreleased" id="unreleased">
+          <article class="changelog-entry is-released" id="v0-3-4">
             <div class="changelog-meta">
-              <span class="changelog-version">主线开发中 · 候选下一版本</span>
-              <span class="changelog-chip">未发布</span>
+              <span class="changelog-version">v0.3.4</span>
+              <span class="changelog-date">2026-05-14</span>
+              <span class="changelog-chip">已发布</span>
             </div>
             <div class="changelog-body">
               <p>新增 Claude Code 项目级指令文件 <code>CLAUDE.md</code>；修复 Claude 窗口的「复制 resume 命令」与「在 Claude App 打开」按钮跨目录无效。</p>
@@ -643,6 +644,7 @@
                 <li>「复制 resume 命令」现在会按窗口原 cwd 拼上 <code>cd &lt;path&gt; &amp;&amp;</code> 前缀，粘到任意终端都能定位到对应 project 文件夹再 resume。</li>
                 <li>「在 Claude App 打开」按钮把窗口 cwd 一并传给本地服务端，避免 <code>claude --resume</code> 在错误工作目录里找不到 session 直接退出，进而导致 <code>/desktop</code> 没机会执行。</li>
                 <li>渲染时保护 <code>data-resume-command</code> / <code>data-claude-cwd</code> 不被路径脱敏改成 <code>~</code>，确保按钮里的绝对路径在 shell 单引号中可用。</li>
+              </ul>
             </div>
           </article>
 
@@ -982,6 +984,7 @@
         "主线开发中的改动": "Mainline Changes In Progress",
         "以下改动已合入 main 分支，但尚未单独发布版本号；下一次版本号上调时这些条目会归入对应版本。": "These changes are merged into main but have not received their own version bump yet; the next release will absorb them.",
         "新增 Claude Code 项目级指令文件 <code>CLAUDE.md</code>。": "Add a Claude Code project-level instructions file: <code>CLAUDE.md</code>.",
+        "新增 Claude Code 项目级指令文件 <code>CLAUDE.md</code>；修复 Claude 窗口的「复制 resume 命令」与「在 Claude App 打开」按钮跨目录无效。": "Add a Claude Code project-level instructions file, <code>CLAUDE.md</code>, and fix Claude window actions when they are resumed from a different directory.",
         "协作": "Collaboration",
         "新增 <code>CLAUDE.md</code>：通过 <code>@AGENTS.md</code> import 复用项目规则，并补充 Claude Code 专属说明（<code>.agents/skills/</code> 不被 Claude Code 自动发现、host context 受管理块 markers、worktree 分支前缀 <code>claude/&lt;task&gt;</code>）。": "Add <code>CLAUDE.md</code>: imports the canonical project rules from <code>@AGENTS.md</code> and adds Claude Code-specific notes (<code>.agents/skills/</code> is not auto-discovered by Claude Code, host context managed block markers, and worktree branch prefix <code>claude/&lt;task&gt;</code>).",
         "<code>AGENTS.md</code> 顶部标注 canonical 关系；<code>CLAUDE.md</code> 加入 npm 包 <code>files</code> 允许列表。": "Mark <code>AGENTS.md</code> as the canonical project rules file at the top; add <code>CLAUDE.md</code> to the npm package <code>files</code> allowlist.",
@@ -990,6 +993,10 @@
         "新增 <code>.github/CODEOWNERS</code>：把仓库分区到 reviewer，标注 <code>scripts/build_overview.py</code> 等热区文件的并行编辑约定。": "Add <code>.github/CODEOWNERS</code>: partition the repo to reviewers and call out the parallel-edit convention for hot-file modules like <code>scripts/build_overview.py</code>.",
         "新增 <code>scripts/setup-dev.sh</code>：一次性配置 <code>core.hooksPath</code>，让 pre-commit hook 自动生效，无需逐 hook 软链。": "Add <code>scripts/setup-dev.sh</code>: point <code>core.hooksPath</code> at <code>scripts/git-hooks/</code> once so the pre-commit hook activates automatically — no per-hook symlinks.",
         "<code>CONTRIBUTING.md</code> 新增 \"AI Agent Collaboration\" 段：分支前缀（<code>codex/</code> vs <code>claude/</code>）、热区文件 claim 流程、harness skill 设计前置、跨 agent 独立审阅约定。": "<code>CONTRIBUTING.md</code> gains an \"AI Agent Collaboration\" section: branch prefix (<code>codex/</code> vs <code>claude/</code>), hot-file claim flow, harness-skill design prerequisite, and cross-agent independent review.",
+        "面板按钮": "Panel Buttons",
+        "「复制 resume 命令」现在会按窗口原 cwd 拼上 <code>cd &lt;path&gt; &amp;&amp;</code> 前缀，粘到任意终端都能定位到对应 project 文件夹再 resume。": "\"Copy resume command\" now prefixes the command with <code>cd &lt;path&gt; &amp;&amp;</code> from the original window cwd, so it can resume from the right project folder in any terminal.",
+        "「在 Claude App 打开」按钮把窗口 cwd 一并传给本地服务端，避免 <code>claude --resume</code> 在错误工作目录里找不到 session 直接退出，进而导致 <code>/desktop</code> 没机会执行。": "\"Open in Claude App\" now sends the window cwd to the local server, preventing <code>claude --resume</code> from exiting in the wrong directory before <code>/desktop</code> can run.",
+        "渲染时保护 <code>data-resume-command</code> / <code>data-claude-cwd</code> 不被路径脱敏改成 <code>~</code>，确保按钮里的绝对路径在 shell 单引号中可用。": "Rendering now keeps <code>data-resume-command</code> and <code>data-claude-cwd</code> from being path-redacted to <code>~</code>, so absolute paths inside shell single quotes stay usable.",
         "修复安装失败的问题。": "Fix install failure.",
         "修复 Token 筛选看不清的问题。": "Fix Token filter readability issues.",
         "筛选交互": "Filter Interaction",

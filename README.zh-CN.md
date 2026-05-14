@@ -2,7 +2,7 @@
 
 [English](https://github.com/openrelix/openrelix/blob/main/README.md) | 简体中文
 
-面向 AI coding agents 的开源个人记忆珍藏系统，当前发布为 v0.3.3 预览版。
+面向 AI coding agents 的开源个人记忆珍藏系统，当前发布为 v0.3.4 预览版。
 
 OpenRelix™ 是一套本地优先的 AI 个人资产层。它把已经完成的 agent 工作沉淀成可复用的任务复盘、技能、模板、自动化、受限记忆摘要和私有面板，而不是让有价值的经验散落在历史聊天里。
 
@@ -28,7 +28,7 @@ GitHub 项目页：[openrelix/openrelix](https://github.com/openrelix/openrelix)
 
 - [文档索引](docs/README.zh-CN.md)：说明 agent 友好的 Markdown 双语文档和富交互 HTML 页面的维护规则。
 - [技术方案](docs/technical-solution.md)：架构、数据流、模块职责、运行时状态和发布边界。
-- [开发者指南](docs/developer-guide.md)：面向贡献者的 0.3.3 代码结构、改动边界和验证流程。
+- [开发者指南](docs/developer-guide.md)：面向贡献者的 0.3.4 代码结构、改动边界和验证流程。
 - [贡献者快速上手](docs/contributor-onboarding.md)：10 分钟本地闭环、任务卡模板、评审清单和协作交接规则。
 - [验证矩阵](docs/validation-matrix.md)：按 docs、scripts、installer、memory、overview、package、release 等改动类型选择检查命令。
 - [数据契约](docs/data-contracts.md)：state root、raw window、summary、registry、curated pack、host context、overview data 和脱敏样例 fixture 的字段边界。

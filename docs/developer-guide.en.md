@@ -2,7 +2,7 @@
 
 > Languages: English | [简体中文](developer-guide.md)
 
-This guide targets developers who maintain, extend, or release OpenRelix at the current `0.3.3` code shape. It complements [Technical Solution](technical-solution.en.md), [System Overview](system-overview.md), [Contributor Onboarding](contributor-onboarding.md), [Data Contracts](data-contracts.md), [Validation Matrix](validation-matrix.md), and [Privacy Threat Model](privacy-threat-model.md).
+This guide targets developers who maintain, extend, or release OpenRelix at the current `0.3.4` code shape. It complements [Technical Solution](technical-solution.en.md), [System Overview](system-overview.md), [Contributor Onboarding](contributor-onboarding.md), [Data Contracts](data-contracts.md), [Validation Matrix](validation-matrix.md), and [Privacy Threat Model](privacy-threat-model.md).
 
 ## First Boundary To Understand
 
