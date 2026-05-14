@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OpenRelix 本地文档</title>
+  <link rel="icon" href="../docs/openrelix-icon.png">
+  <style>
+:root {
+  color-scheme: light;
+  --ink: #181a1f;
+  --muted: #626873;
+  --paper: #ffffff;
+  --paper-soft: #f7f8f5;
+  --line: #dedfd9;
+  --accent: #0f766e;
+  --accent-soft: #e6f4f1;
+  --radius: 8px;
+  --max: 1180px;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  color: var(--ink);
+  background: var(--paper-soft);
+  font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+  line-height: 1.6;
+}
+a { color: inherit; text-decoration: none; }
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  border-bottom: 1px solid rgba(222, 223, 217, 0.9);
+  background: rgba(255,255,255,0.94);
+  backdrop-filter: blur(16px);
+}
+.topbar-inner {
+  width: min(var(--max), calc(100% - 32px));
+  min-height: 64px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 760;
+}
+.brand img { width: 30px; height: 30px; border-radius: 7px; }
+.topnav {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.topnav::-webkit-scrollbar { display: none; }
+.topnav a,
+.doc-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #fff;
+  font-weight: 740;
+}
+.topnav a.active,
+.topnav a:hover,
+.doc-link:hover {
+  border-color: #bddbd5;
+  background: var(--accent-soft);
+  color: #0f5f59;
+}
+.hero {
+  width: min(var(--max), calc(100% - 32px));
+  margin: 54px auto 30px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 420px);
+  gap: 40px;
+  align-items: end;
+}
+.kicker {
+  color: var(--accent);
+  font-weight: 820;
+  margin: 0 0 12px;
+}
+h1 {
+  margin: 0;
+  font-size: clamp(2.2rem, 5vw, 3.9rem);
+  line-height: 1.05;
+  letter-spacing: 0;
+}
+.hero-copy {
+  margin: 0;
+  color: var(--muted);
+  font-size: clamp(1.08rem, 2vw, 1.32rem);
+}
+.guide-card {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--paper);
+  padding: 24px;
+}
+.guide-card h2 { margin: 0 0 8px; font-size: 1.28rem; }
+.guide-card p { margin: 0 0 18px; color: var(--muted); }
+.primary-link {
+  display: inline-flex;
+  min-height: 40px;
+  align-items: center;
+  padding: 0 18px;
+  border-radius: 999px;
+  background: #101827;
+  color: #fff;
+  font-weight: 800;
+}
+.docs {
+  width: min(var(--max), calc(100% - 32px));
+  margin: 0 auto 72px;
+}
+.docs-head {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 18px;
+  margin: 36px 0 18px;
+}
+.docs-head h2 { margin: 0; font-size: clamp(1.7rem, 3vw, 2.3rem); }
+.docs-head p { margin: 0; color: var(--muted); }
+.grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+.doc-card {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--paper);
+  padding: 18px;
+}
+.doc-card h3 {
+  margin: 0 0 8px;
+  font-size: 1.08rem;
+  line-height: 1.28;
+}
+.doc-source {
+  margin: 0 0 14px;
+  color: var(--muted);
+  font-size: 0.94rem;
+}
+.doc-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.note {
+  margin-top: 24px;
+  color: var(--muted);
+  font-size: 0.96rem;
+}
+code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  background: #eef4f1;
+  border: 1px solid #d9e7e2;
+  padding: 1px 5px;
+  border-radius: 5px;
+}
+@media (max-width: 860px) {
+  .topbar-inner { align-items: flex-start; flex-direction: column; padding: 12px 0; gap: 10px; }
+  .topnav { width: 100%; margin-left: 0; }
+  .hero { grid-template-columns: 1fr; margin-top: 30px; }
+  .grid { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="index.html">
+        <img src="../docs/openrelix-icon.png" alt="">
+        <span>OpenRelix</span>
+      </a>
+      <nav class="topnav" aria-label="Local docs navigation">
+        <a class="active" href="index.html">文档首页</a>
+        <a href="developer-guide.html">图解指南</a>
+        <a href="reference/developer-guide.html">开发者详细指南</a>
+      </nav>
+    </div>
+  </header>
+  <main>
+    <section class="hero">
+      <div>
+        <p class="kicker">资料入口 / Local Docs</p>
+        <h1>每份 Markdown，都有一份本地 HTML。</h1>
+      </div>
+      <div class="guide-card">
+        <h2>先看开发者详细指南</h2>
+        <p>完整开发路径、仓库地图、验证和排障都合在这一份；需要图解时再看图解指南。</p>
+        <a class="primary-link" href="reference/developer-guide.html">打开开发者详细指南</a>
+      </div>
+    </section>
+    <section class="docs">
+      <div class="docs-head">
+        <div>
+          <h2>文档列表</h2>
+          <p>中文和英文按同一主题放在一起；点击后进入对应 HTML 页面。</p>
+        </div>
+      </div>
+      <div class="grid">
+        <article class="doc-card">
+  <h3>OpenRelix 文档索引</h3>
+  <p class="doc-source">源文件：<code>README.zh-CN.md / README.md</code></p>
+  <div class="doc-actions"><a class="doc-link" href="reference/README.zh-CN.html">中文</a><a class="doc-link" href="reference/README.html">EN</a></div>
+</article><article class="doc-card">
+  <h3>OpenRelix 数据契约</h3>
+  <p class="doc-source">源文件：<code>data-contracts.zh-CN.md / data-contracts.md</code></p>
+  <div class="doc-actions"><a class="doc-link" href="reference/data-contracts.zh-CN.html">中文</a><a class="doc-link" href="reference/data-contracts.html">EN</a></div>
+</article><article class="doc-card">
+  <h3>OpenRelix 开发者详细指南</h3>
+  <p class="doc-source">源文件：<code>developer-guide.md / developer-guide.en.md</code></p>
+  <div class="doc-actions"><a class="doc-link" href="reference/developer-guide.html">中文</a><a class="doc-link" href="reference/developer-guide.en.html">EN</a></div>
+</article><article class="doc-card">
+  <h3>指标字典</h3>
+  <p class="doc-source">源文件：<code>metric-dictionary.zh-CN.md / metric-dictionary.md</code></p>
+  <div class="doc-actions"><a class="doc-link" href="reference/metric-dictionary.zh-CN.html">中文</a><a class="doc-link" href="reference/metric-dictionary.html">EN</a></div>
+</article><article class="doc-card">
+  <h3>OpenRelix™ 开源安装说明与项目说明</h3>
+  <p class="doc-source">源文件：<code>open-source-install-and-project-overview.md / open-source-install-and-project-overview.en.md</code></p>
+  <div class="doc-actions"><a class="doc-link" href="reference/open-source-install-and-project-overview.html">中文</a><a class="doc-link" href="reference/open-source-install-and-project-overview.en.html">EN</a></div>
+</article><article class="doc-card">
+  <h3>隐私与分发边界</h3>
+  <p class="doc-source">源文件：<code>privacy-and-distribution.zh-CN.md / privacy-and-distribution.md</code></p>
+  <div class="doc-actions"><a class="doc-link" href="reference/privacy-and-distribution.zh-CN.html">中文</a><a class="doc-link" href="reference/privacy-and-distribution.html">EN</a></div>
+</article><article class="doc-card">
+  <h3>OpenRelix 隐私威胁模型</h3>
+  <p class="doc-source">源文件：<code>privacy-threat-model.zh-CN.md / privacy-threat-model.md</code></p>
+  <div class="doc-actions"><a class="doc-link" href="reference/privacy-threat-model.zh-CN.html">中文</a><a class="doc-link" href="reference/privacy-threat-model.html">EN</a></div>
+</article><article class="doc-card">
+  <h3>OpenRelix 发布检查清单</h3>
+  <p class="doc-source">源文件：<code>release-checklist.zh-CN.md / release-checklist.md</code></p>
+  <div class="doc-actions"><a class="doc-link" href="reference/release-checklist.zh-CN.html">中文</a><a class="doc-link" href="reference/release-checklist.html">EN</a></div>
+</article><article class="doc-card">
+  <h3>OpenRelix 系统概览</h3>
+  <p class="doc-source">源文件：<code>system-overview.zh-CN.md / system-overview.md</code></p>
+  <div class="doc-actions"><a class="doc-link" href="reference/system-overview.zh-CN.html">中文</a><a class="doc-link" href="reference/system-overview.html">EN</a></div>
+</article><article class="doc-card">
+  <h3>OpenRelix 技术方案</h3>
+  <p class="doc-source">源文件：<code>technical-solution.md / technical-solution.en.md</code></p>
+  <div class="doc-actions"><a class="doc-link" href="reference/technical-solution.html">中文</a><a class="doc-link" href="reference/technical-solution.en.html">EN</a></div>
+</article><article class="doc-card">
+  <h3>OpenRelix 验证矩阵</h3>
+  <p class="doc-source">源文件：<code>validation-matrix.zh-CN.md / validation-matrix.md</code></p>
+  <div class="doc-actions"><a class="doc-link" href="reference/validation-matrix.zh-CN.html">中文</a><a class="doc-link" href="reference/validation-matrix.html">EN</a></div>
+</article>
+      </div>
+      <p class="note">Markdown 仍是源文件。更新后运行 <code>python3 scripts/build_local_docs.py</code> 重新生成本地 HTML；边写边自动同步可运行 <code>python3 scripts/build_local_docs.py --watch</code>；检查是否同步可运行 <code>python3 scripts/build_local_docs.py --check</code>。</p>
+    </section>
+  </main>
+</body>
+</html>

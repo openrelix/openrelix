@@ -1,0 +1,427 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OpenRelix 系统概览 | OpenRelix Local Docs</title>
+  <link rel="icon" href="../../docs/openrelix-icon.png">
+  <style>
+:root {
+  color-scheme: light;
+  --ink: #181a1f;
+  --muted: #626873;
+  --paper: #ffffff;
+  --paper-soft: #f7f8f5;
+  --line: #dedfd9;
+  --line-strong: #c9cbc4;
+  --accent: #0f766e;
+  --accent-soft: #e6f4f1;
+  --code-bg: #101827;
+  --code-fg: #f8fafc;
+  --radius: 8px;
+  --max: 1180px;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; background: var(--paper-soft); }
+body {
+  margin: 0;
+  color: var(--ink);
+  background: var(--paper-soft);
+  font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+  line-height: 1.68;
+}
+a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 3px; }
+code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 0.94em;
+}
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  border-bottom: 1px solid rgba(222, 223, 217, 0.9);
+  background: rgba(255,255,255,0.94);
+  backdrop-filter: blur(16px);
+}
+.topbar-inner {
+  width: min(var(--max), calc(100% - 32px));
+  min-height: 64px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--ink);
+  font-weight: 760;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.brand img { width: 30px; height: 30px; border-radius: 7px; }
+.topnav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.topnav::-webkit-scrollbar { display: none; }
+.topnav a,
+.lang-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--ink);
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+  background: #fff;
+}
+.topnav a:hover,
+.lang-link:hover,
+.lang-link.active {
+  border-color: #bddbd5;
+  background: var(--accent-soft);
+  color: #0f5f59;
+}
+.shell {
+  width: min(var(--max), calc(100% - 32px));
+  margin: 34px auto 72px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 260px;
+  gap: 28px;
+  align-items: start;
+}
+.article {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--paper);
+  padding: clamp(22px, 4vw, 46px);
+}
+.doc-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  align-items: center;
+  margin-bottom: 24px;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+.doc-meta code { color: var(--ink); background: #f0f1ed; padding: 2px 6px; border-radius: 5px; }
+.language-switch { display: inline-flex; flex-wrap: wrap; gap: 8px; margin-left: auto; }
+.content h1 {
+  margin: 0 0 18px;
+  font-size: clamp(2.1rem, 4vw, 3.2rem);
+  line-height: 1.08;
+  letter-spacing: 0;
+}
+.content h2 {
+  margin: 46px 0 12px;
+  padding-top: 6px;
+  font-size: clamp(1.5rem, 3vw, 2rem);
+  line-height: 1.18;
+  letter-spacing: 0;
+}
+.content h3 {
+  margin: 30px 0 8px;
+  font-size: 1.24rem;
+  line-height: 1.28;
+}
+.content h4 { margin: 24px 0 8px; font-size: 1.04rem; }
+.content p,
+.content li {
+  color: var(--muted);
+  font-size: 1.04rem;
+}
+.content p { margin: 12px 0; }
+.content ul,
+.content ol { padding-left: 1.35em; margin: 12px 0 18px; }
+.content li + li { margin-top: 6px; }
+.content blockquote {
+  margin: 20px 0;
+  padding: 14px 18px;
+  border-left: 4px solid var(--accent);
+  background: var(--accent-soft);
+  border-radius: 0 var(--radius) var(--radius) 0;
+}
+.content blockquote p { margin: 0; color: #33524d; }
+.content pre {
+  margin: 18px 0 24px;
+  padding: 18px;
+  overflow: auto;
+  border-radius: var(--radius);
+  background: var(--code-bg);
+  color: var(--code-fg);
+}
+.content pre code { color: inherit; font-size: 0.96rem; }
+.content :not(pre) > code {
+  color: #0f5f59;
+  background: #eef4f1;
+  border: 1px solid #d9e7e2;
+  padding: 1px 5px;
+  border-radius: 5px;
+}
+.content hr { border: 0; border-top: 1px solid var(--line); margin: 28px 0; }
+.table-wrap {
+  width: 100%;
+  margin: 18px 0 26px;
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 620px;
+  background: #fff;
+}
+th, td {
+  padding: 11px 13px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+th {
+  color: var(--ink);
+  background: #f3f5f0;
+  font-weight: 780;
+}
+td { color: var(--muted); }
+tr:last-child td { border-bottom: 0; }
+.toc {
+  position: sticky;
+  top: 86px;
+  max-height: calc(100vh - 112px);
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--paper);
+  padding: 18px;
+  scrollbar-width: thin;
+}
+.toc-title {
+  margin: 0 0 12px;
+  color: var(--ink);
+  font-size: 0.96rem;
+  font-weight: 800;
+}
+.toc-link {
+  display: block;
+  border-left: 3px solid transparent;
+  border-radius: 7px;
+  padding: 7px 8px 7px 10px;
+  color: var(--muted);
+  text-decoration: none;
+  font-weight: 650;
+  line-height: 1.35;
+}
+.toc-link.sub { padding-left: 24px; font-size: 0.94rem; }
+.toc-link.active,
+.toc-link:hover {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+.toc-link.active {
+  border-left-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
+  font-weight: 800;
+}
+.toc-empty { color: var(--muted); margin: 0; }
+.generated-note {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+@media (max-width: 860px) {
+  .topbar-inner { align-items: flex-start; flex-direction: column; padding: 12px 0; gap: 10px; }
+  .topnav { width: 100%; margin-left: 0; }
+  .shell { grid-template-columns: 1fr; margin-top: 18px; }
+  .toc { position: static; order: -1; }
+  .language-switch { margin-left: 0; }
+}
+</style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="../index.html">
+        <img src="../../docs/openrelix-icon.png" alt="">
+        <span>OpenRelix</span>
+      </a>
+      <nav class="topnav" aria-label="Local docs navigation">
+        <a href="../index.html">文档首页</a>
+        <a href="../developer-guide.html">图解指南</a>
+        <a href="developer-guide.html">开发者详细指南</a>
+      </nav>
+    </div>
+  </header>
+  <main class="shell">
+    <article class="article">
+      <div class="doc-meta">
+        <span>HTML 由 Markdown 生成</span>
+        <span>源文件 <code>docs/system-overview.zh-CN.md</code></span>
+        <span class="language-switch" aria-label="Language versions">
+          <a class="lang-link active" href="system-overview.zh-CN.html">中文</a>
+<a class="lang-link" href="system-overview.html">EN</a>
+        </span>
+      </div>
+      <div class="content">
+<h1 id="openrelix">OpenRelix 系统概览</h1>
+<blockquote><p>语言版本：<a href="system-overview.html">English</a> | 简体中文</p></blockquote>
+<p>面向 AI coding agents 的本地优先记忆和资产系统。</p>
+<h2 id="section">目标</h2>
+<p>构建一套本地优先系统，让 AI coding agents 随着使用逐渐变好，同时不把某个用户的机器布局或某个 AI host 变成产品本身。</p>
+<p>这个仓库服务两个并行目标：</p>
+<ol>
+<li>保存稳定偏好、playbooks 和可复用 workflow assets。</li>
+<li>把这些资产变成可见输出，而不是困在聊天历史里。</li>
+</ol>
+<p>GitHub 项目页：<a href="https://github.com/openrelix/openrelix">openrelix/openrelix</a>。如果项目有帮助，欢迎点星。</p>
+<h2 id="section-2">分层</h2>
+<h3 id="1-host-adapter-layer">1. Host adapter layer</h3>
+<ul>
+<li>当前预览位置：用户的 <code>~/.codex/</code> 目录，以及可选的 <code>~/.claude/</code> 目录。</li>
+<li>作用：host-specific config、可选 global instructions、本地 memories、用户级 installed skills。</li>
+<li>当前预览示例：<code>~/.codex/config.toml</code>、<code>~/.codex/AGENTS.md</code>、<code>~/.codex/skills/</code>、<code>~/.claude/CLAUDE.md</code>。</li>
+<li>所有权：AI host 拥有自己的 native memory/config files。默认 <code>integrated</code> mode 下，本 repo 只写一份 bounded shared summary 用于 context injection；完整 local registries、reviews、raw windows 和 reports 留在 state root。</li>
+</ul>
+<h3 id="2-repo-source-layer">2. Repo source layer</h3>
+<ul>
+<li>位置：本仓库。</li>
+<li>作用：canonical skills、templates、installer logic 和 automation source code。</li>
+<li>示例：<code>.agents/skills/</code>、<code>install/</code>、<code>ops/launchd/</code>、<code>scripts/</code>、<code>templates/</code>。</li>
+</ul>
+<h3 id="3-runtime-state-layer">3. Runtime state layer</h3>
+<ul>
+<li>位置：installer 管理的外部 state root，默认在 repo 外。</li>
+<li>作用：用户数据、采集历史、nightly output、reports、caches 和 logs。</li>
+<li>示例：<code>registry/</code>、<code>reviews/</code>、<code>raw/</code>、<code>consolidated/</code>、<code>reports/</code>、<code>runtime/</code>、<code>log/</code>。</li>
+</ul>
+<h2 id="skill-loading-model">Skill Loading Model</h2>
+<ul>
+<li>当 active AI host 支持 repo-local skills 时，repo-local skills 会自动可发现。当前预览 adapter 目标是 Codex discovery。</li>
+<li>如果同一批 skills 需要在任意仓库可用，就把它们安装到 active host 的用户级 skill root。当前预览 installer 使用 Codex skill root。</li>
+<li>Hooks 不是主要 skill discovery path。它们只是可选 lifecycle automation。</li>
+</ul>
+<h2 id="memory-layering">Memory Layering</h2>
+<ul>
+<li>Host-native memory 由 host 拥有。Codex native memory 位于 <code>~/.codex/memories/</code>；Claude Code native context 可以包含 <code>~/.claude/CLAUDE.md</code>。</li>
+<li>本 repo 把 host-native memory 当作可选 bounded context target 和 upstream signal。panel 可以把 Codex 和 Claude Code native memory 与 local nightly memories 并列展示，同时 OpenRelix 把一份 compressed personal-memory summary 同步到启用的 host contexts。</li>
+<li>repo 自己的 memory layer 位于 active state root。Memory System v2 优先读取 canonical <code>registry/memory_entries.jsonl</code>，并仍然 fallback 到 legacy <code>registry/memory_items.jsonl</code>；reviews、raw windows、consolidated summaries 和 generated reports 与它放在一起。</li>
+<li>生成的 memories 进入可见 registry 前会经过 storage-quality gate：偏好可复用规则、稳定偏好、调试路径、workflow defaults 和 module mappings；问候、登录窗口、重复无结论窗口、一次性 artifact 和模糊 notes 会被丢弃或降级。</li>
+<li>Host context injection 按 scope 控制：<code>effective injection_policy</code> 为 <code>global_context</code> 或 <code>project_context</code> 的 memory entries 可以进入 bounded host summary。global context 最多占 summary budget 的 10%，project context 最多占 30%，两类内部按 heat 选择。legacy/nightly synthesis rows 没有 canonical、manual、approved 或 storage-quality-gated evidence 时，不会提升进 host context。domain、host-native、local-only、never-inject 和 low-priority memories 默认保留在 local registry/index。</li>
+<li>Personal-memory algorithm changes 有版本。增量安装会比较 <code>runtime/config.json</code> 的 stored version 与 code version；当检测到旧 local memory 时，标记 <code>runtime/memory-migration.json</code> pending，让常规 refresh 做 bounded recent-window migration，而不是静默复用旧 summary。</li>
+<li>可重建 SQLite sidecar index 位于 <code>runtime/openrelix-index.sqlite3</code>，用于 memory 和 window lookup。它来自 <code>raw/</code>、<code>registry/</code> 和 <code>consolidated/</code>，删除它不能删除或损坏 source memory records。</li>
+<li>默认 memory mode 是 <code>integrated</code>：local personal memory 记录一次，并把 bounded summary 注入启用的 host-native contexts。<code>--record-memory-only</code> 固定 strict local-only 行为，<code>--disable-personal-memory</code> 关闭 local memory-registry writes。</li>
+<li>Model-backed organization 使用 OpenRelix runtime config，而不是用户 global host default。默认 <code>model_cli</code> 是 Codex，配合 <code>codex exec --model</code> 使用 <code>gpt-5.4-mini</code>；<code>openrelix config --model-cli claude --claude-model sonnet</code> 会切到 Claude Code。用户可以用 <code>openrelix models</code> 检查本地 Codex catalog，用 <code>openrelix tokens --provider all</code> 查询合并 token usage。</li>
+<li>强规则仍然属于 <code>AGENTS.md</code> 或项目文档。Local memory items 是 recall layer，不是必须一直生效规则的唯一来源。</li>
+<li><code>scripts/build_codex_memory_summary.py</code> 会按 token budget 构建 compressed summary：合并重复 personal memories，忽略 legacy <code>MEMORY.md</code> task-group routes 的 injection，按 injection policy 选择 global/project context，按 priority、heat、freshness 排序，把 low-priority 和 on-demand/local entries 留在本地，并让 summary 适配 token budget。</li>
+<li><code>scripts/sync_host_memory_summary.py</code> 只写 enabled host targets 中的 OpenRelix-managed blocks，保留 Codex / Claude Code native content。当前 Codex <code>[features].memories = false</code> 时，会报告 disabled，不更新 <code>memory_summary.md</code>。</li>
+</ul>
+<h2 id="daily-workflow">Daily Workflow</h2>
+<ol>
+<li>先服从最近的 repo instructions。</li>
+<li>完成任务。</li>
+<li>如果结果可复用，在 active state root 写 sanitized task review。</li>
+<li>添加或更新对应 asset entry。</li>
+<li>如果已有 asset 对本次工作有实质帮助，追加 usage event。</li>
+<li>重建 overview 和 panel。</li>
+</ol>
+<h2 id="section-3">什么算资产</h2>
+<ul>
+<li>Playbooks。</li>
+<li>Debugging recipes。</li>
+<li>Verification checklists。</li>
+<li>Reusable prompts。</li>
+<li>Templates。</li>
+<li>Scripts。</li>
+<li>Skills。</li>
+<li>Architecture 或 module maps。</li>
+</ul>
+<h2 id="section-4">不应该存什么</h2>
+<ul>
+<li>Secrets 或 credentials。</li>
+<li>用户数据或个人身份信息。</li>
+<li>原始 proprietary task context。</li>
+<li>大段内部 logs。</li>
+<li>未脱敏 screenshots。</li>
+<li>某台机器专属的绝对路径。</li>
+<li>只有一次意义的聊天片段。</li>
+</ul>
+      </div>
+    </article>
+    <aside class="toc" aria-label="Table of contents">
+      <p class="toc-title">本文导览</p>
+      <a class="toc-link" href="#section">目标</a>
+<a class="toc-link" href="#section-2">分层</a>
+<a class="toc-link sub" href="#1-host-adapter-layer">1. Host adapter layer</a>
+<a class="toc-link sub" href="#2-repo-source-layer">2. Repo source layer</a>
+<a class="toc-link sub" href="#3-runtime-state-layer">3. Runtime state layer</a>
+<a class="toc-link" href="#skill-loading-model">Skill Loading Model</a>
+<a class="toc-link" href="#memory-layering">Memory Layering</a>
+<a class="toc-link" href="#daily-workflow">Daily Workflow</a>
+<a class="toc-link" href="#section-3">什么算资产</a>
+<a class="toc-link" href="#section-4">不应该存什么</a>
+      <p class="generated-note">更新源 Markdown 后运行：<br><code>python3 scripts/build_local_docs.py</code><br>持续自动同步：<br><code>python3 scripts/build_local_docs.py --watch</code></p>
+    </aside>
+  </main>
+  <script>
+    (() => {
+      const toc = document.querySelector(".toc");
+      const links = Array.from(document.querySelectorAll(".toc-link"));
+      const headings = links
+        .map((link) => document.getElementById(decodeURIComponent(link.hash.slice(1))))
+        .filter(Boolean);
+      if (!links.length || !headings.length) return;
+      let lastActiveId = "";
+      const applyActive = (activeId) => {
+        let activeLink = null;
+        links.forEach((link) => {
+          const isActive = link.hash === "#" + activeId;
+          link.classList.toggle("active", isActive);
+          link.setAttribute("aria-current", isActive ? "true" : "false");
+          if (isActive) activeLink = link;
+        });
+        if (activeLink && toc && activeId !== lastActiveId) {
+          activeLink.scrollIntoView({ block: "nearest", inline: "nearest" });
+          lastActiveId = activeId;
+        }
+      };
+      const getScrollActiveId = () => {
+        const marker = Math.min(window.innerHeight * 0.42, 260);
+        let activeId = headings[0].id;
+        for (const heading of headings) {
+          if (heading.getBoundingClientRect().top <= marker) activeId = heading.id;
+          else break;
+        }
+        return activeId;
+      };
+      const setActive = () => applyActive(getScrollActiveId());
+      const setHashActive = () => {
+        const hashId = decodeURIComponent(window.location.hash.slice(1));
+        if (hashId && headings.some((heading) => heading.id === hashId)) {
+          applyActive(hashId);
+        }
+        requestAnimationFrame(setActive);
+        window.setTimeout(setActive, 160);
+        window.setTimeout(setActive, 520);
+      };
+      window.addEventListener("scroll", setActive, { passive: true });
+      window.addEventListener("resize", setActive);
+      window.addEventListener("hashchange", setHashActive);
+      setHashActive();
+    })();
+  </script>
+</body>
+</html>

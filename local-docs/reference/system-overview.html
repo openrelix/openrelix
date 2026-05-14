@@ -1,0 +1,437 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OpenRelix System Overview | OpenRelix Local Docs</title>
+  <link rel="icon" href="../../docs/openrelix-icon.png">
+  <style>
+:root {
+  color-scheme: light;
+  --ink: #181a1f;
+  --muted: #626873;
+  --paper: #ffffff;
+  --paper-soft: #f7f8f5;
+  --line: #dedfd9;
+  --line-strong: #c9cbc4;
+  --accent: #0f766e;
+  --accent-soft: #e6f4f1;
+  --code-bg: #101827;
+  --code-fg: #f8fafc;
+  --radius: 8px;
+  --max: 1180px;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; background: var(--paper-soft); }
+body {
+  margin: 0;
+  color: var(--ink);
+  background: var(--paper-soft);
+  font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+  line-height: 1.68;
+}
+a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 3px; }
+code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 0.94em;
+}
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  border-bottom: 1px solid rgba(222, 223, 217, 0.9);
+  background: rgba(255,255,255,0.94);
+  backdrop-filter: blur(16px);
+}
+.topbar-inner {
+  width: min(var(--max), calc(100% - 32px));
+  min-height: 64px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--ink);
+  font-weight: 760;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.brand img { width: 30px; height: 30px; border-radius: 7px; }
+.topnav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.topnav::-webkit-scrollbar { display: none; }
+.topnav a,
+.lang-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--ink);
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+  background: #fff;
+}
+.topnav a:hover,
+.lang-link:hover,
+.lang-link.active {
+  border-color: #bddbd5;
+  background: var(--accent-soft);
+  color: #0f5f59;
+}
+.shell {
+  width: min(var(--max), calc(100% - 32px));
+  margin: 34px auto 72px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 260px;
+  gap: 28px;
+  align-items: start;
+}
+.article {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--paper);
+  padding: clamp(22px, 4vw, 46px);
+}
+.doc-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  align-items: center;
+  margin-bottom: 24px;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+.doc-meta code { color: var(--ink); background: #f0f1ed; padding: 2px 6px; border-radius: 5px; }
+.language-switch { display: inline-flex; flex-wrap: wrap; gap: 8px; margin-left: auto; }
+.content h1 {
+  margin: 0 0 18px;
+  font-size: clamp(2.1rem, 4vw, 3.2rem);
+  line-height: 1.08;
+  letter-spacing: 0;
+}
+.content h2 {
+  margin: 46px 0 12px;
+  padding-top: 6px;
+  font-size: clamp(1.5rem, 3vw, 2rem);
+  line-height: 1.18;
+  letter-spacing: 0;
+}
+.content h3 {
+  margin: 30px 0 8px;
+  font-size: 1.24rem;
+  line-height: 1.28;
+}
+.content h4 { margin: 24px 0 8px; font-size: 1.04rem; }
+.content p,
+.content li {
+  color: var(--muted);
+  font-size: 1.04rem;
+}
+.content p { margin: 12px 0; }
+.content ul,
+.content ol { padding-left: 1.35em; margin: 12px 0 18px; }
+.content li + li { margin-top: 6px; }
+.content blockquote {
+  margin: 20px 0;
+  padding: 14px 18px;
+  border-left: 4px solid var(--accent);
+  background: var(--accent-soft);
+  border-radius: 0 var(--radius) var(--radius) 0;
+}
+.content blockquote p { margin: 0; color: #33524d; }
+.content pre {
+  margin: 18px 0 24px;
+  padding: 18px;
+  overflow: auto;
+  border-radius: var(--radius);
+  background: var(--code-bg);
+  color: var(--code-fg);
+}
+.content pre code { color: inherit; font-size: 0.96rem; }
+.content :not(pre) > code {
+  color: #0f5f59;
+  background: #eef4f1;
+  border: 1px solid #d9e7e2;
+  padding: 1px 5px;
+  border-radius: 5px;
+}
+.content hr { border: 0; border-top: 1px solid var(--line); margin: 28px 0; }
+.table-wrap {
+  width: 100%;
+  margin: 18px 0 26px;
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 620px;
+  background: #fff;
+}
+th, td {
+  padding: 11px 13px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+th {
+  color: var(--ink);
+  background: #f3f5f0;
+  font-weight: 780;
+}
+td { color: var(--muted); }
+tr:last-child td { border-bottom: 0; }
+.toc {
+  position: sticky;
+  top: 86px;
+  max-height: calc(100vh - 112px);
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--paper);
+  padding: 18px;
+  scrollbar-width: thin;
+}
+.toc-title {
+  margin: 0 0 12px;
+  color: var(--ink);
+  font-size: 0.96rem;
+  font-weight: 800;
+}
+.toc-link {
+  display: block;
+  border-left: 3px solid transparent;
+  border-radius: 7px;
+  padding: 7px 8px 7px 10px;
+  color: var(--muted);
+  text-decoration: none;
+  font-weight: 650;
+  line-height: 1.35;
+}
+.toc-link.sub { padding-left: 24px; font-size: 0.94rem; }
+.toc-link.active,
+.toc-link:hover {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+.toc-link.active {
+  border-left-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
+  font-weight: 800;
+}
+.toc-empty { color: var(--muted); margin: 0; }
+.generated-note {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+@media (max-width: 860px) {
+  .topbar-inner { align-items: flex-start; flex-direction: column; padding: 12px 0; gap: 10px; }
+  .topnav { width: 100%; margin-left: 0; }
+  .shell { grid-template-columns: 1fr; margin-top: 18px; }
+  .toc { position: static; order: -1; }
+  .language-switch { margin-left: 0; }
+}
+</style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="../index.html">
+        <img src="../../docs/openrelix-icon.png" alt="">
+        <span>OpenRelix</span>
+      </a>
+      <nav class="topnav" aria-label="Local docs navigation">
+        <a href="../index.html">Docs home</a>
+        <a href="../developer-guide.html">Visual guide</a>
+        <a href="developer-guide.html">Detailed guide</a>
+      </nav>
+    </div>
+  </header>
+  <main class="shell">
+    <article class="article">
+      <div class="doc-meta">
+        <span>Generated from Markdown</span>
+        <span>Source <code>docs/system-overview.md</code></span>
+        <span class="language-switch" aria-label="Language versions">
+          <a class="lang-link" href="system-overview.zh-CN.html">中文</a>
+<a class="lang-link active" href="system-overview.html">EN</a>
+        </span>
+      </div>
+      <div class="content">
+<h1 id="openrelix-system-overview">OpenRelix System Overview</h1>
+<blockquote><p>Languages: English | <a href="system-overview.zh-CN.html">简体中文</a></p></blockquote>
+<p>Local-first memory and asset system for AI coding agents</p>
+<h2 id="goal">Goal</h2>
+<p>Build a local-first system that helps AI coding agents improve over time without turning one user&#x27;s machine layout or one AI host into the product.</p>
+<p>This repository serves two parallel goals:</p>
+<ol>
+<li>Preserve durable preferences, playbooks, and reusable workflow assets.</li>
+<li>Turn those assets into visible output instead of leaving them trapped in chat history.</li>
+</ol>
+<p>GitHub project page: <a href="https://github.com/openrelix/openrelix">openrelix/openrelix</a>. Stars are welcome if the project is useful to you.</p>
+<h2 id="layering">Layering</h2>
+<h3 id="1-host-adapter-layer">1. Host adapter layer</h3>
+<ul>
+<li>Current preview locations: the user&#x27;s <code>~/.codex/</code> directory and optional <code>~/.claude/</code> directory</li>
+<li>Purpose: host-specific config, optional global instructions, local memories, and user-level installed skills</li>
+<li>Current preview examples: <code>~/.codex/config.toml</code>, <code>~/.codex/AGENTS.md</code>, <code>~/.codex/skills/</code>, <code>~/.claude/CLAUDE.md</code></li>
+<li>Ownership: the AI host owns its native memory/config files. In the default <code>integrated</code> mode this repo writes only a bounded shared summary for context injection; full local registries, reviews, raw windows, and reports stay in the state root.</li>
+</ul>
+<h3 id="2-repo-source-layer">2. Repo source layer</h3>
+<ul>
+<li>Location: this repository</li>
+<li>Purpose: canonical skills, templates, installer logic, and automation source code</li>
+<li>Examples: <code>.agents/skills/</code>, <code>install/</code>, <code>ops/launchd/</code>, <code>scripts/</code>, <code>templates/</code></li>
+</ul>
+<h3 id="3-runtime-state-layer">3. Runtime state layer</h3>
+<ul>
+<li>Location: installer-managed state root outside the repo by default</li>
+<li>Purpose: user data, collected history, nightly output, reports, caches, and logs</li>
+<li>Examples: <code>registry/</code>, <code>reviews/</code>, <code>raw/</code>, <code>consolidated/</code>, <code>reports/</code>, <code>runtime/</code>, <code>log/</code></li>
+</ul>
+<h2 id="skill-loading-model">Skill loading model</h2>
+<ul>
+<li>Repo-local skills are automatically discoverable when the active AI host supports repo-local skills. The current preview adapter targets Codex discovery.</li>
+<li>If the same skills should be available from any repository, install them into the user-level skill root for the active host. The current preview installer uses the Codex skill root.</li>
+<li>Hooks are not the primary skill discovery path. They are optional lifecycle automation.</li>
+</ul>
+<h2 id="memory-layering">Memory layering</h2>
+<ul>
+<li>Host-native memory is owned by the host. Codex native memory lives under <code>~/.codex/memories/</code>; Claude Code native context can include <code>~/.claude/CLAUDE.md</code>.</li>
+<li>This repo treats host-native memory as an optional bounded context target and upstream signal. The panel can display Codex and Claude Code native memory alongside local nightly memories, while OpenRelix syncs one compressed personal-memory summary into enabled host contexts.</li>
+<li>This repo&#x27;s own memory layer lives in the active state root. Memory System v2 can read the canonical <code>registry/memory_entries.jsonl</code> first and still falls back to the legacy <code>registry/memory_items.jsonl</code>; reviews, raw windows, consolidated summaries, and generated reports stay alongside it.</li>
+<li>Generated memories pass a storage-quality gate before entering the visible registry: reusable rules, stable preferences, debugging paths, workflow defaults, and module mappings are favored; greetings, login-only windows, repeated no-conclusion windows, one-off artifacts, and vague notes are dropped or demoted to low priority.</li>
+<li>Host context injection is scoped: memory entries whose effective <code>injection_policy</code> is <code>global_context</code> or <code>project_context</code> can enter one bounded host summary. Global context is capped at 10% of the configured summary budget, project context is capped at 30%, and both categories are selected by heat within their own budgets. Legacy/nightly synthesis rows are not promoted into host context without canonical, manual, approved, or storage-quality-gated evidence. Domain, host-native, local-only, never-inject, and low-priority memories remain available to the local registry/index without entering host context by default.</li>
+<li>Personal-memory algorithm changes are versioned. Incremental installs compare the stored version in <code>runtime/config.json</code> with the code version, mark <code>runtime/memory-migration.json</code> pending when older local memory exists, and let normal refresh run a bounded recent-window migration instead of silently reusing stale summaries.</li>
+<li>A rebuildable SQLite sidecar index lives under <code>runtime/openrelix-index.sqlite3</code> for memory and window lookup. It is derived from <code>raw/</code>, <code>registry/</code>, and <code>consolidated/</code>; deleting it must not delete or corrupt the source memory records.</li>
+<li>The default memory mode is <code>integrated</code>: local personal memory is recorded once, and a bounded summary is injected into enabled host-native contexts. <code>--record-memory-only</code> pins strict local-only behavior, and <code>--disable-personal-memory</code> turns off local memory-registry writes.</li>
+<li>Model-backed organization uses OpenRelix runtime config rather than the user&#x27;s global host default. The default <code>model_cli</code> is Codex with <code>gpt-5.4-mini</code> passed through <code>codex exec --model</code>; <code>openrelix config --model-cli claude --claude-model sonnet</code> switches consolidation to Claude Code through <code>claude -p</code>. Users can inspect the current local Codex catalog with <code>openrelix models</code> and query merged token usage with <code>openrelix tokens --provider all</code>.</li>
+<li>Required rules still belong in <code>AGENTS.md</code> or project docs. Local memory items are a recall layer, not the only source for behavior that must always apply.</li>
+<li><code>scripts/build_codex_memory_summary.py</code> builds a compressed summary with a token budget: merge duplicate personal memories, ignore legacy <code>MEMORY.md</code> task-group routes for injection, select eligible global/project context by injection policy, prioritize by priority / heat / freshness, keep low-priority and on-demand/local entries local, and fit the injected summary around a configurable token budget. <code>scripts/sync_host_memory_summary.py</code> writes the unified summary only into OpenRelix-managed blocks in enabled host targets, preserving Codex / Claude Code native content outside those blocks, and reports Codex as disabled instead of updating <code>memory_summary.md</code> when <code>[features].memories = false</code>. The default maximum is 8K tokens, target / warning budgets are derived automatically from that max, and there is no fixed item cap for personal-memory candidates. Users can change the max through <code>openrelix config --memory-summary-max-tokens &lt;tokens&gt;</code> within the supported 2000-20000 range. Strict local-only runs keep it out of host-native context.</li>
+</ul>
+<h2 id="daily-workflow">Daily workflow</h2>
+<ol>
+<li>Use the nearest repo instructions first.</li>
+<li>Solve the task.</li>
+<li>If the result is reusable, write a sanitized task review in the active state root.</li>
+<li>Add or update the corresponding asset entry.</li>
+<li>If an existing asset materially helped, append a usage event.</li>
+<li>Rebuild the overview and panel.</li>
+</ol>
+<h2 id="what-qualifies-as-an-asset">What qualifies as an asset</h2>
+<ul>
+<li>Playbooks</li>
+<li>Debugging recipes</li>
+<li>Verification checklists</li>
+<li>Reusable prompts</li>
+<li>Templates</li>
+<li>Scripts</li>
+<li>Skills</li>
+<li>Architecture or module maps</li>
+</ul>
+<h2 id="what-should-not-be-stored">What should not be stored</h2>
+<ul>
+<li>Secrets or credentials</li>
+<li>User data or personally identifiable data</li>
+<li>Raw internal logs</li>
+<li>Unredacted incident details</li>
+<li>Large proprietary code excerpts unless there is an explicit local-only reason</li>
+<li>One-off chat content with no reuse value</li>
+</ul>
+<h2 id="visualization">Visualization</h2>
+<p>The overview should emphasize:</p>
+<ul>
+<li>Efficiency: reuse events, tracked minutes saved, and repeat-task speedups</li>
+<li>Knowledge capital: total reusable assets, growth by month, and type/domain mix</li>
+<li>Business impact: assets tied to delivery, debugging, review quality, or risk reduction</li>
+<li>Influence: assets promoted from personal use to repo or team use</li>
+</ul>
+<h2 id="optional-future-extension">Optional future extension</h2>
+<p>If a third-party memory layer is needed later, prefer a local or self-hosted deployment first. Keep cloud memory optional and behind explicit privacy review.</p>
+      </div>
+    </article>
+    <aside class="toc" aria-label="Table of contents">
+      <p class="toc-title">On this page</p>
+      <a class="toc-link" href="#goal">Goal</a>
+<a class="toc-link" href="#layering">Layering</a>
+<a class="toc-link sub" href="#1-host-adapter-layer">1. Host adapter layer</a>
+<a class="toc-link sub" href="#2-repo-source-layer">2. Repo source layer</a>
+<a class="toc-link sub" href="#3-runtime-state-layer">3. Runtime state layer</a>
+<a class="toc-link" href="#skill-loading-model">Skill loading model</a>
+<a class="toc-link" href="#memory-layering">Memory layering</a>
+<a class="toc-link" href="#daily-workflow">Daily workflow</a>
+<a class="toc-link" href="#what-qualifies-as-an-asset">What qualifies as an asset</a>
+<a class="toc-link" href="#what-should-not-be-stored">What should not be stored</a>
+<a class="toc-link" href="#visualization">Visualization</a>
+<a class="toc-link" href="#optional-future-extension">Optional future extension</a>
+      <p class="generated-note">After editing Markdown:<br><code>python3 scripts/build_local_docs.py</code><br>Auto-sync while editing:<br><code>python3 scripts/build_local_docs.py --watch</code></p>
+    </aside>
+  </main>
+  <script>
+    (() => {
+      const toc = document.querySelector(".toc");
+      const links = Array.from(document.querySelectorAll(".toc-link"));
+      const headings = links
+        .map((link) => document.getElementById(decodeURIComponent(link.hash.slice(1))))
+        .filter(Boolean);
+      if (!links.length || !headings.length) return;
+      let lastActiveId = "";
+      const applyActive = (activeId) => {
+        let activeLink = null;
+        links.forEach((link) => {
+          const isActive = link.hash === "#" + activeId;
+          link.classList.toggle("active", isActive);
+          link.setAttribute("aria-current", isActive ? "true" : "false");
+          if (isActive) activeLink = link;
+        });
+        if (activeLink && toc && activeId !== lastActiveId) {
+          activeLink.scrollIntoView({ block: "nearest", inline: "nearest" });
+          lastActiveId = activeId;
+        }
+      };
+      const getScrollActiveId = () => {
+        const marker = Math.min(window.innerHeight * 0.42, 260);
+        let activeId = headings[0].id;
+        for (const heading of headings) {
+          if (heading.getBoundingClientRect().top <= marker) activeId = heading.id;
+          else break;
+        }
+        return activeId;
+      };
+      const setActive = () => applyActive(getScrollActiveId());
+      const setHashActive = () => {
+        const hashId = decodeURIComponent(window.location.hash.slice(1));
+        if (hashId && headings.some((heading) => heading.id === hashId)) {
+          applyActive(hashId);
+        }
+        requestAnimationFrame(setActive);
+        window.setTimeout(setActive, 160);
+        window.setTimeout(setActive, 520);
+      };
+      window.addEventListener("scroll", setActive, { passive: true });
+      window.addEventListener("resize", setActive);
+      window.addEventListener("hashchange", setHashActive);
+      setHashActive();
+    })();
+  </script>
+</body>
+</html>

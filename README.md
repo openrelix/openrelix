@@ -22,27 +22,22 @@ GitHub project page: [openrelix/openrelix](https://github.com/openrelix/openreli
 - `plugins/`: packaged Codex plugin bundles for shared skills.
 - `scripts/`: collectors, nightly consolidation, overview generation, and token live server.
 - `templates/`: review schema, asset entry templates, and asset / skill generation templates.
-- `docs/`: operating model, technical design, learning guide, privacy boundary, and reporting notes.
+- `docs/`: operating model, technical design, developer guide, privacy boundary, and reporting notes.
 
 ## Documentation
 
 - [Docs Index](docs/README.md): bilingual map for agent-readable Markdown docs and rich HTML pages.
 - [Technical Solution](docs/technical-solution.md): architecture, data flow, module responsibilities, runtime state, and release boundaries.
-- [Developer Guide](docs/developer-guide.md): contributor-oriented guide for the v0.3.4 code structure, edit boundaries, and validation workflow.
-- [Contributor Onboarding](docs/contributor-onboarding.md): 10-minute local loop, task card template, review checklist, and contributor handoff rules.
+- [Detailed Developer Guide](docs/developer-guide.md): 10-minute local loop, repository map, common task paths, task card template, validation workflow, and contributor handoff rules.
 - [Validation Matrix](docs/validation-matrix.md): change-type specific checks for docs, scripts, installer, memory, overview, package, and release work.
 - [Data Contracts](docs/data-contracts.md): state-root layout, raw windows, summaries, registries, curated pack, host context, overview data, and sample fixture contracts.
 - [Privacy Threat Model](docs/privacy-threat-model.md): contributor and connector privacy gates for host data, runtime state, package surface, and external integrations.
 - [Release Checklist](docs/release-checklist.md): version, changelog, package, GitHub release, npm, and public-doc release gates.
-- [Learning Guide](docs/learning-guide.md): a practical path for users, contributors, and maintainers to understand and validate the project.
 - [Open Source Install And Project Overview](docs/open-source-install-and-project-overview.md): Chinese install guide and project explanation for the current macOS preview release.
 - [Product Showcase](docs/product-showcase.html): visual product introduction and sanitized panel previews.
 - [Getting Started Guide](docs/getting-started.html): user-facing panel guide with real Chinese / English UI example screenshots and section-by-section usage notes for the core panel modules.
 - [System Overview](docs/system-overview.md): layered operating model for AI hosts, repo source, runtime state, and local memory.
 - [Privacy And Distribution Boundary](docs/privacy-and-distribution.md): what belongs in the public repo and what must stay local.
-- [Trademark Filing Kit](docs/trademark-filing-kit.md): filing checklist and open source brand boundary notes.
-- [Dual Trademark Filing Action Sheet](docs/trademark-dual-filing-action-sheet.md): U.S. and China same-day filing packet for the `OPENRELIX` word mark.
-- [China Trademark Filing Kit](docs/china-chinese-trademark-filing-kit.md): China filing packet for the `OPENRELIX` word mark.
 - [Metric Dictionary](docs/metric-dictionary.md): counting rules and interpretation notes for generated reports and the panel.
 
 ## Public showcase

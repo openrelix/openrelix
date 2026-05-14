@@ -1,0 +1,448 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OpenRelix Privacy Threat Model | OpenRelix Developer Docs</title>
+  <link rel="icon" href="../../openrelix-icon.png">
+  <style>
+:root {
+  color-scheme: light;
+  --ink: #181a1f;
+  --muted: #626873;
+  --paper: #ffffff;
+  --paper-soft: #f7f8f5;
+  --line: #dedfd9;
+  --line-strong: #c9cbc4;
+  --accent: #0f766e;
+  --accent-soft: #e6f4f1;
+  --code-bg: #101827;
+  --code-fg: #f8fafc;
+  --radius: 8px;
+  --max: 1180px;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; background: var(--paper-soft); }
+body {
+  margin: 0;
+  color: var(--ink);
+  background: var(--paper-soft);
+  font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+  line-height: 1.68;
+}
+a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 3px; }
+code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 0.94em;
+}
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  border-bottom: 1px solid rgba(222, 223, 217, 0.9);
+  background: rgba(255,255,255,0.94);
+  backdrop-filter: blur(16px);
+}
+.topbar-inner {
+  width: min(var(--max), calc(100% - 32px));
+  min-height: 64px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--ink);
+  font-weight: 760;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.brand img { width: 30px; height: 30px; border-radius: 7px; }
+.topnav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.topnav::-webkit-scrollbar { display: none; }
+.topnav a,
+.lang-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--ink);
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+  background: #fff;
+}
+.topnav a:hover,
+.lang-link:hover,
+.lang-link.active {
+  border-color: #bddbd5;
+  background: var(--accent-soft);
+  color: #0f5f59;
+}
+.shell {
+  width: min(var(--max), calc(100% - 32px));
+  margin: 34px auto 72px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 260px;
+  gap: 28px;
+  align-items: start;
+}
+.article {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--paper);
+  padding: clamp(22px, 4vw, 46px);
+}
+.doc-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  align-items: center;
+  margin-bottom: 24px;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+.doc-meta code { color: var(--ink); background: #f0f1ed; padding: 2px 6px; border-radius: 5px; }
+.language-switch { display: inline-flex; flex-wrap: wrap; gap: 8px; margin-left: auto; }
+.content h1 {
+  margin: 0 0 18px;
+  font-size: clamp(2.1rem, 4vw, 3.2rem);
+  line-height: 1.08;
+  letter-spacing: 0;
+}
+.content h2 {
+  margin: 46px 0 12px;
+  padding-top: 6px;
+  font-size: clamp(1.5rem, 3vw, 2rem);
+  line-height: 1.18;
+  letter-spacing: 0;
+}
+.content h3 {
+  margin: 30px 0 8px;
+  font-size: 1.24rem;
+  line-height: 1.28;
+}
+.content h4 { margin: 24px 0 8px; font-size: 1.04rem; }
+.content p,
+.content li {
+  color: var(--muted);
+  font-size: 1.04rem;
+}
+.content p { margin: 12px 0; }
+.content ul,
+.content ol { padding-left: 1.35em; margin: 12px 0 18px; }
+.content li + li { margin-top: 6px; }
+.content blockquote {
+  margin: 20px 0;
+  padding: 14px 18px;
+  border-left: 4px solid var(--accent);
+  background: var(--accent-soft);
+  border-radius: 0 var(--radius) var(--radius) 0;
+}
+.content blockquote p { margin: 0; color: #33524d; }
+.content pre {
+  margin: 18px 0 24px;
+  padding: 18px;
+  overflow: auto;
+  border-radius: var(--radius);
+  background: var(--code-bg);
+  color: var(--code-fg);
+}
+.content pre code { color: inherit; font-size: 0.96rem; }
+.content :not(pre) > code {
+  color: #0f5f59;
+  background: #eef4f1;
+  border: 1px solid #d9e7e2;
+  padding: 1px 5px;
+  border-radius: 5px;
+}
+.content hr { border: 0; border-top: 1px solid var(--line); margin: 28px 0; }
+.table-wrap {
+  width: 100%;
+  margin: 18px 0 26px;
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 620px;
+  background: #fff;
+}
+th, td {
+  padding: 11px 13px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+th {
+  color: var(--ink);
+  background: #f3f5f0;
+  font-weight: 780;
+}
+td { color: var(--muted); }
+tr:last-child td { border-bottom: 0; }
+.toc {
+  position: sticky;
+  top: 86px;
+  max-height: calc(100vh - 112px);
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--paper);
+  padding: 18px;
+  scrollbar-width: thin;
+}
+.toc-title {
+  margin: 0 0 12px;
+  color: var(--ink);
+  font-size: 0.96rem;
+  font-weight: 800;
+}
+.toc-link {
+  display: block;
+  border-left: 3px solid transparent;
+  border-radius: 7px;
+  padding: 7px 8px 7px 10px;
+  color: var(--muted);
+  text-decoration: none;
+  font-weight: 650;
+  line-height: 1.35;
+}
+.toc-link.sub { padding-left: 24px; font-size: 0.94rem; }
+.toc-link.active,
+.toc-link:hover {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+.toc-link.active {
+  border-left-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
+  font-weight: 800;
+}
+.toc-empty { color: var(--muted); margin: 0; }
+.generated-note {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+@media (max-width: 860px) {
+  .topbar-inner { align-items: flex-start; flex-direction: column; padding: 12px 0; gap: 10px; }
+  .topnav { width: 100%; margin-left: 0; }
+  .shell { grid-template-columns: 1fr; margin-top: 18px; }
+  .toc { position: static; order: -1; }
+  .language-switch { margin-left: 0; }
+}
+</style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="../index.html">
+        <img src="../../openrelix-icon.png" alt="">
+        <span>OpenRelix</span>
+      </a>
+      <nav class="topnav" aria-label="Developer docs navigation">
+        <a href="../index.html">Docs home</a>
+        <a href="../developer-guide.html">Visual guide</a>
+        <a href="developer-guide.html">Detailed guide</a>
+      </nav>
+    </div>
+  </header>
+  <main class="shell">
+    <article class="article">
+      <div class="doc-meta">
+        <span>Generated from Markdown</span>
+        <span>Source <code>docs/privacy-threat-model.md</code></span>
+        <span class="language-switch" aria-label="Language versions">
+          <a class="lang-link" href="privacy-threat-model.zh-CN.html">中文</a>
+<a class="lang-link active" href="privacy-threat-model.html">EN</a>
+        </span>
+      </div>
+      <div class="content">
+<h1 id="openrelix-privacy-threat-model">OpenRelix Privacy Threat Model</h1>
+<blockquote><p>Languages: English | <a href="privacy-threat-model.zh-CN.html">简体中文</a></p></blockquote>
+<p>OpenRelix is useful only if contributors can improve it without moving private work history into the public repo or into unintended host context. This document turns that boundary into a review checklist.</p>
+<p>For the shorter publishing boundary, see <a href="privacy-and-distribution.html">Privacy And Distribution Boundary</a>. This page is the contributor and integration threat model.</p>
+<h2 id="assets-to-protect">Assets To Protect</h2>
+<div class="table-wrap"><table><thead><tr><th>Asset</th><th>Why it matters</th><th>Default location</th></tr></thead><tbody><tr><td>Raw AI host transcripts</td><td>May contain proprietary work, credentials, or personal data</td><td>Host home and state root <code>raw/</code></td></tr><tr><td>Native host memory</td><td>Owned by Codex or Claude, may mix user-managed context and OpenRelix blocks</td><td><code>CODEX_HOME</code>, <code>CLAUDE_HOME</code></td></tr><tr><td>Registry rows and reviews</td><td>Sanitized but still personal work memory</td><td>State root <code>registry/</code>, <code>reviews/</code></td></tr><tr><td>Generated reports and panel</td><td>Summarize real work and local paths</td><td>State root <code>reports/</code></td></tr><tr><td>Runtime config and logs</td><td>May reveal local setup, commands, or failures</td><td>State root <code>runtime/</code>, <code>log/</code></td></tr><tr><td>Feishu or other connector content</td><td>Can contain organization data and document permissions</td><td>External service plus local state</td></tr><tr><td>Release/package artifacts</td><td>Publicly shared and hard to retract</td><td>npm package, GitHub release, GitHub Pages</td></tr></tbody></table></div>
+<h2 id="trust-boundaries">Trust Boundaries</h2>
+<pre><code class="language-text">AI host home
+  -&gt; adapter reads local records
+  -&gt; OpenRelix writes only explicit managed host-context blocks
+
+OpenRelix repo
+  -&gt; reusable source, docs, templates, sanitized fixtures
+  -&gt; must not contain private runtime data
+
+External state root
+  -&gt; real user data and generated reports
+  -&gt; local-first, configurable, removable
+
+External connectors
+  -&gt; Feishu, meeting notes, docs, chat, or future tools
+  -&gt; opt-in, least privilege, source-labeled, deletable</code></pre>
+<p>Every new feature should name which boundary it crosses before implementation.</p>
+<h2 id="threats-and-required-mitigations">Threats And Required Mitigations</h2>
+<div class="table-wrap"><table><thead><tr><th>Threat</th><th>Example</th><th>Required mitigation</th></tr></thead><tbody><tr><td>Private data committed to repo</td><td>Real <code>raw/windows</code> file copied into tests</td><td>Use synthetic fixtures only; run <code>python3 scripts/check_personal_info.py</code></td></tr><tr><td>Hard-coded user path</td><td>a personal home directory copied into docs or code</td><td>Use env/config paths, <code>~</code>, <code>CODEX_HOME</code>, <code>AI_ASSET_STATE_DIR</code>, or <code>/tmp/openrelix-demo</code></td></tr><tr><td>Host-owned memory overwritten</td><td>Sync replaces a full <code>memory_summary.md</code></td><td>Update only OpenRelix-managed blocks and preserve surrounding content</td></tr><tr><td>Excessive host-context injection</td><td>Low-signal local notes enter Codex or Claude context</td><td>Enforce <code>scope</code>, <code>injection_policy</code>, priority, dedupe, and token budgets</td></tr><tr><td>Generated panel published</td><td>Real <code>reports/panel.html</code> copied to <code>docs/</code></td><td>Use sanitized screenshots and public examples only</td></tr><tr><td>Connector over-collection</td><td>Feishu chat or meeting import without source policy</td><td>Require opt-in source, scope list, retention policy, and delete path</td></tr><tr><td>Secrets in logs</td><td>CLI error includes token or cookie</td><td>Redact before persistence; keep raw logs local; never paste raw error dumps into docs</td></tr><tr><td>Package surface widens silently</td><td>npm tarball includes state root or fixtures with private data</td><td>Inspect <code>npm pack --dry-run --json</code> before release</td></tr><tr><td>Model prompt leaks private context</td><td>Nightly consolidation sends raw proprietary snippets to an unintended model</td><td>Keep model CLI explicit, document provider boundary, and avoid third-party SaaS paths without approval</td></tr><tr><td>Stale public docs mislead contributors</td><td>README claims an old version or missing adapter support</td><td>Align docs with <code>package.json</code>, changelog, and current code before onboarding contributors</td></tr></tbody></table></div>
+<h2 id="connector-policy">Connector Policy</h2>
+<p>Before adding or expanding a connector such as Feishu docs, chat, calendar, meeting notes, or cloud drive:</p>
+<ol>
+<li>State the user-visible value and the minimum source needed.</li>
+<li>List the exact scopes or permissions.</li>
+<li>Mark the identity used: user or bot.</li>
+<li>Record where imported content is stored.</li>
+<li>Define the retention and deletion behavior.</li>
+<li>Add source labels so users can trace every card or memory back to the connector.</li>
+<li>Default raw content to local-only storage.</li>
+<li>Keep host-context injection opt-in through <code>injection_policy</code>, not connector presence.</li>
+<li>Document how failures behave when auth expires or a scope is missing.</li>
+</ol>
+<p>Connector imports should produce sanitized summaries, evidence references, or asset candidates. They should not turn OpenRelix into a raw cloud mirror.</p>
+<h2 id="host-context-policy">Host Context Policy</h2>
+<p>OpenRelix may write bounded summaries into enabled host-native contexts, but only through managed blocks.</p>
+<p>Allowed:</p>
+<ul>
+<li>Add or update OpenRelix-managed blocks.</li>
+<li>Preserve host-owned lines before and after the managed block.</li>
+<li>Report disabled or missing host context without forcing writes.</li>
+<li>Keep a compiled copy in <code>runtime/host-context/</code>.</li>
+</ul>
+<p>Not allowed:</p>
+<ul>
+<li>Replace a full host memory file.</li>
+<li>Write personal memory into a project repo file by default.</li>
+<li>Inject <code>on_demand</code>, <code>local_only</code>, <code>never</code>, low-priority, or unapproved legacy rows into host context.</li>
+<li>Treat old durable/session labels as enough to inject.</li>
+</ul>
+<h2 id="public-repo-and-package-policy">Public Repo And Package Policy</h2>
+<p>Public repo and package artifacts may include:</p>
+<ul>
+<li>Source code.</li>
+<li>Installer and LaunchAgent templates.</li>
+<li>Public docs.</li>
+<li>Sanitized fixtures.</li>
+<li>Sanitized screenshots or examples.</li>
+<li>Repo-local skills intended for release.</li>
+</ul>
+<p>They must not include:</p>
+<ul>
+<li>Real state root content.</li>
+<li>Raw host histories, sessions, transcripts, or generated reports.</li>
+<li>Internal URLs, account names, tokens, cookies, secrets, raw logs, or proprietary snippets.</li>
+<li>Development-only harness skills in the public plugin/package surface unless an explicit release decision says so.</li>
+</ul>
+<h2 id="review-gates">Review Gates</h2>
+<p>Small changes:</p>
+<pre><code class="language-bash">python3 scripts/check_personal_info.py
+git diff --check
+python3 -m unittest tests/&lt;focused_test&gt;.py</code></pre>
+<p>Python, installer, docs/site, release, or package-surface changes:</p>
+<pre><code class="language-bash">python3 -m py_compile scripts/*.py install/*.py
+python3 -m unittest discover -s tests
+npm pack --dry-run --json</code></pre>
+<p>When checking package output, inspect the file list. Do not rely only on a successful exit code.</p>
+<h2 id="deletion-and-recovery-expectations">Deletion And Recovery Expectations</h2>
+<p>Users should be able to:</p>
+<ul>
+<li>Delete the local state root through the uninstall path when they choose <code>--delete-local-memory</code>.</li>
+<li>Remove OpenRelix-managed host-context blocks without deleting host-owned memory.</li>
+<li>Rebuild the SQLite sidecar from source state files.</li>
+<li>Regenerate reports from registry, raw, and consolidated sources.</li>
+<li>Disable host-context sync with local-only memory modes.</li>
+</ul>
+<p>Contributors should design new outputs so they are either source-of-truth records with clear ownership or rebuildable artifacts. Ambiguous caches are where privacy bugs tend to hide.</p>
+<h2 id="contributor-checklist">Contributor Checklist</h2>
+<p>Before merging a feature that reads, writes, syncs, imports, or publishes data:</p>
+<ul>
+<li>[ ] The source and destination are named.</li>
+<li>[ ] Runtime paths are configurable.</li>
+<li>[ ] No real user data is in repo files, docs, fixtures, screenshots, or tests.</li>
+<li>[ ] Host-owned files are preserved outside managed blocks.</li>
+<li>[ ] Connector permissions are least-privilege and documented.</li>
+<li>[ ] Sensitive values are redacted before persistence or display.</li>
+<li>[ ] Package and docs surfaces were checked if changed.</li>
+<li>[ ] Verification commands are recorded in the handoff.</li>
+</ul>
+      </div>
+    </article>
+    <aside class="toc" aria-label="Table of contents">
+      <p class="toc-title">On this page</p>
+      <a class="toc-link" href="#assets-to-protect">Assets To Protect</a>
+<a class="toc-link" href="#trust-boundaries">Trust Boundaries</a>
+<a class="toc-link" href="#threats-and-required-mitigations">Threats And Required Mitigations</a>
+<a class="toc-link" href="#connector-policy">Connector Policy</a>
+<a class="toc-link" href="#host-context-policy">Host Context Policy</a>
+<a class="toc-link" href="#public-repo-and-package-policy">Public Repo And Package Policy</a>
+<a class="toc-link" href="#review-gates">Review Gates</a>
+<a class="toc-link" href="#deletion-and-recovery-expectations">Deletion And Recovery Expectations</a>
+<a class="toc-link" href="#contributor-checklist">Contributor Checklist</a>
+      <p class="generated-note">After editing Markdown:<br><code>python3 scripts/build_local_docs.py</code><br>Auto-sync while editing:<br><code>python3 scripts/build_local_docs.py --watch</code></p>
+    </aside>
+  </main>
+  <script>
+    (() => {
+      const toc = document.querySelector(".toc");
+      const links = Array.from(document.querySelectorAll(".toc-link"));
+      const headings = links
+        .map((link) => document.getElementById(decodeURIComponent(link.hash.slice(1))))
+        .filter(Boolean);
+      if (!links.length || !headings.length) return;
+      let lastActiveId = "";
+      const applyActive = (activeId) => {
+        let activeLink = null;
+        links.forEach((link) => {
+          const isActive = link.hash === "#" + activeId;
+          link.classList.toggle("active", isActive);
+          link.setAttribute("aria-current", isActive ? "true" : "false");
+          if (isActive) activeLink = link;
+        });
+        if (activeLink && toc && activeId !== lastActiveId) {
+          activeLink.scrollIntoView({ block: "nearest", inline: "nearest" });
+          lastActiveId = activeId;
+        }
+      };
+      const getScrollActiveId = () => {
+        const marker = Math.min(window.innerHeight * 0.42, 260);
+        let activeId = headings[0].id;
+        for (const heading of headings) {
+          if (heading.getBoundingClientRect().top <= marker) activeId = heading.id;
+          else break;
+        }
+        return activeId;
+      };
+      const setActive = () => applyActive(getScrollActiveId());
+      const setHashActive = () => {
+        const hashId = decodeURIComponent(window.location.hash.slice(1));
+        if (hashId && headings.some((heading) => heading.id === hashId)) {
+          applyActive(hashId);
+        }
+        requestAnimationFrame(setActive);
+        window.setTimeout(setActive, 160);
+        window.setTimeout(setActive, 520);
+      };
+      window.addEventListener("scroll", setActive, { passive: true });
+      window.addEventListener("resize", setActive);
+      window.addEventListener("hashchange", setHashActive);
+      setHashActive();
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,629 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OpenRelix Detailed Developer Guide | OpenRelix Developer Docs</title>
+  <link rel="icon" href="../../openrelix-icon.png">
+  <style>
+:root {
+  color-scheme: light;
+  --ink: #181a1f;
+  --muted: #626873;
+  --paper: #ffffff;
+  --paper-soft: #f7f8f5;
+  --line: #dedfd9;
+  --line-strong: #c9cbc4;
+  --accent: #0f766e;
+  --accent-soft: #e6f4f1;
+  --code-bg: #101827;
+  --code-fg: #f8fafc;
+  --radius: 8px;
+  --max: 1180px;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; background: var(--paper-soft); }
+body {
+  margin: 0;
+  color: var(--ink);
+  background: var(--paper-soft);
+  font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+  line-height: 1.68;
+}
+a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 3px; }
+code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 0.94em;
+}
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  border-bottom: 1px solid rgba(222, 223, 217, 0.9);
+  background: rgba(255,255,255,0.94);
+  backdrop-filter: blur(16px);
+}
+.topbar-inner {
+  width: min(var(--max), calc(100% - 32px));
+  min-height: 64px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--ink);
+  font-weight: 760;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.brand img { width: 30px; height: 30px; border-radius: 7px; }
+.topnav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.topnav::-webkit-scrollbar { display: none; }
+.topnav a,
+.lang-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--ink);
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+  background: #fff;
+}
+.topnav a:hover,
+.lang-link:hover,
+.lang-link.active {
+  border-color: #bddbd5;
+  background: var(--accent-soft);
+  color: #0f5f59;
+}
+.shell {
+  width: min(var(--max), calc(100% - 32px));
+  margin: 34px auto 72px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 260px;
+  gap: 28px;
+  align-items: start;
+}
+.article {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--paper);
+  padding: clamp(22px, 4vw, 46px);
+}
+.doc-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  align-items: center;
+  margin-bottom: 24px;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+.doc-meta code { color: var(--ink); background: #f0f1ed; padding: 2px 6px; border-radius: 5px; }
+.language-switch { display: inline-flex; flex-wrap: wrap; gap: 8px; margin-left: auto; }
+.content h1 {
+  margin: 0 0 18px;
+  font-size: clamp(2.1rem, 4vw, 3.2rem);
+  line-height: 1.08;
+  letter-spacing: 0;
+}
+.content h2 {
+  margin: 46px 0 12px;
+  padding-top: 6px;
+  font-size: clamp(1.5rem, 3vw, 2rem);
+  line-height: 1.18;
+  letter-spacing: 0;
+}
+.content h3 {
+  margin: 30px 0 8px;
+  font-size: 1.24rem;
+  line-height: 1.28;
+}
+.content h4 { margin: 24px 0 8px; font-size: 1.04rem; }
+.content p,
+.content li {
+  color: var(--muted);
+  font-size: 1.04rem;
+}
+.content p { margin: 12px 0; }
+.content ul,
+.content ol { padding-left: 1.35em; margin: 12px 0 18px; }
+.content li + li { margin-top: 6px; }
+.content blockquote {
+  margin: 20px 0;
+  padding: 14px 18px;
+  border-left: 4px solid var(--accent);
+  background: var(--accent-soft);
+  border-radius: 0 var(--radius) var(--radius) 0;
+}
+.content blockquote p { margin: 0; color: #33524d; }
+.content pre {
+  margin: 18px 0 24px;
+  padding: 18px;
+  overflow: auto;
+  border-radius: var(--radius);
+  background: var(--code-bg);
+  color: var(--code-fg);
+}
+.content pre code { color: inherit; font-size: 0.96rem; }
+.content :not(pre) > code {
+  color: #0f5f59;
+  background: #eef4f1;
+  border: 1px solid #d9e7e2;
+  padding: 1px 5px;
+  border-radius: 5px;
+}
+.content hr { border: 0; border-top: 1px solid var(--line); margin: 28px 0; }
+.table-wrap {
+  width: 100%;
+  margin: 18px 0 26px;
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 620px;
+  background: #fff;
+}
+th, td {
+  padding: 11px 13px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+th {
+  color: var(--ink);
+  background: #f3f5f0;
+  font-weight: 780;
+}
+td { color: var(--muted); }
+tr:last-child td { border-bottom: 0; }
+.toc {
+  position: sticky;
+  top: 86px;
+  max-height: calc(100vh - 112px);
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--paper);
+  padding: 18px;
+  scrollbar-width: thin;
+}
+.toc-title {
+  margin: 0 0 12px;
+  color: var(--ink);
+  font-size: 0.96rem;
+  font-weight: 800;
+}
+.toc-link {
+  display: block;
+  border-left: 3px solid transparent;
+  border-radius: 7px;
+  padding: 7px 8px 7px 10px;
+  color: var(--muted);
+  text-decoration: none;
+  font-weight: 650;
+  line-height: 1.35;
+}
+.toc-link.sub { padding-left: 24px; font-size: 0.94rem; }
+.toc-link.active,
+.toc-link:hover {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+.toc-link.active {
+  border-left-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
+  font-weight: 800;
+}
+.toc-empty { color: var(--muted); margin: 0; }
+.generated-note {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+@media (max-width: 860px) {
+  .topbar-inner { align-items: flex-start; flex-direction: column; padding: 12px 0; gap: 10px; }
+  .topnav { width: 100%; margin-left: 0; }
+  .shell { grid-template-columns: 1fr; margin-top: 18px; }
+  .toc { position: static; order: -1; }
+  .language-switch { margin-left: 0; }
+}
+</style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="../index.html">
+        <img src="../../openrelix-icon.png" alt="">
+        <span>OpenRelix</span>
+      </a>
+      <nav class="topnav" aria-label="Developer docs navigation">
+        <a href="../index.html">Docs home</a>
+        <a href="../developer-guide.html">Visual guide</a>
+        <a href="developer-guide.html">Detailed guide</a>
+      </nav>
+    </div>
+  </header>
+  <main class="shell">
+    <article class="article">
+      <div class="doc-meta">
+        <span>Generated from Markdown</span>
+        <span>Source <code>docs/developer-guide.en.md</code></span>
+        <span class="language-switch" aria-label="Language versions">
+          <a class="lang-link" href="developer-guide.html">中文</a>
+<a class="lang-link active" href="developer-guide.en.html">EN</a>
+        </span>
+      </div>
+      <div class="content">
+<h1 id="openrelix-detailed-developer-guide">OpenRelix Detailed Developer Guide</h1>
+<blockquote><p>Languages: English | <a href="developer-guide.html">简体中文</a></p></blockquote>
+<p>This is the single developer entrypoint for OpenRelix. It is for anyone preparing to change OpenRelix: understand the boundaries first, run a local loop that does not touch private data, then choose files, tests, and privacy checks by change type.</p>
+<p>For the product shape, start with <a href="system-overview.html">System Overview</a>. For deeper data flow and module design, read <a href="technical-solution.en.html">Technical Solution</a>. This page is the daily development entrypoint.</p>
+<h2 id="one-model-to-remember">One Model To Remember</h2>
+<p>The OpenRelix repository contains reusable logic. Real user runtime data lives outside the repository in the <code>state root</code>. Codex / Claude Code continue to own their own history and context.</p>
+<pre><code class="language-text">AI host home
+  Codex / Claude Code history, sessions, native memory, user-level skills
+
+OpenRelix source repository
+  publishable installer, skills, templates, scripts, docs, LaunchAgent templates
+
+state root, the OpenRelix application root
+  user runtime data, window captures, reviews, registry, reports, runtime cache, logs</code></pre>
+<p>Keep those layers separate:</p>
+<ul>
+<li>The source repo stores reusable, publishable, sanitized logic and docs.</li>
+<li>The <code>state root</code> stores local user state. It should not enter git or the npm package by default.</li>
+<li>AI host-native files remain owned by the host. OpenRelix writes only a controlled summary when enabled.</li>
+<li>Stable rules belong in <code>AGENTS.md</code> or project docs. The memory registry is a recall layer, not the only source of truth.</li>
+</ul>
+<h2 id="first-15-minutes">First 15 Minutes</h2>
+<h3 id="1-inspect-the-current-checkout">1. Inspect the current checkout</h3>
+<pre><code class="language-bash">git status --short --branch</code></pre>
+<p>For feature or docs work, prefer a dedicated worktree:</p>
+<pre><code class="language-bash">git worktree add -b codex/&lt;task-name&gt; ../openrelix-worktrees/&lt;task-name&gt; main
+cd ../openrelix-worktrees/&lt;task-name&gt;</code></pre>
+<p>Run this once per clone so local development checks are active:</p>
+<pre><code class="language-bash">./scripts/setup-dev.sh</code></pre>
+<h3 id="2-run-with-a-temporary-state-root">2. Run with a temporary state root</h3>
+<p>This validates the main path without touching real OpenRelix data:</p>
+<pre><code class="language-bash">STATE_DIR=&quot;$(mktemp -d /tmp/openrelix-dev.XXXXXX)&quot;
+AI_ASSET_STATE_DIR=&quot;$STATE_DIR&quot; python3 scripts/build_overview.py
+python3 -m json.tool &quot;$STATE_DIR/reports/overview-data.json&quot; &gt;/dev/null
+PYTHONPATH=scripts python3 -m openrelix_overview.contract --state-dir &quot;$STATE_DIR&quot;</code></pre>
+<p>For a fuller installer-to-panel loop:</p>
+<pre><code class="language-bash">scripts/smoke_temp_panel.sh --no-open
+scripts/cleanup_smoke_temp.sh --dry-run</code></pre>
+<p>Use <code>--seed-current-state</code> only when the task explicitly needs the current machine&#x27;s real OpenRelix state. Do not copy seeded output into docs, fixtures, tests, screenshots, or release artifacts.</p>
+<h3 id="3-inspect-the-output">3. Inspect the output</h3>
+<pre><code class="language-bash">open &quot;$STATE_DIR/reports/panel.html&quot;</code></pre>
+<p>An empty first panel is fine. Confirm that the page opens, the empty state is reasonable, and <code>overview-data.json</code> is valid JSON.</p>
+<h2 id="local-prerequisites">Local Prerequisites</h2>
+<div class="table-wrap"><table><thead><tr><th>Dependency</th><th>Purpose</th></tr></thead><tbody><tr><td>macOS</td><td>installer and background automation use user-level <code>launchd</code> / LaunchAgent</td></tr><tr><td>Python 3.10+</td><td>main scripts, installer helpers, tests</td></tr><tr><td>Node.js 18+</td><td><code>npx openrelix</code> bootstrapper and npm package checks</td></tr><tr><td>zsh</td><td><code>install/install.sh</code> and shell validation</td></tr><tr><td>Codex CLI</td><td>default model-backed organization path and Codex host adapter</td></tr><tr><td>Claude Code CLI</td><td>optional host adapter and optional Claude-backed organization path</td></tr><tr><td>Xcode Command Line Tools</td><td>only needed for the lightweight macOS client</td></tr></tbody></table></div>
+<p>The repo has no runtime npm dependency. Python should mostly use the standard library. Confirm release/install boundaries before adding third-party dependencies.</p>
+<h2 id="repository-map">Repository Map</h2>
+<div class="table-wrap"><table><thead><tr><th>Path</th><th>Responsibility</th><th>Change when</th></tr></thead><tbody><tr><td><code>AGENTS.md</code></td><td>Stable repo rules</td><td>contribution, privacy, worktree, validation rules change</td></tr><tr><td><code>.agents/skills/memory-review/</code></td><td>repo-local immediate review skill</td><td>review or asset registration behavior changes</td></tr><tr><td><code>.agents/skills/openrelix-*-harness/</code></td><td>development harness skills</td><td>internal product, technical, implementation, or verification workflows change; these skills do not ship in npm</td></tr><tr><td><code>.agents/plugins/</code></td><td>Codex plugin marketplace metadata</td><td>plugin display or entry declarations change</td></tr><tr><td><code>plugins/openrelix/</code></td><td>packaged Codex plugin bundle</td><td>public plugin surface changes</td></tr><tr><td><code>install/</code></td><td>installer and config rendering</td><td>install flags, profiles, host home, command entrypoints change</td></tr><tr><td><code>install/templates/</code></td><td>templates written into the user environment</td><td>global <code>openrelix</code> shell command or custom prompt changes</td></tr><tr><td><code>ops/launchd/</code></td><td>macOS LaunchAgent templates</td><td>background refresh, nightly, token live, update checks change</td></tr><tr><td><code>scripts/asset_runtime.py</code></td><td>runtime path and config hub</td><td>state root, host home, defaults, atomic writes change</td></tr><tr><td><code>scripts/openrelix.py</code></td><td>user-facing local CLI</td><td>subcommands change</td></tr><tr><td><code>scripts/collect_codex_activity.py</code></td><td>AI host activity collection</td><td>history/session/thread parsing changes</td></tr><tr><td><code>scripts/nightly_consolidate.py</code></td><td>model organization and memory writes</td><td>memory generation, fallback, schema changes</td></tr><tr><td><code>scripts/build_overview.py</code></td><td>overview compatibility entrypoint</td><td>overview output or panel UI changes</td></tr><tr><td><code>scripts/openrelix_overview/</code></td><td>focused overview modules</td><td>token, redaction, i18n, registry, contract helpers change</td></tr><tr><td><code>scripts/openrelix_index.py</code></td><td>rebuildable SQLite sidecar index</td><td>memory/window search schema changes</td></tr><tr><td><code>scripts/token_live_server.py</code></td><td>local token live endpoint and update trigger</td><td>panel token live data or local service behavior changes</td></tr><tr><td><code>templates/</code></td><td>examples and schemas</td><td>registry, model output, review format changes</td></tr><tr><td><code>tests/</code></td><td>unit and package-boundary tests</td><td>behavior or privacy contracts change</td></tr><tr><td><code>docs/</code></td><td>public docs and HTML page sources</td><td>public explanations, architecture, privacy, validation, release docs change</td></tr><tr><td><code>local-docs/</code></td><td>local human-readable HTML docs</td><td>generated from <code>docs/*.md</code>; not shipped in npm</td></tr></tbody></table></div>
+<h2 id="runtime-configuration">Runtime Configuration</h2>
+<p>New scripts should read paths and config from <code>scripts/asset_runtime.py</code> rather than rebuilding path logic.</p>
+<p>Core helpers:</p>
+<ul>
+<li><code>get_runtime_paths()</code></li>
+<li><code>ensure_state_layout()</code></li>
+<li><code>write_runtime_config()</code> / <code>load_runtime_config()</code></li>
+<li><code>atomic_write_text()</code> / <code>atomic_write_json()</code></li>
+</ul>
+<p>Important environment variables:</p>
+<div class="table-wrap"><table><thead><tr><th>Variable</th><th>Purpose</th></tr></thead><tbody><tr><td><code>AI_ASSET_STATE_DIR</code></td><td>override state root</td></tr><tr><td><code>CODEX_HOME</code> / <code>CODEX_BIN</code></td><td>override Codex home and binary</td></tr><tr><td><code>OPENRELIX_CODEX_HOMES</code> / <code>OPENRELIX_EXTRA_CODEX_HOMES</code></td><td>additional Codex homes</td></tr><tr><td><code>CLAUDE_HOME</code> / <code>CLAUDE_BIN</code></td><td>override Claude Code data home and binary</td></tr><tr><td><code>AI_ASSET_LANGUAGE</code></td><td><code>zh</code> / <code>en</code>, local output language</td></tr><tr><td><code>AI_ASSET_MEMORY_MODE</code></td><td><code>integrated</code> / <code>local-only</code> / <code>off</code></td></tr><tr><td><code>OPENRELIX_ACTIVITY_SOURCE</code></td><td><code>history</code> / <code>app-server</code> / <code>auto</code></td></tr><tr><td><code>OPENRELIX_ACTIVITY_HOST</code></td><td><code>codex</code> / <code>claude</code> / <code>all</code></td></tr><tr><td><code>OPENRELIX_MODEL_CLI</code></td><td><code>codex</code> / <code>claude</code></td></tr><tr><td><code>OPENRELIX_CODEX_MODEL</code></td><td>internal <code>codex exec</code> model</td></tr><tr><td><code>OPENRELIX_CLAUDE_MODEL</code></td><td>internal <code>claude -p</code> model or alias</td></tr></tbody></table></div>
+<h2 id="core-flows">Core Flows</h2>
+<h3 id="install-flow">Install flow</h3>
+<pre><code class="language-text">npx openrelix install
+  -&gt; install/npm-bin.js
+  -&gt; install/install.sh
+  -&gt; scripts/asset_runtime.py
+  -&gt; scripts/build_overview.py
+  -&gt; optional host config / global skill / shell command / LaunchAgent</code></pre>
+<p>When maintaining the installer, confirm:</p>
+<ul>
+<li><code>minimal</code> stays low-touch: initialize state root, write runtime config, generate the first overview.</li>
+<li><code>integrated</code> is the profile that installs global skills, custom prompts, shell commands, the macOS client, and background services.</li>
+<li>User paths are configurable through flags or environment variables.</li>
+<li>LaunchAgent templates write user-level paths only.</li>
+<li>Uninstall keeps local memory by default; deleting the state root must be explicit.</li>
+</ul>
+<h3 id="activity-collection-flow">Activity collection flow</h3>
+<pre><code class="language-text">scripts/collect_codex_activity.py
+  -&gt; Codex app-server or Codex history/session
+  -&gt; Claude Code projects/history
+  -&gt; raw/daily/&lt;date&gt;.json
+  -&gt; raw/windows/&lt;date&gt;/*.json</code></pre>
+<p>Keep the boundary simple: read host history, write state root. Raw windows should keep source, cwd, session identifiers, prompts, and metadata so later organization and debugging can trace them.</p>
+<h3 id="nightly-organization-flow">Nightly organization flow</h3>
+<pre><code class="language-text">openrelix review / backfill
+  -&gt; collect_codex_activity.py
+  -&gt; nightly_consolidate.py
+  -&gt; sync_host_memory_summary.py
+  -&gt; openrelix_index.py rebuild
+  -&gt; build_overview.py</code></pre>
+<p><code>scripts/nightly_consolidate.py</code> handles model organization, fallback summaries, summary selection, memory writes, and learning logs. Model failures must still produce fallback summaries and should not block overview generation.</p>
+<h3 id="overview-and-panel-flow">Overview and panel flow</h3>
+<pre><code class="language-text">scripts/build_overview.py
+  -&gt; reports/overview-data.json
+  -&gt; reports/overview.md
+  -&gt; reports/overview.csv
+  -&gt; reports/panel.html</code></pre>
+<p><code>overview-data.json</code> is the stable input for the panel and Markdown report. Renderers should not directly read raw captures, JSONL registries, or host memory files. Verify the real HTML when the visible page changes.</p>
+<h3 id="local-index-flow">Local index flow</h3>
+<p><code>scripts/openrelix_index.py</code> builds <code>runtime/openrelix-index.sqlite3</code>. It is a rebuildable local index, not the authoritative data source. Deleting it must not affect <code>raw/</code>, <code>registry/</code>, or <code>consolidated/</code>.</p>
+<h2 id="common-development-tasks">Common Development Tasks</h2>
+<h3 id="add-an-openrelix-subcommand">Add an <code>openrelix</code> subcommand</h3>
+<ol>
+<li>Add parser, flags, and help text in <code>scripts/openrelix.py</code> <code>build_parser()</code>.</li>
+<li>Add <code>command_&lt;name&gt;()</code> or reuse an existing command function.</li>
+<li>Dispatch it in <code>main()</code>.</li>
+<li>If the npm wrapper exposes it, update <code>install/npm-bin.js</code> help and command switching.</li>
+<li>If the installed shell entry should expose it, check <code>install/templates/bin/openrelix.tmpl</code>.</li>
+<li>Add tests for parser exposure, npm help, key behavior, or dry-run behavior.</li>
+</ol>
+<h3 id="add-an-installer-flag">Add an installer flag</h3>
+<ol>
+<li>Update <code>install/install.sh</code> usage, defaults, argument parsing, exported environment, and behavior.</li>
+<li>If runtime config persists it, update <code>scripts/asset_runtime.py</code> normalization, runtime config read/write, and defaults.</li>
+<li>If it affects <code>npx openrelix install</code>, update <code>install/npm-bin.js</code> help.</li>
+<li>Update README / docs when user behavior changes.</li>
+<li>Run <code>zsh -n install/install.sh scripts/*.sh</code> and focused installer tests.</li>
+</ol>
+<h3 id="add-a-stable-skill">Add a stable skill</h3>
+<ol>
+<li>Put it under <code>.agents/skills/&lt;name&gt;/SKILL.md</code>.</li>
+<li>Document trigger conditions, runtime boundary, output location, and privacy requirements.</li>
+<li>If it needs global installation, update installer skill symlink logic.</li>
+<li>Update README or docs.</li>
+<li>Validate with a temporary state root.</li>
+</ol>
+<h3 id="add-an-automation-script">Add an automation script</h3>
+<ol>
+<li>Use <code>scripts/asset_runtime.py</code> for paths; do not hard-code personal paths.</li>
+<li>Write output into the state root.</li>
+<li>Build a manual CLI first; add launchd templates only when the manual path is stable.</li>
+<li>For new state files, confirm <code>.gitignore</code>, <code>.npmignore</code>, and package <code>files</code> cannot include private data.</li>
+<li>Add tests, or at least shell / Python syntax checks.</li>
+</ol>
+<h3 id="change-a-host-adapter">Change a host adapter</h3>
+<ol>
+<li>Confirm whether the change is for Codex, Claude Code, or a future host.</li>
+<li>Resolve native host directories only through <code>CODEX_HOME</code>, <code>CLAUDE_HOME</code>, or a new configurable variable.</li>
+<li>Preserve minimal trace fields such as <code>ai_host</code>, cwd, thread id, or session id.</li>
+<li>Do not write raw transcripts into repo, docs, fixtures, or release artifacts.</li>
+<li>Public docs should use generic path shapes and configurable variables, not personal machine paths.</li>
+</ol>
+<h3 id="change-overview-or-panel-ui">Change overview or panel UI</h3>
+<ol>
+<li>Adjust the <code>overview-data.json</code> section contract first, then let the renderer consume it.</li>
+<li>Do not make the renderer read runtime state directly.</li>
+<li>Static showcase pages and real panels must avoid private screenshots, paths, and data.</li>
+<li>Preview HTML through a local HTTP server and verify navigation, layout, links, and both languages.</li>
+</ol>
+<h3 id="change-markdown-and-local-html-docs">Change Markdown and local HTML docs</h3>
+<p><code>docs/*.md</code> is the source. <code>local-docs/reference/*.html</code> is generated for human local reading. After editing Markdown, run:</p>
+<pre><code class="language-bash">python3 scripts/build_local_docs.py
+python3 scripts/build_local_docs.py --check</code></pre>
+<p>For automatic sync while writing:</p>
+<pre><code class="language-bash">python3 scripts/build_local_docs.py --watch</code></pre>
+<h2 id="task-card-template">Task Card Template</h2>
+<p>A small task that another developer can pick up should fit this shape:</p>
+<pre><code class="language-`markdown">## Title
+
+### Scope
+- Owner:
+- Files or modules:
+- Non-goals:
+
+### User-visible outcome
+- What changes:
+- How to observe it:
+
+### Data and privacy
+- Reads from:
+- Writes to:
+- Must not include:
+
+### Acceptance criteria
+- [ ] Behavior:
+- [ ] Docs:
+- [ ] Tests:
+- [ ] Privacy check:
+
+### Verification</code></pre>
+<p>python3 scripts/check_personal_info.py git diff --check python3 -m unittest tests/&lt;focused_test&gt;.py</p>
+<pre><code></code></pre>
+<p>Prefer tasks with one clear owner and one main behavioral surface. If a task touches installer, overview, memory policy, and docs at once, split it first.</p>
+<h2 id="validation-checklist">Validation Checklist</h2>
+<p>For everyday small changes:</p>
+<pre><code class="language-bash">python3 scripts/check_personal_info.py
+git diff --check</code></pre>
+<p>For Python or installer changes:</p>
+<pre><code class="language-bash">python3 -m py_compile scripts/*.py install/*.py
+python3 -m unittest discover -s tests
+zsh -n install/install.sh scripts/*.sh</code></pre>
+<p>For overview or state-root changes, add a temporary-state loop:</p>
+<pre><code class="language-bash">STATE_DIR=&quot;$(mktemp -d /tmp/openrelix-overview.XXXXXX)&quot;
+AI_ASSET_STATE_DIR=&quot;$STATE_DIR&quot; python3 scripts/build_overview.py
+python3 -m json.tool &quot;$STATE_DIR/reports/overview-data.json&quot; &gt;/dev/null
+PYTHONPATH=scripts python3 -m openrelix_overview.contract --state-dir &quot;$STATE_DIR&quot;</code></pre>
+<p>For installer-to-panel smoke:</p>
+<pre><code class="language-bash">scripts/smoke_temp_panel.sh --no-open
+scripts/cleanup_smoke_temp.sh --dry-run</code></pre>
+<p>For release, installer, docs/site, or package-surface changes:</p>
+<pre><code class="language-bash">npm pack --dry-run --json</code></pre>
+<p>Fix real failures. Do not widen ignore rules to bypass privacy, path, or package allowlist checks.</p>
+<h2 id="privacy-and-security-boundary">Privacy And Security Boundary</h2>
+<p>Public repo changes must not include:</p>
+<ul>
+<li>Raw host transcripts, session files, logs, runtime reports, screenshots from a private panel, or real registry rows.</li>
+<li>Secrets, tokens, cookies, account identifiers, private organization names, internal URLs, or unreduced proprietary snippets.</li>
+<li>Absolute user home paths.</li>
+<li>Site-specific Codex or Claude memory mappings that belong in the external state root.</li>
+<li>One-off local machine experience written as a global project rule.</li>
+</ul>
+<p>Use <a href="data-contracts.html">Data Contracts</a> for schema examples and <code>tests/fixtures/sample-state/</code> for sanitized fixture shape.</p>
+<h2 id="common-questions">Common Questions</h2>
+<h3 id="i-cannot-find-where-data-was-written">I cannot find where data was written</h3>
+<p>Check:</p>
+<pre><code class="language-bash">echo &quot;$AI_ASSET_STATE_DIR&quot;
+python3 - &lt;&lt;&#x27;PY&#x27;
+from scripts.asset_runtime import get_runtime_paths
+print(get_runtime_paths().state_root)
+PY</code></pre>
+<p>If <code>openrelix</code> is installed:</p>
+<pre><code class="language-bash">openrelix paths</code></pre>
+<h3 id="the-panel-has-no-content">The panel has no content</h3>
+<p>Common causes:</p>
+<ul>
+<li>This is a new state root with no assets, reviews, or AI host history.</li>
+<li>Codex history is not enabled, so there are no windows to collect.</li>
+<li><code>openrelix review</code> or <code>python3 scripts/build_overview.py</code> has not run yet.</li>
+</ul>
+<p>Try:</p>
+<pre><code class="language-bash">openrelix refresh</code></pre>
+<p>or:</p>
+<pre><code class="language-bash">python3 scripts/build_overview.py</code></pre>
+<h3 id="nightly-jobs-did-not-run">Nightly jobs did not run</h3>
+<p>Check:</p>
+<ul>
+<li>Whether <code>--enable-nightly</code> was used.</li>
+<li>Whether the user is still logged in.</li>
+<li>Whether state root <code>log/</code> contains errors.</li>
+<li>Whether the LaunchAgent plist was bootstrapped.</li>
+</ul>
+<p>Screen lock is fine. Logging out is the boundary.</p>
+<h3 id="why-only-write-a-bounded-summary-by-default">Why only write a bounded summary by default</h3>
+<p>OpenRelix can integrate with host-native context, but it writes a compressed bounded summary by default. Full registries, reviews, raw windows, and consolidated summaries stay in the state root. The compression path merges duplicate memories, includes only effective <code>injection_policy=global_context/project_context</code> entries, and keeps low-priority entries local by default.</p>
+<p>For strict isolation, disable host-context injection:</p>
+<pre><code class="language-bash">./install/install.sh --profile integrated --record-memory-only</code></pre>
+<h2 id="review-checklist">Review Checklist</h2>
+<p>Before asking for review, include:</p>
+<ul>
+<li>What changed and why.</li>
+<li>Files touched.</li>
+<li>Verification commands and results.</li>
+<li>Any checks skipped and why.</li>
+<li>Remaining risks, especially around privacy, package surface, host context, or runtime state.</li>
+</ul>
+<h2 id="continue-deeper">Continue Deeper</h2>
+<p>Choose the next document by goal:</p>
+<ul>
+<li>For the full architecture: read <a href="system-overview.html">System Overview</a> and <a href="technical-solution.en.html">Technical Solution</a>.</li>
+<li>For raw, registry, summary, overview, or host context fields: read <a href="data-contracts.html">Data Contracts</a>.</li>
+<li>For choosing commands by change type: read <a href="validation-matrix.html">Validation Matrix</a>.</li>
+<li>For public boundary checks: read <a href="privacy-and-distribution.html">Privacy Boundary</a> and <a href="privacy-threat-model.html">Privacy Threat Model</a>.</li>
+<li>For release work: read <a href="release-checklist.html">Release Checklist</a>.</li>
+</ul>
+      </div>
+    </article>
+    <aside class="toc" aria-label="Table of contents">
+      <p class="toc-title">On this page</p>
+      <a class="toc-link" href="#one-model-to-remember">One Model To Remember</a>
+<a class="toc-link" href="#first-15-minutes">First 15 Minutes</a>
+<a class="toc-link sub" href="#1-inspect-the-current-checkout">1. Inspect the current checkout</a>
+<a class="toc-link sub" href="#2-run-with-a-temporary-state-root">2. Run with a temporary state root</a>
+<a class="toc-link sub" href="#3-inspect-the-output">3. Inspect the output</a>
+<a class="toc-link" href="#local-prerequisites">Local Prerequisites</a>
+<a class="toc-link" href="#repository-map">Repository Map</a>
+<a class="toc-link" href="#runtime-configuration">Runtime Configuration</a>
+<a class="toc-link" href="#core-flows">Core Flows</a>
+<a class="toc-link sub" href="#install-flow">Install flow</a>
+<a class="toc-link sub" href="#activity-collection-flow">Activity collection flow</a>
+<a class="toc-link sub" href="#nightly-organization-flow">Nightly organization flow</a>
+<a class="toc-link sub" href="#overview-and-panel-flow">Overview and panel flow</a>
+<a class="toc-link sub" href="#local-index-flow">Local index flow</a>
+<a class="toc-link" href="#common-development-tasks">Common Development Tasks</a>
+<a class="toc-link sub" href="#add-an-openrelix-subcommand">Add an openrelix subcommand</a>
+<a class="toc-link sub" href="#add-an-installer-flag">Add an installer flag</a>
+<a class="toc-link sub" href="#add-a-stable-skill">Add a stable skill</a>
+<a class="toc-link sub" href="#add-an-automation-script">Add an automation script</a>
+<a class="toc-link sub" href="#change-a-host-adapter">Change a host adapter</a>
+<a class="toc-link sub" href="#change-overview-or-panel-ui">Change overview or panel UI</a>
+<a class="toc-link sub" href="#change-markdown-and-local-html-docs">Change Markdown and local HTML docs</a>
+<a class="toc-link" href="#task-card-template">Task Card Template</a>
+<a class="toc-link" href="#validation-checklist">Validation Checklist</a>
+<a class="toc-link" href="#privacy-and-security-boundary">Privacy And Security Boundary</a>
+<a class="toc-link" href="#common-questions">Common Questions</a>
+<a class="toc-link sub" href="#i-cannot-find-where-data-was-written">I cannot find where data was written</a>
+<a class="toc-link sub" href="#the-panel-has-no-content">The panel has no content</a>
+<a class="toc-link sub" href="#nightly-jobs-did-not-run">Nightly jobs did not run</a>
+<a class="toc-link sub" href="#why-only-write-a-bounded-summary-by-default">Why only write a bounded summary by default</a>
+<a class="toc-link" href="#review-checklist">Review Checklist</a>
+<a class="toc-link" href="#continue-deeper">Continue Deeper</a>
+      <p class="generated-note">After editing Markdown:<br><code>python3 scripts/build_local_docs.py</code><br>Auto-sync while editing:<br><code>python3 scripts/build_local_docs.py --watch</code></p>
+    </aside>
+  </main>
+  <script>
+    (() => {
+      const toc = document.querySelector(".toc");
+      const links = Array.from(document.querySelectorAll(".toc-link"));
+      const headings = links
+        .map((link) => document.getElementById(decodeURIComponent(link.hash.slice(1))))
+        .filter(Boolean);
+      if (!links.length || !headings.length) return;
+      let lastActiveId = "";
+      const applyActive = (activeId) => {
+        let activeLink = null;
+        links.forEach((link) => {
+          const isActive = link.hash === "#" + activeId;
+          link.classList.toggle("active", isActive);
+          link.setAttribute("aria-current", isActive ? "true" : "false");
+          if (isActive) activeLink = link;
+        });
+        if (activeLink && toc && activeId !== lastActiveId) {
+          activeLink.scrollIntoView({ block: "nearest", inline: "nearest" });
+          lastActiveId = activeId;
+        }
+      };
+      const getScrollActiveId = () => {
+        const marker = Math.min(window.innerHeight * 0.42, 260);
+        let activeId = headings[0].id;
+        for (const heading of headings) {
+          if (heading.getBoundingClientRect().top <= marker) activeId = heading.id;
+          else break;
+        }
+        return activeId;
+      };
+      const setActive = () => applyActive(getScrollActiveId());
+      const setHashActive = () => {
+        const hashId = decodeURIComponent(window.location.hash.slice(1));
+        if (hashId && headings.some((heading) => heading.id === hashId)) {
+          applyActive(hashId);
+        }
+        requestAnimationFrame(setActive);
+        window.setTimeout(setActive, 160);
+        window.setTimeout(setActive, 520);
+      };
+      window.addEventListener("scroll", setActive, { passive: true });
+      window.addEventListener("resize", setActive);
+      window.addEventListener("hashchange", setHashActive);
+      setHashActive();
+    })();
+  </script>
+</body>
+</html>

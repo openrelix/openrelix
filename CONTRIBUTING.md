@@ -2,7 +2,7 @@
 
 Thanks for helping improve OpenRelix.
 
-Start with [Contributor Onboarding](docs/contributor-onboarding.md) for the 10-minute local loop, task card template, and review checklist. Use [Validation Matrix](docs/validation-matrix.md) to pick checks by change type, [Data Contracts](docs/data-contracts.md) for state shapes, and [Privacy Threat Model](docs/privacy-threat-model.md) for host, connector, package, and release boundaries.
+Start with [Detailed Developer Guide](docs/developer-guide.md) for the 10-minute local loop, task card template, and review checklist. Use [Validation Matrix](docs/validation-matrix.md) to pick checks by change type, [Data Contracts](docs/data-contracts.md) for state shapes, and [Privacy Threat Model](docs/privacy-threat-model.md) for host, connector, package, and release boundaries.
 
 Docs under `docs/` are bilingual by default. Use [Docs Index](docs/README.md) for the Markdown companion naming rule and the boundary between agent-readable Markdown and rich bilingual HTML pages.
 

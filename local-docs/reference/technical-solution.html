@@ -1,0 +1,783 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OpenRelix 技术方案 | OpenRelix Local Docs</title>
+  <link rel="icon" href="../../docs/openrelix-icon.png">
+  <style>
+:root {
+  color-scheme: light;
+  --ink: #181a1f;
+  --muted: #626873;
+  --paper: #ffffff;
+  --paper-soft: #f7f8f5;
+  --line: #dedfd9;
+  --line-strong: #c9cbc4;
+  --accent: #0f766e;
+  --accent-soft: #e6f4f1;
+  --code-bg: #101827;
+  --code-fg: #f8fafc;
+  --radius: 8px;
+  --max: 1180px;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; background: var(--paper-soft); }
+body {
+  margin: 0;
+  color: var(--ink);
+  background: var(--paper-soft);
+  font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+  line-height: 1.68;
+}
+a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 3px; }
+code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 0.94em;
+}
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  border-bottom: 1px solid rgba(222, 223, 217, 0.9);
+  background: rgba(255,255,255,0.94);
+  backdrop-filter: blur(16px);
+}
+.topbar-inner {
+  width: min(var(--max), calc(100% - 32px));
+  min-height: 64px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--ink);
+  font-weight: 760;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.brand img { width: 30px; height: 30px; border-radius: 7px; }
+.topnav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.topnav::-webkit-scrollbar { display: none; }
+.topnav a,
+.lang-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--ink);
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+  background: #fff;
+}
+.topnav a:hover,
+.lang-link:hover,
+.lang-link.active {
+  border-color: #bddbd5;
+  background: var(--accent-soft);
+  color: #0f5f59;
+}
+.shell {
+  width: min(var(--max), calc(100% - 32px));
+  margin: 34px auto 72px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 260px;
+  gap: 28px;
+  align-items: start;
+}
+.article {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--paper);
+  padding: clamp(22px, 4vw, 46px);
+}
+.doc-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  align-items: center;
+  margin-bottom: 24px;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+.doc-meta code { color: var(--ink); background: #f0f1ed; padding: 2px 6px; border-radius: 5px; }
+.language-switch { display: inline-flex; flex-wrap: wrap; gap: 8px; margin-left: auto; }
+.content h1 {
+  margin: 0 0 18px;
+  font-size: clamp(2.1rem, 4vw, 3.2rem);
+  line-height: 1.08;
+  letter-spacing: 0;
+}
+.content h2 {
+  margin: 46px 0 12px;
+  padding-top: 6px;
+  font-size: clamp(1.5rem, 3vw, 2rem);
+  line-height: 1.18;
+  letter-spacing: 0;
+}
+.content h3 {
+  margin: 30px 0 8px;
+  font-size: 1.24rem;
+  line-height: 1.28;
+}
+.content h4 { margin: 24px 0 8px; font-size: 1.04rem; }
+.content p,
+.content li {
+  color: var(--muted);
+  font-size: 1.04rem;
+}
+.content p { margin: 12px 0; }
+.content ul,
+.content ol { padding-left: 1.35em; margin: 12px 0 18px; }
+.content li + li { margin-top: 6px; }
+.content blockquote {
+  margin: 20px 0;
+  padding: 14px 18px;
+  border-left: 4px solid var(--accent);
+  background: var(--accent-soft);
+  border-radius: 0 var(--radius) var(--radius) 0;
+}
+.content blockquote p { margin: 0; color: #33524d; }
+.content pre {
+  margin: 18px 0 24px;
+  padding: 18px;
+  overflow: auto;
+  border-radius: var(--radius);
+  background: var(--code-bg);
+  color: var(--code-fg);
+}
+.content pre code { color: inherit; font-size: 0.96rem; }
+.content :not(pre) > code {
+  color: #0f5f59;
+  background: #eef4f1;
+  border: 1px solid #d9e7e2;
+  padding: 1px 5px;
+  border-radius: 5px;
+}
+.content hr { border: 0; border-top: 1px solid var(--line); margin: 28px 0; }
+.table-wrap {
+  width: 100%;
+  margin: 18px 0 26px;
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 620px;
+  background: #fff;
+}
+th, td {
+  padding: 11px 13px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+th {
+  color: var(--ink);
+  background: #f3f5f0;
+  font-weight: 780;
+}
+td { color: var(--muted); }
+tr:last-child td { border-bottom: 0; }
+.toc {
+  position: sticky;
+  top: 86px;
+  max-height: calc(100vh - 112px);
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--paper);
+  padding: 18px;
+  scrollbar-width: thin;
+}
+.toc-title {
+  margin: 0 0 12px;
+  color: var(--ink);
+  font-size: 0.96rem;
+  font-weight: 800;
+}
+.toc-link {
+  display: block;
+  border-left: 3px solid transparent;
+  border-radius: 7px;
+  padding: 7px 8px 7px 10px;
+  color: var(--muted);
+  text-decoration: none;
+  font-weight: 650;
+  line-height: 1.35;
+}
+.toc-link.sub { padding-left: 24px; font-size: 0.94rem; }
+.toc-link.active,
+.toc-link:hover {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+.toc-link.active {
+  border-left-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
+  font-weight: 800;
+}
+.toc-empty { color: var(--muted); margin: 0; }
+.generated-note {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+@media (max-width: 860px) {
+  .topbar-inner { align-items: flex-start; flex-direction: column; padding: 12px 0; gap: 10px; }
+  .topnav { width: 100%; margin-left: 0; }
+  .shell { grid-template-columns: 1fr; margin-top: 18px; }
+  .toc { position: static; order: -1; }
+  .language-switch { margin-left: 0; }
+}
+</style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="../index.html">
+        <img src="../../docs/openrelix-icon.png" alt="">
+        <span>OpenRelix</span>
+      </a>
+      <nav class="topnav" aria-label="Local docs navigation">
+        <a href="../index.html">文档首页</a>
+        <a href="../developer-guide.html">图解指南</a>
+        <a href="developer-guide.html">开发者详细指南</a>
+      </nav>
+    </div>
+  </header>
+  <main class="shell">
+    <article class="article">
+      <div class="doc-meta">
+        <span>HTML 由 Markdown 生成</span>
+        <span>源文件 <code>docs/technical-solution.md</code></span>
+        <span class="language-switch" aria-label="Language versions">
+          <a class="lang-link active" href="technical-solution.html">中文</a>
+<a class="lang-link" href="technical-solution.en.html">EN</a>
+        </span>
+      </div>
+      <div class="content">
+<h1 id="openrelix">OpenRelix 技术方案</h1>
+<blockquote><p>语言版本：<a href="technical-solution.en.html">English</a> | 简体中文</p></blockquote>
+<h2 id="section">定位</h2>
+<p><code>OpenRelix</code> 意为开源的个人记忆珍藏，是一套面向 AI coding agents / AI CLI 的本地优先个人资产系统。它解决的问题不是“再做一个聊天记录备份”，而是把重复出现的工作方法、检查清单、技能、模板和自动化沉淀成可复用资产，并在本地持续整理、可视化和回看。</p>
+<p>GitHub 项目页：<a href="https://github.com/openrelix/openrelix">openrelix/openrelix</a>。欢迎点星支持，便于更多人发现这个本地优先方案。</p>
+<p>当前预览版的公开交付方式是 macOS installer-first：</p>
+<ul>
+<li>仓库保存可开源的能力层：skills、installer、templates、scripts、docs、launchd 模板。</li>
+<li>用户运行数据默认保存在仓库外的 state root。</li>
+<li>当前预览版适配 Codex CLI / Codex app-server 和 Claude Code CLI；host 原生 memory 归各 host 管，本项目默认只写一份共享 bounded summary 供上下文读取，完整个人记忆仍留在 state root。</li>
+<li>Linux / Windows 不作为当前预览版对外承诺。</li>
+</ul>
+<h2 id="section-2">设计原则</h2>
+<ol>
+<li><strong>本地优先</strong>：原始 AI host history、复盘、registry、夜间整理产物、日志和面板默认都留在本机 state root；当前预览版默认读取 Codex app-server / Codex history / Codex sessions 和 Claude Code transcripts，并用 <code>ai_host</code> 区分来源。</li>
+<li><strong>源码和状态分离</strong>：repo 是 source of truth，state root 是 runtime data，不把个人运行数据提交进仓库。</li>
+<li><strong>安装器是主链路</strong>：npm 只做 bootstrapper，真正安装逻辑仍在 <code>install/install.sh</code>。</li>
+<li><strong>skill 不靠 hook 挂载</strong>：repo 内启动时发现 <code>.agents/skills/</code>，全局可用时由 adapter / installer 把 canonical skill 暴露到对应 host 的用户级 skill root；当前预览版全局 skill 安装仍使用 Codex skill root。</li>
+<li><strong>记忆分层</strong>：稳定强规则放 <code>AGENTS.md</code> 或项目文档；本项目生成的 memory 是可检索 recall 层，不是唯一事实来源。</li>
+<li><strong>隐私边界清晰</strong>：不沉淀 secrets、token、Cookie、原始内部日志、用户数据或未脱敏的专有上下文。</li>
+</ol>
+<h2 id="section-3">总体架构</h2>
+<pre><code class="language-text">AI coding agent / CLI host
+  |
+  | adapter reads/writes
+  v
+Host home
+  - history / session records
+  - optional native memories
+  - optional user skills
+
+Current preview adapters: Codex CLI / CODEX_HOME and Claude Code CLI / CLAUDE_HOME
+
+OpenRelix repo
+  - .agents/skills/
+  - install/
+  - scripts/
+  - templates/
+  - ops/launchd/
+  - docs/
+  |
+  | installer / openrelix / LaunchAgent
+  v
+External state root
+  - raw/
+  - registry/
+  - reviews/
+  - consolidated/
+  - reports/
+  - runtime/
+    - openrelix-index.sqlite3
+  - log/</code></pre>
+<p>核心链路：</p>
+<pre><code class="language-text">collect_codex_activity.py
+  -&gt; raw/daily/&lt;date&gt;.json
+  -&gt; raw/windows/*.json
+
+nightly_consolidate.py
+  -&gt; consolidated/daily/&lt;date&gt;/summary.json
+  -&gt; consolidated/daily/&lt;date&gt;/summary.md
+  -&gt; registry/memory_entries.jsonl
+
+openrelix_index.py
+  -&gt; runtime/openrelix-index.sqlite3
+
+memory-review skill
+  -&gt; reviews/YYYY/*.md
+  -&gt; registry/assets.jsonl
+  -&gt; registry/usage_events.jsonl
+
+build_overview.py
+  -&gt; reports/overview-data.json
+  -&gt; reports/overview.md
+  -&gt; reports/overview.csv
+  -&gt; reports/panel.html
+
+openrelix_overview/
+  -&gt; focused overview internals such as token usage, token fetch, display labels, redaction, local path links, update secret, and shared helpers</code></pre>
+<h2 id="section-4">分层说明</h2>
+<h3 id="1-host-adapter">1. Host adapter 层</h3>
+<p>AI host 自己的用户级目录、history、session 和 native memory 由各 host adapter 负责映射。Codex 适配器由 <code>CODEX_HOME</code> 决定用户级目录，默认是 <code>~/.codex</code>；默认 <code>auto</code> 先通过 <code>codex app-server</code> 读取 threads，失败时再读取其中的 <code>history.jsonl</code> 和 <code>sessions/**/*.jsonl</code>。Claude Code 适配器由 <code>CLAUDE_HOME</code> 决定用户级数据目录，默认读取 <code>projects/**/*.jsonl</code> 和 <code>history.jsonl</code>；<code>CLAUDE_CONFIG_DIR</code> 只作为显式 env-file 配置传给 Claude CLI，不由 OpenRelix 自动注入。raw window 会写入 <code>ai_host=codex|claude</code>，面板按 host 展示。</p>
+<p>默认安装开启本地个人记忆，并把压缩后的 bounded summary 写入启用 host context 里的 OpenRelix 受控块：Codex <code>memory_summary.md</code> 和 Claude Code <code>CLAUDE.md</code>。普通刷新和 <code>openrelix context sync</code> 现在走同一条统一编译路径：全局记忆和项目记忆都会按热度进入候选，其中全局预算是配置上限的 10%，项目预算是 30%。完整结构化记录和统一编译产物仍保留在 state root，例如 <code>runtime/host-context/memory_summary.md</code>；默认不把个人记忆写进项目仓库，避免 git 噪音和泄露风险。同步时只更新 OpenRelix 自己的受控块，保留 Codex / Claude Code 原生内容；面板展示 host 原生记忆时会过滤 OpenRelix 注入块，避免把个人记忆登记册误标成 Codex/Claude 原生内容。需要严格隔离时使用 <code>--record-memory-only</code> 或 <code>--no-memory-summary</code>。</p>
+<p>Memory System v2 把 OpenRelix state root 作为权威存储，host native memory 只是可选消费端和外部信号源。上下文编译允许有效 <code>injection_policy=global_context</code> 或 <code>project_context</code> 的记忆进入同一份 host summary；项目条目保留项目标签，靠热度和项目预算控制进入量，而不是按当前 cwd 另起 active summary。legacy/nightly 合成项即使带了旧的 global/project 标记，也会先降到 <code>on_demand</code>，除非有 canonical / manual / approved 标记，或已经通过新存储质量门禁。<code>on_demand</code>、<code>local_only</code>、<code>never</code> 和低优先级记忆保留在本地 registry / index，不默认污染 host context。Codex 侧如果用户关闭 <code>[features].memories</code>，同步命令会报告 <code>disabled</code>，不再更新 <code>memory_summary.md</code> 里的 OpenRelix 受控块。</p>
+<p>生成策略优先高含金量：问候、登录失败、无结论重复窗口、一次性测试工件和空泛“看了 X”笔记不会写入 registry；低信号记忆会自动降到低优先级或本地保留。压缩策略保持轻量：同签名记忆跨天归并，默认只让 effective <code>injection_policy=global_context/project_context</code> 的条目参与注入，再按 priority、出现次数和更新时间排序；low-priority 与按需/本地 scope 默认只留本地；<code>MEMORY.md</code> 里的历史任务组只作为面板/检索索引，不再编入注入摘要。默认 token budget 是 target 6.7K、warn 7.4K、max 8K，不把原始窗口明细塞进 host context。</p>
+<h3 id="2-repo">2. Repo 源码层</h3>
+<p>仓库保存可复用能力：</p>
+<ul>
+<li><code>.agents/skills/memory-review/</code>：立即复盘入口。</li>
+<li><code>install/</code>：安装器、模板渲染、host adapter 用户配置和 shell path 配置；当前预览版实现 Codex 和 Claude Code 相关环境配置。</li>
+<li><code>scripts/</code>：运行时路径、采集、整理、概览生成、token live server 和 <code>openrelix</code> CLI。</li>
+<li><code>templates/</code>：资产样例、任务复盘模板、夜间整理 JSON schema。</li>
+<li><code>ops/launchd/</code>：macOS LaunchAgent 模板。</li>
+<li><code>docs/</code>：设计、安装、隐私、指标和学习材料。</li>
+</ul>
+<h3 id="3-runtime-state">3. Runtime state 层</h3>
+<p>state root 默认在：</p>
+<pre><code class="language-text">~/Library/Application Support/openrelix</code></pre>
+<p>可通过 <code>AI_ASSET_STATE_DIR</code> 或 <code>./install/install.sh --state-dir ...</code> 覆盖。</p>
+<p>state root 的主要目录：</p>
+<ul>
+<li><code>raw/</code>：从 AI host history、session 和 transcript 采集出的日维度、窗口维度原始结构化数据；当前预览版来源包括 Codex 和 Claude Code。</li>
+<li><code>registry/</code>：资产注册表、复用事件、nightly memory items 和整理质量日志。</li>
+<li><code>reviews/</code>：脱敏任务复盘。</li>
+<li><code>consolidated/</code>：夜间或手动整理后的 summary。</li>
+<li><code>reports/</code>：overview、CSV 和 HTML panel。</li>
+<li><code>runtime/</code>：运行时缓存、host adapter 运行目录、nightly isolated Codex / Claude home、token cache，以及可删除重建的 SQLite 检索索引。</li>
+<li><code>log/</code>：LaunchAgent 和后台任务日志。</li>
+</ul>
+<h2 id="section-5">核心模块</h2>
+<h3 id="scripts-asset-runtime-py"><code>scripts/asset_runtime.py</code></h3>
+<p>运行时路径和配置的中心模块。</p>
+<p>它负责：</p>
+<ul>
+<li>解析 state root、host home、host binary、user skill root 和 LaunchAgent 目录；当前预览版对应 <code>CODEX_HOME</code> / Codex binary 和 <code>CLAUDE_HOME</code> / Claude binary。</li>
+<li>管理 <code>language</code> 和 <code>memory_mode</code>。</li>
+<li>创建 state root 下的标准目录和 JSONL 文件。</li>
+<li>提供 atomic write，避免中途写坏 JSON / markdown / panel。</li>
+<li>兼容旧 slug 的 state root，并支持 legacy repo-local state 迁移。</li>
+</ul>
+<p>新增脚本时应优先复用这里的 <code>get_runtime_paths()</code> 和 <code>ensure_state_layout()</code>，不要在脚本里重新散落路径规则。</p>
+<h3 id="scripts-openrelix-index-py"><code>scripts/openrelix_index.py</code></h3>
+<p>本地 SQLite sidecar 索引。</p>
+<p>输入：</p>
+<ul>
+<li><code>registry/memory_entries.jsonl</code></li>
+<li><code>registry/memory_items.jsonl</code></li>
+<li><code>raw/daily/*.json</code></li>
+<li><code>raw/windows/*/*.json</code></li>
+<li><code>consolidated/daily/*/summary.json</code></li>
+</ul>
+<p>输出：</p>
+<ul>
+<li><code>runtime/openrelix-index.sqlite3</code></li>
+</ul>
+<p>它不改变 raw / JSONL / consolidated 主链路，也不是权威数据源。索引缺失、schema 过期、source fingerprint 变化或用户手动删除时，都可以从 state root 里的源文件全量重建。<code>openrelix index status</code> 只读检查状态，<code>openrelix index rebuild</code> 显式重建；<code>openrelix index search-memory</code> 和 <code>openrelix index search-window</code> 先提供底层检索能力，UI 后续再接。</p>
+<p>夜间 pipeline 和普通 <code>refresh</code> 会以 warning-only 方式尝试重建 SQLite 索引：失败只写 stderr，不阻断 raw 采集、nightly consolidation、bounded summary 或 panel 生成。</p>
+<h3 id="install-install-sh"><code>install/install.sh</code></h3>
+<p>公开安装主入口。</p>
+<p>两种 profile：</p>
+<ul>
+<li><code>minimal</code>：初始化 state root，生成第一份 overview / panel，并按默认 <code>integrated</code> 同步 bounded summary。不会安装全局命令、shell rc 或 LaunchAgent。</li>
+<li><code>integrated</code>：在 minimal 基础上安装全局 skill、custom prompt、<code>openrelix</code> 命令、bounded history 配置和后台服务。</li>
+</ul>
+<p>重要开关：</p>
+<ul>
+<li><code>--language zh|en</code></li>
+<li><code>--memory-mode integrated|local-only|off</code></li>
+<li><code>--record-memory-only</code></li>
+<li><code>--use-integrated</code></li>
+<li><code>--disable-personal-memory</code></li>
+<li><code>--enable-background-services</code></li>
+<li><code>--enable-nightly</code></li>
+<li><code>--nightly-organize-time HH:MM</code></li>
+<li><code>--nightly-finalize-time HH:MM</code></li>
+<li><code>--keep-awake=during-job</code></li>
+</ul>
+<p>安装器只应做可重复执行的配置动作，避免把一次性的本机状态写死进仓库。</p>
+<h3 id="scripts-collect-codex-activity-py"><code>scripts/collect_codex_activity.py</code></h3>
+<p>采集当天 AI host 活动。脚本名保留 <code>codex</code> 是兼容入口；当前可通过 <code>--activity-host codex|claude|all</code> 选择来源。</p>
+<p>输入：</p>
+<ul>
+<li><code>CODEX_HOME/history.jsonl</code></li>
+<li><code>CODEX_HOME/sessions/**/*.jsonl</code></li>
+<li><code>CLAUDE_HOME/projects/**/*.jsonl</code></li>
+<li><code>CLAUDE_HOME/history.jsonl</code></li>
+</ul>
+<p>输出：</p>
+<ul>
+<li><code>raw/daily/&lt;date&gt;.json</code></li>
+<li><code>raw/windows/*.json</code></li>
+</ul>
+<p>它会把同一天的用户 prompt、窗口 metadata、最终 conclusion 汇总起来，并过滤明显的 review-like conclusion，避免把 reviewer 输出本身当作普通业务结论反复沉淀。</p>
+<h3 id="scripts-nightly-consolidate-py"><code>scripts/nightly_consolidate.py</code></h3>
+<p>夜间整理核心。</p>
+<p>输入：</p>
+<ul>
+<li><code>raw/daily/&lt;date&gt;.json</code></li>
+<li>近期 <code>registry/memory_entries.jsonl</code></li>
+<li>近期 <code>consolidated/daily/*/summary.json</code></li>
+<li>可选的 <code>--learn-window-days</code></li>
+</ul>
+<p>模型调用方式：</p>
+<ul>
+<li>默认 <code>model_cli=codex</code> 时使用 <code>codex exec --ephemeral --model &lt;codex_model&gt;</code> 和隔离的 nightly <code>CODEX_HOME</code></li>
+<li><code>model_cli=claude</code> 时使用 <code>claude -p --output-format json --json-schema ...</code>，<code>CLAUDE_HOME</code> 指向配置的 Claude Code 数据目录；OpenRelix 不自动设置 <code>CLAUDE_CONFIG_DIR</code>，以免改变 Claude CLI 的登录态位置</li>
+<li>默认 <code>codex_model</code> 是 <code>gpt-5.4-mini</code>，默认 <code>claude_model</code> 是 <code>sonnet</code>；<code>openrelix models</code> 通过 <code>codex debug models</code> 读取当前本机 Codex catalog，<code>openrelix config --codex-model &lt;model&gt;</code>、<code>openrelix config --model-cli claude --claude-model &lt;model&gt;</code> 负责切换</li>
+<li>通过 <code>templates/nightly-summary-schema.json</code> 约束输出 JSON</li>
+<li>在 prompt 前加安全前缀，声明这是纯整理任务，不允许读额外文件、调用 shell、web、MCP 或 patch</li>
+</ul>
+<p>输出：</p>
+<ul>
+<li><code>consolidated/daily/&lt;date&gt;/summary.json</code></li>
+<li><code>consolidated/daily/&lt;date&gt;/summary.md</code></li>
+<li><code>consolidated/daily/&lt;date&gt;/runs/*</code></li>
+<li><code>registry/memory_entries.jsonl</code></li>
+<li><code>registry/nightly_learning_journal.jsonl</code></li>
+</ul>
+<p>当模型整理失败时，会生成 fallback summary；当新结果质量不如已有结果时，会保留已有 summary，并记录 selection decision。</p>
+<p>个人记忆生成、筛选、去重或注入策略发生不兼容变化时，需要提升 <code>PERSONAL_MEMORY_ALGORITHM_VERSION</code>。该版本会进入 <code>learning_input_fingerprint</code>，避免增量用户因为 raw 输入未变而被 <code>--skip-if-unchanged</code> 挡住。安装器会写入 <code>runtime/memory-migration.json</code>，已有本地记忆且算法版本落后时标记为 pending；下一次普通 <code>refresh_overview</code> 会执行一次有界迁移：最近 7 天、<code>final</code>、<code>--learn-window-days 7</code>、强制关闭 unchanged skip。迁移完成后，<code>runtime/config.json</code> 记录 <code>personal_memory_algorithm_version</code>。</p>
+<h3 id="scripts-build-overview-py"><code>scripts/build_overview.py</code></h3>
+<p>本地可视化生成器。</p>
+<p>输入：</p>
+<ul>
+<li><code>registry/assets.jsonl</code></li>
+<li><code>registry/usage_events.jsonl</code></li>
+<li><code>registry/memory_entries.jsonl</code></li>
+<li><code>reviews/</code></li>
+<li><code>raw/daily/</code></li>
+<li><code>consolidated/daily/</code></li>
+<li>可读的 Codex native memory summary、Claude Code <code>CLAUDE.md</code> 和 <code>MEMORY.md</code></li>
+</ul>
+<p>输出：</p>
+<ul>
+<li><code>reports/overview-data.json</code></li>
+<li><code>reports/overview.md</code></li>
+<li><code>reports/overview.csv</code></li>
+<li><code>reports/panel.html</code></li>
+</ul>
+<p>它会聚合资产数量、复用事件、估算节省、项目上下文、nightly memory、Codex / Claude Code native memory 对照和 token 使用趋势。Token 默认合并 Codex <code>@ccusage/codex</code> 与 Claude Code <code>ccusage</code>，也支持按 provider 单独查询。</p>
+<p><code>scripts/build_overview.py</code> 当前仍是兼容入口；内部实现开始迁入 <code>scripts/openrelix_overview/</code>。当前已拆出 token/update secret、redaction、local path、display label、i18n、contract 和 memory registry 纯 helper，并解除 <code>token_live_server.py</code> 对整个 <code>build_overview.py</code> 的 import 依赖。后续隔离重构继续按“小步迁出纯 helper、保留兼容 facade、每步补 focused tests”的方式推进，重点是逐步拆分 memory grouping、window、asset 和 renderer 模块。</p>
+<p>目录结构暂不做更大迁移：现阶段只新增 overview builder 内部包，保留所有公开命令和安装路径不变。</p>
+<h3 id="scripts-openrelix-py"><code>scripts/openrelix.py</code></h3>
+<p>面向用户的本地 CLI。</p>
+<p>常用命令：</p>
+<pre><code class="language-bash">openrelix review
+openrelix review --date &quot;$(date +%F)&quot; --learn-window-days 7
+openrelix backfill --from 2026-04-24 --to 2026-04-27 --learn-window-days 7
+openrelix backfill --dates 2026-04-21,2026-04-23,2026-04-24 --learn-window-days 7
+openrelix core
+openrelix refresh
+openrelix refresh --learn-memory --learn-window-days 7
+openrelix memory-migration status
+openrelix memory-migration run --if-pending
+./install/install.sh --profile integrated --enable-learning-refresh
+openrelix mode
+openrelix mode local-only
+openrelix open panel
+openrelix paths</code></pre>
+<p><code>openrelix</code> 是对底层脚本的稳定入口，适合文档、LaunchAgent、手动调试和日常使用。安装后的记忆模式切换走 <code>openrelix mode</code>，不需要重复执行安装器。</p>
+<h3 id="agents-skills-memory-review"><code>.agents/skills/memory-review/</code></h3>
+<p>立即复盘 skill。</p>
+<p>触发后做五件事：</p>
+<ol>
+<li>在 state root 的 <code>reviews/YYYY/</code> 下写入脱敏任务复盘。</li>
+<li>基于复盘结果运行资产化判断，决定是否建议生成 reusable memory、playbook、template、automation 或 skill。</li>
+<li>用户确认后，用 <code>templates/asset-generation-template.md</code> 和 <code>templates/skill-draft-template.md</code> 生成对应资产；skill 需要判断 repo-local 还是 user-global。</li>
+<li>如有长期复用价值，更新 <code>registry/assets.jsonl</code>；如有 reusable memory，写入 <code>registry/memory_entries.jsonl</code>。</li>
+<li>如有资产实际帮上忙，追加 <code>registry/usage_events.jsonl</code>，并运行 <code>scripts/build_overview.py</code> 刷新 overview 和 panel。</li>
+</ol>
+<p>custom prompt 是兼容层，canonical workflow 仍以 skill 为主。</p>
+<h3 id="ops-launchd"><code>ops/launchd/</code></h3>
+<p>macOS 后台自动化模板。</p>
+<p>当前包含：</p>
+<ul>
+<li><code>overview-refresh</code>：<code>RunAtLoad</code>，并每 3600 秒刷新一次 overview。</li>
+<li><code>token-live</code>：<code>RunAtLoad</code> + <code>KeepAlive</code>，提供本地 token live endpoint。</li>
+<li><code>nightly-organize</code>：默认每天 23:00 生成当日整理预览，可通过 <code>--nightly-organize-time HH:MM</code> 调整。</li>
+<li><code>nightly-finalize-previous-day</code>：默认每天 00:10 回补前一天终版整理，可通过 <code>--nightly-finalize-time HH:MM</code> 调整。</li>
+</ul>
+<p><code>--keep-awake=during-job</code> 只在夜间任务运行期间使用 <code>caffeinate</code>，不是永久改变系统睡眠策略。</p>
+<h2 id="section-6">数据模型</h2>
+<h3 id="asset">Asset</h3>
+<p>资产是长期可复用的条目，落在 <code>registry/assets.jsonl</code>。</p>
+<p>典型字段：</p>
+<ul>
+<li><code>id</code></li>
+<li><code>title</code></li>
+<li><code>type</code></li>
+<li><code>domain</code></li>
+<li><code>scope</code></li>
+<li><code>status</code></li>
+<li><code>created_at</code></li>
+<li><code>updated_at</code></li>
+<li><code>source_task</code></li>
+<li><code>reuse_count</code></li>
+<li><code>minutes_saved_total</code></li>
+<li><code>value_note</code></li>
+<li><code>artifact_paths</code></li>
+<li><code>tags</code></li>
+<li><code>notes</code></li>
+</ul>
+<p>示例见 <code>templates/asset-entry-example.json</code>；复盘后资产化判断见 <code>templates/asset-generation-template.md</code>。</p>
+<h3 id="usage-event">Usage Event</h3>
+<p>复用事件落在 <code>registry/usage_events.jsonl</code>，用于证明某个资产在真实任务里发挥过作用。</p>
+<p>常见字段：</p>
+<ul>
+<li><code>date</code></li>
+<li><code>asset_id</code></li>
+<li><code>task</code></li>
+<li><code>minutes_saved</code></li>
+<li><code>note</code></li>
+</ul>
+<p>面板会把 usage event 作为强证据，同时结合资产内容自动估算 value score 和 saved time。估算值用于排序和趋势观察，不是精确测速。</p>
+<h3 id="task-review">Task Review</h3>
+<p>任务复盘落在 <code>reviews/YYYY/*.md</code>。</p>
+<p>它记录脱敏后的：</p>
+<ul>
+<li>任务背景</li>
+<li>最终结果</li>
+<li>可复用价值</li>
+<li>验证路径</li>
+<li>风险和后续</li>
+<li>资产动作</li>
+</ul>
+<p>模板见 <code>templates/task-review-template.md</code>。</p>
+<h3 id="nightly-memory-item">Nightly Memory Item</h3>
+<p>夜间整理记忆写入 canonical <code>registry/memory_entries.jsonl</code>。旧版 <code>registry/memory_items.jsonl</code> 只作为迁移和兼容 fallback；一旦 canonical 文件已有内容，上下文编译、面板和 SQLite 索引都优先读取 canonical registry。新写入的 nightly 记忆会根据来源窗口补 <code>scope</code> 和 <code>injection_policy</code>：带 cwd / 项目来源的记忆默认是 <code>project_context</code>；无项目来源的 legacy 通用记忆只作为 <code>global_context</code> 原始意图保存，注入时仍需 canonical / manual / approved 门禁，否则按 <code>on_demand</code> 处理。</p>
+<p>核心字段：</p>
+<ul>
+<li><code>date</code></li>
+<li><code>language</code></li>
+<li><code>source</code></li>
+<li><code>bucket</code></li>
+<li><code>scope</code></li>
+<li><code>injection_policy</code></li>
+<li><code>project_key</code></li>
+<li><code>project_label</code></li>
+<li><code>title</code></li>
+<li><code>memory_type</code></li>
+<li><code>priority</code></li>
+<li><code>value_note</code></li>
+<li><code>source_window_ids</code></li>
+<li><code>keywords</code></li>
+</ul>
+<p><code>bucket</code> 分为：</p>
+<ul>
+<li><code>durable</code>：长期可复用记忆</li>
+<li><code>session</code>：工作记忆</li>
+<li><code>low_priority</code>：保留但低优先级记忆</li>
+</ul>
+<h2 id="section-7">运行链路</h2>
+<h3 id="section-8">最小安装</h3>
+<pre><code class="language-text">install/install.sh
+  -&gt; resolve runtime paths
+  -&gt; ensure state layout
+  -&gt; write runtime config
+  -&gt; build first overview</code></pre>
+<p>适合先体验，不写 shell rc，不注册 LaunchAgent，不安装全局 skill。</p>
+<h3 id="section-9">完整安装</h3>
+<pre><code class="language-text">install/install.sh --profile integrated
+  -&gt; minimal setup
+  -&gt; configure bounded host history for the current adapter
+  -&gt; optionally configure host-native memory context
+  -&gt; symlink repo skill to the current adapter&#x27;s user skill root
+  -&gt; install custom prompt fallback
+  -&gt; install global openrelix command
+  -&gt; optionally render/bootstrap LaunchAgents
+  -&gt; with --enable-learning-refresh, make overview-refresh read the configured activity host and call the configured model_cli every hour</code></pre>
+<h3 id="section-10">手动整理</h3>
+<pre><code class="language-text">openrelix review --date &lt;date&gt; --learn-window-days N
+  -&gt; auto-backfill missing or non-final daily reports in the learning window
+     without recursively expanding each prerequisite day into another learning window
+  -&gt; collect_codex_activity.py
+  -&gt; nightly_consolidate.py
+  -&gt; build_overview.py
+  -&gt; print summary</code></pre>
+<h3 id="section-11">多日回溯</h3>
+<pre><code class="language-text">openrelix backfill --from &lt;start-date&gt; --to &lt;end-date&gt; --learn-window-days N
+  -&gt; for each date:
+     -&gt; collect_codex_activity.py
+     -&gt; nightly_consolidate.py
+     -&gt; build_overview.py</code></pre>
+<p>也可以使用 <code>--dates</code> 回溯不连续日期，避免把中间没有活动的日期也生成空 summary：</p>
+<pre><code class="language-bash">openrelix backfill --dates 2026-04-21,2026-04-23,2026-04-24 --learn-window-days 7</code></pre>
+<p>回溯不是完全离线：采集阶段是本地脚本读取当前 host 的 history、session 或 transcript JSONL；模型阶段通过当前 <code>model_cli</code> 生成结构化 summary，默认是 <code>codex exec --ephemeral --model &lt;codex_model&gt;</code>，也可以切到 <code>claude -p --model &lt;claude_model&gt;</code>；最后再由本地脚本重建 overview / panel。</p>
+<h3 id="section-12">后台整理</h3>
+<pre><code class="language-text">LaunchAgent
+  -&gt; nightly_organize_today.sh or nightly_finalize_previous_day.sh
+  -&gt; nightly_pipeline.sh
+  -&gt; collect
+  -&gt; consolidate
+  -&gt; refresh overview</code></pre>
+<p>锁屏不影响用户级 LaunchAgent 的正常运行；退出登录后用户级 LaunchAgent 不再执行。</p>
+<h2 id="section-13">发布方案</h2>
+<p>当前开源发布建议按 installer-first 讲清楚：</p>
+<ul>
+<li>GitHub 仓库提供源码、模板、skills、docs 和 launchd 模板。</li>
+<li>npm 包提供 <code>npx openrelix install</code> 入口。</li>
+<li>项目定位是 AI-agent-first；当前预览版安装器交付 Codex CLI / Codex app-server 和 Claude Code CLI 适配能力。</li>
+<li>npm 通过 <code>files</code> 白名单携带必要源码，不携带个人运行数据。</li>
+<li>发布前用 <code>npm pack --dry-run</code> 检查包内容。</li>
+<li>Codex plugin 作为已打包的 skill route 随仓库/包发布；完整本地集成仍由 installer 负责。</li>
+</ul>
+<h2 id="section-14">开发与验证</h2>
+<p>常用本地检查：</p>
+<pre><code class="language-bash">python3 -m py_compile scripts/*.py install/*.py
+python3 -m unittest discover -s tests
+zsh -n install/install.sh scripts/*.sh
+npm pack --dry-run</code></pre>
+<p>验证安装到面板的临时闭环：</p>
+<pre><code class="language-bash">scripts/smoke_temp_panel.sh --no-open
+scripts/cleanup_smoke_temp.sh --dry-run</code></pre>
+<p>文档或安装器改动应额外检查：</p>
+<ul>
+<li>是否引入了硬编码个人绝对路径。</li>
+<li>是否把 state root 内容加入 npm 包。</li>
+<li>是否会默认改写 host-native memory；当前预览版重点检查 Codex native memory 和 Claude Code <code>CLAUDE.md</code> 受控块。</li>
+<li>是否破坏 minimal profile 的低侵入边界。</li>
+<li>是否让 macOS-only 能力被误读成跨平台承诺。</li>
+</ul>
+<h2 id="section-15">当前边界和后续方向</h2>
+<p>当前不承诺：</p>
+<ul>
+<li>Linux / Windows 一键安装。</li>
+<li>Codex plugin 单独替代 installer 成为完整本地集成入口。</li>
+<li>Gemini CLI 等其他尚未接入的 host adapter。</li>
+<li>云端 memory 同步。</li>
+<li>对 token 使用量的强依赖。<code>ccusage</code> 不可用时，面板应降级展示已有快照。</li>
+</ul>
+<p>后续可以演进：</p>
+<ul>
+<li>将 launchd 层抽象为跨平台 scheduler。</li>
+<li>补充 English-first docs。</li>
+<li>收口 plugin metadata、截图和 policy URL。</li>
+<li>引入更严格的 registry schema 校验。</li>
+<li>给 sample state root 提供脱敏 demo 数据，方便开源读者不用接入真实 Codex history 也能看 panel。</li>
+</ul>
+      </div>
+    </article>
+    <aside class="toc" aria-label="Table of contents">
+      <p class="toc-title">本文导览</p>
+      <a class="toc-link" href="#section">定位</a>
+<a class="toc-link" href="#section-2">设计原则</a>
+<a class="toc-link" href="#section-3">总体架构</a>
+<a class="toc-link" href="#section-4">分层说明</a>
+<a class="toc-link sub" href="#1-host-adapter">1. Host adapter 层</a>
+<a class="toc-link sub" href="#2-repo">2. Repo 源码层</a>
+<a class="toc-link sub" href="#3-runtime-state">3. Runtime state 层</a>
+<a class="toc-link" href="#section-5">核心模块</a>
+<a class="toc-link sub" href="#scripts-asset-runtime-py">scripts/asset_runtime.py</a>
+<a class="toc-link sub" href="#scripts-openrelix-index-py">scripts/openrelix_index.py</a>
+<a class="toc-link sub" href="#install-install-sh">install/install.sh</a>
+<a class="toc-link sub" href="#scripts-collect-codex-activity-py">scripts/collect_codex_activity.py</a>
+<a class="toc-link sub" href="#scripts-nightly-consolidate-py">scripts/nightly_consolidate.py</a>
+<a class="toc-link sub" href="#scripts-build-overview-py">scripts/build_overview.py</a>
+<a class="toc-link sub" href="#scripts-openrelix-py">scripts/openrelix.py</a>
+<a class="toc-link sub" href="#agents-skills-memory-review">.agents/skills/memory-review/</a>
+<a class="toc-link sub" href="#ops-launchd">ops/launchd/</a>
+<a class="toc-link" href="#section-6">数据模型</a>
+<a class="toc-link sub" href="#asset">Asset</a>
+<a class="toc-link sub" href="#usage-event">Usage Event</a>
+<a class="toc-link sub" href="#task-review">Task Review</a>
+<a class="toc-link sub" href="#nightly-memory-item">Nightly Memory Item</a>
+<a class="toc-link" href="#section-7">运行链路</a>
+<a class="toc-link sub" href="#section-8">最小安装</a>
+<a class="toc-link sub" href="#section-9">完整安装</a>
+<a class="toc-link sub" href="#section-10">手动整理</a>
+<a class="toc-link sub" href="#section-11">多日回溯</a>
+<a class="toc-link sub" href="#section-12">后台整理</a>
+<a class="toc-link" href="#section-13">发布方案</a>
+<a class="toc-link" href="#section-14">开发与验证</a>
+<a class="toc-link" href="#section-15">当前边界和后续方向</a>
+      <p class="generated-note">更新源 Markdown 后运行：<br><code>python3 scripts/build_local_docs.py</code><br>持续自动同步：<br><code>python3 scripts/build_local_docs.py --watch</code></p>
+    </aside>
+  </main>
+  <script>
+    (() => {
+      const toc = document.querySelector(".toc");
+      const links = Array.from(document.querySelectorAll(".toc-link"));
+      const headings = links
+        .map((link) => document.getElementById(decodeURIComponent(link.hash.slice(1))))
+        .filter(Boolean);
+      if (!links.length || !headings.length) return;
+      let lastActiveId = "";
+      const applyActive = (activeId) => {
+        let activeLink = null;
+        links.forEach((link) => {
+          const isActive = link.hash === "#" + activeId;
+          link.classList.toggle("active", isActive);
+          link.setAttribute("aria-current", isActive ? "true" : "false");
+          if (isActive) activeLink = link;
+        });
+        if (activeLink && toc && activeId !== lastActiveId) {
+          activeLink.scrollIntoView({ block: "nearest", inline: "nearest" });
+          lastActiveId = activeId;
+        }
+      };
+      const getScrollActiveId = () => {
+        const marker = Math.min(window.innerHeight * 0.42, 260);
+        let activeId = headings[0].id;
+        for (const heading of headings) {
+          if (heading.getBoundingClientRect().top <= marker) activeId = heading.id;
+          else break;
+        }
+        return activeId;
+      };
+      const setActive = () => applyActive(getScrollActiveId());
+      const setHashActive = () => {
+        const hashId = decodeURIComponent(window.location.hash.slice(1));
+        if (hashId && headings.some((heading) => heading.id === hashId)) {
+          applyActive(hashId);
+        }
+        requestAnimationFrame(setActive);
+        window.setTimeout(setActive, 160);
+        window.setTimeout(setActive, 520);
+      };
+      window.addEventListener("scroll", setActive, { passive: true });
+      window.addEventListener("resize", setActive);
+      window.addEventListener("hashchange", setHashActive);
+      setHashActive();
+    })();
+  </script>
+</body>
+</html>

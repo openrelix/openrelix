@@ -104,7 +104,7 @@ Recommended local reading order:
 1. [System Overview](system-overview.md)
 2. [Technical Solution](technical-solution.en.md)
 3. [Developer Guide](developer-guide.en.md)
-4. [Contributor Onboarding](contributor-onboarding.md)
+4. [Detailed Developer Guide](developer-guide.en.md)
 5. [Data Contracts](data-contracts.md)
 6. [Privacy Threat Model](privacy-threat-model.md)
 7. [Validation Matrix](validation-matrix.md)

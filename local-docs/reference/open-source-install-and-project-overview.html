@@ -1,0 +1,758 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OpenRelix™ 开源安装说明与项目说明 | OpenRelix Local Docs</title>
+  <link rel="icon" href="../../docs/openrelix-icon.png">
+  <style>
+:root {
+  color-scheme: light;
+  --ink: #181a1f;
+  --muted: #626873;
+  --paper: #ffffff;
+  --paper-soft: #f7f8f5;
+  --line: #dedfd9;
+  --line-strong: #c9cbc4;
+  --accent: #0f766e;
+  --accent-soft: #e6f4f1;
+  --code-bg: #101827;
+  --code-fg: #f8fafc;
+  --radius: 8px;
+  --max: 1180px;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; background: var(--paper-soft); }
+body {
+  margin: 0;
+  color: var(--ink);
+  background: var(--paper-soft);
+  font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+  line-height: 1.68;
+}
+a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 3px; }
+code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 0.94em;
+}
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  border-bottom: 1px solid rgba(222, 223, 217, 0.9);
+  background: rgba(255,255,255,0.94);
+  backdrop-filter: blur(16px);
+}
+.topbar-inner {
+  width: min(var(--max), calc(100% - 32px));
+  min-height: 64px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--ink);
+  font-weight: 760;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.brand img { width: 30px; height: 30px; border-radius: 7px; }
+.topnav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.topnav::-webkit-scrollbar { display: none; }
+.topnav a,
+.lang-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--ink);
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+  background: #fff;
+}
+.topnav a:hover,
+.lang-link:hover,
+.lang-link.active {
+  border-color: #bddbd5;
+  background: var(--accent-soft);
+  color: #0f5f59;
+}
+.shell {
+  width: min(var(--max), calc(100% - 32px));
+  margin: 34px auto 72px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 260px;
+  gap: 28px;
+  align-items: start;
+}
+.article {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--paper);
+  padding: clamp(22px, 4vw, 46px);
+}
+.doc-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  align-items: center;
+  margin-bottom: 24px;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+.doc-meta code { color: var(--ink); background: #f0f1ed; padding: 2px 6px; border-radius: 5px; }
+.language-switch { display: inline-flex; flex-wrap: wrap; gap: 8px; margin-left: auto; }
+.content h1 {
+  margin: 0 0 18px;
+  font-size: clamp(2.1rem, 4vw, 3.2rem);
+  line-height: 1.08;
+  letter-spacing: 0;
+}
+.content h2 {
+  margin: 46px 0 12px;
+  padding-top: 6px;
+  font-size: clamp(1.5rem, 3vw, 2rem);
+  line-height: 1.18;
+  letter-spacing: 0;
+}
+.content h3 {
+  margin: 30px 0 8px;
+  font-size: 1.24rem;
+  line-height: 1.28;
+}
+.content h4 { margin: 24px 0 8px; font-size: 1.04rem; }
+.content p,
+.content li {
+  color: var(--muted);
+  font-size: 1.04rem;
+}
+.content p { margin: 12px 0; }
+.content ul,
+.content ol { padding-left: 1.35em; margin: 12px 0 18px; }
+.content li + li { margin-top: 6px; }
+.content blockquote {
+  margin: 20px 0;
+  padding: 14px 18px;
+  border-left: 4px solid var(--accent);
+  background: var(--accent-soft);
+  border-radius: 0 var(--radius) var(--radius) 0;
+}
+.content blockquote p { margin: 0; color: #33524d; }
+.content pre {
+  margin: 18px 0 24px;
+  padding: 18px;
+  overflow: auto;
+  border-radius: var(--radius);
+  background: var(--code-bg);
+  color: var(--code-fg);
+}
+.content pre code { color: inherit; font-size: 0.96rem; }
+.content :not(pre) > code {
+  color: #0f5f59;
+  background: #eef4f1;
+  border: 1px solid #d9e7e2;
+  padding: 1px 5px;
+  border-radius: 5px;
+}
+.content hr { border: 0; border-top: 1px solid var(--line); margin: 28px 0; }
+.table-wrap {
+  width: 100%;
+  margin: 18px 0 26px;
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 620px;
+  background: #fff;
+}
+th, td {
+  padding: 11px 13px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+th {
+  color: var(--ink);
+  background: #f3f5f0;
+  font-weight: 780;
+}
+td { color: var(--muted); }
+tr:last-child td { border-bottom: 0; }
+.toc {
+  position: sticky;
+  top: 86px;
+  max-height: calc(100vh - 112px);
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--paper);
+  padding: 18px;
+  scrollbar-width: thin;
+}
+.toc-title {
+  margin: 0 0 12px;
+  color: var(--ink);
+  font-size: 0.96rem;
+  font-weight: 800;
+}
+.toc-link {
+  display: block;
+  border-left: 3px solid transparent;
+  border-radius: 7px;
+  padding: 7px 8px 7px 10px;
+  color: var(--muted);
+  text-decoration: none;
+  font-weight: 650;
+  line-height: 1.35;
+}
+.toc-link.sub { padding-left: 24px; font-size: 0.94rem; }
+.toc-link.active,
+.toc-link:hover {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+.toc-link.active {
+  border-left-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
+  font-weight: 800;
+}
+.toc-empty { color: var(--muted); margin: 0; }
+.generated-note {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+@media (max-width: 860px) {
+  .topbar-inner { align-items: flex-start; flex-direction: column; padding: 12px 0; gap: 10px; }
+  .topnav { width: 100%; margin-left: 0; }
+  .shell { grid-template-columns: 1fr; margin-top: 18px; }
+  .toc { position: static; order: -1; }
+  .language-switch { margin-left: 0; }
+}
+</style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="../index.html">
+        <img src="../../docs/openrelix-icon.png" alt="">
+        <span>OpenRelix</span>
+      </a>
+      <nav class="topnav" aria-label="Local docs navigation">
+        <a href="../index.html">文档首页</a>
+        <a href="../developer-guide.html">图解指南</a>
+        <a href="developer-guide.html">开发者详细指南</a>
+      </nav>
+    </div>
+  </header>
+  <main class="shell">
+    <article class="article">
+      <div class="doc-meta">
+        <span>HTML 由 Markdown 生成</span>
+        <span>源文件 <code>docs/open-source-install-and-project-overview.md</code></span>
+        <span class="language-switch" aria-label="Language versions">
+          <a class="lang-link active" href="open-source-install-and-project-overview.html">中文</a>
+<a class="lang-link" href="open-source-install-and-project-overview.en.html">EN</a>
+        </span>
+      </div>
+      <div class="content">
+<h1 id="openrelix">OpenRelix™ 开源安装说明与项目说明</h1>
+<blockquote><p>语言版本：<a href="open-source-install-and-project-overview.en.html">English</a> | 简体中文</p></blockquote>
+<h2 id="section">一句话说明</h2>
+<p><code>OpenRelix™</code> 意为开源的个人记忆珍藏，是一套面向 AI coding agents / AI CLI 的本地优先资产层，当前公开版本以 <code>package.json</code> 为准。它不绑定某一个 AI host；当前公开适配器覆盖 Codex CLI / Codex app-server 和 Claude Code CLI，并把不同 host 的窗口、Token、原生上下文和模型回溯映射到同一套本地资产模型。</p>
+<p>GitHub 项目页：<a href="https://github.com/openrelix/openrelix">openrelix/openrelix</a>。如果这个项目对你有帮助，欢迎点星支持。</p>
+<p>它把可复用的方法、技能、模板和自动化留在仓库里，把用户自己的运行数据留在仓库外，从而同时满足下面两件事：</p>
+<ul>
+<li>仓库本身适合开源、审阅和复用</li>
+<li>用户本地又可以长期沉淀自己的资产、复盘、记忆整理和可视化面板</li>
+</ul>
+<hr>
+<h2 id="section-2">当前支持范围</h2>
+<p>当前预览版按 <strong>macOS-only</strong> 发布。</p>
+<p>当前公开安装路径依赖：</p>
+<ul>
+<li>macOS 用户级 <code>launchd</code> / <code>LaunchAgent</code></li>
+<li>Node.js 18+，并带有 <code>npm</code> / <code>npx</code></li>
+<li><code>zsh</code></li>
+<li>Python 3.10+</li>
+<li>Codex CLI，以及可写的 <code>CODEX_HOME</code>，默认是 <code>~/.codex</code></li>
+<li>可选 Claude Code CLI，以及可写的 <code>CLAUDE_HOME</code>，默认是 <code>~/.claude</code>；如需自定义 Claude CLI auth/config 目录，通过仓库外 env 文件和 <code>--claude-env-file</code> 传入</li>
+</ul>
+<p>Linux / Windows 暂时作为后续目标，不在当前预览版对外承诺里。底层 Python 脚本仍尽量保留可配置路径，但一键安装、后台刷新、夜间整理和防睡眠策略都先按 macOS 收口。</p>
+<p>当前预览版的公开安装器支持 Codex 和 Claude Code 的核心本地表面。Codex 侧包括 <code>CODEX_HOME</code>、app-server threads、history/session 文件、native memory、skills 和 custom prompts；Claude Code 侧包括本地 transcript、Token 用量、<code>CLAUDE.md</code> 原生上下文和可选 <code>claude -p</code> 模型回溯。产品定位仍是 AI-agent-first；其他 CLI host 后续可以继续通过 adapter 层接入。</p>
+<hr>
+<h2 id="v0-1-0">v0.1.0 预览版发布说明</h2>
+<p><code>v0.1.0 预览版</code> 是 OpenRelix 的首个公开预览版本，目标是先把“本地个人 AI 资产系统”的核心闭环跑通：安装、采集、整理、复盘、记忆登记、面板可视化和本地自动化。</p>
+<p>当前版本已经对外承诺的范围：</p>
+<ul>
+<li><strong>平台</strong>：macOS。</li>
+<li><strong>安装方式</strong>：<code>npx openrelix install</code> 或源码目录下 <code>./install/install.sh</code>。</li>
+<li><strong>当前适配项目</strong>：Codex CLI / Codex app-server 和 Claude Code CLI。默认 <code>--activity-host all</code> 同时读取 Codex 和 Claude Code；Codex 侧默认 <code>auto</code> 会先尝试 <code>codex app-server</code> 读取 threads，失败时回退到 Codex CLI 的 <code>history.jsonl</code> 和 <code>sessions/**/*.jsonl</code>。</li>
+<li><strong>诊断能力</strong>：<code>openrelix doctor --app-server-check</code> 可以实际启动一次 app-server 协议探测，用来确认 Codex 客户端采集链路。</li>
+</ul>
+<p>当前和后续支持的项目 / host：</p>
+<div class="table-wrap"><table><thead><tr><th>项目 / host</th><th>预期状态</th><th>说明</th></tr></thead><tbody><tr><td>Codex CLI</td><td>当前支持</td><td>当前预览版的稳定回退采集面。</td></tr><tr><td>Codex app-server / Codex 应用线程</td><td>当前支持</td><td>默认 <code>auto</code> 优先使用；失败时回退到 Codex CLI history/session。</td></tr><tr><td>Claude Code</td><td>当前支持</td><td>读取本地 transcript，查询 <code>ccusage</code> Token，同步 <code>CLAUDE.md</code> 受控记忆块，并可作为模型回溯 CLI。</td></tr><tr><td>Gemini CLI</td><td>计划适配</td><td>目标是通过 adapter 层接入历史、命令和项目上下文。</td></tr><tr><td>其他 AI coding agent / AI CLI</td><td>设计预留</td><td>只要能提供本地活动记录、项目上下文和可复用命令入口，就可以按 adapter 方式接入。</td></tr></tbody></table></div>
+<p>Gemini 和其他 host 是路线图；当前公开支持以 macOS + Codex / Claude Code 本地 CLI 为准。</p>
+<h3 id="section-3">上线证据清单</h3>
+<p>公开上线后建议立刻保存这些证据，方便后续证明品牌和软件来源：</p>
+<ul>
+<li>GitHub README 首屏截图，包含 <code>OpenRelix™</code>、安装命令和仓库 URL。</li>
+<li>npm package 页面截图，包含 <code>openrelix</code> 包名、版本号和 <code>npx openrelix install</code>。</li>
+<li>GitHub Release <code>v0.1.0</code> 页面截图。</li>
+<li>GitHub Pages 展示页截图。</li>
+<li>对应的 git tag、npm publish 时间和 release 发布时间。</li>
+</ul>
+<p>商标标识使用 <code>OpenRelix™</code> / <code>openrelix™</code>；不要使用 <code>®</code>，除非相关商标已经在对应司法辖区完成注册。</p>
+<h3 id="section-4">依赖说明</h3>
+<p>用户机器满足上面的前置条件后，一键安装不应该再要求额外做项目级依赖安装：</p>
+<ul>
+<li>不需要 <code>pip install ...</code> 当前随包发布的 Python 脚本只使用 Python 标准库。</li>
+<li>不需要 <code>npm install</code> npm 包只是 bootstrapper，没有声明运行时 npm dependencies。</li>
+<li>不需要手动配置 <code>LaunchAgent</code> 启用后台服务时，installer 会自动渲染 plist 并通过 <code>launchctl</code> 注册。</li>
+<li>Token 统计是可选增强 面板会按需通过 <code>npx -y @ccusage/codex@latest</code> 获取 Codex 数据，通过 <code>npx -y ccusage@latest</code> 获取 Claude Code 数据；默认会合并两者。任一命令不可用、离线或首次拉包失败时，面板其他部分仍可运行，Token 卡片会显示不可用、partial 或最近缓存。</li>
+</ul>
+<p>如果 macOS 上缺少 Python 3.10+，先安装 Python，再重新执行 installer：</p>
+<pre><code class="language-bash">brew install python
+npx openrelix install</code></pre>
+<hr>
+<h2 id="section-5">适合什么场景</h2>
+<ul>
+<li>希望给 AI coding agent / AI CLI 增加一套可复用 skill、安装脚本和本地自动化能力</li>
+<li>希望把一次次任务沉淀成可复用资产，而不是只留在聊天记录里</li>
+<li>希望把“仓库源码”和“个人运行数据”分开管理</li>
+<li>希望在 macOS 下支持一键安装、后台刷新、夜间整理，以及可选的夜间执行防睡眠策略</li>
+</ul>
+<hr>
+<h2 id="section-6">项目结构</h2>
+<p>仓库内主要保存这些内容：</p>
+<ul>
+<li><code>AGENTS.md</code> 维护这个项目本身时遵循的仓库级规则</li>
+<li><code>.agents/skills/</code> 仓库内的 canonical skills</li>
+<li><code>install/</code> 一键安装脚本和用户配置辅助脚本</li>
+<li><code>ops/launchd/</code> macOS 下的 <code>LaunchAgent</code> 模板</li>
+<li><code>scripts/</code> 采集、整理、概览生成、实时 token 服务等自动化脚本</li>
+<li><code>templates/</code> review 模板和夜间整理 schema</li>
+<li><code>docs/</code> 项目说明、安装说明和设计文档</li>
+</ul>
+<p>默认情况下，用户运行后的状态数据不会写回仓库，而是放在独立 state root。</p>
+<hr>
+<h2 id="section-7">运行时数据放在哪里</h2>
+<p>默认 state root：</p>
+<ul>
+<li><code>~/Library/Application Support/openrelix</code></li>
+</ul>
+<p>兼容旧安装：如果未显式设置 state root，且 legacy state root 存在而新的 <code>openrelix</code> state root 不存在，运行时会先复用旧目录，避免改名后看不到历史数据。</p>
+<p>也可以在安装时显式指定：</p>
+<pre><code class="language-bash">./install/install.sh --state-dir &quot;/your/state/root&quot;</code></pre>
+<p>state root 中通常会包含：</p>
+<ul>
+<li><code>registry/</code> 资产注册表、复用记录、夜间整理后的 memory items</li>
+<li><code>reviews/</code> 脱敏任务复盘</li>
+<li><code>raw/</code> 原始采集结果，按日期和窗口整理</li>
+<li><code>consolidated/</code> 夜间整理输出</li>
+<li><code>reports/</code> 生成后的 <code>overview.md</code>、<code>overview-data.json</code>、<code>panel.html</code></li>
+<li><code>runtime/</code> token cache、夜间任务运行时目录、隔离 <code>CODEX_HOME</code></li>
+<li><code>log/</code> 后台任务日志</li>
+</ul>
+<p>这个分层的目的很直接：</p>
+<ul>
+<li>仓库负责存“通用能力”</li>
+<li>state root 负责存“个人数据”</li>
+</ul>
+<hr>
+<h2 id="section-8">一键安装</h2>
+<p>以下命令面向 macOS 当前预览版。</p>
+<p><code>npx</code> 一行安装：</p>
+<pre><code class="language-bash">npx openrelix install</code></pre>
+<p>英文输出安装：</p>
+<pre><code class="language-bash">npx openrelix install --language en</code></pre>
+<p><code>npx</code> 完整集成安装：</p>
+<pre><code class="language-bash">npx openrelix install --profile integrated --enable-learning-refresh --enable-nightly --keep-awake=during-job</code></pre>
+<p>默认安装会使用 <code>--activity-host all</code> 和 Codex <code>auto</code> 活动源：Claude Code 侧读取本地 transcript；Codex 侧先尝试 <code>codex app-server</code> 读取 threads，不可用时回退到稳定的 Codex CLI <code>history.jsonl</code> 和 <code>sessions/**/*.jsonl</code>。如果你想强制只读 Codex CLI 文件，或只采集某个 host，可以显式指定：</p>
+<pre><code class="language-bash">npx openrelix install --profile integrated --enable-learning-refresh --activity-source history
+npx openrelix install --profile integrated --enable-learning-refresh --activity-host claude --model-cli claude</code></pre>
+<p>最小安装：</p>
+<pre><code class="language-bash">./install/install.sh --minimal</code></pre>
+<p>最小安装做这些事：</p>
+<ol>
+<li>初始化 state root</li>
+<li>生成第一份 overview 和 panel</li>
+<li>按默认 <code>integrated</code> 开启 host-native context，并把同一份 bounded summary 同步到启用 host context 的 OpenRelix 受控块</li>
+</ol>
+<p>默认最小安装会初始化 state root、生成第一份 overview，并把 bounded summary 同步进启用 host context 的 OpenRelix 受控块以便注入上下文。Codex 目标是 <code>CODEX_HOME/memories/memory_summary.md</code> 中的受控块；Claude Code 目标是 <code>CLAUDE_HOME/CLAUDE.md</code> 中的受控块。受控块之外的 host 原生内容会保留。它仍然不会安装全局命令，不会写 shell rc，也不会注册 LaunchAgent。如果只想本地记录、不注入 host context，请显式传 <code>--record-memory-only</code>。</p>
+<p>从 repo checkout 本地验证“安装后能看到面板”的最小闭环时，建议使用临时烟测脚本：</p>
+<pre><code class="language-bash">scripts/smoke_temp_panel.sh</code></pre>
+<p>它会创建临时 state root 和临时 host home，执行 <code>--minimal --record-memory-only</code>，打印 <code>doctor</code> / <code>core</code> 检查结果，并打开生成的 <code>reports/panel.html</code>。不想自动打开浏览器时使用：</p>
+<pre><code class="language-bash">scripts/smoke_temp_panel.sh --no-open</code></pre>
+<p>验证结束后可以清理临时 state root 和临时 <code>CODEX_HOME</code>：</p>
+<pre><code class="language-bash">scripts/cleanup_smoke_temp.sh --dry-run
+scripts/cleanup_smoke_temp.sh --yes</code></pre>
+<p>安装时可以选择本地运行语言：</p>
+<pre><code class="language-bash">./install/install.sh --language zh
+./install/install.sh --language en</code></pre>
+<p>当前支持 <code>zh</code> / <code>en</code>。交互式安装如果没有传 <code>--language</code>，会提示选择中文或英文；非交互安装默认 <code>zh</code>，也可以显式传 <code>--language</code> 固定自动化行为。选择结果会写入 state root 的 <code>runtime/config.json</code>，并影响终端输出、overview 本地转化、夜间整理 prompt、fallback summary、即时任务复盘、资产 / 复用记录的人读字段，以及写入本地 <code>memory_entries.jsonl</code> 的结构化记忆语言。<code>type</code>、<code>scope</code>、<code>status</code>、<code>memory_type</code> 这类枚举键保持稳定，展示层再按语言转成中文或英文。</p>
+<p>个人记忆系统默认开启，并且默认模式是 <code>integrated</code>：一份完整的本地资产记忆记录到本项目的 state root，同时把压缩后的 bounded summary 同步进当前 host native context 的 OpenRelix 受控块。用户可以按需要显式选择只本地记录，或关闭本系统本地记忆写入。</p>
+<p>bounded summary 的压缩策略保持轻量：同签名记忆跨天归并，只让 effective <code>injection_policy=global_context/project_context</code> 的条目参与注入，low-priority 默认只留本地；默认 token budget 是 target 6.7K、warn 7.4K、max 8K，避免把原始窗口或完整 registry 塞进 host context。</p>
+<pre><code class="language-bash">./install/install.sh --profile integrated
+./install/install.sh --profile integrated --record-memory-only
+./install/install.sh --profile integrated --disable-personal-memory</code></pre>
+<ul>
+<li><code>--use-integrated</code> 使用当前 host native memory context：把同一份 bounded summary 同步进启用 host context 的 OpenRelix 受控块。这是当前默认模式。</li>
+<li><code>--record-memory-only</code> 记录个人记忆，但禁用 host native memory context，并保持 bounded summary 不同步到 host context</li>
+<li><code>--disable-personal-memory</code> 关闭本系统的个人记忆写入；仍可保留安装器、命令和面板能力</li>
+</ul>
+<p>完整集成安装：</p>
+<pre><code class="language-bash">./install/install.sh --profile integrated --enable-learning-refresh</code></pre>
+<p>完整集成会额外做这些事：</p>
+<ol>
+<li>默认补齐用于本地采集的 bounded <code>history</code> 配置，并开启 host native context 受控块与 bounded summary 同步</li>
+<li>把 repo 内的 skills 软链接到用户级 <code>~/.codex/skills/</code>，包括 <code>memory-review</code></li>
+<li>把 repo 提供的 custom prompt 安装到用户级 <code>~/.codex/prompts/</code>，作为兼容 fallback</li>
+<li>安装全局 <code>openrelix</code> 命令，并在需要时把对应用户 bin 目录写入 shell <code>PATH</code></li>
+<li>安装 macOS 后台 refresh 服务；加 <code>--enable-learning-refresh</code> 时，每 1 小时自动读取当前 activity host，并通过当前 <code>model_cli</code> 学习最近 7 天窗口</li>
+</ol>
+<p>完整集成默认会把同一份 bounded summary 写入启用 host context 的 OpenRelix 受控块，让 Codex 和 Claude Code 能读取压缩后的个人记忆。完整的结构化资产记忆仍写入 state root；面板继续把 host native memory 和本项目本地 memory registry 分层展示，并且不会把 OpenRelix 注入的个人记忆块当作 host 原生记忆卡片展示。受控块之外的 host 原生内容会保留；需要严格隔离时，使用 <code>--record-memory-only</code> 或 <code>--no-memory-summary</code>。</p>
+<p>如果你还想启用夜间整理和夜间任务执行时的防睡眠策略：</p>
+<pre><code class="language-bash">./install/install.sh --profile integrated --enable-learning-refresh --enable-nightly --keep-awake=during-job</code></pre>
+<p>如需调整 nightly 时间，可以使用 24 小时制 <code>HH:MM</code>：</p>
+<pre><code class="language-bash">./install/install.sh --profile integrated \
+  --enable-nightly \
+  --nightly-organize-time 22:30 \
+  --nightly-finalize-time 01:00</code></pre>
+<p>常用参数：</p>
+<ul>
+<li><code>--profile minimal|integrated</code> 选择最小安装或完整集成安装</li>
+<li><code>--state-dir PATH</code> 指定自定义 state root</li>
+<li><code>--codex-home PATH</code> 指定自定义 <code>CODEX_HOME</code></li>
+<li><code>--claude-home PATH</code> 指定自定义 <code>CLAUDE_HOME</code></li>
+<li><code>--activity-host codex|claude|all</code> 指定窗口采集 host，默认 <code>all</code></li>
+<li><code>--model-cli codex|claude</code> 指定模型回溯 CLI；交互安装会提示选择，非交互默认 <code>codex</code></li>
+<li><code>--claude-model MODEL</code> 指定 OpenRelix 内部 <code>claude -p</code> 使用的模型或别名，默认 <code>sonnet</code></li>
+<li><code>--language zh|en</code> 指定本地运行语言，默认 <code>zh</code></li>
+<li><code>--memory-mode integrated|local-only|off</code> 指定记忆模式，默认 <code>integrated</code></li>
+<li><code>--record-memory-only</code> 记录个人记忆，但不往 host native context 注入记忆摘要；等价于 <code>--memory-mode local-only</code></li>
+<li><code>--use-integrated</code> 使用当前 host native memory context；等价于 <code>--memory-mode integrated</code></li>
+<li><code>--disable-personal-memory</code> 关闭本系统本地记忆写入；等价于 <code>--memory-mode off</code></li>
+<li><code>--python PATH</code> 指定脚本使用的 Python</li>
+<li><code>--sync-memory-summary</code> 显式同步 bounded summary 到 host context；主要用于覆盖组合参数时强制打开</li>
+<li><code>--no-memory-summary</code> 跳过 bounded host memory summary 同步；用于严格控制本系统不注入 host context 的安装</li>
+<li><code>--no-global-skills</code> 不把 repo skill 安装到用户级全局 skill 目录</li>
+<li><code>--install-global-skills</code> 在最小安装基础上显式安装全局 skill</li>
+<li><code>--no-custom-prompts</code> 不安装 repo 提供的 Codex custom prompt</li>
+<li><code>--install-custom-prompts</code> 在最小安装基础上显式安装 custom prompt</li>
+<li><code>--no-global-command</code> 不安装全局 <code>openrelix</code> 命令</li>
+<li><code>--install-global-command</code> 在最小安装基础上显式安装 <code>openrelix</code> 命令</li>
+<li><code>--bin-dir PATH</code> 指定 <code>openrelix</code> 命令的安装目录</li>
+<li><code>--enable-background-services</code> 安装 overview refresh 和 token-live 后台服务</li>
+<li><code>--disable-background-services</code> 不安装 overview refresh 和 token-live 后台服务</li>
+<li><code>--enable-nightly</code> 安装夜间整理服务</li>
+<li><code>--nightly-organize-time HH:MM</code> 调整当天预览整理时间，默认 <code>23:00</code></li>
+<li><code>--nightly-finalize-time HH:MM</code> 调整前一天终版整理时间，默认 <code>00:10</code></li>
+<li><code>--keep-awake=during-job</code> 夜间任务运行时用 <code>caffeinate</code> 保持唤醒</li>
+<li><code>--disable-memories</code> 不修改 <code>Codex memories</code> 相关配置</li>
+<li><code>--enable-memories</code> 在最小安装基础上显式开启 <code>Codex memories</code> 配置</li>
+<li><code>--disable-history</code> 不修改 <code>history</code> 相关配置</li>
+<li><code>--enable-history</code> 在最小安装基础上显式开启 bounded <code>history</code> 配置</li>
+</ul>
+<hr>
+<h2 id="skills">Skills 是怎么自动加载的</h2>
+<p>这里有两层：</p>
+<h3 id="1">1. 仓库内启动</h3>
+<p>如果你使用的 AI host 支持仓库内 skill 发现，仓库下 <code>.agents/skills/</code> 里的 skills 会被自动发现。当前预览版适配器使用 Codex 的 repo-local skill 发现机制。</p>
+<p>这适合“只在当前仓里用”的能力。</p>
+<h3 id="2">2. 任意仓库下启动</h3>
+<p>如果你希望这些 skills 在任何仓库里启动 AI host 都能用，就需要把它们安装到该 host 的用户级 skill 目录。当前预览版会安装到 Codex 用户级 skill 目录。</p>
+<p>完整集成安装用 symlink 方式把 canonical repo skill 挂到：</p>
+<pre><code class="language-bash">~/.codex/skills/</code></pre>
+<p>这一步来自 <code>--profile integrated</code>，或者在最小安装基础上显式加 <code>--install-global-skills</code>。</p>
+<p>这样可以同时满足两件事：</p>
+<ul>
+<li>真源仍然维护在当前仓里</li>
+<li>用户在任意仓库打开当前 AI host 时，都能自动加载这套全局 skill</li>
+</ul>
+<h3 id="hook">不是靠 hook 实现的</h3>
+<p>这个项目不把 hook 当作“全局 skill 挂载机制”。</p>
+<p>hook 在这里是可选的生命周期自动化能力，主要用于后台任务或事件扩展；skill 的可发现性主要依赖：</p>
+<ul>
+<li>repo-local skill 发现</li>
+<li>user-level skill 安装</li>
+</ul>
+<hr>
+<h2 id="memory-review"><code>memory-review</code> 入口是怎么装进去的</h2>
+<p><code>--profile integrated</code> 会同时安装两层入口：</p>
+<ul>
+<li>主入口：用户级 <code>memory-review</code> skill</li>
+<li>兼容层：用户级 custom prompt</li>
+</ul>
+<p>custom prompt 文件路径是：</p>
+<pre><code class="language-bash">~/.codex/prompts/memory-review.md</code></pre>
+<p>其中 custom prompt 不是 repo 直接共享的“真源”，而是 integrated installer 在本地生成的兼容入口层，用来把下面这条共享 workflow 挂到用户本地：</p>
+<ul>
+<li>执行 repo 内维护的 <code>memory-review</code> workflow</li>
+<li>立即生成或更新任务复盘</li>
+<li>按需更新资产注册表与复用记录</li>
+<li>重建 overview / panel</li>
+</ul>
+<p>也就是说：</p>
+<ul>
+<li>repo 负责维护可审阅、可开源的 skill、模板和脚本</li>
+<li>installer 负责把它挂成用户本地可直接调用的 skill / prompt / shell 入口</li>
+</ul>
+<p>安装完成后，主推荐入口是在新的 AI agent 线程里直接输入普通文本；不要带斜杠，避免 Codex CLI 把它当成未知 slash command 拦截：</p>
+<pre><code class="language-text">memory-review</code></pre>
+<p>兼容 prompt 入口仍然是：</p>
+<pre><code class="language-text">/prompts:memory-review</code></pre>
+<p>之所以保留两层，是因为在部分 AI host / Codex CLI 版本里，custom prompt 不一定会稳定出现在顶层 slash 候选里；而 skill 路线更接近 repo 可共享能力的本意。</p>
+<p>同时，shell 侧会有一个全局入口：</p>
+<pre><code class="language-bash">openrelix open panel
+openrelix core
+openrelix mode
+openrelix review</code></pre>
+<p>安装完成后，installer 会集中打印推荐下一步。首个动作是打开本地面板：</p>
+<pre><code class="language-bash">openrelix open panel</code></pre>
+<p>推荐安装时打开 1 小时自动学习刷新，让 OpenRelix 持续用今日窗口和最近 7 天上下文提炼本地记忆：</p>
+<pre><code class="language-bash">npx openrelix install --profile integrated --enable-learning-refresh</code></pre>
+<p>这个选项是显式指令：默认后台 <code>overview-refresh</code> 不会从最近窗口学习；加 <code>--enable-learning-refresh</code> 后，1 小时 LaunchAgent 会读取当前 activity host，通过当前 <code>model_cli</code> 更新本系统本地 memory 和 overview。中文运行语言下，默认刷新仍会按需维护 Codex 原生记忆展示缓存。默认 <code>integrated</code> 会同步 bounded summary 到 host native context，但不会写入原始窗口或完整 registry；如果使用 <code>--record-memory-only</code>，则只更新本地 state root。如果没有安装全局 <code>openrelix</code> 命令，installer 会打印一条带 <code>AI_ASSET_STATE_DIR</code> / host home 的 <code>python3 scripts/openrelix.py ...</code> fallback 命令。</p>
+<p>其中：</p>
+<ul>
+<li><code>openrelix open panel</code> 直接打开可视化面板</li>
+<li><code>openrelix core</code> 在终端里打印当前 overview 的核心指标和今日 review 摘要</li>
+<li><code>openrelix mode</code> 查看当前记忆模式；安装后要切换模式时使用 <code>openrelix mode integrated</code>、<code>openrelix mode local-only</code> 或 <code>openrelix mode off</code>，不需要重新安装</li>
+<li><code>openrelix review</code> 按需跑一遍“今天”的 review / consolidate 流水线，并输出 <code>summary.md</code></li>
+</ul>
+<p>如果需要卸载本机集成，使用：</p>
+<pre><code class="language-bash">npx openrelix uninstall</code></pre>
+<p>它会清理 OpenRelix 的 LaunchAgents、macOS 客户端、全局 shell 入口、用户级 <code>memory-review</code> skill、custom prompt fallback 和 installer 管理的 shell <code>PATH</code> block。交互式终端会询问是否同时删除本地记忆；无人值守时请显式选择：</p>
+<pre><code class="language-bash">npx openrelix uninstall --keep-local-memory
+npx openrelix uninstall --delete-local-memory</code></pre>
+<p><code>--delete-local-memory</code> 会删除 active state root，并移除 <code>CODEX_HOME/memories/memory_summary.md</code> 和 <code>CLAUDE_HOME/CLAUDE.md</code> 中的 OpenRelix 受控块；受控块之外的 host 原生内容会保留，不会删除整个 <code>CODEX_HOME</code>、整个 <code>CLAUDE_HOME</code>、host 登录凭据或 host history/session 文件。</p>
+<hr>
+<h2 id="section-9">后台自动化能力</h2>
+<p>在 macOS 下，安装脚本会按需渲染并注册 <code>LaunchAgent</code>。</p>
+<h3 id="section-10">默认后台能力</h3>
+<ul>
+<li><code>overview refresh</code> 默认每 1 小时刷新一次 overview / panel 快照；安装时加 <code>--enable-learning-refresh</code> 后，每 1 小时会读取当前 activity host，并通过当前 <code>model_cli</code> 学习最近 7 天窗口</li>
+<li><code>token live server</code> 提供本地 token 实时接口，给 panel 页面做即时刷新</li>
+</ul>
+<h3 id="section-11">可选夜间能力</h3>
+<ul>
+<li><code>23:00</code> 生成当天整理预览</li>
+<li><code>00:10</code> 回补前一天终版整理，避免遗漏 23:00 之后的内容</li>
+</ul>
+<p>可以通过安装参数调整这两个时间：</p>
+<pre><code class="language-bash">--nightly-organize-time 22:30 \
+--nightly-finalize-time 01:00</code></pre>
+<h3 id="section-12">可选防睡眠策略</h3>
+<p>如果安装时指定：</p>
+<pre><code class="language-bash">--keep-awake=during-job</code></pre>
+<p>夜间任务会通过 <code>caffeinate</code> 在执行期间临时保持唤醒。</p>
+<p>这不是永久防睡眠，也不会默认长期改变机器行为。</p>
+<hr>
+<h2 id="plugin">Plugin 路线状态</h2>
+<p>当前 Codex plugin 是已打包的 Codex route，会携带 <code>memory-review</code> skill 和 marketplace metadata；完整本地集成仍以 installer-first 为主。</p>
+<p>首发推荐只讲 installer-first：</p>
+<ul>
+<li>通过 <code>./install/install.sh</code> 初始化 state root</li>
+<li>通过 symlink 把 repo skill 挂到用户级 <code>~/.codex/skills/</code></li>
+<li>通过 <code>openrelix</code> 和 macOS LaunchAgent 接上本地自动化</li>
+</ul>
+<p>插件目录保留在仓里，是为了让同一套 canonical skills 可以直接作为 Codex plugin 发布；npm 包会携带插件目录和 marketplace metadata。</p>
+<hr>
+<h2 id="section-13">日常怎么使用</h2>
+<h3 id="section-14">生成概览 / 刷新快照</h3>
+<pre><code class="language-bash">openrelix refresh</code></pre>
+<h3 id="section-15">立即生成窗口摘要并刷新面板</h3>
+<pre><code class="language-bash">openrelix refresh --learn-memory --learn-window-days 7</code></pre>
+<h3 id="section-16">查看核心数据</h3>
+<pre><code class="language-bash">openrelix core</code></pre>
+<h3 id="review">立即发起今日 review</h3>
+<pre><code class="language-bash">openrelix review</code></pre>
+<h3 id="section-17">打开面板</h3>
+<pre><code class="language-bash">openrelix open panel</code></pre>
+<h3 id="section-18">底层脚本</h3>
+<pre><code class="language-bash">python3 scripts/build_overview.py</code></pre>
+<p>如果没有设置 <code>AI_ASSET_STATE_DIR</code>，则使用脚本里的默认 state root 规则。</p>
+<hr>
+<h2 id="npm">npm 分发方式</h2>
+<p>npm 包只做 bootstrapper，不重新实现安装逻辑。</p>
+<p>它会随包带上仓内的 installer、skills、templates、scripts 和 docs，然后从 npm package cache 里调用同一份：</p>
+<pre><code class="language-bash">install/install.sh</code></pre>
+<p>也就是说：</p>
+<ul>
+<li>npm 负责一键下载和入口命令</li>
+<li><code>install/install.sh</code> 仍然是安装行为的唯一真源</li>
+<li>npm 包通过 <code>files</code> 白名单排除 <code>raw/</code>、<code>registry/</code>、<code>reports/</code>、<code>runtime/</code>、<code>log/</code> 等个人运行数据</li>
+</ul>
+<p>发布前建议先检查包内容：</p>
+<pre><code class="language-bash">npm pack --dry-run</code></pre>
+<hr>
+<h2 id="section-19">授权许可</h2>
+<p>本项目使用标准 <code>MIT License</code> 开源授权。</p>
+<ul>
+<li>版权持有人：<code>kk_kais</code></li>
+<li>npm 主页：<a href="https://www.npmjs.com/~kk_kais">kk_kais</a></li>
+<li>授权年份：<code>2026</code></li>
+<li>授权范围：允许个人免费使用、复制、修改、合并、发布、分发和再授权</li>
+<li>保留要求：分发本项目或本项目的主要部分时，需要保留版权声明和完整授权文本</li>
+<li>免责声明：软件按现状提供，不提供任何明示或暗示担保</li>
+</ul>
+<p>完整授权文本见仓库根目录的 <code>LICENSE</code>。</p>
+<hr>
+<h2 id="section-20">隐私和开源边界</h2>
+<p>这个项目默认遵循本地优先。</p>
+<p>建议明确区分两类内容：</p>
+<h3 id="section-21">适合开源共享的</h3>
+<ul>
+<li>installer</li>
+<li>skills</li>
+<li>templates</li>
+<li>docs</li>
+<li>launchd 模板</li>
+<li>自动化源码</li>
+<li>draft plugin 包装层</li>
+</ul>
+<h3 id="section-22">不应进入公开仓库的</h3>
+<ul>
+<li>原始 Codex history</li>
+<li>runtime cache</li>
+<li>日志</li>
+<li>真实 review</li>
+<li>真实 registry</li>
+<li>内部任务上下文</li>
+<li>token、账号、Cookie、用户数据</li>
+</ul>
+<p>也就是说，repo 是“能力层”，state root 是“个人数据层”。</p>
+<hr>
+<h2 id="section-23">当前设计原则</h2>
+<ul>
+<li>仓库内只维护可审阅、可迁移、可开源的源码与模板</li>
+<li>用户状态尽量不写回仓库</li>
+<li>不把某一台机器的绝对路径硬编码成项目能力</li>
+<li>不把 hook 当成 skill 的主加载链路</li>
+<li><code>v0.1.0 预览版</code> 先通过 macOS installer 提供低摩擦的一键安装体验</li>
+<li>通过夜间整理和 overview/panel，提供可持续沉淀和可视化查看能力</li>
+</ul>
+<hr>
+<h2 id="section-24">推荐安装命令</h2>
+<p>如果你希望装出一套完整可用版本，推荐：</p>
+<pre><code class="language-bash">./install/install.sh --profile integrated --enable-learning-refresh --enable-nightly --keep-awake=during-job</code></pre>
+<p>默认会自动尝试读取 Codex 应用线程；如果只想强制读取 CLI history/session 文件，可以显式加：</p>
+<pre><code class="language-bash">./install/install.sh --profile integrated --enable-learning-refresh --activity-source history</code></pre>
+<p>如果你只想先体验最小能力，推荐：</p>
+<pre><code class="language-bash">./install/install.sh</code></pre>
+<p>这两个模式的差别是：</p>
+<ul>
+<li>最小安装：初始化状态目录和 overview；开启 host native context，并同步 bounded summary；不改 shell / launchd 配置</li>
+<li>完整安装：再把 skill、memory、<code>openrelix</code> 命令、后台刷新、夜间整理和任务期间防睡眠一起接上</li>
+<li>memory 边界：OpenRelix 只向启用的 host context 同步 bounded summary 作为轻量上下文；本项目自己的完整长期资产、复盘和夜间整理结果归 state root 管</li>
+</ul>
+      </div>
+    </article>
+    <aside class="toc" aria-label="Table of contents">
+      <p class="toc-title">本文导览</p>
+      <a class="toc-link" href="#section">一句话说明</a>
+<a class="toc-link" href="#section-2">当前支持范围</a>
+<a class="toc-link" href="#v0-1-0">v0.1.0 预览版发布说明</a>
+<a class="toc-link sub" href="#section-3">上线证据清单</a>
+<a class="toc-link sub" href="#section-4">依赖说明</a>
+<a class="toc-link" href="#section-5">适合什么场景</a>
+<a class="toc-link" href="#section-6">项目结构</a>
+<a class="toc-link" href="#section-7">运行时数据放在哪里</a>
+<a class="toc-link" href="#section-8">一键安装</a>
+<a class="toc-link" href="#skills">Skills 是怎么自动加载的</a>
+<a class="toc-link sub" href="#1">1. 仓库内启动</a>
+<a class="toc-link sub" href="#2">2. 任意仓库下启动</a>
+<a class="toc-link sub" href="#hook">不是靠 hook 实现的</a>
+<a class="toc-link" href="#memory-review">memory-review 入口是怎么装进去的</a>
+<a class="toc-link" href="#section-9">后台自动化能力</a>
+<a class="toc-link sub" href="#section-10">默认后台能力</a>
+<a class="toc-link sub" href="#section-11">可选夜间能力</a>
+<a class="toc-link sub" href="#section-12">可选防睡眠策略</a>
+<a class="toc-link" href="#plugin">Plugin 路线状态</a>
+<a class="toc-link" href="#section-13">日常怎么使用</a>
+<a class="toc-link sub" href="#section-14">生成概览 / 刷新快照</a>
+<a class="toc-link sub" href="#section-15">立即生成窗口摘要并刷新面板</a>
+<a class="toc-link sub" href="#section-16">查看核心数据</a>
+<a class="toc-link sub" href="#review">立即发起今日 review</a>
+<a class="toc-link sub" href="#section-17">打开面板</a>
+<a class="toc-link sub" href="#section-18">底层脚本</a>
+<a class="toc-link" href="#npm">npm 分发方式</a>
+<a class="toc-link" href="#section-19">授权许可</a>
+<a class="toc-link" href="#section-20">隐私和开源边界</a>
+<a class="toc-link sub" href="#section-21">适合开源共享的</a>
+<a class="toc-link sub" href="#section-22">不应进入公开仓库的</a>
+<a class="toc-link" href="#section-23">当前设计原则</a>
+<a class="toc-link" href="#section-24">推荐安装命令</a>
+      <p class="generated-note">更新源 Markdown 后运行：<br><code>python3 scripts/build_local_docs.py</code><br>持续自动同步：<br><code>python3 scripts/build_local_docs.py --watch</code></p>
+    </aside>
+  </main>
+  <script>
+    (() => {
+      const toc = document.querySelector(".toc");
+      const links = Array.from(document.querySelectorAll(".toc-link"));
+      const headings = links
+        .map((link) => document.getElementById(decodeURIComponent(link.hash.slice(1))))
+        .filter(Boolean);
+      if (!links.length || !headings.length) return;
+      let lastActiveId = "";
+      const applyActive = (activeId) => {
+        let activeLink = null;
+        links.forEach((link) => {
+          const isActive = link.hash === "#" + activeId;
+          link.classList.toggle("active", isActive);
+          link.setAttribute("aria-current", isActive ? "true" : "false");
+          if (isActive) activeLink = link;
+        });
+        if (activeLink && toc && activeId !== lastActiveId) {
+          activeLink.scrollIntoView({ block: "nearest", inline: "nearest" });
+          lastActiveId = activeId;
+        }
+      };
+      const getScrollActiveId = () => {
+        const marker = Math.min(window.innerHeight * 0.42, 260);
+        let activeId = headings[0].id;
+        for (const heading of headings) {
+          if (heading.getBoundingClientRect().top <= marker) activeId = heading.id;
+          else break;
+        }
+        return activeId;
+      };
+      const setActive = () => applyActive(getScrollActiveId());
+      const setHashActive = () => {
+        const hashId = decodeURIComponent(window.location.hash.slice(1));
+        if (hashId && headings.some((heading) => heading.id === hashId)) {
+          applyActive(hashId);
+        }
+        requestAnimationFrame(setActive);
+        window.setTimeout(setActive, 160);
+        window.setTimeout(setActive, 520);
+      };
+      window.addEventListener("scroll", setActive, { passive: true });
+      window.addEventListener("resize", setActive);
+      window.addEventListener("hashchange", setHashActive);
+      setHashActive();
+    })();
+  </script>
+</body>
+</html>

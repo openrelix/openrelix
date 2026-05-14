@@ -1,0 +1,361 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OpenRelix 文档索引 | OpenRelix Developer Docs</title>
+  <link rel="icon" href="../../openrelix-icon.png">
+  <style>
+:root {
+  color-scheme: light;
+  --ink: #181a1f;
+  --muted: #626873;
+  --paper: #ffffff;
+  --paper-soft: #f7f8f5;
+  --line: #dedfd9;
+  --line-strong: #c9cbc4;
+  --accent: #0f766e;
+  --accent-soft: #e6f4f1;
+  --code-bg: #101827;
+  --code-fg: #f8fafc;
+  --radius: 8px;
+  --max: 1180px;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; background: var(--paper-soft); }
+body {
+  margin: 0;
+  color: var(--ink);
+  background: var(--paper-soft);
+  font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+  line-height: 1.68;
+}
+a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 3px; }
+code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 0.94em;
+}
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  border-bottom: 1px solid rgba(222, 223, 217, 0.9);
+  background: rgba(255,255,255,0.94);
+  backdrop-filter: blur(16px);
+}
+.topbar-inner {
+  width: min(var(--max), calc(100% - 32px));
+  min-height: 64px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--ink);
+  font-weight: 760;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.brand img { width: 30px; height: 30px; border-radius: 7px; }
+.topnav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.topnav::-webkit-scrollbar { display: none; }
+.topnav a,
+.lang-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--ink);
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+  background: #fff;
+}
+.topnav a:hover,
+.lang-link:hover,
+.lang-link.active {
+  border-color: #bddbd5;
+  background: var(--accent-soft);
+  color: #0f5f59;
+}
+.shell {
+  width: min(var(--max), calc(100% - 32px));
+  margin: 34px auto 72px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 260px;
+  gap: 28px;
+  align-items: start;
+}
+.article {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--paper);
+  padding: clamp(22px, 4vw, 46px);
+}
+.doc-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  align-items: center;
+  margin-bottom: 24px;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+.doc-meta code { color: var(--ink); background: #f0f1ed; padding: 2px 6px; border-radius: 5px; }
+.language-switch { display: inline-flex; flex-wrap: wrap; gap: 8px; margin-left: auto; }
+.content h1 {
+  margin: 0 0 18px;
+  font-size: clamp(2.1rem, 4vw, 3.2rem);
+  line-height: 1.08;
+  letter-spacing: 0;
+}
+.content h2 {
+  margin: 46px 0 12px;
+  padding-top: 6px;
+  font-size: clamp(1.5rem, 3vw, 2rem);
+  line-height: 1.18;
+  letter-spacing: 0;
+}
+.content h3 {
+  margin: 30px 0 8px;
+  font-size: 1.24rem;
+  line-height: 1.28;
+}
+.content h4 { margin: 24px 0 8px; font-size: 1.04rem; }
+.content p,
+.content li {
+  color: var(--muted);
+  font-size: 1.04rem;
+}
+.content p { margin: 12px 0; }
+.content ul,
+.content ol { padding-left: 1.35em; margin: 12px 0 18px; }
+.content li + li { margin-top: 6px; }
+.content blockquote {
+  margin: 20px 0;
+  padding: 14px 18px;
+  border-left: 4px solid var(--accent);
+  background: var(--accent-soft);
+  border-radius: 0 var(--radius) var(--radius) 0;
+}
+.content blockquote p { margin: 0; color: #33524d; }
+.content pre {
+  margin: 18px 0 24px;
+  padding: 18px;
+  overflow: auto;
+  border-radius: var(--radius);
+  background: var(--code-bg);
+  color: var(--code-fg);
+}
+.content pre code { color: inherit; font-size: 0.96rem; }
+.content :not(pre) > code {
+  color: #0f5f59;
+  background: #eef4f1;
+  border: 1px solid #d9e7e2;
+  padding: 1px 5px;
+  border-radius: 5px;
+}
+.content hr { border: 0; border-top: 1px solid var(--line); margin: 28px 0; }
+.table-wrap {
+  width: 100%;
+  margin: 18px 0 26px;
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 620px;
+  background: #fff;
+}
+th, td {
+  padding: 11px 13px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+th {
+  color: var(--ink);
+  background: #f3f5f0;
+  font-weight: 780;
+}
+td { color: var(--muted); }
+tr:last-child td { border-bottom: 0; }
+.toc {
+  position: sticky;
+  top: 86px;
+  max-height: calc(100vh - 112px);
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--paper);
+  padding: 18px;
+  scrollbar-width: thin;
+}
+.toc-title {
+  margin: 0 0 12px;
+  color: var(--ink);
+  font-size: 0.96rem;
+  font-weight: 800;
+}
+.toc-link {
+  display: block;
+  border-left: 3px solid transparent;
+  border-radius: 7px;
+  padding: 7px 8px 7px 10px;
+  color: var(--muted);
+  text-decoration: none;
+  font-weight: 650;
+  line-height: 1.35;
+}
+.toc-link.sub { padding-left: 24px; font-size: 0.94rem; }
+.toc-link.active,
+.toc-link:hover {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+.toc-link.active {
+  border-left-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
+  font-weight: 800;
+}
+.toc-empty { color: var(--muted); margin: 0; }
+.generated-note {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+@media (max-width: 860px) {
+  .topbar-inner { align-items: flex-start; flex-direction: column; padding: 12px 0; gap: 10px; }
+  .topnav { width: 100%; margin-left: 0; }
+  .shell { grid-template-columns: 1fr; margin-top: 18px; }
+  .toc { position: static; order: -1; }
+  .language-switch { margin-left: 0; }
+}
+</style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="../index.html">
+        <img src="../../openrelix-icon.png" alt="">
+        <span>OpenRelix</span>
+      </a>
+      <nav class="topnav" aria-label="Developer docs navigation">
+        <a href="../index.html">文档首页</a>
+        <a href="../developer-guide.html">图解指南</a>
+        <a href="developer-guide.html">开发者详细指南</a>
+      </nav>
+    </div>
+  </header>
+  <main class="shell">
+    <article class="article">
+      <div class="doc-meta">
+        <span>HTML 由 Markdown 生成</span>
+        <span>源文件 <code>docs/README.zh-CN.md</code></span>
+        <span class="language-switch" aria-label="Language versions">
+          <a class="lang-link active" href="README.zh-CN.html">中文</a>
+<a class="lang-link" href="README.html">EN</a>
+        </span>
+      </div>
+      <div class="content">
+<h1 id="openrelix">OpenRelix 文档索引</h1>
+<blockquote><p>语言版本：<a href="README.html">English</a> | 简体中文</p></blockquote>
+<p>这个目录采用双语文档规则：</p>
+<ul>
+<li>Markdown 是 agent/贡献者阅读的主源，适合架构、隐私、验证、发布和协作材料。</li>
+<li>每份 Markdown 文档都应该同时有英文版和中文版。</li>
+<li>为避免破坏已有链接，现有默认语言文件名保持稳定。英文默认文档的中文 companion 使用 <code>.zh-CN.md</code>；中文默认文档的英文 companion 使用 <code>.en.md</code>。</li>
+<li><code>local-docs/</code> 和 <code>docs/developer/</code> 下的 HTML 由这些 Markdown 生成；源头仍是 Markdown。</li>
+</ul>
+<h2 id="agent-markdown">Agent 友好的 Markdown</h2>
+<div class="table-wrap"><table><thead><tr><th>主题</th><th>英文</th><th>中文</th></tr></thead><tbody><tr><td>系统概览</td><td><a href="system-overview.html">system-overview.md</a></td><td><a href="system-overview.zh-CN.html">system-overview.zh-CN.md</a></td></tr><tr><td>技术方案</td><td><a href="technical-solution.en.html">technical-solution.en.md</a></td><td><a href="technical-solution.html">technical-solution.md</a></td></tr><tr><td>开发者详细指南</td><td><a href="developer-guide.en.html">developer-guide.en.md</a></td><td><a href="developer-guide.html">developer-guide.md</a></td></tr><tr><td>数据契约</td><td><a href="data-contracts.html">data-contracts.md</a></td><td><a href="data-contracts.zh-CN.html">data-contracts.zh-CN.md</a></td></tr><tr><td>验证矩阵</td><td><a href="validation-matrix.html">validation-matrix.md</a></td><td><a href="validation-matrix.zh-CN.html">validation-matrix.zh-CN.md</a></td></tr><tr><td>隐私与分发边界</td><td><a href="privacy-and-distribution.html">privacy-and-distribution.md</a></td><td><a href="privacy-and-distribution.zh-CN.html">privacy-and-distribution.zh-CN.md</a></td></tr><tr><td>隐私威胁模型</td><td><a href="privacy-threat-model.html">privacy-threat-model.md</a></td><td><a href="privacy-threat-model.zh-CN.html">privacy-threat-model.zh-CN.md</a></td></tr><tr><td>发布检查清单</td><td><a href="release-checklist.html">release-checklist.md</a></td><td><a href="release-checklist.zh-CN.html">release-checklist.zh-CN.md</a></td></tr><tr><td>指标字典</td><td><a href="metric-dictionary.html">metric-dictionary.md</a></td><td><a href="metric-dictionary.zh-CN.html">metric-dictionary.zh-CN.md</a></td></tr><tr><td>开源安装与项目说明</td><td><a href="open-source-install-and-project-overview.en.html">open-source-install-and-project-overview.en.md</a></td><td><a href="open-source-install-and-project-overview.html">open-source-install-and-project-overview.md</a></td></tr></tbody></table></div>
+<h2 id="html">富交互 HTML 页面</h2>
+<p>这些页面故意保留为 HTML，因为它们是视觉或交互页面：</p>
+<ul>
+<li><a href="index.html">index.html</a>：产品首页。</li>
+<li><a href="../../product-showcase.html">product-showcase.html</a>：产品展示和截图。</li>
+<li><a href="../../getting-started.html">getting-started.html</a>：带语言截图的面板上手页。</li>
+<li><a href="../../changelog/v0.x.html">changelog/v0.x.html</a>：双语预览版更新日志。</li>
+<li><a href="developer/developer-guide.html">developer/developer-guide.html</a>：开发者图解指南，可随站点发布。</li>
+</ul>
+<p>它们应该在单页内保留中英语言切换，而不是拆成 Markdown 双文件。</p>
+<h2 id="section">维护规则</h2>
+<p>新增 <code>docs/*.md</code> 时，同一改动里补语言 companion。修改 Markdown 后运行 <code>python3 scripts/build_local_docs.py</code> 刷新 <code>local-docs/</code> 和 <code>docs/developer/</code>；需要持续同步时运行 <code>python3 scripts/build_local_docs.py --watch</code>。新增或修改 <code>docs/*.html</code> 时，沿用现有语言切换模式，保持页面自身双语。</p>
+      </div>
+    </article>
+    <aside class="toc" aria-label="Table of contents">
+      <p class="toc-title">本文导览</p>
+      <a class="toc-link" href="#agent-markdown">Agent 友好的 Markdown</a>
+<a class="toc-link" href="#html">富交互 HTML 页面</a>
+<a class="toc-link" href="#section">维护规则</a>
+      <p class="generated-note">更新源 Markdown 后运行：<br><code>python3 scripts/build_local_docs.py</code><br>持续自动同步：<br><code>python3 scripts/build_local_docs.py --watch</code></p>
+    </aside>
+  </main>
+  <script>
+    (() => {
+      const toc = document.querySelector(".toc");
+      const links = Array.from(document.querySelectorAll(".toc-link"));
+      const headings = links
+        .map((link) => document.getElementById(decodeURIComponent(link.hash.slice(1))))
+        .filter(Boolean);
+      if (!links.length || !headings.length) return;
+      let lastActiveId = "";
+      const applyActive = (activeId) => {
+        let activeLink = null;
+        links.forEach((link) => {
+          const isActive = link.hash === "#" + activeId;
+          link.classList.toggle("active", isActive);
+          link.setAttribute("aria-current", isActive ? "true" : "false");
+          if (isActive) activeLink = link;
+        });
+        if (activeLink && toc && activeId !== lastActiveId) {
+          activeLink.scrollIntoView({ block: "nearest", inline: "nearest" });
+          lastActiveId = activeId;
+        }
+      };
+      const getScrollActiveId = () => {
+        const marker = Math.min(window.innerHeight * 0.42, 260);
+        let activeId = headings[0].id;
+        for (const heading of headings) {
+          if (heading.getBoundingClientRect().top <= marker) activeId = heading.id;
+          else break;
+        }
+        return activeId;
+      };
+      const setActive = () => applyActive(getScrollActiveId());
+      const setHashActive = () => {
+        const hashId = decodeURIComponent(window.location.hash.slice(1));
+        if (hashId && headings.some((heading) => heading.id === hashId)) {
+          applyActive(hashId);
+        }
+        requestAnimationFrame(setActive);
+        window.setTimeout(setActive, 160);
+        window.setTimeout(setActive, 520);
+      };
+      window.addEventListener("scroll", setActive, { passive: true });
+      window.addEventListener("resize", setActive);
+      window.addEventListener("hashchange", setHashActive);
+      setHashActive();
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,407 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Metric Dictionary | OpenRelix Local Docs</title>
+  <link rel="icon" href="../../docs/openrelix-icon.png">
+  <style>
+:root {
+  color-scheme: light;
+  --ink: #181a1f;
+  --muted: #626873;
+  --paper: #ffffff;
+  --paper-soft: #f7f8f5;
+  --line: #dedfd9;
+  --line-strong: #c9cbc4;
+  --accent: #0f766e;
+  --accent-soft: #e6f4f1;
+  --code-bg: #101827;
+  --code-fg: #f8fafc;
+  --radius: 8px;
+  --max: 1180px;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; background: var(--paper-soft); }
+body {
+  margin: 0;
+  color: var(--ink);
+  background: var(--paper-soft);
+  font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+  line-height: 1.68;
+}
+a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 3px; }
+code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 0.94em;
+}
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  border-bottom: 1px solid rgba(222, 223, 217, 0.9);
+  background: rgba(255,255,255,0.94);
+  backdrop-filter: blur(16px);
+}
+.topbar-inner {
+  width: min(var(--max), calc(100% - 32px));
+  min-height: 64px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--ink);
+  font-weight: 760;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.brand img { width: 30px; height: 30px; border-radius: 7px; }
+.topnav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.topnav::-webkit-scrollbar { display: none; }
+.topnav a,
+.lang-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--ink);
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+  background: #fff;
+}
+.topnav a:hover,
+.lang-link:hover,
+.lang-link.active {
+  border-color: #bddbd5;
+  background: var(--accent-soft);
+  color: #0f5f59;
+}
+.shell {
+  width: min(var(--max), calc(100% - 32px));
+  margin: 34px auto 72px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 260px;
+  gap: 28px;
+  align-items: start;
+}
+.article {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--paper);
+  padding: clamp(22px, 4vw, 46px);
+}
+.doc-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  align-items: center;
+  margin-bottom: 24px;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+.doc-meta code { color: var(--ink); background: #f0f1ed; padding: 2px 6px; border-radius: 5px; }
+.language-switch { display: inline-flex; flex-wrap: wrap; gap: 8px; margin-left: auto; }
+.content h1 {
+  margin: 0 0 18px;
+  font-size: clamp(2.1rem, 4vw, 3.2rem);
+  line-height: 1.08;
+  letter-spacing: 0;
+}
+.content h2 {
+  margin: 46px 0 12px;
+  padding-top: 6px;
+  font-size: clamp(1.5rem, 3vw, 2rem);
+  line-height: 1.18;
+  letter-spacing: 0;
+}
+.content h3 {
+  margin: 30px 0 8px;
+  font-size: 1.24rem;
+  line-height: 1.28;
+}
+.content h4 { margin: 24px 0 8px; font-size: 1.04rem; }
+.content p,
+.content li {
+  color: var(--muted);
+  font-size: 1.04rem;
+}
+.content p { margin: 12px 0; }
+.content ul,
+.content ol { padding-left: 1.35em; margin: 12px 0 18px; }
+.content li + li { margin-top: 6px; }
+.content blockquote {
+  margin: 20px 0;
+  padding: 14px 18px;
+  border-left: 4px solid var(--accent);
+  background: var(--accent-soft);
+  border-radius: 0 var(--radius) var(--radius) 0;
+}
+.content blockquote p { margin: 0; color: #33524d; }
+.content pre {
+  margin: 18px 0 24px;
+  padding: 18px;
+  overflow: auto;
+  border-radius: var(--radius);
+  background: var(--code-bg);
+  color: var(--code-fg);
+}
+.content pre code { color: inherit; font-size: 0.96rem; }
+.content :not(pre) > code {
+  color: #0f5f59;
+  background: #eef4f1;
+  border: 1px solid #d9e7e2;
+  padding: 1px 5px;
+  border-radius: 5px;
+}
+.content hr { border: 0; border-top: 1px solid var(--line); margin: 28px 0; }
+.table-wrap {
+  width: 100%;
+  margin: 18px 0 26px;
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 620px;
+  background: #fff;
+}
+th, td {
+  padding: 11px 13px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+th {
+  color: var(--ink);
+  background: #f3f5f0;
+  font-weight: 780;
+}
+td { color: var(--muted); }
+tr:last-child td { border-bottom: 0; }
+.toc {
+  position: sticky;
+  top: 86px;
+  max-height: calc(100vh - 112px);
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--paper);
+  padding: 18px;
+  scrollbar-width: thin;
+}
+.toc-title {
+  margin: 0 0 12px;
+  color: var(--ink);
+  font-size: 0.96rem;
+  font-weight: 800;
+}
+.toc-link {
+  display: block;
+  border-left: 3px solid transparent;
+  border-radius: 7px;
+  padding: 7px 8px 7px 10px;
+  color: var(--muted);
+  text-decoration: none;
+  font-weight: 650;
+  line-height: 1.35;
+}
+.toc-link.sub { padding-left: 24px; font-size: 0.94rem; }
+.toc-link.active,
+.toc-link:hover {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+.toc-link.active {
+  border-left-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
+  font-weight: 800;
+}
+.toc-empty { color: var(--muted); margin: 0; }
+.generated-note {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+@media (max-width: 860px) {
+  .topbar-inner { align-items: flex-start; flex-direction: column; padding: 12px 0; gap: 10px; }
+  .topnav { width: 100%; margin-left: 0; }
+  .shell { grid-template-columns: 1fr; margin-top: 18px; }
+  .toc { position: static; order: -1; }
+  .language-switch { margin-left: 0; }
+}
+</style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="../index.html">
+        <img src="../../docs/openrelix-icon.png" alt="">
+        <span>OpenRelix</span>
+      </a>
+      <nav class="topnav" aria-label="Local docs navigation">
+        <a href="../index.html">Docs home</a>
+        <a href="../developer-guide.html">Visual guide</a>
+        <a href="developer-guide.html">Detailed guide</a>
+      </nav>
+    </div>
+  </header>
+  <main class="shell">
+    <article class="article">
+      <div class="doc-meta">
+        <span>Generated from Markdown</span>
+        <span>Source <code>docs/metric-dictionary.md</code></span>
+        <span class="language-switch" aria-label="Language versions">
+          <a class="lang-link" href="metric-dictionary.zh-CN.html">中文</a>
+<a class="lang-link active" href="metric-dictionary.html">EN</a>
+        </span>
+      </div>
+      <div class="content">
+<h1 id="metric-dictionary">Metric Dictionary</h1>
+<blockquote><p>Languages: English | <a href="metric-dictionary.zh-CN.html">简体中文</a></p></blockquote>
+<h2 id="core-metrics">Core metrics</h2>
+<ul>
+<li><code>total_assets</code>: count of assets in the active state&#x27;s <code>registry/assets.jsonl</code></li>
+<li><code>active_assets</code>: count of assets with <code>status = active</code></li>
+<li><code>task_reviews</code>: count of review markdown files under the active state&#x27;s <code>reviews/</code></li>
+<li><code>tracked_usage_events</code>: count of rows in the active state&#x27;s <code>registry/usage_events.jsonl</code></li>
+<li><code>tracked_minutes_saved</code>: estimated minutes saved, inferred from explicit usage events, missing-minute usage events, and recent work-window matches. Raw <code>minutes_saved</code> in usage events is treated as strong evidence, but it is no longer the only source.</li>
+<li><code>durable_memories</code>: count of current durable memories after grouping repeated rows from <code>registry/memory_entries.jsonl</code></li>
+<li><code>session_memories</code>: count of current work memories after grouping repeated rows from <code>registry/memory_entries.jsonl</code></li>
+<li><code>low_priority_memories</code>: count of current low-priority memories after grouping repeated rows from <code>registry/memory_entries.jsonl</code></li>
+</ul>
+<h2 id="asset-fields">Asset fields</h2>
+<ul>
+<li><code>id</code>: stable unique identifier</li>
+<li><code>title</code>: readable asset name</li>
+<li><code>type</code>: <code>playbook</code>, <code>skill</code>, <code>template</code>, <code>automation</code>, <code>knowledge_card</code>, <code>review</code></li>
+<li><code>domain</code>: <code>general</code>, <code>android</code>, <code>ios</code>, <code>web</code>, <code>backend</code>, <code>planning</code>, <code>collaboration</code>, or another durable area</li>
+<li><code>scope</code>: <code>personal</code>, <code>repo</code>, <code>team</code></li>
+<li><code>status</code>: <code>active</code>, <code>draft</code>, <code>retired</code></li>
+<li><code>created_at</code>: <code>YYYY-MM-DD</code></li>
+<li><code>updated_at</code>: <code>YYYY-MM-DD</code></li>
+<li><code>source_task</code>: the task or thread that produced the asset</li>
+<li><code>reuse_count</code>: manual running count when known</li>
+<li><code>minutes_saved_total</code>: manual running total when known</li>
+<li><code>estimated_value_score</code>: automatic 0-100 reuse value score used by the high-value asset panel</li>
+<li><code>estimated_minutes_saved</code>: automatic minute estimate used for trend and ranking; it does not require manual user input</li>
+<li><code>value_evidence_count</code>: explicit usage events plus recent work-window matches used as reuse evidence</li>
+<li><code>value_note</code>: concise note explaining why the asset matters</li>
+<li><code>artifact_paths</code>: local files that embody the asset</li>
+</ul>
+<h2 id="usage-event-fields">Usage event fields</h2>
+<ul>
+<li><code>date</code>: <code>YYYY-MM-DD</code></li>
+<li><code>asset_id</code>: asset identifier</li>
+<li><code>task</code>: task or issue label</li>
+<li><code>minutes_saved</code>: optional recorded minutes saved on that reuse; if absent or zero, the dashboard estimates value from task text and asset metadata</li>
+<li><code>note</code>: short evidence note</li>
+</ul>
+<h2 id="memory-registry-view">Memory registry view</h2>
+<ul>
+<li>The dashboard treats <code>registry/memory_entries.jsonl</code> as the canonical memory log, then groups rows into a current memory view.</li>
+<li>Grouping key: <code>bucket + memory_type + normalized title</code> with <code>value_note</code> as fallback when title is empty.</li>
+<li><code>created_at</code> in the dashboard memory view means the first date that grouped memory appeared in the log.</li>
+<li><code>updated_at</code> in the dashboard memory view means the most recent date that grouped memory appeared in the log.</li>
+<li>Long-term and work memory cards are sorted by 7-day heat, not just by update time.</li>
+<li><code>usage_frequency</code> remains the backing field for compatibility, but the UI labels it as heat. It only counts direct source-window references inside the 7-day window plus recent synthesis dates for the same memory; it no longer fuzzy-matches memory titles, keywords, or notes against recent window summaries.</li>
+<li>The heat window is bounded to the latest 7 daily captures for stable performance; the dashboard does not call an LLM during refresh.</li>
+</ul>
+<h2 id="host-native-memory-views">Host native memory views</h2>
+<ul>
+<li>The dashboard also reads configured host-native context files: Codex usually uses <code>~/.codex/memories/memory_summary.md</code>, while Claude Code uses the OpenRelix managed block in <code>~/.claude/CLAUDE.md</code>.</li>
+<li>These views represent what each host can read in its user-level context layer, rather than what the nightly asset pipeline inferred afterward.</li>
+<li>In <code>integrated</code> mode, routine refresh, review, and nightly jobs may regenerate one shared bounded summary for enabled host contexts; they should not write raw windows or the full local registry into host native memory files.</li>
+<li>The native-memory section keeps user profile, preferences, and general tips in the source file; the panel focuses on the topic entries that are easiest to compare with nightly memory.</li>
+<li>In practice: native memory is closer to long-lived rules and rollout summaries, while the nightly registry is closer to recent task memory with source-window traceability.</li>
+</ul>
+<h2 id="reporting-advice">Reporting advice</h2>
+<ul>
+<li>Prefer trend and impact metrics over activity metrics.</li>
+<li>Treat reuse value as evidence-weighted estimation: explicit reuse events are strongest, recent window matches are weaker, and type/recency affect the 0-100 value score as potential value rather than adding estimated saved minutes directly.</li>
+<li>A small number of high-reuse assets is more valuable than a large number of low-quality notes.</li>
+<li>Link summaries to specific assets and reviews whenever possible.</li>
+<li>Treat the repo as automation source and the state root as user data.</li>
+</ul>
+      </div>
+    </article>
+    <aside class="toc" aria-label="Table of contents">
+      <p class="toc-title">On this page</p>
+      <a class="toc-link" href="#core-metrics">Core metrics</a>
+<a class="toc-link" href="#asset-fields">Asset fields</a>
+<a class="toc-link" href="#usage-event-fields">Usage event fields</a>
+<a class="toc-link" href="#memory-registry-view">Memory registry view</a>
+<a class="toc-link" href="#host-native-memory-views">Host native memory views</a>
+<a class="toc-link" href="#reporting-advice">Reporting advice</a>
+      <p class="generated-note">After editing Markdown:<br><code>python3 scripts/build_local_docs.py</code><br>Auto-sync while editing:<br><code>python3 scripts/build_local_docs.py --watch</code></p>
+    </aside>
+  </main>
+  <script>
+    (() => {
+      const toc = document.querySelector(".toc");
+      const links = Array.from(document.querySelectorAll(".toc-link"));
+      const headings = links
+        .map((link) => document.getElementById(decodeURIComponent(link.hash.slice(1))))
+        .filter(Boolean);
+      if (!links.length || !headings.length) return;
+      let lastActiveId = "";
+      const applyActive = (activeId) => {
+        let activeLink = null;
+        links.forEach((link) => {
+          const isActive = link.hash === "#" + activeId;
+          link.classList.toggle("active", isActive);
+          link.setAttribute("aria-current", isActive ? "true" : "false");
+          if (isActive) activeLink = link;
+        });
+        if (activeLink && toc && activeId !== lastActiveId) {
+          activeLink.scrollIntoView({ block: "nearest", inline: "nearest" });
+          lastActiveId = activeId;
+        }
+      };
+      const getScrollActiveId = () => {
+        const marker = Math.min(window.innerHeight * 0.42, 260);
+        let activeId = headings[0].id;
+        for (const heading of headings) {
+          if (heading.getBoundingClientRect().top <= marker) activeId = heading.id;
+          else break;
+        }
+        return activeId;
+      };
+      const setActive = () => applyActive(getScrollActiveId());
+      const setHashActive = () => {
+        const hashId = decodeURIComponent(window.location.hash.slice(1));
+        if (hashId && headings.some((heading) => heading.id === hashId)) {
+          applyActive(hashId);
+        }
+        requestAnimationFrame(setActive);
+        window.setTimeout(setActive, 160);
+        window.setTimeout(setActive, 520);
+      };
+      window.addEventListener("scroll", setActive, { passive: true });
+      window.addEventListener("resize", setActive);
+      window.addEventListener("hashchange", setHashActive);
+      setHashActive();
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,460 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OpenRelix Technical Solution | OpenRelix Local Docs</title>
+  <link rel="icon" href="../../docs/openrelix-icon.png">
+  <style>
+:root {
+  color-scheme: light;
+  --ink: #181a1f;
+  --muted: #626873;
+  --paper: #ffffff;
+  --paper-soft: #f7f8f5;
+  --line: #dedfd9;
+  --line-strong: #c9cbc4;
+  --accent: #0f766e;
+  --accent-soft: #e6f4f1;
+  --code-bg: #101827;
+  --code-fg: #f8fafc;
+  --radius: 8px;
+  --max: 1180px;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; background: var(--paper-soft); }
+body {
+  margin: 0;
+  color: var(--ink);
+  background: var(--paper-soft);
+  font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+  line-height: 1.68;
+}
+a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 3px; }
+code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 0.94em;
+}
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  border-bottom: 1px solid rgba(222, 223, 217, 0.9);
+  background: rgba(255,255,255,0.94);
+  backdrop-filter: blur(16px);
+}
+.topbar-inner {
+  width: min(var(--max), calc(100% - 32px));
+  min-height: 64px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--ink);
+  font-weight: 760;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.brand img { width: 30px; height: 30px; border-radius: 7px; }
+.topnav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.topnav::-webkit-scrollbar { display: none; }
+.topnav a,
+.lang-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--ink);
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+  background: #fff;
+}
+.topnav a:hover,
+.lang-link:hover,
+.lang-link.active {
+  border-color: #bddbd5;
+  background: var(--accent-soft);
+  color: #0f5f59;
+}
+.shell {
+  width: min(var(--max), calc(100% - 32px));
+  margin: 34px auto 72px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 260px;
+  gap: 28px;
+  align-items: start;
+}
+.article {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--paper);
+  padding: clamp(22px, 4vw, 46px);
+}
+.doc-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  align-items: center;
+  margin-bottom: 24px;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+.doc-meta code { color: var(--ink); background: #f0f1ed; padding: 2px 6px; border-radius: 5px; }
+.language-switch { display: inline-flex; flex-wrap: wrap; gap: 8px; margin-left: auto; }
+.content h1 {
+  margin: 0 0 18px;
+  font-size: clamp(2.1rem, 4vw, 3.2rem);
+  line-height: 1.08;
+  letter-spacing: 0;
+}
+.content h2 {
+  margin: 46px 0 12px;
+  padding-top: 6px;
+  font-size: clamp(1.5rem, 3vw, 2rem);
+  line-height: 1.18;
+  letter-spacing: 0;
+}
+.content h3 {
+  margin: 30px 0 8px;
+  font-size: 1.24rem;
+  line-height: 1.28;
+}
+.content h4 { margin: 24px 0 8px; font-size: 1.04rem; }
+.content p,
+.content li {
+  color: var(--muted);
+  font-size: 1.04rem;
+}
+.content p { margin: 12px 0; }
+.content ul,
+.content ol { padding-left: 1.35em; margin: 12px 0 18px; }
+.content li + li { margin-top: 6px; }
+.content blockquote {
+  margin: 20px 0;
+  padding: 14px 18px;
+  border-left: 4px solid var(--accent);
+  background: var(--accent-soft);
+  border-radius: 0 var(--radius) var(--radius) 0;
+}
+.content blockquote p { margin: 0; color: #33524d; }
+.content pre {
+  margin: 18px 0 24px;
+  padding: 18px;
+  overflow: auto;
+  border-radius: var(--radius);
+  background: var(--code-bg);
+  color: var(--code-fg);
+}
+.content pre code { color: inherit; font-size: 0.96rem; }
+.content :not(pre) > code {
+  color: #0f5f59;
+  background: #eef4f1;
+  border: 1px solid #d9e7e2;
+  padding: 1px 5px;
+  border-radius: 5px;
+}
+.content hr { border: 0; border-top: 1px solid var(--line); margin: 28px 0; }
+.table-wrap {
+  width: 100%;
+  margin: 18px 0 26px;
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 620px;
+  background: #fff;
+}
+th, td {
+  padding: 11px 13px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+th {
+  color: var(--ink);
+  background: #f3f5f0;
+  font-weight: 780;
+}
+td { color: var(--muted); }
+tr:last-child td { border-bottom: 0; }
+.toc {
+  position: sticky;
+  top: 86px;
+  max-height: calc(100vh - 112px);
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--paper);
+  padding: 18px;
+  scrollbar-width: thin;
+}
+.toc-title {
+  margin: 0 0 12px;
+  color: var(--ink);
+  font-size: 0.96rem;
+  font-weight: 800;
+}
+.toc-link {
+  display: block;
+  border-left: 3px solid transparent;
+  border-radius: 7px;
+  padding: 7px 8px 7px 10px;
+  color: var(--muted);
+  text-decoration: none;
+  font-weight: 650;
+  line-height: 1.35;
+}
+.toc-link.sub { padding-left: 24px; font-size: 0.94rem; }
+.toc-link.active,
+.toc-link:hover {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+.toc-link.active {
+  border-left-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
+  font-weight: 800;
+}
+.toc-empty { color: var(--muted); margin: 0; }
+.generated-note {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+@media (max-width: 860px) {
+  .topbar-inner { align-items: flex-start; flex-direction: column; padding: 12px 0; gap: 10px; }
+  .topnav { width: 100%; margin-left: 0; }
+  .shell { grid-template-columns: 1fr; margin-top: 18px; }
+  .toc { position: static; order: -1; }
+  .language-switch { margin-left: 0; }
+}
+</style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="../index.html">
+        <img src="../../docs/openrelix-icon.png" alt="">
+        <span>OpenRelix</span>
+      </a>
+      <nav class="topnav" aria-label="Local docs navigation">
+        <a href="../index.html">Docs home</a>
+        <a href="../developer-guide.html">Visual guide</a>
+        <a href="developer-guide.html">Detailed guide</a>
+      </nav>
+    </div>
+  </header>
+  <main class="shell">
+    <article class="article">
+      <div class="doc-meta">
+        <span>Generated from Markdown</span>
+        <span>Source <code>docs/technical-solution.en.md</code></span>
+        <span class="language-switch" aria-label="Language versions">
+          <a class="lang-link" href="technical-solution.html">中文</a>
+<a class="lang-link active" href="technical-solution.en.html">EN</a>
+        </span>
+      </div>
+      <div class="content">
+<h1 id="openrelix-technical-solution">OpenRelix Technical Solution</h1>
+<blockquote><p>Languages: English | <a href="technical-solution.html">简体中文</a></p></blockquote>
+<h2 id="positioning">Positioning</h2>
+<p><code>OpenRelix</code> is an open-source personal memory and asset system for AI coding agents and AI CLI workflows. It is not another chat-history backup. It turns repeated working methods, checklists, skills, templates, and automations into reusable local assets that can be reviewed, searched, and surfaced in a private dashboard.</p>
+<p>GitHub project page: <a href="https://github.com/openrelix/openrelix">openrelix/openrelix</a>. Stars help more people discover the local-first approach.</p>
+<p>The current preview is macOS installer-first:</p>
+<ul>
+<li>The repository stores publishable capability code: skills, installer, templates, scripts, docs, and launchd templates.</li>
+<li>User runtime data stays outside the repository by default.</li>
+<li>The preview supports Codex CLI / Codex app-server and Claude Code CLI. Host-native memory remains owned by each host; OpenRelix writes only a shared bounded summary by default, while full personal memory remains in the state root.</li>
+<li>Linux and Windows are not public preview commitments yet.</li>
+</ul>
+<h2 id="design-principles">Design Principles</h2>
+<ol>
+<li>Local first: raw AI host history, reviews, registries, nightly output, logs, and dashboard output stay on the local machine by default.</li>
+<li>Source and state are separate: the repo is source of truth for reusable logic; the state root is runtime data.</li>
+<li>Installer-first delivery: npm is a bootstrapper, while <code>install/install.sh</code> remains the real install path.</li>
+<li>Skills are not hook-mounted: repo-local skills are discovered by the host, and the installer can expose canonical skills to the user-level host skill root.</li>
+<li>Layered memory: mandatory rules belong in <code>AGENTS.md</code> or project docs; generated memory is a recall layer, not the only policy source.</li>
+<li>Clear privacy boundary: no secrets, tokens, cookies, raw internal logs, user data, or unredacted proprietary context in publishable files.</li>
+</ol>
+<h2 id="architecture">Architecture</h2>
+<pre><code class="language-text">AI coding agent / CLI host
+  |
+  | adapter reads/writes
+  v
+Host home
+  - history / session records
+  - optional native memories
+  - optional user skills
+
+Current preview adapters: Codex CLI / CODEX_HOME and Claude Code CLI / CLAUDE_HOME
+
+OpenRelix repo
+  - .agents/skills/
+  - install/
+  - scripts/
+  - templates/
+  - ops/launchd/
+  - docs/
+  |
+  | installer / openrelix / LaunchAgent
+  v
+External state root
+  - raw/
+  - registry/
+  - reviews/
+  - consolidated/
+  - reports/
+  - runtime/
+  - log/</code></pre>
+<p>Core flow:</p>
+<pre><code class="language-text">collect_codex_activity.py
+  -&gt; raw/daily/&lt;date&gt;.json
+  -&gt; raw/windows/*.json
+
+nightly_consolidate.py
+  -&gt; consolidated/daily/&lt;date&gt;/summary.json
+  -&gt; consolidated/daily/&lt;date&gt;/summary.md
+  -&gt; registry/memory_entries.jsonl
+
+openrelix_index.py
+  -&gt; runtime/openrelix-index.sqlite3
+
+memory-review skill
+  -&gt; reviews/YYYY/*.md
+  -&gt; registry/assets.jsonl
+  -&gt; registry/usage_events.jsonl
+
+build_overview.py
+  -&gt; reports/overview-data.json
+  -&gt; reports/overview.md
+  -&gt; reports/overview.csv
+  -&gt; reports/panel.html
+
+sync_host_memory_summary.py
+  -&gt; runtime/host-context/memory_summary.md
+  -&gt; managed block in enabled host context files</code></pre>
+<h2 id="runtime-configuration">Runtime Configuration</h2>
+<p>Path resolution should go through <code>scripts/asset_runtime.py</code>.</p>
+<p>Important environment variables:</p>
+<div class="table-wrap"><table><thead><tr><th>Variable</th><th>Purpose</th></tr></thead><tbody><tr><td><code>AI_ASSET_STATE_DIR</code></td><td>Override the external state root</td></tr><tr><td><code>CODEX_HOME</code></td><td>Override Codex host home</td></tr><tr><td><code>CLAUDE_HOME</code></td><td>Override Claude Code host home</td></tr><tr><td><code>OPENRELIX_CONFIG</code></td><td>Override runtime config path when needed</td></tr></tbody></table></div>
+<p>Runtime config should describe language, memory mode, personal memory enablement, host context targets, activity source, model CLI, selected models, and token budget. Do not hard-code user paths into scripts or docs.</p>
+<h2 id="memory-model">Memory Model</h2>
+<p>OpenRelix uses the policy-based memory model:</p>
+<ul>
+<li><code>registry/memory_entries.jsonl</code> is the canonical memory registry.</li>
+<li><code>memory_summary.md</code> is compiled bounded output for host context injection.</li>
+<li><code>scope</code> describes where a memory applies: global, domain, project, repo, host, or local.</li>
+<li><code>injection_policy</code> controls host-context eligibility: <code>global_context</code>, <code>project_context</code>, <code>on_demand</code>, <code>local_only</code>, or <code>never</code>.</li>
+<li><code>priority</code>, heat, evidence, feedback, and freshness affect selection inside budget.</li>
+</ul>
+<p>Host context injection is intentionally narrow. The sync process updates only OpenRelix-managed blocks in enabled host targets and preserves host-owned content outside those blocks.</p>
+<h2 id="overview-and-panel">Overview And Panel</h2>
+<p><code>scripts/build_overview.py</code> remains the compatibility entrypoint. Focused implementation lives under <code>scripts/openrelix_overview/</code>.</p>
+<p>The stable renderer contract is <code>reports/overview-data.json</code>. Markdown, CSV, and HTML outputs should be rebuildable from state-root source records. A stale <code>panel.html</code> should be treated as generated output, not source truth.</p>
+<h2 id="package-surface">Package Surface</h2>
+<p>The npm package should ship the public reusable skill surface and installer path. Development-only harness skills under <code>.agents/skills/openrelix-*-harness/</code> are for maintaining this repo and should not be added to <code>plugins/openrelix/</code> or the <code>package.json</code> <code>files</code> allowlist without an explicit release decision.</p>
+<h2 id="validation">Validation</h2>
+<p>Common checks:</p>
+<pre><code class="language-bash">python3 scripts/check_personal_info.py
+git diff --check</code></pre>
+<p>Before release, installer, docs/site, or package-surface work:</p>
+<pre><code class="language-bash">python3 -m py_compile scripts/*.py install/*.py
+python3 -m unittest discover -s tests
+npm pack --dry-run --json</code></pre>
+<p>Use a local HTTP preview for static site checks because <code>file://</code> preview is blocked in this environment:</p>
+<pre><code class="language-bash">python3 -m http.server 4173 -d docs</code></pre>
+<h2 id="non-goals">Non-Goals</h2>
+<ul>
+<li>OpenRelix is not a cloud memory service.</li>
+<li>It does not make host-native memory the only source of truth.</li>
+<li>It does not commit user runtime state into the repository.</li>
+<li>It does not publish private screenshots, raw logs, or private connector content.</li>
+<li>It does not promise Linux or Windows behavior in the current macOS preview.</li>
+</ul>
+      </div>
+    </article>
+    <aside class="toc" aria-label="Table of contents">
+      <p class="toc-title">On this page</p>
+      <a class="toc-link" href="#positioning">Positioning</a>
+<a class="toc-link" href="#design-principles">Design Principles</a>
+<a class="toc-link" href="#architecture">Architecture</a>
+<a class="toc-link" href="#runtime-configuration">Runtime Configuration</a>
+<a class="toc-link" href="#memory-model">Memory Model</a>
+<a class="toc-link" href="#overview-and-panel">Overview And Panel</a>
+<a class="toc-link" href="#package-surface">Package Surface</a>
+<a class="toc-link" href="#validation">Validation</a>
+<a class="toc-link" href="#non-goals">Non-Goals</a>
+      <p class="generated-note">After editing Markdown:<br><code>python3 scripts/build_local_docs.py</code><br>Auto-sync while editing:<br><code>python3 scripts/build_local_docs.py --watch</code></p>
+    </aside>
+  </main>
+  <script>
+    (() => {
+      const toc = document.querySelector(".toc");
+      const links = Array.from(document.querySelectorAll(".toc-link"));
+      const headings = links
+        .map((link) => document.getElementById(decodeURIComponent(link.hash.slice(1))))
+        .filter(Boolean);
+      if (!links.length || !headings.length) return;
+      let lastActiveId = "";
+      const applyActive = (activeId) => {
+        let activeLink = null;
+        links.forEach((link) => {
+          const isActive = link.hash === "#" + activeId;
+          link.classList.toggle("active", isActive);
+          link.setAttribute("aria-current", isActive ? "true" : "false");
+          if (isActive) activeLink = link;
+        });
+        if (activeLink && toc && activeId !== lastActiveId) {
+          activeLink.scrollIntoView({ block: "nearest", inline: "nearest" });
+          lastActiveId = activeId;
+        }
+      };
+      const getScrollActiveId = () => {
+        const marker = Math.min(window.innerHeight * 0.42, 260);
+        let activeId = headings[0].id;
+        for (const heading of headings) {
+          if (heading.getBoundingClientRect().top <= marker) activeId = heading.id;
+          else break;
+        }
+        return activeId;
+      };
+      const setActive = () => applyActive(getScrollActiveId());
+      const setHashActive = () => {
+        const hashId = decodeURIComponent(window.location.hash.slice(1));
+        if (hashId && headings.some((heading) => heading.id === hashId)) {
+          applyActive(hashId);
+        }
+        requestAnimationFrame(setActive);
+        window.setTimeout(setActive, 160);
+        window.setTimeout(setActive, 520);
+      };
+      window.addEventListener("scroll", setActive, { passive: true });
+      window.addEventListener("resize", setActive);
+      window.addEventListener("hashchange", setHashActive);
+      setHashActive();
+    })();
+  </script>
+</body>
+</html>
