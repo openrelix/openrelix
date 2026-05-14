@@ -23,13 +23,16 @@ from asset_runtime import (
     get_claude_model,
     get_claude_settings,
     get_codex_model,
+    get_final_codex_model,
     get_memory_mode,
     get_model_cli,
     get_runtime_language,
     get_runtime_paths,
     normalize_language,
     personal_memory_enabled,
+    read_codex_user_default_model,
     sync_codex_exec_home,
+    USER_DEFAULT_CODEX_MODEL,
 )
 from openrelix_memory_migration import PERSONAL_MEMORY_ALGORITHM_VERSION, is_lightweight_or_preliminary_memory_row
 from openrelix_overview import memory_context as overview_memory_context
@@ -39,6 +42,7 @@ PATHS = get_runtime_paths()
 LANGUAGE = get_runtime_language(PATHS)
 MEMORY_MODE = get_memory_mode(PATHS)
 CODEX_MODEL = get_codex_model(PATHS)
+FINAL_CODEX_MODEL = get_final_codex_model(PATHS)
 CLAUDE_MODEL = get_claude_model(PATHS)
 CLAUDE_SETTINGS = get_claude_settings(PATHS)
 CLAUDE_ENV_FILE = get_claude_env_file(PATHS)
@@ -77,6 +81,7 @@ SPARSE_CONCLUSION_THRESHOLD = 4
 STAGE_PRIORITY = {"manual": 0, "preliminary": 1, "final": 2}
 DEFAULT_CODEX_EXEC_TIMEOUT_SECONDS = 30 * 60
 CODEX_EXEC_TIMEOUT_RETURN_CODE = 124
+_UNSET_CODEX_MODEL = object()
 COMPACT_PAYLOAD_CACHE_VERSION = 1
 DAILY_COMPACT_ARTIFACT_VERSION = 1
 LIGHTWEIGHT_SUMMARY_VERSION = 8
@@ -201,6 +206,19 @@ def default_codex_exec_timeout_seconds():
     except (TypeError, ValueError):
         return DEFAULT_CODEX_EXEC_TIMEOUT_SECONDS
     return max(seconds, 0)
+
+
+def codex_model_for_stage(stage):
+    if stage == "final":
+        return "" if FINAL_CODEX_MODEL == USER_DEFAULT_CODEX_MODEL else FINAL_CODEX_MODEL
+    return CODEX_MODEL
+
+
+def codex_model_label_for_stage(stage):
+    model = codex_model_for_stage(stage)
+    if model:
+        return model
+    return read_codex_user_default_model(MAIN_CODEX_HOME) or USER_DEFAULT_CODEX_MODEL
 
 
 def parse_args():
@@ -1847,7 +1865,7 @@ def build_safe_consolidation_prompt(prompt, language=None):
     return safety_preamble + prompt
 
 
-def run_codex_consolidation(prompt, output_path, language=None, timeout_seconds=None):
+def run_codex_consolidation(prompt, output_path, language=None, timeout_seconds=None, codex_model=_UNSET_CODEX_MODEL):
     output_path.parent.mkdir(parents=True, exist_ok=True)
     RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
     sync_codex_exec_home(MAIN_CODEX_HOME, NIGHTLY_CODEX_HOME)
@@ -1856,6 +1874,8 @@ def run_codex_consolidation(prompt, output_path, language=None, timeout_seconds=
     if timeout_seconds is None:
         timeout_seconds = default_codex_exec_timeout_seconds()
     timeout = timeout_seconds if timeout_seconds and timeout_seconds > 0 else None
+    if codex_model is _UNSET_CODEX_MODEL:
+        codex_model = CODEX_MODEL
     cmd = [
         CODEX_BIN,
         "exec",
@@ -1869,8 +1889,6 @@ def run_codex_consolidation(prompt, output_path, language=None, timeout_seconds=
         "memories",
         "--disable",
         "codex_hooks",
-        "--model",
-        CODEX_MODEL,
         "-c",
         'approval_policy="never"',
         "-c",
@@ -1883,6 +1901,9 @@ def run_codex_consolidation(prompt, output_path, language=None, timeout_seconds=
         str(output_path),
         "-",
     ]
+    if codex_model:
+        model_insert_at = cmd.index("-c")
+        cmd[model_insert_at:model_insert_at] = ["--model", codex_model]
     safe_prompt = build_safe_consolidation_prompt(prompt, language=language)
     try:
         result = subprocess.run(
@@ -2119,7 +2140,13 @@ def run_claude_consolidation(prompt, output_path, language=None, timeout_seconds
     atomic_write_json(output_path, payload)
 
 
-def run_model_consolidation(prompt, output_path, language=None, timeout_seconds=None):
+def run_model_consolidation(
+    prompt,
+    output_path,
+    language=None,
+    timeout_seconds=None,
+    codex_model=_UNSET_CODEX_MODEL,
+):
     if MODEL_CLI == "claude":
         return run_claude_consolidation(
             prompt,
@@ -2132,6 +2159,7 @@ def run_model_consolidation(prompt, output_path, language=None, timeout_seconds=
         output_path,
         language=language,
         timeout_seconds=timeout_seconds,
+        codex_model=codex_model,
     )
 
 
@@ -3632,13 +3660,15 @@ def main():
         )
         return
 
+    candidate_codex_model = codex_model_label_for_stage(stage)
+
     if raw_payload["window_count"] == 0 and not learning_context_has_recent_windows(learning_context):
         empty_summary = {
             "date": date_str,
             "language": language,
             "stage": stage,
             "model_cli": MODEL_CLI,
-            "codex_model": CODEX_MODEL,
+            "codex_model": candidate_codex_model,
             "claude_model": CLAUDE_MODEL,
             "day_summary": localized(
                 "当日没有可整理的主窗口内容。",
@@ -3682,7 +3712,7 @@ def main():
                 "selected_quality": empty_summary["quality"],
                 "raw_window_count": raw_payload["window_count"],
                 "model_cli": MODEL_CLI,
-                "codex_model": CODEX_MODEL,
+                "codex_model": candidate_codex_model,
                 "claude_model": CLAUDE_MODEL,
                 "learn_window_days": learn_window_days,
                 "personal_memory_algorithm_version": PERSONAL_MEMORY_ALGORITHM_VERSION,
@@ -3703,6 +3733,7 @@ def main():
             output_json_path,
             language=language,
             timeout_seconds=max(args.model_timeout_seconds, 0),
+            codex_model=codex_model_for_stage(stage),
         )
         candidate_summary = load_json(output_json_path)
         candidate_summary = normalize_summary(
@@ -3741,7 +3772,7 @@ def main():
     candidate_summary["language"] = language
     candidate_summary["stage"] = stage
     candidate_summary["model_cli"] = candidate_summary.get("model_cli", MODEL_CLI)
-    candidate_summary["codex_model"] = CODEX_MODEL
+    candidate_summary["codex_model"] = candidate_codex_model
     candidate_summary["claude_model"] = CLAUDE_MODEL
     candidate_summary["generated_at"] = datetime.now().astimezone().isoformat()
     candidate_summary["personal_memory_algorithm_version"] = PERSONAL_MEMORY_ALGORITHM_VERSION

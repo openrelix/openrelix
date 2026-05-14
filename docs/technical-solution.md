@@ -224,9 +224,9 @@ state root 的主要目录：
 
 模型调用方式：
 
-- 默认 `model_cli=codex` 时使用 `codex exec --ephemeral --model <codex_model>` 和隔离的 nightly `CODEX_HOME`
+- 默认 `model_cli=codex` 时使用隔离的 nightly `CODEX_HOME` 运行 `codex exec --ephemeral`；轻量/手动整理显式传 `--model <codex_model>`，深度 `final` 回溯默认 `final_codex_model=user-default`，不传 `--model`，尊重用户 Codex 默认模型
 - `model_cli=claude` 时使用 `claude -p --output-format json --json-schema ...`，`CLAUDE_HOME` 指向配置的 Claude Code 数据目录；OpenRelix 不自动设置 `CLAUDE_CONFIG_DIR`，以免改变 Claude CLI 的登录态位置
-- 默认 `codex_model` 是 `gpt-5.4-mini`，默认 `claude_model` 是 `sonnet`；`openrelix models` 通过 `codex debug models` 读取当前本机 Codex catalog，`openrelix config --codex-model <model>`、`openrelix config --model-cli claude --claude-model <model>` 负责切换
+- 默认 `codex_model` 是 `gpt-5.4-mini`，默认 `final_codex_model` 是 `user-default`，默认 `claude_model` 是 `sonnet`；`openrelix models` 通过 `codex debug models` 读取当前本机 Codex catalog，`openrelix config --codex-model <model>`、`openrelix config --final-codex-model <model|user-default>`、`openrelix config --model-cli claude --claude-model <model>` 负责切换
 - 通过 `templates/nightly-summary-schema.json` 约束输出 JSON
 - 在 prompt 前加安全前缀，声明这是纯整理任务，不允许读额外文件、调用 shell、web、MCP 或 patch
 
@@ -459,7 +459,7 @@ openrelix backfill --from <start-date> --to <end-date> --learn-window-days N
 openrelix backfill --dates 2026-04-21,2026-04-23,2026-04-24 --learn-window-days 7
 ```
 
-回溯不是完全离线：采集阶段是本地脚本读取当前 host 的 history、session 或 transcript JSONL；模型阶段通过当前 `model_cli` 生成结构化 summary，默认是 `codex exec --ephemeral --model <codex_model>`，也可以切到 `claude -p --model <claude_model>`；最后再由本地脚本重建 overview / panel。
+回溯不是完全离线：采集阶段是本地脚本读取当前 host 的 history、session 或 transcript JSONL；模型阶段通过当前 `model_cli` 生成结构化 summary，轻量/手动默认是 `codex exec --ephemeral --model <codex_model>`，深度 `final` 默认省略 `--model` 使用用户 Codex 默认模型，也可以切到 `claude -p --model <claude_model>`；最后再由本地脚本重建 overview / panel。
 
 ### 后台整理
 

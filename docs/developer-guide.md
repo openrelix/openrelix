@@ -147,7 +147,7 @@ openrelix review / backfill
 
 `scripts/nightly_consolidate.py` 负责模型整理、fallback summary、summary 选择、memory 写入和学习日志。重要维护点：
 
-- 默认 `model_cli=codex` 使用 `codex exec --ephemeral --model <codex_model>`。
+- 默认 `model_cli=codex` 使用 `codex exec --ephemeral`：轻量/手动整理显式传 `--model <codex_model>`，深度 `final` 回溯默认 `final_codex_model=user-default`，省略 `--model` 并尊重用户 Codex 默认模型。
 - `model_cli=claude` 使用 `claude -p`，仓库外 provider 设置通过 runtime config 或环境变量传入。
 - 模型输出受 `templates/nightly-summary-schema.json` 约束。
 - 个人记忆生成策略有不兼容变化时，需要提升 `PERSONAL_MEMORY_ALGORITHM_VERSION`，让迁移和 fingerprint 生效。

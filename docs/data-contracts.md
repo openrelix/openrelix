@@ -444,7 +444,8 @@ Minimum contributor-facing fields:
 | `activity_source` | string | `history`, `app-server`, or `auto` |
 | `activity_host` | string | `codex`, `claude`, or `all` |
 | `model_cli` | string | `codex` or `claude` |
-| `codex_model` | string | Internal Codex model for OpenRelix jobs |
+| `codex_model` | string | Codex model for lightweight/manual OpenRelix jobs |
+| `final_codex_model` | string | Codex model for deep final backfill, or `user-default` to use the user's Codex default |
 | `claude_model` | string | Internal Claude model for OpenRelix jobs |
 | `memory_summary_max_tokens` | integer | Supported host-context budget max |
 | `host_context_targets` | array | Enabled host context targets |

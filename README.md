@@ -443,12 +443,13 @@ openrelix tokens --provider all
 openrelix tokens --provider codex
 openrelix tokens --provider cc
 openrelix config --codex-model gpt-5.4-mini
+openrelix config --final-codex-model user-default
 openrelix config --model-cli claude --claude-model sonnet
 openrelix config --activity-host all
 openrelix config --memory-summary-max-tokens 8000
 ```
 
-`openrelix models` reads the current local Codex CLI model catalog through `codex debug models` and prints a sanitized list of selectable model IDs. `openrelix tokens` defaults to `--provider all`, merging Codex `@ccusage/codex` and Claude Code `ccusage`; pass `--provider codex` or `--provider cc` for a single host. `codex_model` defaults to `gpt-5.4-mini`, `claude_model` defaults to `sonnet`, and `model_cli` selects which CLI OpenRelix uses for internal memory consolidation. `memory_summary_max_tokens` defaults to 8000 and accepts values from 2000 to 20000. Target and warning budgets are derived automatically from that max. Updating config refreshes the summary, overview, and panel by default; add `--no-refresh` when you only want to persist the config.
+`openrelix models` reads the current local Codex CLI model catalog through `codex debug models` and prints a sanitized list of selectable model IDs. `openrelix tokens` defaults to `--provider all`, merging Codex `@ccusage/codex` and Claude Code `ccusage`; pass `--provider codex` or `--provider cc` for a single host. `codex_model` defaults to `gpt-5.4-mini` for lightweight/manual organization, while `final_codex_model` defaults to `user-default` so deep final backfill respects the user's Codex default model unless explicitly overridden. `claude_model` defaults to `sonnet`, and `model_cli` selects which CLI OpenRelix uses for internal memory consolidation. `memory_summary_max_tokens` defaults to 8000 and accepts values from 2000 to 20000. Target and warning budgets are derived automatically from that max. Updating config refreshes the summary, overview, and panel by default; add `--no-refresh` when you only want to persist the config.
 
 Host context can be resynced at any time. It compiles one unified summary from eligible global and project personal memories, then writes that same bounded summary into OpenRelix-managed blocks in the enabled Codex / Claude Code host targets. Codex and Claude Code use the same selection policy: global context is capped at 10% of the configured summary budget, and project context is capped at 30%. The compiled summary stays in the OpenRelix state root under `runtime/host-context/memory_summary.md`; OpenRelix does not write personal memory into the project repository by default and does not replace host-owned native memory outside its managed blocks.
 

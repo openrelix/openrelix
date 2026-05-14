@@ -29,7 +29,9 @@ from asset_runtime import (
     APP_SLUG,
     DEFAULT_CLAUDE_MODEL,
     DEFAULT_CODEX_MODEL,
+    DEFAULT_FINAL_CODEX_MODEL,
     LEGACY_APP_SLUGS,
+    USER_DEFAULT_CODEX_MODEL,
     atomic_write_json,
     atomic_write_text,
     build_claude_cli_env,
@@ -39,6 +41,7 @@ from asset_runtime import (
     get_claude_model,
     get_claude_settings,
     get_codex_model,
+    get_final_codex_model,
     get_model_cli,
     get_memory_mode,
     get_memory_summary_budget,
@@ -51,6 +54,7 @@ from asset_runtime import (
     normalize_activity_source,
     normalize_claude_model,
     normalize_codex_model,
+    normalize_final_codex_model,
     normalize_language,
     normalize_memory_summary_max_tokens,
     normalize_memory_mode,
@@ -668,8 +672,15 @@ def build_parser():
     config.add_argument(
         "--codex-model",
         help=localized(
-            "设置 OpenRelix 内部 codex exec 使用的模型；默认 {}。接受未来模型 ID，也支持 gpt5.4mini 这类常见简写。".format(DEFAULT_CODEX_MODEL),
-            "Set the model used by OpenRelix internal codex exec calls. Default: {}. Future model IDs are accepted; common shorthands like gpt5.4mini are also accepted.".format(DEFAULT_CODEX_MODEL),
+            "设置轻量/手动 Codex 整理使用的模型；默认 {}。接受未来模型 ID，也支持 gpt5.4mini 这类常见简写。".format(DEFAULT_CODEX_MODEL),
+            "Set the Codex model used for lightweight/manual organization. Default: {}. Future model IDs are accepted; common shorthands like gpt5.4mini are also accepted.".format(DEFAULT_CODEX_MODEL),
+        ),
+    )
+    config.add_argument(
+        "--final-codex-model",
+        help=localized(
+            "设置深度 final 回溯使用的 Codex 模型；默认 {} 表示尊重用户 Codex 默认模型。".format(DEFAULT_FINAL_CODEX_MODEL),
+            "Set the Codex model used for deep final backfill. Default: {} means respect the user's Codex default model.".format(DEFAULT_FINAL_CODEX_MODEL),
         ),
     )
     config.add_argument(
@@ -2160,36 +2171,43 @@ def command_exists(command):
     return shutil.which(command_text) is not None
 
 
+def codex_model_args_for_final_check():
+    final_model = get_final_codex_model(PATHS)
+    if final_model == USER_DEFAULT_CODEX_MODEL:
+        return []
+    return ["--model", final_model]
+
+
 def run_doctor_codex_model_check():
     PATHS.nightly_runner_dir.mkdir(parents=True, exist_ok=True)
     sync_codex_exec_home(PATHS.codex_home, PATHS.nightly_codex_home)
 
     env = dict(os.environ)
     env["CODEX_HOME"] = str(PATHS.nightly_codex_home)
+    command = [
+        PATHS.codex_bin,
+        "exec",
+        "--skip-git-repo-check",
+        "--cd",
+        str(PATHS.nightly_runner_dir),
+        "--ephemeral",
+        "--sandbox",
+        "read-only",
+        "--disable",
+        "memories",
+        "--disable",
+        "codex_hooks",
+        *codex_model_args_for_final_check(),
+        "-c",
+        'approval_policy="never"',
+        "-c",
+        'history.persistence="none"',
+        "-c",
+        "history.max_bytes=1048576",
+        "-",
+    ]
     return subprocess.run(
-        [
-            PATHS.codex_bin,
-            "exec",
-            "--skip-git-repo-check",
-            "--cd",
-            str(PATHS.nightly_runner_dir),
-            "--ephemeral",
-            "--sandbox",
-            "read-only",
-            "--disable",
-            "memories",
-            "--disable",
-            "codex_hooks",
-            "--model",
-            get_codex_model(PATHS),
-            "-c",
-            'approval_policy="never"',
-            "-c",
-            'history.persistence="none"',
-            "-c",
-            "history.max_bytes=1048576",
-            "-",
-        ],
+        command,
         input="Reply exactly: OPENRELIX_DOCTOR_OK\n",
         text=True,
         capture_output=True,
@@ -2449,8 +2467,18 @@ def command_doctor(args):
         "ok",
         get_codex_model(PATHS),
         localized(
-            "OpenRelix 内部模型调用会通过 codex exec --model 显式指定；不改你的全局 Codex 默认模型。",
-            "OpenRelix internal model calls pass codex exec --model explicitly; your global Codex default model is not changed.",
+            "用于轻量/手动 Codex 整理；深度 final 回溯由 final_codex_model 控制。",
+            "Used for lightweight/manual Codex organization; deep final backfill is controlled by final_codex_model.",
+        ),
+    )
+    append_doctor_check(
+        checks,
+        "final_codex_model",
+        "ok",
+        get_final_codex_model(PATHS),
+        localized(
+            "user-default 表示深度 final 回溯不传 --model，尊重用户 Codex 默认模型。",
+            "user-default means deep final backfill does not pass --model and respects the user's Codex default model.",
         ),
     )
     append_doctor_check(
@@ -3936,6 +3964,7 @@ def memory_summary_budget_payload(config=None):
         "activity_host": get_activity_host(PATHS),
         "model_cli": get_model_cli(PATHS),
         "codex_model": get_codex_model(PATHS),
+        "final_codex_model": get_final_codex_model(PATHS),
         "claude_model": get_claude_model(PATHS),
         "claude_settings": get_claude_settings(PATHS),
         "claude_env_file": get_claude_env_file(PATHS),
@@ -3948,6 +3977,7 @@ def memory_summary_budget_payload(config=None):
         "config_path": str(PATHS.runtime_dir / "config.json"),
         "configured_model_cli": config.get("model_cli"),
         "configured_codex_model": config.get("codex_model"),
+        "configured_final_codex_model": config.get("final_codex_model"),
         "configured_claude_model": config.get("claude_model"),
         "configured_claude_settings": config.get("claude_settings"),
         "configured_claude_env_file": config.get("claude_env_file"),
@@ -3962,6 +3992,7 @@ def command_config(args):
     requested_activity_host = getattr(args, "activity_host", None)
     requested_model_cli = getattr(args, "model_cli", None)
     requested_codex_model = getattr(args, "codex_model", None)
+    requested_final_codex_model = getattr(args, "final_codex_model", None)
     requested_claude_model = getattr(args, "claude_model", None)
     requested_claude_settings = getattr(args, "claude_settings", None)
     requested_claude_env_file = getattr(args, "claude_env_file", None)
@@ -3971,6 +4002,7 @@ def command_config(args):
         and requested_activity_host is None
         and requested_model_cli is None
         and requested_codex_model is None
+        and requested_final_codex_model is None
         and requested_claude_model is None
         and requested_claude_settings is None
         and requested_claude_env_file is None
@@ -3984,6 +4016,7 @@ def command_config(args):
         print("- activity_host: {}".format(payload["activity_host"]))
         print("- model_cli: {}".format(payload["model_cli"]))
         print("- codex_model: {}".format(payload["codex_model"]))
+        print("- final_codex_model: {}".format(payload["final_codex_model"]))
         print("- claude_model: {}".format(payload["claude_model"]))
         print("- claude_settings: {}".format(payload["claude_settings"] or "(default)"))
         print("- claude_env_file: {}".format(payload["claude_env_file"] or "(none)"))
@@ -4031,6 +4064,13 @@ def command_config(args):
         except ValueError as exc:
             raise SystemExit(str(exc)) from exc
 
+    normalized_final_codex_model = None
+    if requested_final_codex_model is not None:
+        try:
+            normalized_final_codex_model = normalize_final_codex_model(requested_final_codex_model, strict=True)
+        except ValueError as exc:
+            raise SystemExit(str(exc)) from exc
+
     normalized_claude_model = None
     if requested_claude_model is not None:
         try:
@@ -4043,6 +4083,7 @@ def command_config(args):
         activity_host=normalized_activity_host,
         model_cli=normalized_model_cli,
         codex_model=normalized_codex_model,
+        final_codex_model=normalized_final_codex_model,
         claude_model=normalized_claude_model,
         claude_settings=requested_claude_settings,
         claude_env_file=requested_claude_env_file,
@@ -4065,6 +4106,7 @@ def command_config(args):
     print("- activity_host: {}".format(payload["activity_host"]))
     print("- model_cli: {}".format(payload["model_cli"]))
     print("- codex_model: {}".format(payload["codex_model"]))
+    print("- final_codex_model: {}".format(payload["final_codex_model"]))
     print("- claude_model: {}".format(payload["claude_model"]))
     print("- claude_settings: {}".format(payload["claude_settings"] or "(default)"))
     print("- claude_env_file: {}".format(payload["claude_env_file"] or "(none)"))
@@ -4163,6 +4205,7 @@ def load_codex_model_catalog(include_hidden=False, bundled=False):
     return {
         "source": "codex debug models --bundled" if bundled else "codex debug models",
         "configured_model": get_codex_model(PATHS),
+        "configured_final_model": get_final_codex_model(PATHS),
         "recommended_default": DEFAULT_CODEX_MODEL,
         "models": models,
     }
@@ -4177,8 +4220,9 @@ def command_models(args):
     print(localized("Codex 模型 catalog", "Codex model catalog"))
     print("- source: {}".format(payload["source"]))
     print("- configured_model: {}".format(payload["configured_model"]))
+    print("- configured_final_model: {}".format(payload["configured_final_model"]))
     print("- recommended_default: {}".format(payload["recommended_default"]))
-    print(localized("- 提示: 可用性以本机 Codex 登录和 provider 为准；切换命令是 openrelix config --codex-model <model>。", "- Note: availability depends on the local Codex login and provider; switch with openrelix config --codex-model <model>."))
+    print(localized("- 提示: 可用性以本机 Codex 登录和 provider 为准；轻量模型用 openrelix config --codex-model <model>，深度模型用 --final-codex-model <model|user-default>。", "- Note: availability depends on the local Codex login and provider; switch the lightweight model with openrelix config --codex-model <model>, and the deep model with --final-codex-model <model|user-default>."))
     for model in payload["models"]:
         label = model["display_name"] or model["slug"]
         description = model["description"]

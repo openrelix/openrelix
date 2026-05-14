@@ -396,12 +396,13 @@ openrelix tokens --provider all
 openrelix tokens --provider codex
 openrelix tokens --provider cc
 openrelix config --codex-model gpt-5.4-mini
+openrelix config --final-codex-model user-default
 openrelix config --model-cli claude --claude-model sonnet
 openrelix config --activity-host all
 openrelix config --memory-summary-max-tokens 8000
 ```
 
-`openrelix models` 会通过 `codex debug models` 读取当前本机 Codex CLI 的模型 catalog，并只打印脱敏后的可选模型 ID。`openrelix tokens` 默认 `--provider all`，会合并 Codex 的 `@ccusage/codex` 和 Claude Code 的 `ccusage`；需要单独看某个 host 时传 `--provider codex` 或 `--provider cc`。`codex_model` 默认 `gpt-5.4-mini`，`claude_model` 默认 `sonnet`，`model_cli` 决定 OpenRelix 内部记忆回溯用哪个 CLI。`memory_summary_max_tokens` 默认 8000，支持 2000 到 20000。target 和 warning budgets 会自动从 max 派生。更新后默认刷新 summary、overview 和 panel；只想持久化配置时加 `--no-refresh`。
+`openrelix models` 会通过 `codex debug models` 读取当前本机 Codex CLI 的模型 catalog，并只打印脱敏后的可选模型 ID。`openrelix tokens` 默认 `--provider all`，会合并 Codex 的 `@ccusage/codex` 和 Claude Code 的 `ccusage`；需要单独看某个 host 时传 `--provider codex` 或 `--provider cc`。`codex_model` 默认 `gpt-5.4-mini`，用于轻量/手动整理；`final_codex_model` 默认 `user-default`，表示深度 final 回溯尊重用户自己的 Codex 默认模型，除非显式覆盖。`claude_model` 默认 `sonnet`，`model_cli` 决定 OpenRelix 内部记忆回溯用哪个 CLI。`memory_summary_max_tokens` 默认 8000，支持 2000 到 20000。target 和 warning budgets 会自动从 max 派生。更新后默认刷新 summary、overview 和 panel；只想持久化配置时加 `--no-refresh`。
 
 host context 可以随时重新同步。它会从 eligible 的全局和项目个人记忆编译一份统一摘要，再把同一份 bounded summary 写进启用的 Codex / Claude Code host 目标中的 OpenRelix 受控块。Codex 和 Claude Code 使用同一套选择策略：全局上下文 capped 在配置摘要预算的 10%，项目上下文 capped 在 30%。编译后的摘要保存在 OpenRelix state root 的 `runtime/host-context/memory_summary.md`，默认不会把个人记忆写进项目仓库，也不会替换受控块之外的 host 原生记忆。
 

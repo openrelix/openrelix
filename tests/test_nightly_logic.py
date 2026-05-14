@@ -646,6 +646,9 @@ class NightlyLogicTests(unittest.TestCase):
         self.assertEqual(asset_runtime.normalize_codex_model("gpt5.5"), "gpt-5.5")
         with self.assertRaises(ValueError):
             asset_runtime.normalize_codex_model("bad model", strict=True)
+        self.assertEqual(asset_runtime.normalize_final_codex_model(None), "user-default")
+        self.assertEqual(asset_runtime.normalize_final_codex_model("default"), "user-default")
+        self.assertEqual(asset_runtime.normalize_final_codex_model("gpt5.5"), "gpt-5.5")
         self.assertEqual(asset_runtime.normalize_memory_summary_max_tokens(None), 8000)
         self.assertEqual(asset_runtime.normalize_memory_summary_max_tokens("8000"), 8000)
         with self.assertRaises(ValueError):
@@ -685,6 +688,7 @@ class NightlyLogicTests(unittest.TestCase):
                     activity_host="cc",
                     model_cli="cc",
                     codex_model="gpt5.4mini",
+                    final_codex_model="default",
                     claude_model="opus",
                     claude_settings=str(claude_settings_path),
                     claude_env_file=str(claude_env_path),
@@ -698,6 +702,7 @@ class NightlyLogicTests(unittest.TestCase):
                 self.assertEqual(config["activity_host"], "claude")
                 self.assertEqual(config["model_cli"], "claude")
                 self.assertEqual(config["codex_model"], "gpt-5.4-mini")
+                self.assertEqual(config["final_codex_model"], "user-default")
                 self.assertEqual(config["claude_model"], "opus")
                 self.assertEqual(config["claude_settings"], str(claude_settings_path.resolve()))
                 self.assertEqual(config["claude_env_file"], str(claude_env_path.resolve()))
@@ -715,6 +720,7 @@ class NightlyLogicTests(unittest.TestCase):
                 self.assertEqual(asset_runtime.get_activity_host(paths), "claude")
                 self.assertEqual(asset_runtime.get_model_cli(paths), "claude")
                 self.assertEqual(asset_runtime.get_codex_model(paths), "gpt-5.4-mini")
+                self.assertEqual(asset_runtime.get_final_codex_model(paths), "user-default")
                 self.assertEqual(asset_runtime.get_claude_model(paths), "opus")
                 self.assertEqual(asset_runtime.get_claude_settings(paths), str(claude_settings_path.resolve()))
                 self.assertEqual(asset_runtime.get_claude_env_file(paths), str(claude_env_path.resolve()))
@@ -1532,6 +1538,7 @@ class NightlyLogicTests(unittest.TestCase):
                 self.assertFalse(nightly_config.is_symlink())
                 nightly_config_text = nightly_config.read_text(encoding="utf-8")
                 self.assertIn("DySearchTeam", nightly_config_text)
+                self.assertIn('model = "gpt-5.4"', nightly_config_text)
                 self.assertNotIn("mcp_servers", nightly_config_text)
                 self.assertNotIn("[plugins", nightly_config_text)
                 command = run.call_args.args[0]
@@ -1739,6 +1746,7 @@ trust_level = "trusted"
         sanitized = asset_runtime.sanitize_codex_exec_config(source_config)
 
         self.assertIn('model_provider = "DySearchTeam"', sanitized)
+        self.assertIn('model = "gpt-5.5"', sanitized)
         self.assertIn("[model_providers.DySearchTeam]", sanitized)
         self.assertIn('base_url = "https://proxy.example/api/modelhub/online/"', sanitized)
         self.assertNotIn("mcp_servers", sanitized)
@@ -1766,6 +1774,89 @@ wire_api = "responses"
         self.assertEqual(sanitized.count('model_provider = "chatgpt_http"'), 1)
         self.assertNotIn("[profiles.gpt55_stable]", sanitized)
         self.assertIn("[model_providers.chatgpt_http]", sanitized)
+
+    def test_run_codex_consolidation_can_defer_to_user_default_model(self):
+        old_main_codex_home = nightly_consolidate.MAIN_CODEX_HOME
+        old_nightly_codex_home = nightly_consolidate.NIGHTLY_CODEX_HOME
+        old_runtime_dir = nightly_consolidate.RUNTIME_DIR
+        old_codex_bin = nightly_consolidate.CODEX_BIN
+        old_schema_path = nightly_consolidate.SCHEMA_PATH
+        try:
+            with TemporaryDirectory() as tmpdir:
+                root = Path(tmpdir)
+                main_codex_home = root / "main-codex-home"
+                nightly_codex_home = root / "nightly-codex-home"
+                runtime_dir = root / "runtime"
+                schema_path = root / "schema.json"
+                output_path = root / "out" / "summary.json"
+                main_codex_home.mkdir()
+                nightly_codex_home.mkdir()
+                schema_path.write_text("{}", encoding="utf-8")
+                (main_codex_home / "auth.json").write_text("{}", encoding="utf-8")
+                (main_codex_home / "config.toml").write_text(
+                    'model = "gpt-5.5"\n'
+                    'model_provider = "chatgpt_http"\n'
+                    "\n"
+                    "[model_providers.chatgpt_http]\n"
+                    'base_url = "https://chatgpt.example/backend-api/codex"\n',
+                    encoding="utf-8",
+                )
+
+                nightly_consolidate.MAIN_CODEX_HOME = main_codex_home
+                nightly_consolidate.NIGHTLY_CODEX_HOME = nightly_codex_home
+                nightly_consolidate.RUNTIME_DIR = runtime_dir
+                nightly_consolidate.CODEX_BIN = sys.executable
+                nightly_consolidate.SCHEMA_PATH = schema_path
+
+                completed = subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
+                with mock.patch.object(nightly_consolidate.subprocess, "run", return_value=completed) as run:
+                    nightly_consolidate.run_codex_consolidation(
+                        "prompt",
+                        output_path,
+                        language="zh",
+                        timeout_seconds=321,
+                        codex_model="",
+                    )
+
+                command = run.call_args.args[0]
+                self.assertNotIn("--model", command)
+                nightly_config_text = (nightly_codex_home / "config.toml").read_text(encoding="utf-8")
+                self.assertIn('model = "gpt-5.5"', nightly_config_text)
+                self.assertIn("[model_providers.chatgpt_http]", nightly_config_text)
+        finally:
+            nightly_consolidate.MAIN_CODEX_HOME = old_main_codex_home
+            nightly_consolidate.NIGHTLY_CODEX_HOME = old_nightly_codex_home
+            nightly_consolidate.RUNTIME_DIR = old_runtime_dir
+            nightly_consolidate.CODEX_BIN = old_codex_bin
+            nightly_consolidate.SCHEMA_PATH = old_schema_path
+
+    def test_final_stage_codex_model_respects_user_default(self):
+        old_main_codex_home = nightly_consolidate.MAIN_CODEX_HOME
+        old_final_codex_model = nightly_consolidate.FINAL_CODEX_MODEL
+        try:
+            with TemporaryDirectory() as tmpdir:
+                main_codex_home = Path(tmpdir) / "main-codex-home"
+                main_codex_home.mkdir()
+                (main_codex_home / "config.toml").write_text(
+                    'model = "gpt-5.5"\n'
+                    'model_provider = "chatgpt_http"\n'
+                    "\n"
+                    "[model_providers.chatgpt_http]\n"
+                    'base_url = "https://chatgpt.example/backend-api/codex"\n',
+                    encoding="utf-8",
+                )
+                nightly_consolidate.MAIN_CODEX_HOME = main_codex_home
+                nightly_consolidate.FINAL_CODEX_MODEL = nightly_consolidate.USER_DEFAULT_CODEX_MODEL
+
+                self.assertEqual(nightly_consolidate.codex_model_for_stage("final"), "")
+                self.assertEqual(nightly_consolidate.codex_model_label_for_stage("final"), "gpt-5.5")
+
+                nightly_consolidate.FINAL_CODEX_MODEL = "gpt-5.4"
+                self.assertEqual(nightly_consolidate.codex_model_for_stage("final"), "gpt-5.4")
+                self.assertEqual(nightly_consolidate.codex_model_label_for_stage("final"), "gpt-5.4")
+        finally:
+            nightly_consolidate.MAIN_CODEX_HOME = old_main_codex_home
+            nightly_consolidate.FINAL_CODEX_MODEL = old_final_codex_model
 
     def test_nightly_output_schema_is_strict_for_codex_exec(self):
         schema = json.loads((ROOT / "templates" / "nightly-summary-schema.json").read_text(encoding="utf-8"))
@@ -8300,6 +8391,36 @@ Native Codex profile.
             self.assertEqual(payload["configured_codex_model"], "gpt-5.4-mini")
             self.assertFalse(payload["refreshed"])
 
+    def test_openrelix_config_updates_final_codex_model(self):
+        with TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            runtime_dir = root / "runtime"
+            runtime_dir.mkdir(parents=True)
+            paths = replace(openrelix.PATHS, state_root=root, runtime_dir=runtime_dir)
+            args = argparse.Namespace(
+                memory_summary_max_tokens=None,
+                activity_source=None,
+                codex_model=None,
+                final_codex_model="gpt5.5",
+                read_codex_app=False,
+                no_refresh=True,
+                json=True,
+            )
+
+            with mock.patch.dict(
+                os.environ,
+                {"OPENRELIX_FINAL_CODEX_MODEL": "", "AI_ASSET_FINAL_CODEX_MODEL": ""},
+                clear=False,
+            ), mock.patch.object(openrelix, "PATHS", paths), mock.patch("sys.stdout", new_callable=io.StringIO) as stdout:
+                openrelix.command_config(args)
+
+            config = json.loads((runtime_dir / "config.json").read_text(encoding="utf-8"))
+            self.assertEqual(config["final_codex_model"], "gpt-5.5")
+            payload = json.loads(stdout.getvalue())
+            self.assertEqual(payload["final_codex_model"], "gpt-5.5")
+            self.assertEqual(payload["configured_final_codex_model"], "gpt-5.5")
+            self.assertFalse(payload["refreshed"])
+
     def test_openrelix_config_updates_claude_host_and_model_cli(self):
         with TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -13455,7 +13576,7 @@ Native Codex profile.
                 )
                 nightly_consolidate._COMPACT_PAYLOAD_CACHE.clear()
 
-                def fake_run_model(prompt, output_path, language=None, timeout_seconds=None):
+                def fake_run_model(prompt, output_path, language=None, timeout_seconds=None, **kwargs):
                     self.assertIn("复用 preliminary 的压缩层", prompt)
                     output_path.write_text(
                         json.dumps(
@@ -13593,7 +13714,7 @@ Native Codex profile.
                     encoding="utf-8",
                 )
 
-                def fake_run_model(prompt, output_path, language=None, timeout_seconds=None):
+                def fake_run_model(prompt, output_path, language=None, timeout_seconds=None, **kwargs):
                     self.assertIn("recent_window_learning", prompt)
                     self.assertIn("global_context_memories", prompt)
                     self.assertIn("hist-a", prompt)

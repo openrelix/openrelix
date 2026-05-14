@@ -404,6 +404,7 @@ diagnostics 可包括：
 - `activity_host`
 - `model_cli`
 - `codex_model`
+- `final_codex_model`
 - `claude_model`
 - `memory_summary_max_tokens`
 - `host_context_targets`

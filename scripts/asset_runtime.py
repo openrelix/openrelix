@@ -28,6 +28,8 @@ SUPPORTED_MODEL_CLIS = ("codex", "claude")
 DEFAULT_MODEL_CLI = "codex"
 SUPPORTED_HOST_CONTEXT_TARGETS = ("codex", "claude")
 DEFAULT_CODEX_MODEL = "gpt-5.4-mini"
+USER_DEFAULT_CODEX_MODEL = "user-default"
+DEFAULT_FINAL_CODEX_MODEL = USER_DEFAULT_CODEX_MODEL
 DEFAULT_CLAUDE_MODEL = "auto"
 DEFAULT_MEMORY_SUMMARY_MAX_TOKENS = 8000
 MIN_MEMORY_SUMMARY_MAX_TOKENS = 2000
@@ -133,6 +135,16 @@ CODEX_MODEL_ALIASES = {
     "gpt5.3codex": "gpt-5.3-codex",
     "gpt53codex": "gpt-5.3-codex",
 }
+FINAL_CODEX_MODEL_ALIASES = {
+    "auto": USER_DEFAULT_CODEX_MODEL,
+    "default": USER_DEFAULT_CODEX_MODEL,
+    "user-default": USER_DEFAULT_CODEX_MODEL,
+    "userdefault": USER_DEFAULT_CODEX_MODEL,
+    "codex-default": USER_DEFAULT_CODEX_MODEL,
+    "codexdefault": USER_DEFAULT_CODEX_MODEL,
+    "codex-native": USER_DEFAULT_CODEX_MODEL,
+    "codexnative": USER_DEFAULT_CODEX_MODEL,
+}
 CLAUDE_MODEL_ALIASES = {
     "auto": "auto",
     "default": "auto",
@@ -155,6 +167,7 @@ LEGACY_STATE_DIR_NAMES = (
 LEGACY_STATE_MARKERS = tuple(REPO_ROOT / name for name in LEGACY_STATE_DIR_NAMES)
 CODEX_EXEC_CONFIG_TOP_LEVEL_KEYS = frozenset(
     {
+        "model",
         "model_provider",
     }
 )
@@ -344,6 +357,17 @@ def normalize_codex_model(value: Optional[str], *, strict: bool = False) -> str:
         return DEFAULT_CODEX_MODEL
 
     return text
+
+
+def normalize_final_codex_model(value: Optional[str], *, strict: bool = False) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return DEFAULT_FINAL_CODEX_MODEL
+
+    alias_key = "".join(ch for ch in text.lower() if ch.isalnum() or ch in {".", "-"})
+    if alias_key in FINAL_CODEX_MODEL_ALIASES:
+        return FINAL_CODEX_MODEL_ALIASES[alias_key]
+    return normalize_codex_model(text, strict=strict)
 
 
 def normalize_claude_model(value: Optional[str], *, strict: bool = False) -> str:
@@ -724,6 +748,31 @@ def _toml_assignment_key(stripped_line: str) -> str:
     return key
 
 
+def _toml_assignment_value(stripped_line: str) -> str:
+    if "=" not in stripped_line:
+        return ""
+    value = stripped_line.split("=", 1)[1].strip()
+    if not value:
+        return ""
+    if value[0] in {"'", '"'}:
+        quote = value[0]
+        escaped = False
+        chars = []
+        for ch in value[1:]:
+            if escaped:
+                chars.append(ch)
+                escaped = False
+                continue
+            if ch == "\\":
+                escaped = True
+                continue
+            if ch == quote:
+                return "".join(chars)
+            chars.append(ch)
+        return "".join(chars).strip()
+    return value.split("#", 1)[0].strip()
+
+
 def _codex_exec_config_section_allowed(section_name: str) -> bool:
     return any(
         section_name == prefix or section_name.startswith(prefix + ".")
@@ -805,6 +854,24 @@ def sync_codex_exec_home(main_codex_home: Path, exec_codex_home: Path) -> None:
         _remove_runtime_file(target)
 
 
+def read_codex_user_default_model(codex_home: Optional[Path] = None) -> str:
+    config_path = (codex_home or default_codex_home()) / "config.toml"
+    try:
+        lines = config_path.read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeDecodeError):
+        return ""
+
+    for raw_line in lines:
+        stripped = raw_line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        if _toml_section_name(stripped) is not None:
+            break
+        if _toml_assignment_key(stripped) == "model":
+            return _toml_assignment_value(stripped)
+    return ""
+
+
 def runtime_config_path(paths: Optional["RuntimePaths"] = None) -> Path:
     paths = paths or get_runtime_paths()
     return paths.runtime_dir / "config.json"
@@ -873,6 +940,15 @@ def get_codex_model(paths: Optional["RuntimePaths"] = None) -> str:
     return normalize_codex_model(config.get("codex_model"))
 
 
+def get_final_codex_model(paths: Optional["RuntimePaths"] = None) -> str:
+    explicit = os.environ.get("OPENRELIX_FINAL_CODEX_MODEL") or os.environ.get("AI_ASSET_FINAL_CODEX_MODEL")
+    if explicit:
+        return normalize_final_codex_model(explicit)
+
+    config = load_runtime_config(paths)
+    return normalize_final_codex_model(config.get("final_codex_model"))
+
+
 def get_claude_model(paths: Optional["RuntimePaths"] = None) -> str:
     explicit = os.environ.get("OPENRELIX_CLAUDE_MODEL") or os.environ.get("AI_ASSET_CLAUDE_MODEL")
     if explicit:
@@ -928,6 +1004,7 @@ def write_runtime_config(
     activity_host: Optional[str] = None,
     model_cli: Optional[str] = None,
     codex_model: Optional[str] = None,
+    final_codex_model: Optional[str] = None,
     claude_model: Optional[str] = None,
     claude_settings: Optional[str] = None,
     claude_env_file: Optional[str] = None,
@@ -966,6 +1043,11 @@ def write_runtime_config(
         codex_model
         if codex_model is not None
         else config.get("codex_model")
+    )
+    config["final_codex_model"] = normalize_final_codex_model(
+        final_codex_model
+        if final_codex_model is not None
+        else config.get("final_codex_model")
     )
     config["claude_model"] = normalize_claude_model(
         claude_model
