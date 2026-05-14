@@ -22,27 +22,22 @@ GitHub 项目页：[openrelix/openrelix](https://github.com/openrelix/openrelix)
 - `plugins/`：随包发布共享 skills 的 Codex plugin bundle。
 - `scripts/`：采集、夜间整理、overview 生成、token live server 和 `openrelix` CLI。
 - `templates/`：任务复盘 schema、资产条目模板，以及资产 / skill 生成模板。
-- `docs/`：运行模型、技术方案、学习指南、隐私边界和指标说明。
+- `docs/`：运行模型、技术方案、开发者指南、隐私边界和指标说明。
 
 ## 文档
 
 - [文档索引](docs/README.zh-CN.md)：说明 agent 友好的 Markdown 双语文档和富交互 HTML 页面的维护规则。
 - [技术方案](docs/technical-solution.md)：架构、数据流、模块职责、运行时状态和发布边界。
-- [开发者指南](docs/developer-guide.md)：面向贡献者的 0.3.4 代码结构、改动边界和验证流程。
-- [贡献者快速上手](docs/contributor-onboarding.md)：10 分钟本地闭环、任务卡模板、评审清单和协作交接规则。
+- [开发者详细指南](docs/developer-guide.md)：10 分钟本地闭环、仓库地图、常见改动路径、任务卡模板、验证流程和协作交接规则。
 - [验证矩阵](docs/validation-matrix.md)：按 docs、scripts、installer、memory、overview、package、release 等改动类型选择检查命令。
 - [数据契约](docs/data-contracts.md)：state root、raw window、summary、registry、curated pack、host context、overview data 和脱敏样例 fixture 的字段边界。
 - [隐私威胁模型](docs/privacy-threat-model.md)：面向贡献者和 connector 的 host 数据、runtime state、package surface 与外部接入隐私门禁。
 - [发布检查清单](docs/release-checklist.md)：版本、changelog、package、GitHub Release、npm 和公开文档发布门禁。
-- [学习指南](docs/learning-guide.md)：给使用者、贡献者和维护者的阅读与验证路径。
 - [开源安装说明与项目说明](docs/open-source-install-and-project-overview.md)：当前 macOS 预览版的中文安装指南和项目解释。
 - [产品展示页](docs/product-showcase.html)：可部署到 GitHub Pages 的中英双语展示页和脱敏面板预览。
 - [上手指南](docs/getting-started.html)：面向用户的面板使用指南，配中英双语真实面板 UI 示例截图和核心板块逐块说明。
 - [系统概览](docs/system-overview.md)：AI host、repo source、runtime state 和本地 memory 的分层模型。
 - [隐私和分发边界](docs/privacy-and-distribution.md)：哪些内容属于公开仓库，哪些必须留在本地。
-- [商标申请包](docs/trademark-filing-kit.md)：开源品牌边界和商标申请检查清单。
-- [中美商标同日申请行动表](docs/trademark-dual-filing-action-sheet.md)：`OPENRELIX` 文字商标的 U.S. / China filing packet。
-- [中国商标申请包](docs/china-chinese-trademark-filing-kit.md)：`OPENRELIX` 文字商标的中国申请资料。
 - [指标字典](docs/metric-dictionary.md)：报告和面板里的统计口径。
 
 ## 公开展示页

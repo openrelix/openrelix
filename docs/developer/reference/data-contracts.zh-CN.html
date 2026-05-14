@@ -1,0 +1,637 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OpenRelix 数据契约 | OpenRelix Developer Docs</title>
+  <link rel="icon" href="../../openrelix-icon.png">
+  <style>
+:root {
+  color-scheme: light;
+  --ink: #181a1f;
+  --muted: #626873;
+  --paper: #ffffff;
+  --paper-soft: #f7f8f5;
+  --line: #dedfd9;
+  --line-strong: #c9cbc4;
+  --accent: #0f766e;
+  --accent-soft: #e6f4f1;
+  --code-bg: #101827;
+  --code-fg: #f8fafc;
+  --radius: 8px;
+  --max: 1180px;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; background: var(--paper-soft); }
+body {
+  margin: 0;
+  color: var(--ink);
+  background: var(--paper-soft);
+  font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+  line-height: 1.68;
+}
+a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 3px; }
+code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 0.94em;
+}
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  border-bottom: 1px solid rgba(222, 223, 217, 0.9);
+  background: rgba(255,255,255,0.94);
+  backdrop-filter: blur(16px);
+}
+.topbar-inner {
+  width: min(var(--max), calc(100% - 32px));
+  min-height: 64px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--ink);
+  font-weight: 760;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.brand img { width: 30px; height: 30px; border-radius: 7px; }
+.topnav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.topnav::-webkit-scrollbar { display: none; }
+.topnav a,
+.lang-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--ink);
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+  background: #fff;
+}
+.topnav a:hover,
+.lang-link:hover,
+.lang-link.active {
+  border-color: #bddbd5;
+  background: var(--accent-soft);
+  color: #0f5f59;
+}
+.shell {
+  width: min(var(--max), calc(100% - 32px));
+  margin: 34px auto 72px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 260px;
+  gap: 28px;
+  align-items: start;
+}
+.article {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--paper);
+  padding: clamp(22px, 4vw, 46px);
+}
+.doc-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  align-items: center;
+  margin-bottom: 24px;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+.doc-meta code { color: var(--ink); background: #f0f1ed; padding: 2px 6px; border-radius: 5px; }
+.language-switch { display: inline-flex; flex-wrap: wrap; gap: 8px; margin-left: auto; }
+.content h1 {
+  margin: 0 0 18px;
+  font-size: clamp(2.1rem, 4vw, 3.2rem);
+  line-height: 1.08;
+  letter-spacing: 0;
+}
+.content h2 {
+  margin: 46px 0 12px;
+  padding-top: 6px;
+  font-size: clamp(1.5rem, 3vw, 2rem);
+  line-height: 1.18;
+  letter-spacing: 0;
+}
+.content h3 {
+  margin: 30px 0 8px;
+  font-size: 1.24rem;
+  line-height: 1.28;
+}
+.content h4 { margin: 24px 0 8px; font-size: 1.04rem; }
+.content p,
+.content li {
+  color: var(--muted);
+  font-size: 1.04rem;
+}
+.content p { margin: 12px 0; }
+.content ul,
+.content ol { padding-left: 1.35em; margin: 12px 0 18px; }
+.content li + li { margin-top: 6px; }
+.content blockquote {
+  margin: 20px 0;
+  padding: 14px 18px;
+  border-left: 4px solid var(--accent);
+  background: var(--accent-soft);
+  border-radius: 0 var(--radius) var(--radius) 0;
+}
+.content blockquote p { margin: 0; color: #33524d; }
+.content pre {
+  margin: 18px 0 24px;
+  padding: 18px;
+  overflow: auto;
+  border-radius: var(--radius);
+  background: var(--code-bg);
+  color: var(--code-fg);
+}
+.content pre code { color: inherit; font-size: 0.96rem; }
+.content :not(pre) > code {
+  color: #0f5f59;
+  background: #eef4f1;
+  border: 1px solid #d9e7e2;
+  padding: 1px 5px;
+  border-radius: 5px;
+}
+.content hr { border: 0; border-top: 1px solid var(--line); margin: 28px 0; }
+.table-wrap {
+  width: 100%;
+  margin: 18px 0 26px;
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 620px;
+  background: #fff;
+}
+th, td {
+  padding: 11px 13px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+th {
+  color: var(--ink);
+  background: #f3f5f0;
+  font-weight: 780;
+}
+td { color: var(--muted); }
+tr:last-child td { border-bottom: 0; }
+.toc {
+  position: sticky;
+  top: 86px;
+  max-height: calc(100vh - 112px);
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--paper);
+  padding: 18px;
+  scrollbar-width: thin;
+}
+.toc-title {
+  margin: 0 0 12px;
+  color: var(--ink);
+  font-size: 0.96rem;
+  font-weight: 800;
+}
+.toc-link {
+  display: block;
+  border-left: 3px solid transparent;
+  border-radius: 7px;
+  padding: 7px 8px 7px 10px;
+  color: var(--muted);
+  text-decoration: none;
+  font-weight: 650;
+  line-height: 1.35;
+}
+.toc-link.sub { padding-left: 24px; font-size: 0.94rem; }
+.toc-link.active,
+.toc-link:hover {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+.toc-link.active {
+  border-left-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
+  font-weight: 800;
+}
+.toc-empty { color: var(--muted); margin: 0; }
+.generated-note {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+@media (max-width: 860px) {
+  .topbar-inner { align-items: flex-start; flex-direction: column; padding: 12px 0; gap: 10px; }
+  .topnav { width: 100%; margin-left: 0; }
+  .shell { grid-template-columns: 1fr; margin-top: 18px; }
+  .toc { position: static; order: -1; }
+  .language-switch { margin-left: 0; }
+}
+</style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="../index.html">
+        <img src="../../openrelix-icon.png" alt="">
+        <span>OpenRelix</span>
+      </a>
+      <nav class="topnav" aria-label="Developer docs navigation">
+        <a href="../index.html">文档首页</a>
+        <a href="../developer-guide.html">图解指南</a>
+        <a href="developer-guide.html">开发者详细指南</a>
+      </nav>
+    </div>
+  </header>
+  <main class="shell">
+    <article class="article">
+      <div class="doc-meta">
+        <span>HTML 由 Markdown 生成</span>
+        <span>源文件 <code>docs/data-contracts.zh-CN.md</code></span>
+        <span class="language-switch" aria-label="Language versions">
+          <a class="lang-link active" href="data-contracts.zh-CN.html">中文</a>
+<a class="lang-link" href="data-contracts.html">EN</a>
+        </span>
+      </div>
+      <div class="content">
+<h1 id="openrelix">OpenRelix 数据契约</h1>
+<blockquote><p>语言版本：<a href="data-contracts.html">English</a> | 简体中文</p></blockquote>
+<p>这份文档记录 OpenRelix 面向贡献者的公开数据契约。它不是某个维护者本机 state 的 dump。所有示例都必须是合成、脱敏数据。</p>
+<p>代码和测试仍然是 source of truth。本文是共享地图，帮助贡献者在不查看私有 runtime 文件的情况下做兼容改动。</p>
+<h2 id="section">存储边界</h2>
+<p>OpenRelix 有三类存储区：</p>
+<div class="table-wrap"><table><thead><tr><th>区域</th><th>示例</th><th>是否进公开 repo</th><th>说明</th></tr></thead><tbody><tr><td>Repo source</td><td><code>scripts/</code>, <code>install/</code>, <code>templates/</code>, <code>docs/</code>, tests</td><td>是</td><td>可复用逻辑、schema、脱敏示例</td></tr><tr><td>External state root</td><td><code>raw/</code>, <code>registry/</code>, <code>consolidated/</code>, <code>reports/</code>, <code>runtime/</code>, <code>log/</code></td><td>否</td><td>用户运行数据、生成产物、缓存、日志</td></tr><tr><td>Host home</td><td><code>CODEX_HOME</code>, <code>CLAUDE_HOME</code>, host-native memory 和 sessions</td><td>否</td><td>AI host 拥有；OpenRelix 只按显式 adapter 规则读取或更新</td></tr></tbody></table></div>
+<p>可复用代码中的路径解析应走 <code>scripts/asset_runtime.py</code>。公开 docs 和 fixtures 可以使用 <code>/tmp/openrelix-demo</code>、<code>~/Library/Application Support/openrelix</code> 或 <code>CODEX_HOME</code> 这类通用占位路径。</p>
+<h2 id="state-root-layout">State Root Layout</h2>
+<pre><code class="language-text">&lt;state-root&gt;/
+  raw/
+    daily/&lt;date&gt;.json
+    windows/&lt;date&gt;/&lt;window_id&gt;.json
+  consolidated/
+    daily/&lt;date&gt;/summary.json
+    daily/&lt;date&gt;/summary.md
+    daily/&lt;date&gt;/runs/
+  registry/
+    assets.jsonl
+    usage_events.jsonl
+    memory_entries.jsonl
+    memory_items.jsonl
+    curated_memory_pack.json
+  reports/
+    overview-data.json
+    overview.md
+    overview.csv
+    panel.html
+  runtime/
+    config.json
+    openrelix-index.sqlite3
+    host-context/
+      memory_summary.md
+      curated-personal-memory-summary.md
+  log/</code></pre>
+<p><code>reports/</code>、<code>runtime/</code> 和 <code>log/</code> 是生成态或机器本地目录。不要提交真实文件。脱敏测试可以在 <code>tests/fixtures/sample-state/</code> 下提供一个小 fixture，但每个值都必须是人工合成。</p>
+<h2 id="raw-daily-contract">Raw Daily Contract</h2>
+<p>路径：</p>
+<pre><code class="language-text">raw/daily/&lt;date&gt;.json</code></pre>
+<p>用途：某一天采集到的 host activity，按 window 分组。</p>
+<p>最小形态：</p>
+<pre><code class="language-json">{
+  &quot;date&quot;: &quot;2026-04-28&quot;,
+  &quot;stage&quot;: &quot;manual&quot;,
+  &quot;generated_at&quot;: &quot;2026-04-28T10:10:00+08:00&quot;,
+  &quot;timezone&quot;: &quot;Asia/Shanghai&quot;,
+  &quot;collection_source&quot;: &quot;history&quot;,
+  &quot;activity_host&quot;: &quot;codex&quot;,
+  &quot;window_count&quot;: 1,
+  &quot;windows&quot;: []
+}</code></pre>
+<p>常见顶层字段：</p>
+<div class="table-wrap"><table><thead><tr><th>字段</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>date</code></td><td>string</td><td>capture date，格式 <code>YYYY-MM-DD</code></td></tr><tr><td><code>stage</code></td><td>string</td><td><code>manual</code>、<code>preview</code> 或 <code>final</code></td></tr><tr><td><code>generated_at</code></td><td>string</td><td>ISO timestamp</td></tr><tr><td><code>timezone</code></td><td>string</td><td>本地时区</td></tr><tr><td><code>collection_source</code></td><td>string</td><td><code>app_server</code>、<code>history</code>、<code>session</code> 等</td></tr><tr><td><code>activity_host</code></td><td>string</td><td><code>codex</code>、<code>claude</code> 或合并 host</td></tr><tr><td><code>codex_profile_count</code></td><td>number</td><td>参与采集的 Codex profile 数</td></tr><tr><td><code>codex_profiles</code></td><td>array</td><td>脱敏 profile metadata</td></tr><tr><td><code>host_counts</code></td><td>object</td><td>每个 host 的窗口/消息统计</td></tr><tr><td><code>collection_errors</code></td><td>array</td><td>脱敏采集错误</td></tr><tr><td><code>window_count</code></td><td>number</td><td><code>windows</code> 数量</td></tr><tr><td><code>excluded_window_count</code></td><td>number</td><td>被过滤窗口数量</td></tr><tr><td><code>review_like_window_count</code></td><td>number</td><td>review-like 窗口数量</td></tr><tr><td><code>prompt_count</code></td><td>number</td><td>prompt 总数</td></tr><tr><td><code>conclusion_count</code></td><td>number</td><td>conclusion 总数</td></tr><tr><td><code>windows</code></td><td>array</td><td>已纳入整理的窗口</td></tr><tr><td><code>excluded_windows</code></td><td>array</td><td>被排除窗口的脱敏摘要</td></tr><tr><td><code>review_like_windows</code></td><td>array</td><td>review-like 窗口的脱敏摘要</td></tr></tbody></table></div>
+<h2 id="raw-window-contract">Raw Window Contract</h2>
+<p>路径：</p>
+<pre><code class="language-text">raw/windows/&lt;date&gt;/&lt;window_id&gt;.json</code></pre>
+<p>window 对象常见字段：</p>
+<div class="table-wrap"><table><thead><tr><th>字段</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>date</code></td><td>string</td><td>window 所属日期</td></tr><tr><td><code>window_id</code></td><td>string</td><td>稳定窗口标识</td></tr><tr><td><code>cwd</code></td><td>string</td><td>工作目录，应脱敏或使用合成路径</td></tr><tr><td><code>ai_host</code></td><td>string</td><td><code>codex</code>、<code>claude</code> 等</td></tr><tr><td><code>originator</code></td><td>string</td><td>host 来源</td></tr><tr><td><code>source</code></td><td>string</td><td>采集来源</td></tr><tr><td><code>started_at</code></td><td>string</td><td>window 开始时间</td></tr><tr><td><code>session_file</code></td><td>string</td><td>脱敏 session 文件标识</td></tr><tr><td><code>thread_id</code></td><td>string</td><td>host thread id 或合成值</td></tr><tr><td><code>resume_id</code></td><td>string</td><td>resume id 或空</td></tr><tr><td><code>window_summary</code></td><td>string</td><td>窗口摘要</td></tr><tr><td><code>thread_title</code></td><td>string</td><td>thread 标题</td></tr><tr><td><code>prompt_count</code></td><td>number</td><td>prompts 数量</td></tr><tr><td><code>conclusion_count</code></td><td>number</td><td>conclusions 数量</td></tr><tr><td><code>raw_conclusion_count</code></td><td>number</td><td>过滤前 conclusion 数量</td></tr><tr><td><code>review_like_window</code></td><td>boolean</td><td>是否像 review 窗口</td></tr><tr><td><code>review_related_window</code></td><td>boolean</td><td>是否与 review 相关</td></tr><tr><td><code>filtered_review_conclusion_count</code></td><td>number</td><td>review 过滤后的 conclusion 数</td></tr><tr><td><code>conclusion_policy</code></td><td>string</td><td>conclusion 选择策略说明</td></tr><tr><td><code>prompts</code></td><td>array</td><td>prompt entries</td></tr><tr><td><code>conclusions</code></td><td>array</td><td>conclusion entries</td></tr></tbody></table></div>
+<p>运行时可能出现的字段，如 <code>codex_home</code>、<code>codex_electron_user_data_path</code>、<code>codex_profile_source</code>、<code>app_server</code>、<code>claude_code</code>，公开文档只描述其语义，不放真实值。</p>
+<p><code>prompts[]</code>：</p>
+<div class="table-wrap"><table><thead><tr><th>字段</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>ts</code></td><td>string</td><td>timestamp</td></tr><tr><td><code>local_time</code></td><td>string</td><td>local timestamp</td></tr><tr><td><code>text</code></td><td>string</td><td>脱敏 prompt 文本</td></tr><tr><td><code>turn_id</code></td><td>string</td><td>Claude 等 host 可选字段</td></tr></tbody></table></div>
+<p><code>conclusions[]</code>：</p>
+<div class="table-wrap"><table><thead><tr><th>字段</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>turn_id</code></td><td>string</td><td>turn 标识</td></tr><tr><td><code>completed_at</code></td><td>string</td><td>完成时间</td></tr><tr><td><code>text</code></td><td>string</td><td>脱敏 conclusion</td></tr></tbody></table></div>
+<h2 id="consolidated-summary-contract">Consolidated Summary Contract</h2>
+<p>路径：</p>
+<pre><code class="language-text">consolidated/daily/&lt;date&gt;/summary.json</code></pre>
+<p>模型输出稳定字段：</p>
+<div class="table-wrap"><table><thead><tr><th>字段</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>date</code></td><td>string</td><td>summary 日期</td></tr><tr><td><code>day_summary</code></td><td>string</td><td>当日摘要</td></tr><tr><td><code>window_summaries</code></td><td>array</td><td>窗口级摘要</td></tr><tr><td><code>durable_memories</code></td><td>array</td><td>长期记忆候选</td></tr><tr><td><code>session_memories</code></td><td>array</td><td>工作记忆候选</td></tr><tr><td><code>low_priority_memories</code></td><td>array</td><td>低优先级记忆</td></tr><tr><td><code>global_context_memories</code></td><td>array</td><td>可进入 global context 的记忆</td></tr><tr><td><code>keywords</code></td><td>array</td><td>关键词</td></tr><tr><td><code>next_actions</code></td><td>array</td><td>下一步</td></tr></tbody></table></div>
+<p><code>window_summaries[]</code> 建议公开字段：</p>
+<ul>
+<li><code>window_id</code></li>
+<li><code>cwd</code></li>
+<li><code>window_title</code></li>
+<li><code>question_summary</code></li>
+<li><code>question_count</code></li>
+<li><code>conclusion_count</code></li>
+<li><code>keywords</code></li>
+<li><code>main_takeaway</code></li>
+<li><code>summary_pairs</code></li>
+</ul>
+<p><code>summary_pairs[]</code> 使用：</p>
+<pre><code class="language-json">{
+  &quot;question&quot;: &quot;What changed?&quot;,
+  &quot;conclusion&quot;: &quot;The fixture now covers memory and asset registry rows.&quot;
+}</code></pre>
+<p>运行诊断字段可以分组描述：<code>language</code>、<code>stage</code>、<code>generated_at</code>、<code>model_status</code>、<code>summary_generation</code>、<code>personal_memory_algorithm_version</code>、<code>compact_payload_source</code>、<code>learning_input_fingerprint</code>、<code>quality</code>、<code>selection_decision</code>、<code>last_run_model_status</code>。</p>
+<h2 id="memory-registry-contract">Memory Registry Contract</h2>
+<p>路径：</p>
+<pre><code class="language-text">registry/memory_entries.jsonl</code></pre>
+<p>这是 OpenRelix memory 的 canonical registry。<code>memory_summary.md</code> 是编译产物，不是源头。</p>
+<p>核心字段：</p>
+<div class="table-wrap"><table><thead><tr><th>字段</th><th>类型</th><th>说明</th></tr></thead><tbody><tr><td><code>date</code></td><td>string</td><td>记录日期</td></tr><tr><td><code>language</code></td><td>string</td><td><code>zh</code> 或 <code>en</code></td></tr><tr><td><code>source</code></td><td>string</td><td>来源，如 <code>nightly</code>、<code>review</code>、<code>manual</code></td></tr><tr><td><code>bucket</code></td><td>string</td><td>兼容 bucket</td></tr><tr><td><code>scope</code></td><td>string</td><td><code>global</code>、<code>domain</code>、<code>project</code>、<code>repo</code>、<code>host</code>、<code>local</code></td></tr><tr><td><code>injection_policy</code></td><td>string</td><td><code>global_context</code>、<code>project_context</code>、<code>on_demand</code>、<code>local_only</code>、<code>never</code></td></tr><tr><td><code>project_key</code></td><td>string</td><td>项目标识</td></tr><tr><td><code>project_label</code></td><td>string</td><td>可读项目名</td></tr><tr><td><code>title</code></td><td>string</td><td>memory title</td></tr><tr><td><code>memory_type</code></td><td>string</td><td>memory 分类</td></tr><tr><td><code>priority</code></td><td>string</td><td>优先级</td></tr><tr><td><code>value_note</code></td><td>string</td><td>价值说明</td></tr><tr><td><code>source_window_ids</code></td><td>array</td><td>来源 window ids</td></tr><tr><td><code>keywords</code></td><td>array</td><td>关键词</td></tr></tbody></table></div>
+<p>建议补充字段：</p>
+<ul>
+<li><code>memory_key</code></li>
+<li><code>source_systems</code></li>
+<li><code>source_dates</code></li>
+<li><code>evidence_contexts</code></li>
+<li><code>occurrence_count</code></li>
+<li><code>global_context_confidence</code></li>
+<li><code>storage_quality_score</code></li>
+<li><code>storage_quality_reason</code></li>
+<li><code>memory_algorithm_version</code></li>
+<li><code>source_review_path</code></li>
+<li><code>title_zh</code></li>
+<li><code>title_en</code></li>
+<li><code>value_note_zh</code></li>
+<li><code>value_note_en</code></li>
+<li><code>user_feedback</code></li>
+<li><code>user_pinned</code></li>
+</ul>
+<h2 id="asset-candidate-contract">Asset Candidate Contract</h2>
+<p>当前代码没有稳定的 <code>registry/asset_candidates.jsonl</code> canonical 写入点。它更像 review/assetization 阶段的候选决策，不应描述成当前持久化事实。</p>
+<p>如果后续需要公开候选契约，建议字段：</p>
+<ul>
+<li><code>date</code></li>
+<li><code>task</code></li>
+<li><code>domain</code></li>
+<li><code>repo</code></li>
+<li><code>source_review_path</code></li>
+<li><code>source_window_ids</code></li>
+<li><code>decision</code></li>
+<li><code>candidate_types</code></li>
+<li><code>confidence</code></li>
+<li><code>reuse_trigger</code></li>
+<li><code>evidence</code></li>
+<li><code>privacy_risk</code></li>
+<li><code>scope_decision</code></li>
+<li><code>user_confirmation</code></li>
+<li><code>no_asset_reason</code></li>
+<li><code>proposed_artifact_paths</code></li>
+<li><code>generated_asset_ids</code></li>
+<li><code>generated_memory_ids</code></li>
+</ul>
+<p><code>candidate_types</code> 可使用 <code>memory</code>、<code>playbook</code>、<code>template</code>、<code>automation</code>、<code>skill</code>。</p>
+<h2 id="asset-registry-contract">Asset Registry Contract</h2>
+<p>路径：</p>
+<pre><code class="language-text">registry/assets.jsonl</code></pre>
+<p>常见字段：</p>
+<ul>
+<li><code>id</code></li>
+<li><code>title</code></li>
+<li><code>type</code></li>
+<li><code>domain</code></li>
+<li><code>scope</code></li>
+<li><code>status</code></li>
+<li><code>created_at</code></li>
+<li><code>updated_at</code></li>
+<li><code>source_task</code></li>
+<li><code>source_review_path</code></li>
+<li><code>reuse_count</code></li>
+<li><code>minutes_saved_total</code></li>
+<li><code>value_note</code></li>
+<li><code>artifact_paths</code></li>
+<li><code>tags</code></li>
+<li><code>notes</code></li>
+</ul>
+<h2 id="usage-event-contract">Usage Event Contract</h2>
+<p>路径：</p>
+<pre><code class="language-text">registry/usage_events.jsonl</code></pre>
+<p>字段：</p>
+<ul>
+<li><code>date</code></li>
+<li><code>asset_id</code></li>
+<li><code>task</code></li>
+<li><code>minutes_saved</code></li>
+<li><code>outcome</code></li>
+<li><code>note</code></li>
+</ul>
+<p><code>note</code> 应继续兼容，因为模板和展示层都可能用 note 型描述。</p>
+<h2 id="curated-memory-pack-contract">Curated Memory Pack Contract</h2>
+<p>路径：</p>
+<pre><code class="language-text">registry/curated_memory_pack.json</code></pre>
+<p>顶层字段：</p>
+<ul>
+<li><code>schema_version</code></li>
+<li><code>source</code></li>
+<li><code>model_calls</code></li>
+<li><code>entry_count</code></li>
+<li><code>sections</code></li>
+<li><code>diagnostics</code></li>
+</ul>
+<p>推荐固定 sections：</p>
+<ul>
+<li><code>user_profile</code></li>
+<li><code>stable_preferences</code></li>
+<li><code>operating_rules</code></li>
+<li><code>project_playbooks</code></li>
+<li><code>task_groups</code></li>
+<li><code>local_volatile_notes</code></li>
+</ul>
+<p>curated item 字段：</p>
+<ul>
+<li><code>section</code></li>
+<li><code>canonical_key</code></li>
+<li><code>title</code></li>
+<li><code>value_note</code></li>
+<li><code>scope</code></li>
+<li><code>injection_policy</code></li>
+<li><code>project_label</code></li>
+<li><code>memory_type</code></li>
+<li><code>priority</code></li>
+<li><code>memory_key</code></li>
+<li><code>user_feedback</code></li>
+<li><code>evidence_count</code></li>
+<li><code>source_entry_ids</code></li>
+<li><code>source_memory_keys</code></li>
+<li><code>source_window_ids</code></li>
+<li><code>source_dates</code></li>
+<li><code>diagnostics</code></li>
+</ul>
+<p>diagnostics 可包括：</p>
+<ul>
+<li><code>duplicate_clusters</code></li>
+<li><code>timeline_like_entries</code></li>
+<li><code>local_privacy_like_entries</code></li>
+<li><code>possible_cross_project_leakage</code></li>
+<li><code>truncation_markers</code></li>
+<li><code>malformed_lines</code></li>
+</ul>
+<h2 id="active-context-contract">Active Context Contract</h2>
+<p>不要把 active context 写成独立源数据。公开契约应表达为：</p>
+<ul>
+<li>源头是 <code>registry/memory_entries.jsonl</code>。</li>
+<li>active context 是编译后的 Markdown 产物。</li>
+<li>可记录产物路径是 <code>runtime/host-context/memory_summary.md</code>，以及同步目标中的 managed block。</li>
+<li>overview 展示字段包括 <code>memory_policy_views</code>、<code>personal_memory_token_usage</code>、<code>context_memory_preview</code>。</li>
+</ul>
+<p>预算字段建议公开：</p>
+<ul>
+<li><code>target_tokens</code></li>
+<li><code>warn_tokens</code></li>
+<li><code>max_tokens</code></li>
+<li><code>global_memory_tokens</code></li>
+<li><code>project_memory_tokens</code></li>
+<li><code>personal_memory_tokens</code></li>
+</ul>
+<h2 id="runtime-config-contract">Runtime Config Contract</h2>
+<p>最小运行时配置字段：</p>
+<ul>
+<li><code>schema_version</code></li>
+<li><code>language</code></li>
+<li><code>memory_mode</code></li>
+<li><code>personal_memory_enabled</code></li>
+<li><code>codex_context_enabled</code></li>
+<li><code>activity_source</code></li>
+<li><code>activity_host</code></li>
+<li><code>model_cli</code></li>
+<li><code>codex_model</code></li>
+<li><code>claude_model</code></li>
+<li><code>memory_summary_max_tokens</code></li>
+<li><code>host_context_targets</code></li>
+</ul>
+<p>状态目录只写相对结构，不写真实用户路径：<code>raw/</code>、<code>raw/daily/</code>、<code>raw/windows/</code>、<code>registry/</code>、<code>consolidated/daily/</code>、<code>runtime/</code>、<code>reports/</code>、<code>reviews/</code>、<code>logs/</code>。</p>
+<h2 id="sample-state-fixture">Sample-State Fixture</h2>
+<p>最小结构：</p>
+<pre><code class="language-text">tests/fixtures/sample-state/
+  README.md
+  raw/
+    daily/
+      2026-04-28.json
+    windows/
+      2026-04-28/
+        w-demo-codex.json
+  consolidated/
+    daily/
+      2026-04-28/
+        summary.json
+  registry/
+    memory_entries.jsonl
+    assets.jsonl
+    usage_events.jsonl</code></pre>
+<p>不要提交这些生成态目录：</p>
+<ul>
+<li><code>reports/</code></li>
+<li><code>runtime/host-context/</code></li>
+<li><code>runtime/*.sqlite3</code></li>
+<li><code>logs/</code></li>
+<li><code>registry/curated_memory_pack.json</code></li>
+</ul>
+<p>测试应复制 fixture 到临时目录后再生成这些产物。</p>
+<p>fixture 内容建议：</p>
+<ul>
+<li><code>raw/daily</code> 使用 <code>stage: &quot;manual&quot;</code> 或 <code>stage: &quot;final&quot;</code>，不要为了测试新增公共运行时枚举。</li>
+<li><code>raw/window</code> 保留 1 个 prompt、1 个 conclusion、1 个 synthetic cwd，例如 <code>/workspace/sample-project</code>，并包含 <code>raw_conclusion_count</code> 与 <code>filtered_review_conclusion_count</code>。</li>
+<li><code>summary.json</code> 至少覆盖 1 个 <code>window_summaries[]</code>、1 个 <code>durable_memories[]</code>、关键词和 next action。</li>
+<li><code>memory_entries.jsonl</code> 放 1 条 synthetic project memory，覆盖 <code>scope</code>、<code>injection_policy</code>、<code>project_key</code>、<code>source_window_ids</code>。</li>
+<li><code>assets.jsonl</code> 和 <code>usage_events.jsonl</code> 各 1 条，用于验证 registry JSONL 与 usage 关联。</li>
+</ul>
+      </div>
+    </article>
+    <aside class="toc" aria-label="Table of contents">
+      <p class="toc-title">本文导览</p>
+      <a class="toc-link" href="#section">存储边界</a>
+<a class="toc-link" href="#state-root-layout">State Root Layout</a>
+<a class="toc-link" href="#raw-daily-contract">Raw Daily Contract</a>
+<a class="toc-link" href="#raw-window-contract">Raw Window Contract</a>
+<a class="toc-link" href="#consolidated-summary-contract">Consolidated Summary Contract</a>
+<a class="toc-link" href="#memory-registry-contract">Memory Registry Contract</a>
+<a class="toc-link" href="#asset-candidate-contract">Asset Candidate Contract</a>
+<a class="toc-link" href="#asset-registry-contract">Asset Registry Contract</a>
+<a class="toc-link" href="#usage-event-contract">Usage Event Contract</a>
+<a class="toc-link" href="#curated-memory-pack-contract">Curated Memory Pack Contract</a>
+<a class="toc-link" href="#active-context-contract">Active Context Contract</a>
+<a class="toc-link" href="#runtime-config-contract">Runtime Config Contract</a>
+<a class="toc-link" href="#sample-state-fixture">Sample-State Fixture</a>
+      <p class="generated-note">更新源 Markdown 后运行：<br><code>python3 scripts/build_local_docs.py</code><br>持续自动同步：<br><code>python3 scripts/build_local_docs.py --watch</code></p>
+    </aside>
+  </main>
+  <script>
+    (() => {
+      const toc = document.querySelector(".toc");
+      const links = Array.from(document.querySelectorAll(".toc-link"));
+      const headings = links
+        .map((link) => document.getElementById(decodeURIComponent(link.hash.slice(1))))
+        .filter(Boolean);
+      if (!links.length || !headings.length) return;
+      let lastActiveId = "";
+      const applyActive = (activeId) => {
+        let activeLink = null;
+        links.forEach((link) => {
+          const isActive = link.hash === "#" + activeId;
+          link.classList.toggle("active", isActive);
+          link.setAttribute("aria-current", isActive ? "true" : "false");
+          if (isActive) activeLink = link;
+        });
+        if (activeLink && toc && activeId !== lastActiveId) {
+          activeLink.scrollIntoView({ block: "nearest", inline: "nearest" });
+          lastActiveId = activeId;
+        }
+      };
+      const getScrollActiveId = () => {
+        const marker = Math.min(window.innerHeight * 0.42, 260);
+        let activeId = headings[0].id;
+        for (const heading of headings) {
+          if (heading.getBoundingClientRect().top <= marker) activeId = heading.id;
+          else break;
+        }
+        return activeId;
+      };
+      const setActive = () => applyActive(getScrollActiveId());
+      const setHashActive = () => {
+        const hashId = decodeURIComponent(window.location.hash.slice(1));
+        if (hashId && headings.some((heading) => heading.id === hashId)) {
+          applyActive(hashId);
+        }
+        requestAnimationFrame(setActive);
+        window.setTimeout(setActive, 160);
+        window.setTimeout(setActive, 520);
+      };
+      window.addEventListener("scroll", setActive, { passive: true });
+      window.addEventListener("resize", setActive);
+      window.addEventListener("hashchange", setHashActive);
+      setHashActive();
+    })();
+  </script>
+</body>
+</html>

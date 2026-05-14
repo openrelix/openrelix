@@ -1,0 +1,2136 @@
+<!doctype html>
+<html lang="zh-CN" data-language="zh">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>OpenRelix™ 开发者指南</title>
+  <meta name="description" content="OpenRelix™ 开发者指南：讲清本地开发边界、常见改动入口、临时 state 验证、隐私红线和检查命令。">
+  <link rel="icon" href="../docs/openrelix-icon.png">
+  <script>
+    (() => {
+      try {
+        const theme = window.localStorage.getItem("openrelix-showcase-theme");
+        if (theme === "light" || theme === "dark") {
+          document.documentElement.dataset.theme = theme;
+        }
+        const language = window.localStorage.getItem("openrelix-showcase-language");
+        if (language === "en") {
+          document.documentElement.dataset.language = "en";
+          document.documentElement.lang = "en";
+        }
+      } catch (_) {
+        // Keep defaults when storage is unavailable.
+      }
+    })();
+  </script>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --ink: #171717;
+      --muted: #5f626b;
+      --paper: #ffffff;
+      --paper-soft: #f7f8f5;
+      --paper-alt: #fbfbf8;
+      --line: #dddeda;
+      --line-strong: #c8cbc5;
+      --accent: #0f766e;
+      --accent-deep: #134e4a;
+      --accent-soft: #e6f4f1;
+      --accent-line: #c2ddd7;
+      --blue: #1d4ed8;
+      --blue-soft: #edf4ff;
+      --blue-line: #c9dcff;
+      --amber: #9a5708;
+      --amber-soft: #fff7e8;
+      --amber-line: #ead5ad;
+      --rose: #be123c;
+      --rose-soft: #fff1f3;
+      --rose-line: #f3c8d2;
+      --green: #15803d;
+      --green-soft: #eaf7ed;
+      --green-line: #c9e9d0;
+      --nav-bg: rgba(255, 255, 255, 0.94);
+      --nav-border: rgba(221, 222, 218, 0.86);
+      --button-bg: #101827;
+      --button-fg: #ffffff;
+      --button-border: #c8cbc5;
+      --code-bg: #111827;
+      --code-fg: #f8fafc;
+      --code-muted: #a7b0c0;
+      --module-bg: rgba(255, 255, 255, 0.72);
+      --module-hover-bg: #ffffff;
+      --module-border: var(--line);
+      --module-shadow: none;
+      --shadow: 0 16px 34px rgba(15, 23, 42, 0.08);
+      --shadow-soft: 0 10px 28px rgba(15, 23, 42, 0.05);
+      --radius: 8px;
+      --max: 1180px;
+      --anchor-offset: 92px;
+    }
+
+    :root[data-theme="dark"] {
+      color-scheme: dark;
+      --ink: #f8fafc;
+      --muted: #a8b2c2;
+      --paper: #151c24;
+      --paper-soft: #0d1219;
+      --paper-alt: #18212b;
+      --line: #2b3543;
+      --line-strong: #455264;
+      --accent: #5eead4;
+      --accent-deep: #99f6e4;
+      --accent-soft: #0f2d2a;
+      --accent-line: #25534e;
+      --blue: #93c5fd;
+      --blue-soft: #10223d;
+      --blue-line: #294a70;
+      --amber: #fbbf24;
+      --amber-soft: #34240e;
+      --amber-line: #5e4213;
+      --rose: #fb7185;
+      --rose-soft: #35151d;
+      --rose-line: #693040;
+      --green: #86efac;
+      --green-soft: #132b1b;
+      --green-line: #2b5a39;
+      --nav-bg: rgba(17, 24, 35, 0.93);
+      --nav-border: rgba(67, 79, 96, 0.8);
+      --button-bg: #f8fafc;
+      --button-fg: #0f172a;
+      --button-border: #475569;
+      --code-bg: #080d14;
+      --code-fg: #f8fafc;
+      --code-muted: #9aa6b6;
+      --module-bg: rgba(8, 13, 20, 0.78);
+      --module-hover-bg: rgba(13, 25, 36, 0.96);
+      --module-border: rgba(148, 163, 184, 0.22);
+      --module-shadow: inset 0 1px 0 rgba(248, 250, 252, 0.04);
+      --shadow: 0 16px 34px rgba(0, 0, 0, 0.32);
+      --shadow-soft: 0 10px 28px rgba(0, 0, 0, 0.24);
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) {
+        color-scheme: dark;
+        --ink: #f8fafc;
+        --muted: #a8b2c2;
+        --paper: #151c24;
+        --paper-soft: #0d1219;
+        --paper-alt: #18212b;
+        --line: #2b3543;
+        --line-strong: #455264;
+        --accent: #5eead4;
+        --accent-deep: #99f6e4;
+        --accent-soft: #0f2d2a;
+        --accent-line: #25534e;
+        --blue: #93c5fd;
+        --blue-soft: #10223d;
+        --blue-line: #294a70;
+        --amber: #fbbf24;
+        --amber-soft: #34240e;
+        --amber-line: #5e4213;
+        --rose: #fb7185;
+        --rose-soft: #35151d;
+        --rose-line: #693040;
+        --green: #86efac;
+        --green-soft: #132b1b;
+        --green-line: #2b5a39;
+        --nav-bg: rgba(17, 24, 35, 0.93);
+        --nav-border: rgba(67, 79, 96, 0.8);
+        --button-bg: #f8fafc;
+        --button-fg: #0f172a;
+        --button-border: #475569;
+        --code-bg: #080d14;
+        --code-fg: #f8fafc;
+        --code-muted: #9aa6b6;
+        --module-bg: rgba(8, 13, 20, 0.78);
+        --module-hover-bg: rgba(13, 25, 36, 0.96);
+        --module-border: rgba(148, 163, 184, 0.22);
+        --module-shadow: inset 0 1px 0 rgba(248, 250, 252, 0.04);
+        --shadow: 0 16px 34px rgba(0, 0, 0, 0.32);
+        --shadow-soft: 0 10px 28px rgba(0, 0, 0, 0.24);
+      }
+    }
+
+    * { box-sizing: border-box; }
+
+    html {
+      scroll-behavior: smooth;
+      background: var(--paper-soft);
+    }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      background:
+        linear-gradient(180deg, rgba(15, 118, 110, 0.08), transparent 390px),
+        radial-gradient(circle at 13% 2%, rgba(21, 128, 61, 0.08), transparent 260px),
+        var(--paper-soft);
+      font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+      line-height: 1.6;
+    }
+
+    a {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      font-size: 0.94em;
+    }
+
+    section[id] {
+      scroll-margin-top: var(--anchor-offset);
+    }
+
+    .site-nav {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      border-bottom: 1px solid var(--nav-border);
+      background: var(--nav-bg);
+      backdrop-filter: blur(18px);
+    }
+
+    .nav-inner {
+      width: min(var(--max), calc(100% - 36px));
+      min-height: 66px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      gap: 18px;
+    }
+
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 760;
+      white-space: nowrap;
+    }
+
+    .brand img {
+      width: 30px;
+      height: 30px;
+      border-radius: 7px;
+      display: block;
+    }
+
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      margin-left: auto;
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+
+    .nav-links::-webkit-scrollbar { display: none; }
+
+    .nav-links a {
+      color: var(--muted);
+      font-size: 14px;
+      font-weight: 690;
+      padding: 8px 10px;
+      border-radius: 999px;
+      white-space: nowrap;
+    }
+
+    .nav-links a:hover,
+    .nav-links a.is-active {
+      color: var(--accent-deep);
+      background: var(--accent-soft);
+    }
+
+    .nav-utility {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .switch {
+      display: inline-flex;
+      align-items: center;
+      gap: 2px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 3px;
+      background: var(--paper);
+    }
+
+    .switch button {
+      border: 0;
+      border-radius: 999px;
+      padding: 6px 9px;
+      color: var(--muted);
+      background: transparent;
+      font: inherit;
+      font-size: 12px;
+      font-weight: 760;
+      cursor: pointer;
+    }
+
+    .switch button[aria-pressed="true"] {
+      color: var(--ink);
+      background: var(--accent-soft);
+    }
+
+    .mobile-nav-links {
+      display: none;
+      gap: 6px;
+      width: 100%;
+      overflow-x: auto;
+      border-top: 1px solid var(--line);
+      padding: 8px 16px 10px;
+      scrollbar-width: none;
+    }
+
+    .mobile-nav-links::-webkit-scrollbar { display: none; }
+
+    .mobile-nav-links a {
+      flex: 0 0 auto;
+      color: var(--muted);
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 7px 10px;
+      font-size: 13px;
+      font-weight: 720;
+      background: var(--paper);
+    }
+
+    .mobile-nav-links a.is-active {
+      color: var(--accent-deep);
+      background: var(--accent-soft);
+      border-color: var(--accent-line);
+    }
+
+    .button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 40px;
+      border: 1px solid var(--button-bg);
+      border-radius: 999px;
+      padding: 9px 15px;
+      color: var(--button-fg);
+      background: var(--button-bg);
+      font-size: 14px;
+      font-weight: 760;
+      white-space: nowrap;
+    }
+
+    .button.secondary {
+      color: var(--ink);
+      background: var(--paper);
+      border-color: var(--button-border);
+    }
+
+    .hero {
+      position: relative;
+      overflow: hidden;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .hero-inner {
+      width: min(var(--max), calc(100% - 36px));
+      margin: 0 auto;
+      padding: 78px 0 70px;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      align-items: center;
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--accent-deep);
+      border: 1px solid var(--accent-line);
+      background: var(--accent-soft);
+      border-radius: 999px;
+      padding: 6px 10px;
+      font-size: 13px;
+      font-weight: 780;
+    }
+
+    h1,
+    h2,
+    h3,
+    p {
+      margin-top: 0;
+    }
+
+    h1 {
+      max-width: 1100px;
+      margin: 18px 0 16px;
+      font-size: clamp(42px, 5.6vw, 68px);
+      line-height: 1.05;
+      letter-spacing: 0;
+    }
+
+    .hero-copy {
+      max-width: 980px;
+      color: var(--muted);
+      font-size: 19px;
+    }
+
+    .hero-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 26px;
+    }
+
+    .hero-note {
+      max-width: 720px;
+      margin: 18px 0 0;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .term-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .term-card {
+      display: grid;
+      gap: 8px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--paper);
+      box-shadow: var(--shadow);
+      padding: 18px;
+    }
+
+    .term-card.important {
+      grid-column: 1 / -1;
+      border-color: var(--amber-line);
+      background: linear-gradient(180deg, var(--amber-soft), var(--paper));
+    }
+
+    .term-card h3 {
+      margin: 0;
+      font-size: 22px;
+      line-height: 1.2;
+    }
+
+    .term-card p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 15px;
+    }
+
+    .term-card code {
+      color: var(--accent-deep);
+      font-weight: 760;
+      overflow-wrap: anywhere;
+    }
+
+    .term-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      border-radius: 999px;
+      padding: 3px 8px;
+      color: var(--accent-deep);
+      background: var(--accent-soft);
+      border: 1px solid var(--accent-line);
+      font-size: 12px;
+      font-weight: 760;
+      white-space: nowrap;
+    }
+
+    .tag.blue {
+      color: var(--blue);
+      background: var(--blue-soft);
+      border-color: var(--blue-line);
+    }
+
+    .tag.amber {
+      color: var(--amber);
+      background: var(--amber-soft);
+      border-color: var(--amber-line);
+    }
+
+    .tag.rose {
+      color: var(--rose);
+      background: var(--rose-soft);
+      border-color: var(--rose-line);
+    }
+
+    .section {
+      padding: 70px 18px;
+    }
+
+    .inner {
+      width: min(var(--max), 100%);
+      margin: 0 auto;
+    }
+
+    .section-head {
+      display: grid;
+      grid-template-columns: minmax(0, 0.9fr) minmax(280px, 0.62fr);
+      gap: 30px;
+      align-items: end;
+      margin-bottom: 24px;
+    }
+
+    .section-kicker {
+      margin-bottom: 8px;
+      color: var(--accent-deep);
+      font-size: 13px;
+      font-weight: 820;
+      text-transform: uppercase;
+    }
+
+    h2 {
+      max-width: 820px;
+      margin-bottom: 0;
+      font-size: clamp(28px, 3.8vw, 42px);
+      line-height: 1.08;
+      letter-spacing: 0;
+    }
+
+    .lead {
+      margin-bottom: 0;
+      color: var(--muted);
+      font-size: 17px;
+    }
+
+    .grid {
+      display: grid;
+      gap: 14px;
+    }
+
+    .cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+
+    .card,
+    .path-card,
+    .check-card,
+    .pitfall-card {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--paper);
+      box-shadow: var(--shadow-soft);
+      padding: 18px;
+    }
+
+    .card h3,
+    .path-card h3,
+    .check-card h3,
+    .pitfall-card h3 {
+      margin: 10px 0 8px;
+      font-size: 20px;
+      line-height: 1.2;
+    }
+
+    .card p,
+    .path-card p,
+    .check-card p,
+    .pitfall-card p {
+      color: var(--muted);
+      margin-bottom: 0;
+      font-size: 15px;
+    }
+
+    .path-card {
+      display: grid;
+      gap: 12px;
+      align-content: start;
+    }
+
+    .file-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 7px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .file-list li,
+    .doc-link {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 5px 8px;
+      color: var(--muted);
+      background: var(--paper-alt);
+      font-size: 12px;
+      font-weight: 720;
+    }
+
+    .doc-link {
+      display: inline-flex;
+      align-items: center;
+      color: var(--ink);
+    }
+
+    .command-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 10px;
+      margin-top: 12px;
+      border: 1px solid rgba(248, 250, 252, 0.12);
+      border-radius: var(--radius);
+      background: var(--code-bg);
+      color: var(--code-fg);
+      padding: 10px;
+    }
+
+    .command-code {
+      overflow-x: auto;
+      white-space: pre;
+      scrollbar-width: thin;
+      color: var(--code-fg);
+      font-size: 13px;
+    }
+
+    .command-copy {
+      border: 1px solid rgba(248, 250, 252, 0.22);
+      border-radius: 999px;
+      color: var(--code-fg);
+      background: rgba(248, 250, 252, 0.08);
+      padding: 6px 9px;
+      font: inherit;
+      font-size: 12px;
+      font-weight: 760;
+      cursor: pointer;
+    }
+
+    .callout {
+      border: 1px solid var(--accent-line);
+      border-radius: var(--radius);
+      background: var(--accent-soft);
+      padding: 18px;
+    }
+
+    .callout strong {
+      display: block;
+      margin-bottom: 6px;
+      color: var(--accent-deep);
+    }
+
+    .callout p {
+      margin-bottom: 0;
+      color: var(--muted);
+    }
+
+    .diagram-stack {
+      display: grid;
+      gap: 18px;
+    }
+
+    .diagram {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--paper);
+      box-shadow: var(--shadow-soft);
+      padding: 18px;
+      min-width: 0;
+    }
+
+    .diagram h3 {
+      margin: 0 0 6px;
+      font-size: 22px;
+      line-height: 1.22;
+    }
+
+    .diagram > p {
+      max-width: 880px;
+      margin-bottom: 16px;
+      color: var(--muted);
+    }
+
+    .diagram-caption {
+      margin-top: 12px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .principle-flow {
+      margin-bottom: 18px;
+    }
+
+    .system-board {
+      display: grid;
+      width: 100%;
+      min-width: 0;
+      max-width: 100%;
+      border: 1px solid var(--line-strong);
+      border-radius: var(--radius);
+      background:
+        linear-gradient(180deg, rgba(15, 118, 110, 0.055), transparent 42%),
+        var(--paper-alt);
+      padding: 22px;
+      overflow-x: auto;
+    }
+
+    .architecture-poster {
+      min-width: 1040px;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      gap: 18px;
+      align-items: stretch;
+    }
+
+    .arch-main {
+      display: grid;
+      gap: 14px;
+    }
+
+    .arch-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 740;
+    }
+
+    .arch-meta span {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: var(--paper);
+      padding: 6px 10px;
+    }
+
+    .layer-stack {
+      display: grid;
+      gap: 12px;
+    }
+
+    .arch-layer {
+      display: grid;
+      grid-template-columns: 150px minmax(0, 1fr);
+      gap: 12px;
+      align-items: stretch;
+      min-height: 132px;
+    }
+
+    .layer-label {
+      display: grid;
+      place-items: center;
+      text-align: center;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--paper);
+      padding: 18px 14px;
+    }
+
+    .layer-panel {
+      display: grid;
+      gap: 12px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--paper);
+      padding: 14px;
+      min-width: 0;
+    }
+
+    .arch-layer.output .layer-label,
+    .arch-layer.output .layer-panel { border-color: var(--rose-line); background: linear-gradient(180deg, var(--rose-soft), var(--paper)); }
+    .arch-layer.asset .layer-label,
+    .arch-layer.asset .layer-panel { border-color: var(--green-line); background: linear-gradient(180deg, var(--green-soft), var(--paper)); }
+    .arch-layer.memory .layer-label,
+    .arch-layer.memory .layer-panel { border-color: var(--accent-line); background: linear-gradient(180deg, var(--accent-soft), var(--paper)); }
+    .arch-layer.state .layer-label,
+    .arch-layer.state .layer-panel { border-color: var(--amber-line); background: linear-gradient(180deg, var(--amber-soft), var(--paper)); }
+    .arch-layer.collect .layer-label,
+    .arch-layer.collect .layer-panel { border-color: var(--blue-line); background: linear-gradient(180deg, var(--blue-soft), var(--paper)); }
+    .arch-layer.host .layer-label,
+    .arch-layer.host .layer-panel { border-color: var(--amber-line); background: linear-gradient(180deg, var(--amber-soft), var(--paper)); }
+
+    .arch-layer.output .layer-label h4 { color: var(--rose); }
+    .arch-layer.asset .layer-label h4 { color: var(--green); }
+    .arch-layer.memory .layer-label h4 { color: var(--accent-deep); }
+    .arch-layer.state .layer-label h4,
+    .arch-layer.host .layer-label h4 { color: var(--amber); }
+    .arch-layer.collect .layer-label h4 { color: var(--blue); }
+
+    .layer-summary {
+      margin: 0;
+      color: var(--muted);
+      font-size: 14px;
+      font-weight: 740;
+    }
+
+    .layer-order {
+      display: none;
+    }
+
+    .layer-label h4 {
+      margin: 0;
+      color: var(--ink);
+      font-size: 20px;
+      line-height: 1.15;
+    }
+
+    .module-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+      align-items: stretch;
+    }
+
+    .module-card {
+      display: grid;
+      gap: 5px;
+      border: 1px solid var(--module-border);
+      border-radius: 7px;
+      background: var(--module-bg);
+      box-shadow: var(--module-shadow);
+      padding: 11px 12px;
+      color: var(--ink);
+      min-height: 80px;
+      align-content: start;
+      transition: transform 160ms ease, border-color 160ms ease, background 160ms ease;
+    }
+
+    a.module-card:hover {
+      transform: translateY(-1px);
+      border-color: var(--accent);
+      background: var(--module-hover-bg);
+    }
+
+    .module-title {
+      color: var(--ink);
+      font-size: 15px;
+      font-weight: 840;
+      line-height: 1.25;
+    }
+
+    .module-desc {
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 620;
+      line-height: 1.35;
+    }
+
+    .module-card code {
+      color: var(--accent-deep);
+      font-size: 12px;
+      font-weight: 760;
+      overflow-wrap: anywhere;
+    }
+
+    .source-band {
+      display: grid;
+      grid-template-columns: 150px minmax(0, 1fr);
+      gap: 12px;
+      align-items: center;
+      border: 1px solid var(--green-line);
+      border-radius: var(--radius);
+      background: var(--green-soft);
+      padding: 14px 16px;
+    }
+
+    .source-band strong {
+      color: var(--green);
+      font-size: 16px;
+    }
+
+    .source-band p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .mini-diagrams {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+      margin-top: 18px;
+    }
+
+    .mini-diagram {
+      position: relative;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--paper);
+      box-shadow: var(--shadow-soft);
+      padding: 16px;
+      overflow: hidden;
+    }
+
+    .mini-diagram::before {
+      content: "";
+      position: absolute;
+      inset: 0 0 auto;
+      height: 4px;
+      background: var(--accent);
+    }
+
+    .mini-diagram.boundary::before { background: var(--amber); }
+    .mini-diagram.pipeline::before { background: var(--blue); }
+    .mini-diagram.decision::before { background: var(--green); }
+
+    .mini-diagram h4 {
+      margin: 0 0 6px;
+      font-size: 19px;
+      line-height: 1.2;
+    }
+
+    .mini-diagram > p {
+      margin: 0 0 14px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .mini-flow {
+      display: grid;
+      gap: 16px;
+    }
+
+    .mini-step {
+      position: relative;
+      display: grid;
+      gap: 4px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: var(--paper-alt);
+      padding: 10px 12px;
+    }
+
+    .mini-step:not(:last-child)::after {
+      content: "↓";
+      position: absolute;
+      left: 50%;
+      bottom: -18px;
+      width: 24px;
+      height: 18px;
+      transform: translateX(-50%);
+      color: var(--muted);
+      display: grid;
+      place-items: center;
+      font-size: 13px;
+      font-weight: 820;
+      z-index: 2;
+    }
+
+    .mini-step strong {
+      color: var(--ink);
+      font-size: 14px;
+      line-height: 1.25;
+    }
+
+    .mini-step span {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.35;
+    }
+
+    .mini-step code {
+      color: var(--accent-deep);
+      font-size: 12px;
+      font-weight: 720;
+      overflow-wrap: anywhere;
+    }
+
+    a.mini-step:hover {
+      border-color: var(--accent);
+      background: var(--paper);
+    }
+
+    .tech-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .tech-card {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--paper);
+      box-shadow: var(--shadow-soft);
+      padding: 18px;
+      display: grid;
+      gap: 12px;
+      align-content: start;
+    }
+
+    .tech-card h3 {
+      margin: 0;
+      font-size: 22px;
+      line-height: 1.18;
+    }
+
+    .tech-card p {
+      margin-bottom: 0;
+      color: var(--muted);
+      font-size: 15px;
+    }
+
+    .detail-list {
+      display: grid;
+      gap: 8px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .detail-list li {
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: var(--paper-alt);
+      padding: 10px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .detail-list strong {
+      color: var(--ink);
+    }
+
+    .principle-strip {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 7px;
+      margin-top: 4px;
+    }
+
+    .principle-strip span {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: var(--paper-alt);
+      padding: 5px 8px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 720;
+    }
+
+    .table-wrap {
+      overflow-x: auto;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--paper);
+      box-shadow: var(--shadow-soft);
+    }
+
+    table {
+      width: 100%;
+      min-width: 760px;
+      border-collapse: collapse;
+    }
+
+    th,
+    td {
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+      font-size: 14px;
+    }
+
+    th {
+      color: var(--muted);
+      background: var(--paper-alt);
+      font-size: 12px;
+      text-transform: uppercase;
+    }
+
+    tr:last-child td {
+      border-bottom: 0;
+    }
+
+    td code {
+      color: var(--accent-deep);
+      font-weight: 720;
+    }
+
+    .rule-list {
+      display: grid;
+      gap: 10px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .rule-list li {
+      position: relative;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--paper);
+      padding: 13px 14px 13px 42px;
+      color: var(--muted);
+    }
+
+    .rule-list li::before {
+      content: "";
+      position: absolute;
+      left: 16px;
+      top: 20px;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--rose);
+    }
+
+    .doc-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .footer {
+      border-top: 1px solid var(--line);
+      padding: 28px 18px;
+      color: var(--muted);
+      background: var(--paper);
+    }
+
+    .footer .inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      font-size: 14px;
+    }
+
+    @media (max-width: 1020px) {
+      .hero-inner,
+      .section-head {
+        grid-template-columns: 1fr;
+      }
+
+      .cols-3,
+      .term-grid,
+      .doc-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .system-board,
+      .architecture-poster,
+      .mini-diagrams,
+      .tech-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .architecture-poster {
+        min-width: 820px;
+      }
+
+      .module-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .theme-switch {
+        display: none;
+      }
+    }
+
+    @media (max-width: 760px) {
+      .nav-inner {
+        width: calc(100% - 28px);
+      }
+
+      .nav-links {
+        display: none;
+      }
+
+      .mobile-nav-links {
+        display: flex;
+      }
+
+      .brand span:last-child {
+        display: none;
+      }
+
+      .hero-inner {
+        width: calc(100% - 32px);
+        padding: 56px 0 54px;
+      }
+
+      .section {
+        padding: 52px 16px;
+      }
+
+      .cols-2,
+      .cols-3,
+      .term-grid,
+      .doc-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .system-board {
+        padding: 14px;
+      }
+
+      .architecture-poster {
+        min-width: 620px;
+      }
+
+      .arch-layer,
+      .module-grid,
+      .source-band {
+        grid-template-columns: 1fr;
+      }
+
+      .layer-label {
+        min-height: 78px;
+      }
+
+      .command-row {
+        grid-template-columns: 1fr;
+      }
+
+      .command-copy {
+        justify-self: start;
+      }
+
+      .footer .inner {
+        display: grid;
+      }
+    }
+  </style>
+</head>
+<body>
+  <nav class="site-nav" aria-label="页面导航">
+    <div class="nav-inner">
+      <a class="brand" href="../docs/index.html" aria-label="OpenRelix 首页">
+        <img src="../docs/openrelix-icon.png" alt="">
+        <span>OpenRelix</span>
+      </a>
+      <div class="nav-links">
+        <a href="../docs/index.html" data-en="Product">产品</a>
+        <a href="#terms" class="is-active" data-en="Terms">名词解释</a>
+        <a href="#diagrams" data-en="Architecture">架构图</a>
+        <a href="#principles" data-en="Principles">技术原理</a>
+        <a href="#map" data-en="Code Map">找文件</a>
+        <a href="#checks" data-en="Checks">怎么验证</a>
+        <a href="#privacy" data-en="Privacy">别碰这些</a>
+        <a href="#debug" data-en="Debug">排障</a>
+        <a href="#docs" data-en="Docs">文档入口</a>
+      </div>
+      <div class="nav-utility" aria-label="页面设置">
+        <div class="switch theme-switch" aria-label="主题切换">
+          <button type="button" data-theme-option="system" aria-pressed="true" data-en="System">系统</button>
+          <button type="button" data-theme-option="light" aria-pressed="false" data-en="Light">浅色</button>
+          <button type="button" data-theme-option="dark" aria-pressed="false" data-en="Dark">深色</button>
+        </div>
+        <div class="switch lang-switch" aria-label="语言切换">
+          <button type="button" data-language-option="zh" aria-pressed="true">中文</button>
+          <button type="button" data-language-option="en" aria-pressed="false">EN</button>
+        </div>
+      </div>
+    </div>
+    <div class="mobile-nav-links" aria-label="移动端页面导航">
+      <a href="#terms" class="is-active" data-en="Terms">名词解释</a>
+      <a href="#diagrams" data-en="Architecture">架构图</a>
+      <a href="#principles" data-en="Principles">技术原理</a>
+      <a href="#map" data-en="Code Map">找文件</a>
+      <a href="#checks" data-en="Checks">怎么验证</a>
+      <a href="#privacy" data-en="Privacy">别碰这些</a>
+      <a href="#debug" data-en="Debug">排障</a>
+      <a href="#docs" data-en="Docs">文档入口</a>
+    </div>
+  </nav>
+
+  <main id="top">
+    <section class="hero">
+      <div class="hero-inner">
+        <div>
+          <span class="eyebrow" data-en="Developer Guide">本地开发指南</span>
+          <h1 data-en="Understand the boundaries first, then start changing code.">先弄清边界，再动代码。</h1>
+          <p class="hero-copy" data-en="For OpenRelix changes: where to start, what stays out of the repo, how to verify, and where to debug first.">
+            给准备改 OpenRelix 的人看：从哪下手、什么不能进仓库、改完怎么验证、出问题先查哪条链路。
+          </p>
+          <div class="hero-actions">
+            <a class="button" href="#terms" data-en="Read terms first">先看懂名词</a>
+            <a class="button secondary" href="#diagrams" data-en="Read architecture">看全景图</a>
+            <a class="button secondary" href="#principles" data-en="Read principles">看技术原理</a>
+            <a class="button secondary" href="#map" data-en="Find code entry points">按改动找文件</a>
+          </div>
+          <p class="hero-note" data-en="This HTML page is the main local developer guide. Repository rules still follow AGENTS.md, and detailed checks still follow the validation matrix.">
+            这是本地开发的主入口；稳定规则看 AGENTS.md，详细检查命令看验证矩阵。
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="terms">
+      <div class="inner">
+        <div class="section-head">
+          <div>
+            <div class="section-kicker" data-en="Terms">名词解释</div>
+            <h2 data-en="Before the architecture diagram, understand these words first.">看架构图前，先把这几个词对齐。</h2>
+          </div>
+          <p class="lead" data-en="The most important one is state root: it is the OpenRelix application root, not the source repository.">
+            state root 最容易混：它是 OpenRelix 的应用根目录，不是源码仓库。
+          </p>
+        </div>
+
+        <div class="term-grid">
+          <article class="term-card important">
+            <div class="term-head">
+              <h3 data-en="state root: the OpenRelix application root">state root：OpenRelix 应用根目录</h3>
+              <span class="tag amber" data-en="most important">重点</span>
+            </div>
+            <p data-en="This is where OpenRelix stores local app data: work-window records, reviews, registries, generated panel files, caches, and logs. It is private runtime data, so it should not enter git or npm. You can point a test run to a temporary state root with AI_ASSET_STATE_DIR.">
+              这里保存 OpenRelix 的本地应用数据：工作窗口记录、复盘、登记册、生成的面板文件、缓存和日志。它属于私有运行态，不进 git，也不进 npm。测试时用 AI_ASSET_STATE_DIR 指到临时目录。
+            </p>
+          </article>
+
+          <article class="term-card">
+            <div class="term-head">
+              <h3 data-en="repo: the source repository">repo：源码仓库</h3>
+              <span class="tag" data-en="can commit">可提交</span>
+            </div>
+            <p data-en="This repository stores reusable project logic: installer code, scripts, templates, public skills, tests, and local developer docs.">
+              源码仓库只放可复用的工程逻辑：安装代码、脚本、模板、公开技能、测试和开发文档。
+            </p>
+          </article>
+
+          <article class="term-card">
+            <div class="term-head">
+              <h3 data-en="host home: AI tool directory">host home：AI 工具目录</h3>
+              <span class="tag blue" data-en="tool-owned">工具拥有</span>
+            </div>
+            <p data-en="Codex and Claude own these directories. They contain config, history, session files, and native context. OpenRelix reads them carefully and only writes controlled summary blocks when enabled.">
+              这些目录归 Codex / Claude 自己管，里面有配置、历史记录、会话文件和原生上下文。OpenRelix 会谨慎读取，只在启用时写受控摘要块。
+            </p>
+          </article>
+
+          <article class="term-card">
+            <div class="term-head">
+              <h3 data-en="work window: one continuous task">工作窗口：一段连续工作</h3>
+              <span class="tag" data-en="unit">整理单位</span>
+            </div>
+            <p data-en="OpenRelix groups AI-tool activity into work windows so later summaries can say what happened, in which project, and from which tool.">
+              OpenRelix 会把 AI 工具里的活动整理成工作窗口。后续摘要要靠它判断哪段时间做了什么、在哪个项目、来自哪个工具。
+            </p>
+          </article>
+
+          <article class="term-card">
+            <div class="term-head">
+              <h3 data-en="overview-data.json: panel data file">overview-data.json：面板数据文件</h3>
+              <span class="tag rose" data-en="generated">可重建</span>
+            </div>
+            <p data-en="The local panel reads this generated JSON file. The panel should not directly read raw host files or private runtime files.">
+              本地面板只读这份生成 JSON。不要让面板直接翻 AI 工具原始文件，也别让它到处读私有运行态文件。
+            </p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="diagrams">
+      <div class="inner">
+        <div class="section-head">
+          <div>
+            <div class="section-kicker" data-en="Architecture Diagram">工程架构图</div>
+            <h2 data-en="See the project layers first, then see how local data becomes a page.">先看工程层级，再看本地数据怎么变成页面。</h2>
+          </div>
+          <p class="lead" data-en="Technical terms are kept only when they map to actual files or fields, and each term is explained in parentheses on first use.">
+            技术词只在能对应到真实文件、字段或命令时保留；第一次出现时，会顺手解释清楚。
+          </p>
+        </div>
+
+        <div class="diagram-stack">
+          <article class="diagram">
+            <h3 data-en="Whole-project architecture: output on top, AI host at the bottom">全工程架构图：输出在上，host 在下</h3>
+            <p data-en="This diagram puts the AI host at the bottom because it is the source layer. The repo stores reusable code, the state root is the private local data directory, and the panel plus host summary are generated outputs.">
+              这张图把 host（运行 AI 的工具）放在最下面，因为它是来源层；repo（源码仓库）保存可复用逻辑，state root（OpenRelix 应用根目录）保存私有运行数据，面板和 host summary（写给 AI 看的摘要）都是生成结果。
+            </p>
+            <div class="system-board" role="img" aria-label="OpenRelix 全工程分层架构图">
+              <div class="architecture-poster">
+                <div class="arch-main">
+                  <div class="arch-meta">
+                    <span data-en="Read from bottom to top: host activity becomes local assets">读取顺序：从下往上，host 活动沉淀成本地资产</span>
+                    <span data-en="View from top to bottom: output first, source boundary last">查看顺序：从上往下，先看输出，再追来源</span>
+                    <span data-en="Boundary: read host files, write only private state root">边界：只读 host（AI 工具）文件，只写 state root（OpenRelix 应用根目录）</span>
+                  </div>
+                  <div class="layer-stack">
+                    <section class="arch-layer output">
+                      <div class="layer-label">
+                        <span class="layer-order" data-en="Layer 06">第 6 层</span>
+                        <h4 data-en="Output and operations">输出操作层</h4>
+                      </div>
+                      <div class="layer-panel">
+                        <p class="layer-summary" data-en="What developers and AI tools actually consume.">给人看的面板，以及给 AI 工具看的受控摘要。</p>
+                        <div class="module-grid">
+                          <a class="module-card" href="../scripts/build_overview.py">
+                            <span class="module-title" data-en="Generate the local panel">生成本地面板</span>
+                            <span class="module-desc" data-en="Turns windows, reviews, and registries into a readable report.">把窗口、复盘和登记册合成一份能读的报告。</span>
+                            <code>scripts/build_overview.py</code>
+                          </a>
+                          <a class="module-card" href="../scripts/sync_host_memory_summary.py">
+                            <span class="module-title" data-en="Sync AI-readable summary">同步给 AI 读的摘要</span>
+                            <span class="module-desc" data-en="Writes only the managed summary block back to the host.">只写回受控摘要块，不回写原始记录。</span>
+                            <code>scripts/sync_host_memory_summary.py</code>
+                          </a>
+                          <a class="module-card" href="../scripts/openrelix_index.py">
+                            <span class="module-title" data-en="Build local search">重建本地检索</span>
+                            <span class="module-desc" data-en="Rebuildable SQLite index for panel and memory lookup.">给面板和记忆召回用的可重建本地索引。</span>
+                            <code>scripts/openrelix_index.py</code>
+                          </a>
+                        </div>
+                      </div>
+                    </section>
+
+                    <section class="arch-layer asset">
+                      <div class="layer-label">
+                        <span class="layer-order" data-en="Layer 05">第 5 层</span>
+                        <h4 data-en="Reusable assets">资产层</h4>
+                      </div>
+                      <div class="layer-panel">
+                        <p class="layer-summary" data-en="Reusable knowledge, templates, and skills accumulated from work.">把一次工作沉淀成下次能复用的经验、模板和技能。</p>
+                        <div class="module-grid">
+                          <a class="module-card" href="../.agents/skills/memory-review/SKILL.md">
+                            <span class="module-title" data-en="Turn a task into an asset">即时复盘成资产</span>
+                            <span class="module-desc" data-en="Captures useful conclusions after an agent task.">把任务里的稳定结论沉淀下来。</span>
+                            <code>.agents/skills/memory-review/SKILL.md</code>
+                          </a>
+                          <div class="module-card">
+                            <span class="module-title" data-en="Asset and reuse registry">资产和复用记录</span>
+                            <span class="module-desc" data-en="Private local records of assets, usage events, and review results.">资产、复用事件和复盘结果的本地登记。</span>
+                            <code>state root/registry/*.jsonl</code>
+                          </div>
+                          <a class="module-card" href="../templates/">
+                            <span class="module-title" data-en="Templates and skill seeds">模板和技能素材</span>
+                            <span class="module-desc" data-en="Reusable starting points for future work.">以后写文档、脚本或技能时的起点。</span>
+                            <code>templates/</code>
+                          </a>
+                        </div>
+                      </div>
+                    </section>
+
+                    <section class="arch-layer memory">
+                      <div class="layer-label">
+                        <span class="layer-order" data-en="Layer 04">第 4 层</span>
+                        <h4 data-en="Memory organization">整理记忆层</h4>
+                      </div>
+                      <div class="layer-panel">
+                        <p class="layer-summary" data-en="Summarizes windows and decides what is useful enough to surface.">把工作窗口整理成摘要，再判断哪些值得露出来。</p>
+                        <div class="module-grid">
+                          <a class="module-card" href="../scripts/nightly_consolidate.py">
+                            <span class="module-title" data-en="Summarize the day's work">整理当天工作</span>
+                            <span class="module-desc" data-en="Uses the model to compress windows into structured summaries.">用模型把窗口压缩成结构化摘要。</span>
+                            <code>scripts/nightly_consolidate.py</code>
+                          </a>
+                          <a class="module-card" href="../templates/nightly-summary-schema.json">
+                            <span class="module-title" data-en="Constrain model output">约束模型输出</span>
+                            <span class="module-desc" data-en="Defines the expected shape of summary results.">规定整理结果应该长什么样。</span>
+                            <code>templates/nightly-summary-schema.json</code>
+                          </a>
+                          <a class="module-card" href="../scripts/openrelix_overview/memory_context.py">
+                            <span class="module-title" data-en="Choose AI context">挑选写给 AI 的内容</span>
+                            <span class="module-desc" data-en="Ranks memory by scope, policy, priority, reuse heat, and freshness.">按范围、策略、优先级、复用热度和新鲜度筛选。</span>
+                            <code>scripts/openrelix_overview/memory_context.py</code>
+                          </a>
+                        </div>
+                      </div>
+                    </section>
+
+                    <section class="arch-layer state">
+                      <div class="layer-label">
+                        <span class="layer-order" data-en="Layer 03">第 3 层</span>
+                        <h4 data-en="Private local data">本地数据层</h4>
+                      </div>
+                      <div class="layer-panel">
+                        <p class="layer-summary" data-en="Private runtime data outside the repo; it should not enter git or npm.">仓库外的私有运行数据，默认不进 git，也不进 npm。</p>
+                        <div class="module-grid">
+                          <div class="module-card">
+                            <span class="module-title" data-en="Original work windows">原始工作窗口</span>
+                            <span class="module-desc" data-en="Normalized host activity files, grouped by date and window.">按日期和窗口保存的统一活动记录。</span>
+                            <code>state root/raw/windows/</code>
+                          </div>
+                          <div class="module-card">
+                            <span class="module-title" data-en="Review and consolidation results">复盘和整理结果</span>
+                            <span class="module-desc" data-en="Model summaries, manual reviews, and fallback summaries.">模型摘要、人工复盘和兜底摘要。</span>
+                            <code>state root/reviews/</code>
+                          </div>
+                          <a class="module-card" href="reference/data-contracts.zh-CN.html">
+                            <span class="module-title" data-en="Panel data contract">面板数据契约</span>
+                            <span class="module-desc" data-en="Generated data that the local panel is allowed to read.">面板可以读取的稳定生成数据。</span>
+                            <code>reports/overview-data.json</code>
+                          </a>
+                        </div>
+                      </div>
+                    </section>
+
+                    <section class="arch-layer collect">
+                      <div class="layer-label">
+                        <span class="layer-order" data-en="Layer 02">第 2 层</span>
+                        <h4 data-en="Host adapters">采集适配层</h4>
+                      </div>
+                      <div class="layer-panel">
+                        <p class="layer-summary" data-en="Reads different AI-tool records and turns them into one work-window shape.">读取不同 AI 工具的记录，统一成一种工作窗口格式。</p>
+                        <div class="module-grid">
+                          <a class="module-card" href="../scripts/collect_codex_activity.py">
+                            <span class="module-title" data-en="Collect work windows">采集工作窗口</span>
+                            <span class="module-desc" data-en="Reads Codex and Claude activity without changing host files.">只读 Codex / Claude 活动，不改 host 文件。</span>
+                            <code>scripts/collect_codex_activity.py</code>
+                          </a>
+                          <a class="module-card" href="../scripts/asset_runtime.py">
+                            <span class="module-title" data-en="Resolve local paths">解析本地路径</span>
+                            <span class="module-desc" data-en="Finds state root, host homes, and runtime config consistently.">统一找到数据目录、AI 工具目录和运行配置。</span>
+                            <code>scripts/asset_runtime.py</code>
+                          </a>
+                          <div class="module-card">
+                            <span class="module-title" data-en="Keep source tags">保留来源标记</span>
+                            <span class="module-desc" data-en="Keeps host, cwd, date, and session identifiers for traceability.">保留来源工具、项目路径、日期和会话标识，方便追溯。</span>
+                            <code>ai_host / cwd / session id</code>
+                          </div>
+                        </div>
+                      </div>
+                    </section>
+
+                    <section class="arch-layer host">
+                      <div class="layer-label">
+                        <span class="layer-order" data-en="Layer 01">第 1 层</span>
+                        <h4 data-en="AI host tools">宿主层</h4>
+                      </div>
+                      <div class="layer-panel">
+                        <p class="layer-summary" data-en="The AI tools and their own local files sit at the bottom as read-only sources.">Codex / Claude 及其本地记录在最底层，只作为读取来源。</p>
+                        <div class="module-grid">
+                          <div class="module-card">
+                            <span class="module-title" data-en="Codex thread source">Codex 线程来源</span>
+                            <span class="module-desc" data-en="Local app-server thread API, used before falling back to files.">优先读取本地线程接口，失败再读文件。</span>
+                            <code>codex app-server --listen stdio://</code>
+                          </div>
+                          <div class="module-card">
+                            <span class="module-title" data-en="Codex local files">Codex 本地文件</span>
+                            <span class="module-desc" data-en="History and session files owned by Codex itself.">Codex 自己拥有的历史和会话文件。</span>
+                            <code>CODEX_HOME/history.jsonl</code>
+                          </div>
+                          <div class="module-card">
+                            <span class="module-title" data-en="Claude local transcript">Claude 本地会话</span>
+                            <span class="module-desc" data-en="Project transcript files owned by Claude itself.">Claude 自己保存的项目会话记录。</span>
+                            <code>CLAUDE_HOME/projects/**/*.jsonl</code>
+                          </div>
+                        </div>
+                      </div>
+                    </section>
+                  </div>
+
+                  <div class="source-band">
+                    <strong data-en="Repo source">源码仓库</strong>
+                    <p data-en="The repo keeps reusable logic only: installer, scripts, templates, skills, tests, and local developer docs. Personal runtime data stays outside.">
+                      仓库只保存可复用逻辑：安装器、脚本、模板、技能、测试和本地开发文档。个人运行数据留在仓库外。
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="diagram-caption" data-en="Main rule: read Codex or Claude history and session files, write private local data, rebuild outputs, and keep the repo reusable.">
+              记住这条边界：只读 Codex / Claude 自己的历史和会话文件；只写私有本地数据目录；面板和摘要都能重建；源码仓库只放可复用工程逻辑。
+            </div>
+          </article>
+
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="principles">
+      <div class="inner">
+        <div class="section-head">
+          <div>
+            <div class="section-kicker" data-en="Technical Principles">技术原理</div>
+            <h2 data-en="The useful details: how windows are collected, how memory is selected, and why the panel reads one contract.">这里讲具体实现：窗口怎么采、记忆怎么选、面板为什么只读一份数据。</h2>
+          </div>
+          <p class="lead" data-en="Every concept below points to a real file, command, or output path. If a term is unavoidable, the explanation is placed next to it.">
+            下面每个概念都能落到真实文件、命令或输出路径。绕不开的术语，会在旁边解释清楚。
+          </p>
+        </div>
+
+        <article class="diagram principle-flow">
+          <h3 data-en="Three beginner questions: where files go, how the panel is built, and what is written back to AI tools">新同学先弄清三件事：文件放哪、面板怎么生成、哪些内容会写回 AI 工具</h3>
+          <p data-en="These cards answer the three questions a new developer usually hits first: which files can be committed, where panel data comes from, and why only selected summaries are written back to Codex or Claude.">
+            刚上手通常先卡在三件事：哪些文件可以提交、面板数据从哪来、为什么只有少量摘要会写回 Codex / Claude。
+          </p>
+
+          <div class="mini-diagrams">
+            <section class="mini-diagram boundary">
+              <h4 data-en="Where should new files go?">新增文件放哪里</h4>
+              <p data-en="Do this check before adding a file: project files can be committed, personal runtime files cannot.">
+                加文件前先判断归属：工程文件可以提交，个人运行文件不能提交。
+              </p>
+              <div class="mini-flow">
+                <a class="mini-step" href="../AGENTS.md">
+                  <strong data-en="Project files that can be committed">可以提交的工程文件</strong>
+                  <span data-en="Installer code, scripts, templates, skills, tests, and sanitized docs belong in the repo.">
+                    安装代码、脚本、模板、技能、测试和脱敏文档放源码仓库。
+                  </span>
+                  <code>repo: install/ scripts/ templates/ .agents/skills/</code>
+                </a>
+                <div class="mini-step">
+                  <strong data-en="Personal runtime files that must not be committed">不能提交的个人运行文件</strong>
+                  <span data-en="Raw work records, registries, logs, caches, and generated reports stay in the local data directory.">
+                    原始工作记录、登记册、日志、缓存和生成报告，都留在本地数据目录。
+                  </span>
+                  <code>state root: raw/ registry/ reports/ runtime/</code>
+                </div>
+                <a class="mini-step" href="../scripts/sync_host_memory_summary.py">
+                  <strong data-en="Summary files that may be written back to AI tools">可以写回 AI 工具的摘要文件</strong>
+                  <span data-en="Only the managed short summary is synced back; raw records are never written back.">
+                    只写回受控的简短摘要，不写回原始工作记录。
+                  </span>
+                  <code>scripts/sync_host_memory_summary.py</code>
+                </a>
+              </div>
+            </section>
+
+            <section class="mini-diagram pipeline">
+              <h4 data-en="How is the local panel generated?">本地面板从哪里来</h4>
+              <p data-en="When the panel looks wrong, check this path from the AI-tool record to the final HTML page.">
+                面板展示不对时，就按这条链路从 AI 工具记录一路查到最终 HTML。
+              </p>
+              <div class="mini-flow">
+                <div class="mini-step">
+                  <strong data-en="Read Codex or Claude work records">读取 Codex / Claude 的工作记录</strong>
+                  <span data-en="Prefer the Codex local API; if unavailable, read history and session files.">
+                    优先读 Codex 本地接口；不可用时，再读历史文件和会话文件。
+                  </span>
+                  <code>Codex app-server / history.jsonl / sessions/*.jsonl</code>
+                </div>
+                <a class="mini-step" href="../scripts/collect_codex_activity.py">
+                  <strong data-en="Turn records into work windows">整理成工作窗口</strong>
+                  <span data-en="A work window is one continuous piece of work, with source, project path, input, and session id kept.">
+                    工作窗口就是一段连续工作；会保留来源、项目路径、输入和会话标识。
+                  </span>
+                  <code>scripts/collect_codex_activity.py</code>
+                </a>
+                <a class="mini-step" href="../scripts/build_overview.py">
+                  <strong data-en="Build the data file used by the panel">生成面板要读的数据文件</strong>
+                  <span data-en="Merge work windows, reviews, registry rows, and summaries into one stable JSON file.">
+                    把工作窗口、复盘、登记册和摘要合成一份稳定 JSON。
+                  </span>
+                  <code>reports/overview-data.json</code>
+                </a>
+                <div class="mini-step">
+                  <strong data-en="Open the local HTML panel">打开本地 HTML 面板</strong>
+                  <span data-en="The static page reads only overview-data.json, not raw private files.">
+                    静态页面只读 overview-data.json，不直接翻原始私有文件。
+                  </span>
+                  <code>reports/panel.html</code>
+                </div>
+              </div>
+            </section>
+
+            <section class="mini-diagram decision">
+              <h4 data-en="What is written back to Codex or Claude?">哪些内容会写回 AI 工具</h4>
+              <p data-en="OpenRelix can keep many notes locally, but only short, useful summaries are written back to AI tools.">
+                本地可以保留很多记录，但只把短而有用的摘要写回 Codex / Claude。
+              </p>
+              <div class="mini-flow">
+                <div class="mini-step">
+                  <strong data-en="Local notes waiting to be selected">待筛选的本地记录</strong>
+                  <span data-en="Useful candidates include stable rules, debugging steps, module maps, and repeated preferences.">
+                    候选内容包括稳定规则、排障步骤、模块映射和反复出现的偏好。
+                  </span>
+                  <code>registry/memory_entries.jsonl</code>
+                </div>
+                <a class="mini-step" href="../scripts/openrelix_overview/memory_context.py">
+                  <strong data-en="Choose only useful summaries">只选真正有用的摘要</strong>
+                  <span data-en="Prefer reusable, current, high-priority information; one-off or noisy records stay local.">
+                    优先选择可复用、还新鲜、优先级高的内容；一次性噪声留在本地。
+                  </span>
+                  <code>scripts/openrelix_overview/memory_context.py</code>
+                </a>
+                <a class="mini-step" href="../scripts/build_codex_memory_summary.py">
+                  <strong data-en="Generate a short AI-readable summary">生成给 AI 看的短摘要</strong>
+                  <span data-en="Selected entries are compressed into a small summary that Codex or Claude can read next time.">
+                    入选内容会被压缩成一小段摘要，方便下次 AI 工具读取。
+                  </span>
+                  <code>scripts/build_codex_memory_summary.py</code>
+                </a>
+                <div class="mini-step">
+                  <strong data-en="Keep all other records local">其他记录继续留在本地</strong>
+                  <span data-en="Reviews and raw work windows remain searchable, but they are not inserted into the next AI prompt.">
+                    复盘和原始工作窗口仍可检索，但不会塞进下次对话的提示里。
+                  </span>
+                  <code>state root/reviews/ raw/windows/</code>
+                </div>
+              </div>
+            </section>
+          </div>
+        </article>
+
+        <div class="tech-grid">
+          <article class="tech-card">
+            <span class="tag amber" data-en="Window Collection">窗口采集</span>
+            <h3 data-en="How a work window is collected">一个工作窗口是怎么采出来的</h3>
+            <p data-en="The collector is read-only for AI-tool files and writes normalized records only to the private state root.">
+              采集脚本只读 AI 工具的本地文件或接口，统一整理后只写入 state root（OpenRelix 应用根目录）。
+            </p>
+            <ul class="detail-list">
+              <li><strong>默认模式：</strong><code>activity-source=auto</code>，先试 <code>codex app-server --listen stdio://</code>（Codex 本地线程接口），失败再回退到本地文件。</li>
+              <li><strong>Codex 文件回退：</strong>读 <code>CODEX_HOME/history.jsonl</code>（历史索引）和 <code>CODEX_HOME/sessions/**/*.jsonl</code>（会话事件），再按 session id（会话标识）拼成窗口。</li>
+              <li><strong>Claude 来源：</strong>读 <code>CLAUDE_HOME/projects/**/*.jsonl</code>（项目会话记录）和 <code>CLAUDE_HOME/history.jsonl</code>（历史记录）。</li>
+              <li><strong>统一输出：</strong>写 <code>raw/daily/&lt;date&gt;.json</code>（当天汇总）和 <code>raw/windows/&lt;date&gt;/*.json</code>（单窗口文件），保留 <code>ai_host</code>（来源工具）、<code>cwd</code>（项目路径）和 session/thread id（会话或线程标识）。</li>
+            </ul>
+            <div class="principle-strip">
+              <span>scripts/collect_codex_activity.py</span>
+              <span>OPENRELIX_ACTIVITY_SOURCE</span>
+              <span>OPENRELIX_ACTIVITY_HOST</span>
+            </div>
+          </article>
+
+          <article class="tech-card">
+            <span class="tag" data-en="Memory Selection">记忆选择</span>
+            <h3 data-en="Why not every memory reaches the AI tool">为什么不是所有记忆都会进 AI 工具</h3>
+            <p data-en="OpenRelix stores more locally than it injects into AI context, because context space is limited and noisy memory hurts future work.">
+              OpenRelix 本地能存更多，但写给 AI 的上下文要少而准，因为上下文空间有限，噪声会影响后续工作。
+            </p>
+            <ul class="detail-list">
+              <li><strong>权威来源：</strong><code>registry/memory_entries.jsonl</code> 是当前记忆登记册；旧的 <code>memory_items.jsonl</code> 只做兼容 fallback（旧数据兜底）。</li>
+              <li><strong>筛选规则：</strong>优先保留可复用规则、排障路径、模块映射、稳定偏好；问候、一次性测试和无结论窗口会降级或丢弃。</li>
+              <li><strong>注入策略：</strong><code>injection_policy</code>（是否写给 AI 的策略）只有 <code>global_context</code>（通用上下文）和 <code>project_context</code>（项目上下文）会进入候选。</li>
+              <li><strong>预算控制：</strong>global（通用）最多约占摘要预算 10%，project（项目）最多约占 30%，再按 priority（优先级）、heat（复用热度）和 freshness（新鲜度）排序。</li>
+            </ul>
+            <div class="principle-strip">
+              <span>scripts/openrelix_overview/memory_context.py</span>
+              <span>scripts/build_codex_memory_summary.py</span>
+              <span>runtime/host-context/memory_summary.md</span>
+            </div>
+          </article>
+
+          <article class="tech-card">
+            <span class="tag blue" data-en="Panel Contract">面板契约</span>
+            <h3 data-en="Why the panel reads overview-data.json">为什么面板不直接读历史文件</h3>
+            <p data-en="The panel is a static local page. It should read a stable generated contract rather than rummaging through raw private files.">
+              面板是本地静态页面，应该读稳定的生成数据，不应该自己到处翻原始私有文件。
+            </p>
+            <ul class="detail-list">
+              <li><strong>构建入口：</strong><code>scripts/build_overview.py</code> 读取 registry（登记册）、reviews（复盘）、raw（原始窗口）、consolidated（整理结果）等来源。</li>
+              <li><strong>稳定契约：</strong><code>reports/overview-data.json</code> 是面板数据契约；展示层只消费它，避免 UI 和底层文件格式强耦合。</li>
+              <li><strong>可见产物：</strong><code>reports/panel.html</code> 是最终本地面板；如果页面看起来旧，先确认打开的是哪个 state root（OpenRelix 应用根目录）下的产物。</li>
+              <li><strong>检索增强：</strong><code>runtime/openrelix-index.sqlite3</code> 是可重建 SQLite index（本地搜索索引），删除它不能影响 raw、registry 或 consolidated 源数据。</li>
+            </ul>
+            <div class="principle-strip">
+              <span>scripts/build_overview.py</span>
+              <span>reports/overview-data.json</span>
+              <span>reports/panel.html</span>
+            </div>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="map">
+      <div class="inner">
+        <div class="section-head">
+          <div>
+            <div class="section-kicker" data-en="Code Map">代码入口</div>
+            <h2 data-en="Pick the files by the kind of change, not by file names that look familiar.">按改动类型找文件，别靠眼熟乱搜。</h2>
+          </div>
+          <p class="lead" data-en="OpenRelix has clear ownership boundaries. Most changes should stay inside one or two rows in this map.">
+            OpenRelix 的模块边界比较清楚。多数改动应该收在下面一两行里，别一口气横扫安装器、面板、记忆策略和发布配置。
+          </p>
+        </div>
+
+        <div class="grid cols-3">
+          <article class="path-card">
+            <span class="tag" data-en="Installer">安装器</span>
+            <h3 data-en="Install flags, profiles, LaunchAgents">安装参数、档位、后台任务</h3>
+            <p data-en="Change here when setup, uninstall, schedule, shell command, or LaunchAgent behavior changes.">安装、卸载、定时、shell 命令、LaunchAgent（macOS 后台任务配置）行为变化时看这里。</p>
+            <ul class="file-list">
+              <li>install/install.sh</li>
+              <li>install/npm-bin.js</li>
+              <li>ops/launchd/</li>
+              <li>install/templates/</li>
+            </ul>
+          </article>
+
+          <article class="path-card">
+            <span class="tag blue" data-en="Runtime paths">运行路径</span>
+            <h3 data-en="State root, host homes, config">state root（OpenRelix 应用根目录）、host home（AI 工具目录）、配置</h3>
+            <p data-en="Any new script that needs paths should go through the runtime module instead of rebuilding path rules.">新脚本只要需要路径，就优先走 runtime module（运行路径模块），不要自己重新拼。</p>
+            <ul class="file-list">
+              <li>scripts/asset_runtime.py</li>
+              <li>runtime/config.json</li>
+              <li>AI_ASSET_STATE_DIR</li>
+              <li>CODEX_HOME</li>
+            </ul>
+          </article>
+
+          <article class="path-card">
+            <span class="tag amber" data-en="Host collection">Host 采集</span>
+            <h3 data-en="Codex and Claude activity input">Codex / Claude 活动输入</h3>
+            <p data-en="Change here when reading app-server threads, history, sessions, or Claude transcripts.">读取 app-server（Codex 本地线程接口）、history（历史记录）、session（会话文件）或 Claude transcript（会话记录）的逻辑在这里。</p>
+            <ul class="file-list">
+              <li>scripts/collect_codex_activity.py</li>
+              <li>raw/daily/</li>
+              <li>raw/windows/</li>
+              <li>ai_host</li>
+            </ul>
+          </article>
+
+          <article class="path-card">
+            <span class="tag rose" data-en="Memory context">记忆上下文</span>
+            <h3 data-en="What gets injected, what stays local">哪些注入，哪些留本地</h3>
+            <p data-en="Use policy fields such as scope, injection policy, priority, heat, and budget. Avoid reviving old durable/session framing.">看 scope（作用范围）、injection policy（是否写给 AI 的策略）、priority（优先级）、heat（复用热度）和预算，不要退回旧的 durable/session 说法。</p>
+            <ul class="file-list">
+              <li>scripts/openrelix_overview/memory_context.py</li>
+              <li>scripts/build_codex_memory_summary.py</li>
+              <li>scripts/sync_host_memory_summary.py</li>
+              <li>registry/memory_entries.jsonl</li>
+            </ul>
+          </article>
+
+          <article class="path-card">
+            <span class="tag" data-en="Overview and panel">概览和面板</span>
+            <h3 data-en="Report data, static HTML, UI labels">报告数据、静态 HTML、展示文案</h3>
+            <p data-en="Keep overview-data.json as the renderer contract. Do not let the panel read raw runtime files directly.">`overview-data.json` 是 renderer（渲染器）的 contract（数据契约）；不要让面板直接读 raw（原始数据）/ runtime（运行态）文件。</p>
+            <ul class="file-list">
+              <li>scripts/build_overview.py</li>
+              <li>scripts/openrelix_overview/</li>
+              <li>reports/overview-data.json</li>
+              <li>reports/panel.html</li>
+            </ul>
+          </article>
+
+          <article class="path-card">
+            <span class="tag blue" data-en="Docs and site">文档和站点</span>
+            <h3 data-en="Public explanation and visual guides">公开说明和可视化指南</h3>
+            <p data-en="Docs and screenshots must be generic, sanitized, and aligned with current package version and changelog truth.">文档和截图必须通用、脱敏，并和当前版本及 changelog 口径对齐。</p>
+            <ul class="file-list">
+              <li>README*.md</li>
+              <li>docs/*.md</li>
+              <li>docs/*.html</li>
+              <li>docs/changelog/v0.x.html</li>
+            </ul>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="checks">
+      <div class="inner">
+        <div class="section-head">
+          <div>
+            <div class="section-kicker" data-en="Verification">验证方式</div>
+            <h2 data-en="Pick the checks that match your change. Do not run a wall of commands first.">按改动类型选检查，别上来就跑一堆命令。</h2>
+          </div>
+          <p class="lead" data-en="For small copy or HTML edits, privacy, whitespace, local preview, and package dry-run are enough. Broaden only when scripts, installers, or shared contracts change.">
+            小文案或 HTML 改动，重点看隐私、空白、本地预览和包内容。只有碰到脚本、安装器或共享数据契约时，再扩大验证范围。
+          </p>
+        </div>
+
+        <div class="grid cols-2">
+          <article class="check-card">
+            <span class="tag" data-en="Before editing">改前</span>
+            <h3 data-en="See what is already changed">先看当前有哪些改动</h3>
+            <p data-en="This prevents accidentally cleaning up someone else's unrelated work.">
+              先知道工作区里已经有什么，避免顺手清掉别人的无关改动。
+            </p>
+            <div class="command-row">
+              <code class="command-code">git status --short --branch</code>
+              <button class="command-copy" type="button" data-copy-default="复制" data-copy-default-en="Copy" data-copy-done="已复制" data-copy-done-en="Copied">复制</button>
+            </div>
+          </article>
+
+          <article class="check-card">
+            <span class="tag" data-en="Always">每次都跑</span>
+            <h3 data-en="Privacy and whitespace">隐私和空白检查</h3>
+            <p data-en="These two catch the most expensive mistakes early: private data entering the repo and bad patch whitespace.">这两条先挡住最容易出事的点：私有数据进仓库、patch 空白污染。</p>
+            <div class="command-row">
+              <code class="command-code">python3 scripts/check_personal_info.py
+git diff --check</code>
+              <button class="command-copy" type="button" data-copy-default="复制" data-copy-default-en="Copy" data-copy-done="已复制" data-copy-done-en="Copied">复制</button>
+            </div>
+          </article>
+
+          <article class="check-card">
+            <span class="tag blue" data-en="Python or installer">Python / 安装器</span>
+            <h3 data-en="Compile, tests, and shell syntax">编译、单测、shell 语法</h3>
+            <p data-en="Use this when touching scripts, installer helpers, runtime config, or shell entry points.">改脚本、安装器辅助逻辑、runtime config（运行配置）或 shell 入口时跑这一组。</p>
+            <div class="command-row">
+              <code class="command-code">python3 -m py_compile scripts/*.py install/*.py
+python3 -m unittest discover -s tests
+zsh -n install/install.sh scripts/*.sh</code>
+              <button class="command-copy" type="button" data-copy-default="复制" data-copy-default-en="Copy" data-copy-done="已复制" data-copy-done-en="Copied">复制</button>
+            </div>
+          </article>
+
+          <article class="check-card">
+            <span class="tag amber" data-en="Overview">概览链路</span>
+            <h3 data-en="Use a temporary application root when panel data changes">改面板数据时用临时应用根目录</h3>
+            <p data-en="Use this only when report data, panel rendering, memory display, or labels change. It avoids touching the real OpenRelix application root.">
+              只有改报告数据、面板渲染、记忆展示或标签时才跑。它不会碰真实 OpenRelix 应用根目录。
+            </p>
+            <div class="command-row">
+              <code class="command-code">STATE_DIR="$(mktemp -d /tmp/openrelix-validation.XXXXXX)"
+AI_ASSET_STATE_DIR="$STATE_DIR" python3 scripts/build_overview.py
+python3 -m json.tool "$STATE_DIR/reports/overview-data.json" >/dev/null</code>
+              <button class="command-copy" type="button" data-copy-default="复制" data-copy-default-en="Copy" data-copy-done="已复制" data-copy-done-en="Copied">复制</button>
+            </div>
+          </article>
+
+          <article class="check-card">
+            <span class="tag rose" data-en="Public surface">公开表面</span>
+            <h3 data-en="Package dry run and local preview">包内容和本地预览</h3>
+            <p data-en="Use this for docs/site, package allowlist, release, or visible HTML changes. Preview over local HTTP instead of relying on file paths.">改 docs/site、包白名单、发布或可见 HTML 时用这一组。本地预览优先走 HTTP。</p>
+            <div class="command-row">
+              <code class="command-code">npm pack --dry-run --json
+python3 -m http.server 8766</code>
+              <button class="command-copy" type="button" data-copy-default="复制" data-copy-default-en="Copy" data-copy-done="已复制" data-copy-done-en="Copied">复制</button>
+            </div>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="privacy">
+      <div class="inner">
+        <div class="section-head">
+          <div>
+            <div class="section-kicker" data-en="Privacy Boundaries">隐私红线</div>
+            <h2 data-en="If it describes one real machine or one real private task, keep it out of the repo.">凡是能指向某台机器或真实私有任务的内容，都别进仓库。</h2>
+          </div>
+          <p class="lead" data-en="OpenRelix is valuable because the public repo and private state stay separate. Treat this boundary as a product feature, not housekeeping.">
+            OpenRelix 的价值来自公开 repo（源码仓库）和 private state（私有状态）分开。这个边界不是事后清理，而是产品能力的一部分。
+          </p>
+        </div>
+
+        <div class="grid cols-2">
+          <ul class="rule-list">
+            <li data-en="Do not commit raw Codex or Claude history, session files, transcripts, runtime logs, generated reports, or real registry rows.">不要提交原始 Codex / Claude history（历史记录）、session（会话文件）、transcript（会话记录）、运行日志、生成报告或真实 registry（登记册）行。</li>
+            <li data-en="Do not add secrets, tokens, cookies, account identifiers, private organization names, internal URLs, or private stack traces.">不要加入密钥、token、Cookie、账号标识、私有组织名、内部 URL 或未脱敏报错。</li>
+            <li data-en="Do not hard-code personal home paths. Use runtime config, parameters, or environment variables.">不要写死个人 home 路径；用 runtime config（运行配置）、参数或环境变量。</li>
+            <li data-en="Do not use real private panel screenshots in public docs, package contents, fixtures, or release assets.">公开文档、包内容、fixture（测试样例）、release asset（发布附件）里不要放真实私有面板截图。</li>
+          </ul>
+
+          <div class="callout">
+            <strong data-en="Good public examples are boring on purpose.">好的公开样例，本来就应该普通。</strong>
+            <p data-en="Use synthetic paths, tiny fixtures, generic project names, and short sanitized snippets. The example only needs to explain the contract, not prove your personal workflow.">
+              用合成路径、小 fixture（测试样例）、通用项目名和短脱敏片段。样例只需要说明契约，不需要证明真实工作流。
+            </p>
+            <div class="command-row">
+              <code class="command-code">python3 scripts/check_personal_info.py</code>
+              <button class="command-copy" type="button" data-copy-default="复制" data-copy-default-en="Copy" data-copy-done="已复制" data-copy-done-en="Copied">复制</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="debug">
+      <div class="inner">
+        <div class="section-head">
+          <div>
+            <div class="section-kicker" data-en="Debugging">本地排障</div>
+            <h2 data-en="When the output looks wrong, check the real artifact first.">页面看着不对，先查真实产物。</h2>
+          </div>
+          <p class="lead" data-en="Source diffs can look correct while the generated panel or package output is stale. Verify the artifact the user will actually see.">
+            代码改动看着正确，不代表生成面板、包内容或公开页面已经对。先验用户真正会看到的页面和文件。
+          </p>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th data-en="Symptom">现象</th>
+                <th data-en="Likely cause">常见原因</th>
+                <th data-en="Check first">先查什么</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td data-en="Panel still shows old copy">面板还是旧文案</td>
+                <td data-en="Source changed, generated panel not rebuilt or wrong state root opened">source（源码）改了，但 `reports/panel.html` 没重建，或打开了另一个 state root（OpenRelix 应用根目录）</td>
+                <td><code>AI_ASSET_STATE_DIR="$STATE_DIR" python3 scripts/build_overview.py</code></td>
+              </tr>
+              <tr>
+                <td data-en="Memory summary did not update">记忆摘要没有更新</td>
+                <td data-en="Host context disabled, wrong CODEX_HOME, or sync preserved host-owned content">host context（AI 可读上下文）关闭、`CODEX_HOME` 不对，或 sync（同步）只保留了 host-owned（AI 工具拥有）内容</td>
+                <td><code>python3 scripts/sync_host_memory_summary.py --print-json</code></td>
+              </tr>
+              <tr>
+                <td data-en="Package dry run includes unexpected files">npm 包里出现奇怪文件</td>
+                <td data-en="package.json files allowlist too broad or generated files placed inside repo">`package.json` files 白名单过宽，或生成文件放进了 repo</td>
+                <td><code>npm pack --dry-run --json</code></td>
+              </tr>
+              <tr>
+                <td data-en="Activity collection is empty">采集结果为空</td>
+                <td data-en="app-server unavailable, host home mismatch, or no activity for the selected date">app-server（Codex 本地线程接口）不可用、host home（AI 工具目录）串了，或所选日期确实没有活动</td>
+                <td><code>openrelix doctor --app-server-check</code></td>
+              </tr>
+              <tr>
+                <td data-en="Browser preview cannot open file URLs">浏览器打不开 file URL</td>
+                <td data-en="Local file security policy blocks the page or assets">本地 file 安全策略挡住页面或资源</td>
+                <td><code>python3 -m http.server 8766</code></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="docs">
+      <div class="inner">
+        <div class="section-head">
+          <div>
+            <div class="section-kicker" data-en="Reference Docs">文档入口</div>
+            <h2 data-en="Use this HTML page first, then open detailed references only when needed.">先看这份图解，需要细节时再打开详细文档。</h2>
+          </div>
+          <p class="lead" data-en="This page is the human-readable guide for local development. The links below are deeper references, not the first stop for a newcomer.">
+            这份 HTML 是本地开发的图解入口；下面是更完整的参考资料，不必一开始全读完。
+          </p>
+        </div>
+
+        <div class="doc-grid">
+          <a class="doc-link" href="index.html" data-en="All local HTML docs">全部本地 HTML 文档</a>
+          <a class="doc-link" href="reference/developer-guide.html" data-en="Detailed developer guide">开发者详细指南</a>
+          <a class="doc-link" href="reference/system-overview.zh-CN.html" data-en="System overview">系统概览</a>
+          <a class="doc-link" href="reference/technical-solution.html" data-en="Technical solution">技术方案</a>
+          <a class="doc-link" href="reference/data-contracts.zh-CN.html" data-en="Data contracts">数据契约</a>
+          <a class="doc-link" href="reference/validation-matrix.zh-CN.html" data-en="Validation matrix">验证矩阵</a>
+          <a class="doc-link" href="reference/privacy-and-distribution.zh-CN.html" data-en="Privacy boundary">隐私与分发边界</a>
+          <a class="doc-link" href="reference/release-checklist.zh-CN.html" data-en="Release checklist">发布检查清单</a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="inner">
+      <span data-en="OpenRelix™ local developer guide. Clear, bilingual, and designed for everyday development.">OpenRelix™ 本地开发者指南：清楚、双语，面向日常开发。</span>
+      <a href="#top" data-en="Back to top">回到顶部</a>
+    </div>
+  </footer>
+
+  <script>
+    (() => {
+      const root = document.documentElement;
+      const translateNodes = Array.from(document.querySelectorAll("[data-en]"));
+      const navLinks = Array.from(document.querySelectorAll(".nav-links a[href^='#'], .mobile-nav-links a[href^='#']"));
+      const sectionIds = Array.from(document.querySelectorAll("main section[id]")).map((section) => section.id);
+      let navLockUntil = 0;
+
+      translateNodes.forEach((node) => {
+        if (!node.dataset.zh) {
+          node.dataset.zh = node.textContent;
+        }
+      });
+
+      const setActiveNav = (id) => {
+        if (!id || !sectionIds.includes(id)) return;
+        navLinks.forEach((link) => {
+          const isActive = link.getAttribute("href") === `#${id}`;
+          link.classList.toggle("is-active", isActive);
+          if (isActive) {
+            link.setAttribute("aria-current", "true");
+          } else {
+            link.removeAttribute("aria-current");
+          }
+        });
+      };
+
+      const getCurrentSectionId = () => {
+        const offset = 140;
+        let current = sectionIds[0];
+        sectionIds.forEach((id) => {
+          const section = document.getElementById(id);
+          if (section && section.getBoundingClientRect().top <= offset) {
+            current = id;
+          }
+        });
+        return current;
+      };
+
+      const updateActiveNavFromScroll = () => {
+        if (Date.now() < navLockUntil) return;
+        setActiveNav(getCurrentSectionId());
+      };
+
+      const setTheme = (theme) => {
+        try {
+          if (theme === "system") {
+            root.removeAttribute("data-theme");
+            window.localStorage.removeItem("openrelix-showcase-theme");
+          } else {
+            root.dataset.theme = theme;
+            window.localStorage.setItem("openrelix-showcase-theme", theme);
+          }
+        } catch (_) {
+          if (theme === "system") root.removeAttribute("data-theme");
+          else root.dataset.theme = theme;
+        }
+        document.querySelectorAll("[data-theme-option]").forEach((button) => {
+          button.setAttribute("aria-pressed", String(button.dataset.themeOption === theme));
+        });
+      };
+
+      const setLanguage = (language) => {
+        root.dataset.language = language;
+        root.lang = language === "en" ? "en" : "zh-CN";
+        try {
+          window.localStorage.setItem("openrelix-showcase-language", language);
+        } catch (_) {}
+        translateNodes.forEach((node) => {
+          node.textContent = language === "en" ? node.dataset.en : node.dataset.zh;
+        });
+        document.querySelectorAll("[data-language-option]").forEach((button) => {
+          button.setAttribute("aria-pressed", String(button.dataset.languageOption === language));
+        });
+        document.querySelectorAll(".command-copy").forEach((button) => {
+          button.textContent = language === "en" ? (button.dataset.copyDefaultEn || "Copy") : (button.dataset.copyDefault || "复制");
+        });
+      };
+
+      document.querySelectorAll("[data-theme-option]").forEach((button) => {
+        button.addEventListener("click", () => setTheme(button.dataset.themeOption || "system"));
+      });
+
+      document.querySelectorAll("[data-language-option]").forEach((button) => {
+        button.addEventListener("click", () => setLanguage(button.dataset.languageOption || "zh"));
+      });
+
+      navLinks.forEach((link) => {
+        link.addEventListener("click", () => {
+          const target = link.getAttribute("href") || "";
+          navLockUntil = Date.now() + 900;
+          setActiveNav(target.slice(1));
+        });
+      });
+
+      window.addEventListener("hashchange", () => {
+        navLockUntil = Date.now() + 900;
+        setActiveNav(window.location.hash.slice(1));
+      });
+      window.addEventListener("scroll", () => {
+        window.requestAnimationFrame(updateActiveNavFromScroll);
+      }, { passive: true });
+
+      document.querySelectorAll(".command-copy").forEach((button) => {
+        button.addEventListener("click", async () => {
+          const row = button.closest(".command-row");
+          const code = row ? row.querySelector(".command-code") : null;
+          if (!code) return;
+          try {
+            await navigator.clipboard.writeText(code.textContent.trim());
+            const language = root.dataset.language === "en" ? "en" : "zh";
+            button.textContent = language === "en" ? (button.dataset.copyDoneEn || "Copied") : (button.dataset.copyDone || "已复制");
+            window.setTimeout(() => {
+              button.textContent = language === "en" ? (button.dataset.copyDefaultEn || "Copy") : (button.dataset.copyDefault || "复制");
+            }, 1400);
+          } catch (_) {}
+        });
+      });
+
+      let initialTheme = "system";
+      try {
+        const storedTheme = window.localStorage.getItem("openrelix-showcase-theme");
+        if (storedTheme === "light" || storedTheme === "dark") initialTheme = storedTheme;
+      } catch (_) {}
+      setTheme(initialTheme);
+      setLanguage(root.dataset.language === "en" ? "en" : "zh");
+      setActiveNav(window.location.hash.slice(1) || getCurrentSectionId());
+    })();
+  </script>
+</body>
+</html>

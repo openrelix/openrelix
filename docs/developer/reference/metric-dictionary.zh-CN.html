@@ -1,0 +1,407 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>指标字典 | OpenRelix Developer Docs</title>
+  <link rel="icon" href="../../openrelix-icon.png">
+  <style>
+:root {
+  color-scheme: light;
+  --ink: #181a1f;
+  --muted: #626873;
+  --paper: #ffffff;
+  --paper-soft: #f7f8f5;
+  --line: #dedfd9;
+  --line-strong: #c9cbc4;
+  --accent: #0f766e;
+  --accent-soft: #e6f4f1;
+  --code-bg: #101827;
+  --code-fg: #f8fafc;
+  --radius: 8px;
+  --max: 1180px;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; background: var(--paper-soft); }
+body {
+  margin: 0;
+  color: var(--ink);
+  background: var(--paper-soft);
+  font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+  line-height: 1.68;
+}
+a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 3px; }
+code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 0.94em;
+}
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  border-bottom: 1px solid rgba(222, 223, 217, 0.9);
+  background: rgba(255,255,255,0.94);
+  backdrop-filter: blur(16px);
+}
+.topbar-inner {
+  width: min(var(--max), calc(100% - 32px));
+  min-height: 64px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--ink);
+  font-weight: 760;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.brand img { width: 30px; height: 30px; border-radius: 7px; }
+.topnav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.topnav::-webkit-scrollbar { display: none; }
+.topnav a,
+.lang-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--ink);
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+  background: #fff;
+}
+.topnav a:hover,
+.lang-link:hover,
+.lang-link.active {
+  border-color: #bddbd5;
+  background: var(--accent-soft);
+  color: #0f5f59;
+}
+.shell {
+  width: min(var(--max), calc(100% - 32px));
+  margin: 34px auto 72px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 260px;
+  gap: 28px;
+  align-items: start;
+}
+.article {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--paper);
+  padding: clamp(22px, 4vw, 46px);
+}
+.doc-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  align-items: center;
+  margin-bottom: 24px;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+.doc-meta code { color: var(--ink); background: #f0f1ed; padding: 2px 6px; border-radius: 5px; }
+.language-switch { display: inline-flex; flex-wrap: wrap; gap: 8px; margin-left: auto; }
+.content h1 {
+  margin: 0 0 18px;
+  font-size: clamp(2.1rem, 4vw, 3.2rem);
+  line-height: 1.08;
+  letter-spacing: 0;
+}
+.content h2 {
+  margin: 46px 0 12px;
+  padding-top: 6px;
+  font-size: clamp(1.5rem, 3vw, 2rem);
+  line-height: 1.18;
+  letter-spacing: 0;
+}
+.content h3 {
+  margin: 30px 0 8px;
+  font-size: 1.24rem;
+  line-height: 1.28;
+}
+.content h4 { margin: 24px 0 8px; font-size: 1.04rem; }
+.content p,
+.content li {
+  color: var(--muted);
+  font-size: 1.04rem;
+}
+.content p { margin: 12px 0; }
+.content ul,
+.content ol { padding-left: 1.35em; margin: 12px 0 18px; }
+.content li + li { margin-top: 6px; }
+.content blockquote {
+  margin: 20px 0;
+  padding: 14px 18px;
+  border-left: 4px solid var(--accent);
+  background: var(--accent-soft);
+  border-radius: 0 var(--radius) var(--radius) 0;
+}
+.content blockquote p { margin: 0; color: #33524d; }
+.content pre {
+  margin: 18px 0 24px;
+  padding: 18px;
+  overflow: auto;
+  border-radius: var(--radius);
+  background: var(--code-bg);
+  color: var(--code-fg);
+}
+.content pre code { color: inherit; font-size: 0.96rem; }
+.content :not(pre) > code {
+  color: #0f5f59;
+  background: #eef4f1;
+  border: 1px solid #d9e7e2;
+  padding: 1px 5px;
+  border-radius: 5px;
+}
+.content hr { border: 0; border-top: 1px solid var(--line); margin: 28px 0; }
+.table-wrap {
+  width: 100%;
+  margin: 18px 0 26px;
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 620px;
+  background: #fff;
+}
+th, td {
+  padding: 11px 13px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+th {
+  color: var(--ink);
+  background: #f3f5f0;
+  font-weight: 780;
+}
+td { color: var(--muted); }
+tr:last-child td { border-bottom: 0; }
+.toc {
+  position: sticky;
+  top: 86px;
+  max-height: calc(100vh - 112px);
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--paper);
+  padding: 18px;
+  scrollbar-width: thin;
+}
+.toc-title {
+  margin: 0 0 12px;
+  color: var(--ink);
+  font-size: 0.96rem;
+  font-weight: 800;
+}
+.toc-link {
+  display: block;
+  border-left: 3px solid transparent;
+  border-radius: 7px;
+  padding: 7px 8px 7px 10px;
+  color: var(--muted);
+  text-decoration: none;
+  font-weight: 650;
+  line-height: 1.35;
+}
+.toc-link.sub { padding-left: 24px; font-size: 0.94rem; }
+.toc-link.active,
+.toc-link:hover {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+.toc-link.active {
+  border-left-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
+  font-weight: 800;
+}
+.toc-empty { color: var(--muted); margin: 0; }
+.generated-note {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+@media (max-width: 860px) {
+  .topbar-inner { align-items: flex-start; flex-direction: column; padding: 12px 0; gap: 10px; }
+  .topnav { width: 100%; margin-left: 0; }
+  .shell { grid-template-columns: 1fr; margin-top: 18px; }
+  .toc { position: static; order: -1; }
+  .language-switch { margin-left: 0; }
+}
+</style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="../index.html">
+        <img src="../../openrelix-icon.png" alt="">
+        <span>OpenRelix</span>
+      </a>
+      <nav class="topnav" aria-label="Developer docs navigation">
+        <a href="../index.html">文档首页</a>
+        <a href="../developer-guide.html">图解指南</a>
+        <a href="developer-guide.html">开发者详细指南</a>
+      </nav>
+    </div>
+  </header>
+  <main class="shell">
+    <article class="article">
+      <div class="doc-meta">
+        <span>HTML 由 Markdown 生成</span>
+        <span>源文件 <code>docs/metric-dictionary.zh-CN.md</code></span>
+        <span class="language-switch" aria-label="Language versions">
+          <a class="lang-link active" href="metric-dictionary.zh-CN.html">中文</a>
+<a class="lang-link" href="metric-dictionary.html">EN</a>
+        </span>
+      </div>
+      <div class="content">
+<h1 id="section">指标字典</h1>
+<blockquote><p>语言版本：<a href="metric-dictionary.html">English</a> | 简体中文</p></blockquote>
+<h2 id="section-2">核心指标</h2>
+<ul>
+<li><code>total_assets</code>：当前 state 的 <code>registry/assets.jsonl</code> 中资产总数。</li>
+<li><code>active_assets</code>：<code>status = active</code> 的资产数量。</li>
+<li><code>task_reviews</code>：当前 state 的 <code>reviews/</code> 下 review markdown 文件数量。</li>
+<li><code>tracked_usage_events</code>：当前 state 的 <code>registry/usage_events.jsonl</code> 行数。</li>
+<li><code>tracked_minutes_saved</code>：估算节省分钟数，来自显式 usage events、缺少分钟数的 usage events，以及近期 work-window 匹配。usage event 中的原始 <code>minutes_saved</code> 是强证据，但不再是唯一来源。</li>
+<li><code>durable_memories</code>：从 <code>registry/memory_entries.jsonl</code> 合并重复行后得到的当前长期记忆数量。</li>
+<li><code>session_memories</code>：合并重复行后的当前工作记忆数量。</li>
+<li><code>low_priority_memories</code>：合并重复行后的当前低优先级记忆数量。</li>
+</ul>
+<h2 id="asset">Asset 字段</h2>
+<ul>
+<li><code>id</code>：稳定唯一标识。</li>
+<li><code>title</code>：可读资产名。</li>
+<li><code>type</code>：<code>playbook</code>、<code>skill</code>、<code>template</code>、<code>automation</code>、<code>knowledge_card</code>、<code>review</code>。</li>
+<li><code>domain</code>：<code>general</code>、<code>android</code>、<code>ios</code>、<code>web</code>、<code>backend</code>、<code>planning</code>、<code>collaboration</code> 或其他稳定领域。</li>
+<li><code>scope</code>：<code>personal</code>、<code>repo</code>、<code>team</code>。</li>
+<li><code>status</code>：<code>active</code>、<code>draft</code>、<code>retired</code>。</li>
+<li><code>created_at</code>：<code>YYYY-MM-DD</code>。</li>
+<li><code>updated_at</code>：<code>YYYY-MM-DD</code>。</li>
+<li><code>source_task</code>：产出资产的任务或 thread。</li>
+<li><code>reuse_count</code>：已知时的人工累计复用次数。</li>
+<li><code>minutes_saved_total</code>：已知时的人工累计节省时间。</li>
+<li><code>estimated_value_score</code>：高价值资产面板使用的自动 0 到 100 复用价值分。</li>
+<li><code>estimated_minutes_saved</code>：趋势和排序使用的自动分钟估计，不要求用户手工录入。</li>
+<li><code>value_evidence_count</code>：作为复用证据的显式 usage events 与近期 work-window 匹配数量。</li>
+<li><code>value_note</code>：说明资产价值的简短文字。</li>
+<li><code>artifact_paths</code>：体现该资产的本地文件路径。</li>
+</ul>
+<h2 id="usage-event">Usage Event 字段</h2>
+<ul>
+<li><code>date</code>：<code>YYYY-MM-DD</code>。</li>
+<li><code>asset_id</code>：资产标识。</li>
+<li><code>task</code>：任务或 issue 标签。</li>
+<li><code>minutes_saved</code>：本次复用记录的可选节省分钟数；缺失或为 0 时，dashboard 会从任务文本和资产元数据估值。</li>
+<li><code>note</code>：简短证据说明。</li>
+</ul>
+<h2 id="memory-registry-view">Memory Registry View</h2>
+<ul>
+<li>dashboard 把 <code>registry/memory_entries.jsonl</code> 当作 canonical memory log，再把行合并成当前 memory view。</li>
+<li>分组键：<code>bucket + memory_type + normalized title</code>，当 title 为空时用 <code>value_note</code> fallback。</li>
+<li>dashboard memory view 中的 <code>created_at</code> 表示该组 memory 第一次出现在 log 中的日期。</li>
+<li><code>updated_at</code> 表示该组 memory 最近一次出现在 log 中的日期。</li>
+<li>长期和工作 memory cards 按 7 天 heat 排序，不只按更新时间排序。</li>
+<li><code>usage_frequency</code> 仍作为兼容字段保留，但 UI 标注为 heat。它只统计 7 天窗口内直接 source-window references，加上同一 memory 的近期 synthesis dates；不再用 memory title、keywords 或 notes 去 fuzzy-match 近期窗口摘要。</li>
+<li>heat window 限制在最新 7 个 daily captures，以保证性能稳定；dashboard refresh 不调用 LLM。</li>
+</ul>
+<h2 id="host-native-memory-views">Host Native Memory Views</h2>
+<ul>
+<li>dashboard 也读取已配置的 host-native context files：Codex 通常使用 <code>~/.codex/memories/memory_summary.md</code>，Claude Code 使用 <code>~/.claude/CLAUDE.md</code> 中的 OpenRelix managed block。</li>
+<li>这些视图代表每个 host 能读到的 user-level context layer，而不是 nightly asset pipeline 事后推断出的全部内容。</li>
+<li>在 <code>integrated</code> mode 下，routine refresh、review 和 nightly jobs 可以为启用的 host contexts 重新生成一份 shared bounded summary；它们不应把 raw windows 或完整 local registry 写入 host native memory files。</li>
+<li>native-memory section 保留 source file 中的 user profile、preferences 和 general tips；panel 聚焦最容易与 nightly memory 对照的话题条目。</li>
+<li>实践上，native memory 更接近长期规则和 rollout summaries；nightly registry 更接近带 source-window traceability 的近期任务记忆。</li>
+</ul>
+<h2 id="reporting">Reporting 建议</h2>
+<ul>
+<li>优先看 trend 和 impact metrics，而不是单纯 activity metrics。</li>
+<li>把 reuse value 当作证据加权估计：显式 reuse events 最强，近期 window matches 较弱，type 和 recency 影响 0 到 100 value score，但不会直接叠加 estimated saved minutes。</li>
+<li>少量高复用资产比大量低质量 notes 更有价值。</li>
+<li>summaries 尽量链接到具体 assets 和 reviews。</li>
+<li>repo 是 automation source，state root 是 user data。</li>
+</ul>
+      </div>
+    </article>
+    <aside class="toc" aria-label="Table of contents">
+      <p class="toc-title">本文导览</p>
+      <a class="toc-link" href="#section-2">核心指标</a>
+<a class="toc-link" href="#asset">Asset 字段</a>
+<a class="toc-link" href="#usage-event">Usage Event 字段</a>
+<a class="toc-link" href="#memory-registry-view">Memory Registry View</a>
+<a class="toc-link" href="#host-native-memory-views">Host Native Memory Views</a>
+<a class="toc-link" href="#reporting">Reporting 建议</a>
+      <p class="generated-note">更新源 Markdown 后运行：<br><code>python3 scripts/build_local_docs.py</code><br>持续自动同步：<br><code>python3 scripts/build_local_docs.py --watch</code></p>
+    </aside>
+  </main>
+  <script>
+    (() => {
+      const toc = document.querySelector(".toc");
+      const links = Array.from(document.querySelectorAll(".toc-link"));
+      const headings = links
+        .map((link) => document.getElementById(decodeURIComponent(link.hash.slice(1))))
+        .filter(Boolean);
+      if (!links.length || !headings.length) return;
+      let lastActiveId = "";
+      const applyActive = (activeId) => {
+        let activeLink = null;
+        links.forEach((link) => {
+          const isActive = link.hash === "#" + activeId;
+          link.classList.toggle("active", isActive);
+          link.setAttribute("aria-current", isActive ? "true" : "false");
+          if (isActive) activeLink = link;
+        });
+        if (activeLink && toc && activeId !== lastActiveId) {
+          activeLink.scrollIntoView({ block: "nearest", inline: "nearest" });
+          lastActiveId = activeId;
+        }
+      };
+      const getScrollActiveId = () => {
+        const marker = Math.min(window.innerHeight * 0.42, 260);
+        let activeId = headings[0].id;
+        for (const heading of headings) {
+          if (heading.getBoundingClientRect().top <= marker) activeId = heading.id;
+          else break;
+        }
+        return activeId;
+      };
+      const setActive = () => applyActive(getScrollActiveId());
+      const setHashActive = () => {
+        const hashId = decodeURIComponent(window.location.hash.slice(1));
+        if (hashId && headings.some((heading) => heading.id === hashId)) {
+          applyActive(hashId);
+        }
+        requestAnimationFrame(setActive);
+        window.setTimeout(setActive, 160);
+        window.setTimeout(setActive, 520);
+      };
+      window.addEventListener("scroll", setActive, { passive: true });
+      window.addEventListener("resize", setActive);
+      window.addEventListener("hashchange", setHashActive);
+      setHashActive();
+    })();
+  </script>
+</body>
+</html>

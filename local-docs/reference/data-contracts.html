@@ -1,0 +1,527 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OpenRelix Data Contracts | OpenRelix Local Docs</title>
+  <link rel="icon" href="../../docs/openrelix-icon.png">
+  <style>
+:root {
+  color-scheme: light;
+  --ink: #181a1f;
+  --muted: #626873;
+  --paper: #ffffff;
+  --paper-soft: #f7f8f5;
+  --line: #dedfd9;
+  --line-strong: #c9cbc4;
+  --accent: #0f766e;
+  --accent-soft: #e6f4f1;
+  --code-bg: #101827;
+  --code-fg: #f8fafc;
+  --radius: 8px;
+  --max: 1180px;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; background: var(--paper-soft); }
+body {
+  margin: 0;
+  color: var(--ink);
+  background: var(--paper-soft);
+  font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+  line-height: 1.68;
+}
+a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 3px; }
+code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 0.94em;
+}
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  border-bottom: 1px solid rgba(222, 223, 217, 0.9);
+  background: rgba(255,255,255,0.94);
+  backdrop-filter: blur(16px);
+}
+.topbar-inner {
+  width: min(var(--max), calc(100% - 32px));
+  min-height: 64px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--ink);
+  font-weight: 760;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.brand img { width: 30px; height: 30px; border-radius: 7px; }
+.topnav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.topnav::-webkit-scrollbar { display: none; }
+.topnav a,
+.lang-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--ink);
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+  background: #fff;
+}
+.topnav a:hover,
+.lang-link:hover,
+.lang-link.active {
+  border-color: #bddbd5;
+  background: var(--accent-soft);
+  color: #0f5f59;
+}
+.shell {
+  width: min(var(--max), calc(100% - 32px));
+  margin: 34px auto 72px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 260px;
+  gap: 28px;
+  align-items: start;
+}
+.article {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--paper);
+  padding: clamp(22px, 4vw, 46px);
+}
+.doc-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  align-items: center;
+  margin-bottom: 24px;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+.doc-meta code { color: var(--ink); background: #f0f1ed; padding: 2px 6px; border-radius: 5px; }
+.language-switch { display: inline-flex; flex-wrap: wrap; gap: 8px; margin-left: auto; }
+.content h1 {
+  margin: 0 0 18px;
+  font-size: clamp(2.1rem, 4vw, 3.2rem);
+  line-height: 1.08;
+  letter-spacing: 0;
+}
+.content h2 {
+  margin: 46px 0 12px;
+  padding-top: 6px;
+  font-size: clamp(1.5rem, 3vw, 2rem);
+  line-height: 1.18;
+  letter-spacing: 0;
+}
+.content h3 {
+  margin: 30px 0 8px;
+  font-size: 1.24rem;
+  line-height: 1.28;
+}
+.content h4 { margin: 24px 0 8px; font-size: 1.04rem; }
+.content p,
+.content li {
+  color: var(--muted);
+  font-size: 1.04rem;
+}
+.content p { margin: 12px 0; }
+.content ul,
+.content ol { padding-left: 1.35em; margin: 12px 0 18px; }
+.content li + li { margin-top: 6px; }
+.content blockquote {
+  margin: 20px 0;
+  padding: 14px 18px;
+  border-left: 4px solid var(--accent);
+  background: var(--accent-soft);
+  border-radius: 0 var(--radius) var(--radius) 0;
+}
+.content blockquote p { margin: 0; color: #33524d; }
+.content pre {
+  margin: 18px 0 24px;
+  padding: 18px;
+  overflow: auto;
+  border-radius: var(--radius);
+  background: var(--code-bg);
+  color: var(--code-fg);
+}
+.content pre code { color: inherit; font-size: 0.96rem; }
+.content :not(pre) > code {
+  color: #0f5f59;
+  background: #eef4f1;
+  border: 1px solid #d9e7e2;
+  padding: 1px 5px;
+  border-radius: 5px;
+}
+.content hr { border: 0; border-top: 1px solid var(--line); margin: 28px 0; }
+.table-wrap {
+  width: 100%;
+  margin: 18px 0 26px;
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 620px;
+  background: #fff;
+}
+th, td {
+  padding: 11px 13px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+th {
+  color: var(--ink);
+  background: #f3f5f0;
+  font-weight: 780;
+}
+td { color: var(--muted); }
+tr:last-child td { border-bottom: 0; }
+.toc {
+  position: sticky;
+  top: 86px;
+  max-height: calc(100vh - 112px);
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--paper);
+  padding: 18px;
+  scrollbar-width: thin;
+}
+.toc-title {
+  margin: 0 0 12px;
+  color: var(--ink);
+  font-size: 0.96rem;
+  font-weight: 800;
+}
+.toc-link {
+  display: block;
+  border-left: 3px solid transparent;
+  border-radius: 7px;
+  padding: 7px 8px 7px 10px;
+  color: var(--muted);
+  text-decoration: none;
+  font-weight: 650;
+  line-height: 1.35;
+}
+.toc-link.sub { padding-left: 24px; font-size: 0.94rem; }
+.toc-link.active,
+.toc-link:hover {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+.toc-link.active {
+  border-left-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
+  font-weight: 800;
+}
+.toc-empty { color: var(--muted); margin: 0; }
+.generated-note {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+@media (max-width: 860px) {
+  .topbar-inner { align-items: flex-start; flex-direction: column; padding: 12px 0; gap: 10px; }
+  .topnav { width: 100%; margin-left: 0; }
+  .shell { grid-template-columns: 1fr; margin-top: 18px; }
+  .toc { position: static; order: -1; }
+  .language-switch { margin-left: 0; }
+}
+</style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="../index.html">
+        <img src="../../docs/openrelix-icon.png" alt="">
+        <span>OpenRelix</span>
+      </a>
+      <nav class="topnav" aria-label="Local docs navigation">
+        <a href="../index.html">Docs home</a>
+        <a href="../developer-guide.html">Visual guide</a>
+        <a href="developer-guide.html">Detailed guide</a>
+      </nav>
+    </div>
+  </header>
+  <main class="shell">
+    <article class="article">
+      <div class="doc-meta">
+        <span>Generated from Markdown</span>
+        <span>Source <code>docs/data-contracts.md</code></span>
+        <span class="language-switch" aria-label="Language versions">
+          <a class="lang-link" href="data-contracts.zh-CN.html">中文</a>
+<a class="lang-link active" href="data-contracts.html">EN</a>
+        </span>
+      </div>
+      <div class="content">
+<h1 id="openrelix-data-contracts">OpenRelix Data Contracts</h1>
+<blockquote><p>Languages: English | <a href="data-contracts.zh-CN.html">简体中文</a></p></blockquote>
+<p>This document captures the public, contributor-facing data contracts for OpenRelix. It is not a dump of one maintainer&#x27;s local state. Examples must stay synthetic and sanitized.</p>
+<p>The source of truth remains the code and tests. Treat this page as the shared map that lets contributors make compatible changes without inspecting private runtime files.</p>
+<h2 id="storage-boundary">Storage Boundary</h2>
+<p>OpenRelix has three storage zones:</p>
+<div class="table-wrap"><table><thead><tr><th>Zone</th><th>Examples</th><th>Public repo?</th><th>Notes</th></tr></thead><tbody><tr><td>Repo source</td><td><code>scripts/</code>, <code>install/</code>, <code>templates/</code>, <code>docs/</code>, tests</td><td>Yes</td><td>Reusable logic, schemas, sanitized examples</td></tr><tr><td>External state root</td><td><code>raw/</code>, <code>registry/</code>, <code>consolidated/</code>, <code>reports/</code>, <code>runtime/</code>, <code>log/</code></td><td>No</td><td>User runtime data, generated artifacts, caches, logs</td></tr><tr><td>Host home</td><td><code>CODEX_HOME</code>, <code>CLAUDE_HOME</code>, host-native memory and sessions</td><td>No</td><td>Owned by the AI host; OpenRelix reads or updates only through explicit adapter rules</td></tr></tbody></table></div>
+<p>All paths in reusable code should be resolved through <code>scripts/asset_runtime.py</code>. Public docs and fixtures may use generic placeholder paths such as <code>/tmp/openrelix-demo</code>, <code>~/Library/Application Support/openrelix</code>, or <code>CODEX_HOME</code>.</p>
+<h2 id="state-root-layout">State Root Layout</h2>
+<pre><code class="language-text">&lt;state-root&gt;/
+  raw/
+    daily/&lt;date&gt;.json
+    windows/&lt;date&gt;/&lt;window_id&gt;.json
+  consolidated/
+    daily/&lt;date&gt;/summary.json
+    daily/&lt;date&gt;/summary.md
+    daily/&lt;date&gt;/runs/
+  registry/
+    assets.jsonl
+    usage_events.jsonl
+    memory_entries.jsonl
+    memory_items.jsonl
+    curated_memory_pack.json
+  reports/
+    overview-data.json
+    overview.md
+    overview.csv
+    panel.html
+  runtime/
+    config.json
+    openrelix-index.sqlite3
+    host-context/
+      memory_summary.md
+      curated-personal-memory-summary.md
+  log/</code></pre>
+<p><code>reports/</code>, <code>runtime/</code>, and <code>log/</code> are generated or machine-local. Do not commit real files from those directories. Sanitized tests may include a small fixture under <code>tests/fixtures/sample-state/</code> only when every value is artificial.</p>
+<h2 id="raw-daily-contract">Raw Daily Contract</h2>
+<p>Path:</p>
+<pre><code class="language-text">raw/daily/&lt;date&gt;.json</code></pre>
+<p>Purpose: one day&#x27;s collected host activity, grouped by window.</p>
+<p>Minimum shape:</p>
+<pre><code class="language-json">{
+  &quot;date&quot;: &quot;2026-04-28&quot;,
+  &quot;stage&quot;: &quot;manual&quot;,
+  &quot;generated_at&quot;: &quot;2026-04-28T10:10:00+08:00&quot;,
+  &quot;timezone&quot;: &quot;Asia/Shanghai&quot;,
+  &quot;collection_source&quot;: &quot;history&quot;,
+  &quot;activity_host&quot;: &quot;codex&quot;,
+  &quot;window_count&quot;: 1,
+  &quot;windows&quot;: []
+}</code></pre>
+<p>Common daily top-level fields:</p>
+<div class="table-wrap"><table><thead><tr><th>Field</th><th>Type</th><th>Notes</th></tr></thead><tbody><tr><td><code>date</code></td><td>string</td><td>ISO collection date</td></tr><tr><td><code>stage</code></td><td>string</td><td>Collection stage such as <code>manual</code> or <code>final</code>; tests may use synthetic values only when documented</td></tr><tr><td><code>generated_at</code></td><td>string</td><td>When the collector wrote the file</td></tr><tr><td><code>timezone</code></td><td>string</td><td>Local timezone used for daily grouping</td></tr><tr><td><code>collection_source</code></td><td>string</td><td><code>history</code>, <code>app-server</code>, <code>auto</code>, <code>claude-history</code>, or compatible source label</td></tr><tr><td><code>activity_host</code></td><td>string</td><td><code>codex</code>, <code>claude</code>, or <code>all</code></td></tr><tr><td><code>codex_profile_count</code></td><td>integer</td><td>Number of Codex profiles inspected when available</td></tr><tr><td><code>codex_profiles</code></td><td>array</td><td>Sanitized profile metadata; do not publish real home paths</td></tr><tr><td><code>host_counts</code></td><td>object</td><td>Per-host window counts</td></tr><tr><td><code>collection_errors</code></td><td>array</td><td>Sanitized warnings or failures</td></tr><tr><td><code>window_count</code></td><td>integer</td><td>Included windows</td></tr><tr><td><code>excluded_window_count</code></td><td>integer</td><td>Windows excluded by filtering</td></tr><tr><td><code>review_like_window_count</code></td><td>integer</td><td>Review-like windows detected</td></tr><tr><td><code>prompt_count</code></td><td>integer</td><td>Total included prompts</td></tr><tr><td><code>conclusion_count</code></td><td>integer</td><td>Total included conclusions</td></tr><tr><td><code>windows</code></td><td>array</td><td>Included raw window objects</td></tr><tr><td><code>excluded_windows</code></td><td>array</td><td>Sanitized excluded-window metadata</td></tr><tr><td><code>review_like_windows</code></td><td>array</td><td>Sanitized review-like window metadata</td></tr></tbody></table></div>
+<p>Common window fields:</p>
+<div class="table-wrap"><table><thead><tr><th>Field</th><th>Type</th><th>Required for</th><th>Notes</th></tr></thead><tbody><tr><td><code>date</code></td><td>string</td><td>indexing, panel</td><td>ISO date for the collected day</td></tr><tr><td><code>window_id</code></td><td>string</td><td>all downstream joins</td><td>Stable per host window or session for that day</td></tr><tr><td><code>ai_host</code></td><td>string</td><td>host display and resume</td><td><code>codex</code> or <code>claude</code>; absent older rows default to <code>codex</code></td></tr><tr><td><code>cwd</code></td><td>string</td><td>project grouping</td><td>Use generic or redacted paths in fixtures and docs</td></tr><tr><td><code>originator</code></td><td>string</td><td>diagnostics</td><td>Example: <code>codex_cli</code>, <code>codex_app_server</code>, <code>claude_code</code></td></tr><tr><td><code>source</code></td><td>string</td><td>diagnostics</td><td>Example: <code>history</code>, <code>app-server</code>, <code>claude-history</code></td></tr><tr><td><code>started_at</code></td><td>string</td><td>sorting</td><td>ISO-like timestamp with timezone when available</td></tr><tr><td><code>session_file</code></td><td>string</td><td>local debugging</td><td>State-local or host-local path; never publish real paths</td></tr><tr><td><code>thread_id</code></td><td>string</td><td>app-server resume</td><td>Optional</td></tr><tr><td><code>session_id</code></td><td>string</td><td>host resume</td><td>Optional</td></tr><tr><td><code>resume_id</code></td><td>string</td><td>panel action</td><td>Optional, host-specific</td></tr><tr><td><code>window_summary</code></td><td>string</td><td>display/fallback</td><td>Optional host-provided short summary</td></tr><tr><td><code>thread_title</code></td><td>string</td><td>display/fallback</td><td>Optional app-server or host title</td></tr><tr><td><code>prompt_count</code></td><td>integer</td><td>metrics</td><td>Count after tool/system filtering</td></tr><tr><td><code>conclusion_count</code></td><td>integer</td><td>metrics</td><td>Count after review-like filtering</td></tr><tr><td><code>raw_conclusion_count</code></td><td>integer</td><td>diagnostics</td><td>Count before conclusion filtering</td></tr><tr><td><code>review_like_window</code></td><td>boolean</td><td>filtering</td><td>Whether the window is primarily a review workflow</td></tr><tr><td><code>review_related_window</code></td><td>boolean</td><td>filtering</td><td>Whether the window relates to review but still has usable prompts</td></tr><tr><td><code>filtered_review_conclusion_count</code></td><td>integer</td><td>diagnostics</td><td>Filtered conclusion count</td></tr><tr><td><code>conclusion_policy</code></td><td>string</td><td>diagnostics</td><td>Example: <code>included</code></td></tr><tr><td><code>prompts</code></td><td>array</td><td>fallback summaries</td><td>User-facing questions or requests</td></tr><tr><td><code>conclusions</code></td><td>array</td><td>fallback summaries</td><td>Final assistant answers or useful conclusions</td></tr><tr><td><code>app_server</code></td><td>object</td><td>diagnostics</td><td>Optional, sanitized Codex app-server metadata</td></tr><tr><td><code>claude_code</code></td><td>object</td><td>diagnostics</td><td>Optional, sanitized Claude Code metadata</td></tr></tbody></table></div>
+<p>Prompt item:</p>
+<pre><code class="language-json">{
+  &quot;turn_id&quot;: &quot;turn-demo-1&quot;,
+  &quot;ts&quot;: &quot;2026-04-28T10:00:00+08:00&quot;,
+  &quot;local_time&quot;: &quot;2026-04-28T10:00:00+08:00&quot;,
+  &quot;text&quot;: &quot;设计一个脱敏样例 state&quot;
+}</code></pre>
+<p>Conclusion item:</p>
+<pre><code class="language-json">{
+  &quot;turn_id&quot;: &quot;turn-demo-1&quot;,
+  &quot;completed_at&quot;: &quot;2026-04-28T10:05:00+08:00&quot;,
+  &quot;text&quot;: &quot;样例 state 应覆盖 raw、consolidated、registry 和 index。&quot;
+}</code></pre>
+<p>Do not store raw tool outputs, raw logs, tokens, cookies, account data, or proprietary snippets in public examples.</p>
+<h2 id="raw-window-contract">Raw Window Contract</h2>
+<p>Path:</p>
+<pre><code class="language-text">raw/windows/&lt;date&gt;/&lt;window_id&gt;.json</code></pre>
+<p>Purpose: one window record extracted from the daily file for direct lookup and panel source references.</p>
+<p>It should contain the same window object used in <code>raw/daily/&lt;date&gt;.json</code>. Downstream code should tolerate older records that lack newer fields, but new collectors should include <code>ai_host</code>, <code>prompt_count</code>, <code>conclusion_count</code>, <code>prompts</code>, and <code>conclusions</code>.</p>
+<h2 id="consolidated-summary-contract">Consolidated Summary Contract</h2>
+<p>Path:</p>
+<pre><code class="language-text">consolidated/daily/&lt;date&gt;/summary.json</code></pre>
+<p>Purpose: model-backed or fallback daily summary.</p>
+<p>The model output is constrained by <code>templates/nightly-summary-schema.json</code>. Contributor-facing fields are:</p>
+<div class="table-wrap"><table><thead><tr><th>Field</th><th>Type</th><th>Notes</th></tr></thead><tbody><tr><td><code>date</code></td><td>string</td><td>Same collection date</td></tr><tr><td><code>day_summary</code></td><td>string</td><td>Human-readable day overview</td></tr><tr><td><code>window_summaries</code></td><td>array</td><td>Per-window summary rows</td></tr><tr><td><code>keywords</code></td><td>array</td><td>Day-level keywords</td></tr><tr><td><code>next_actions</code></td><td>array</td><td>Non-binding follow-up suggestions</td></tr><tr><td><code>durable_memories</code></td><td>array</td><td>Legacy model output bucket; normalized before host injection</td></tr><tr><td><code>session_memories</code></td><td>array</td><td>Legacy model output bucket; normalized before host injection</td></tr><tr><td><code>low_priority_memories</code></td><td>array</td><td>Local or low-signal output</td></tr><tr><td><code>global_context_memories</code></td><td>array</td><td>Evidence-rich cross-window memory candidates</td></tr></tbody></table></div>
+<p>Window summary fields:</p>
+<div class="table-wrap"><table><thead><tr><th>Field</th><th>Type</th><th>Notes</th></tr></thead><tbody><tr><td><code>window_id</code></td><td>string</td><td>Joins to raw window</td></tr><tr><td><code>cwd</code></td><td>string</td><td>Project grouping</td></tr><tr><td><code>window_title</code></td><td>string</td><td>Short title for panel and index</td></tr><tr><td><code>question_summary</code></td><td>string</td><td>Condensed user need</td></tr><tr><td><code>question_count</code></td><td>integer</td><td>Number of prompts represented</td></tr><tr><td><code>conclusion_count</code></td><td>integer</td><td>Number of conclusions represented</td></tr><tr><td><code>keywords</code></td><td>array</td><td>Search and grouping</td></tr><tr><td><code>main_takeaway</code></td><td>string</td><td>Highest-signal result</td></tr><tr><td><code>summary_pairs</code></td><td>array</td><td>Question/conclusion pairs for traceability</td></tr></tbody></table></div>
+<p>The current implementation still accepts older <code>stage</code>, <code>summary_stage</code>, <code>model_status</code>, and <code>summary_generation</code> diagnostics. Use them for selection and fallback behavior, not as user-facing facts.</p>
+<p>Common diagnostic fields:</p>
+<div class="table-wrap"><table><thead><tr><th>Field</th><th>Notes</th></tr></thead><tbody><tr><td><code>language</code></td><td>Output language for generated text</td></tr><tr><td><code>stage</code> / <code>summary_stage</code></td><td>Manual, preliminary, final, or compatibility stage</td></tr><tr><td><code>generated_at</code></td><td>Summary generation time</td></tr><tr><td><code>model_status</code> / <code>last_run_model_status</code></td><td>Model run status</td></tr><tr><td><code>summary_generation</code></td><td>Lightweight, fallback, or model-backed generation label</td></tr><tr><td><code>personal_memory_algorithm_version</code></td><td>Memory algorithm version used for fingerprinting</td></tr><tr><td><code>compact_payload_source</code></td><td>Input compaction source</td></tr><tr><td><code>learning_input_fingerprint</code></td><td>Skip-if-unchanged fingerprint</td></tr><tr><td><code>quality</code> / <code>selection_decision</code></td><td>Summary quality and selection metadata</td></tr></tbody></table></div>
+<h2 id="memory-registry-contract">Memory Registry Contract</h2>
+<p>Canonical path:</p>
+<pre><code class="language-text">registry/memory_entries.jsonl</code></pre>
+<p>Compatibility path:</p>
+<pre><code class="language-text">registry/memory_items.jsonl</code></pre>
+<p><code>memory_entries.jsonl</code> is the canonical personal-memory registry. <code>memory_items.jsonl</code> is a legacy fallback for migration and old state roots.</p>
+<p>Recommended row fields:</p>
+<div class="table-wrap"><table><thead><tr><th>Field</th><th>Type</th><th>Notes</th></tr></thead><tbody><tr><td><code>memory_id</code> or <code>id</code></td><td>string</td><td>Stable id when known; otherwise code can derive a fingerprint</td></tr><tr><td><code>date</code></td><td>string</td><td>First or latest source date</td></tr><tr><td><code>updated_at</code></td><td>string</td><td>Optional ISO timestamp</td></tr><tr><td><code>language</code></td><td>string</td><td><code>zh</code> or <code>en</code> when display language matters</td></tr><tr><td><code>source</code></td><td>string</td><td>Example: <code>canonical</code>, <code>nightly_codex</code>, <code>manual</code>, <code>memory_review</code></td></tr><tr><td><code>scope</code></td><td>string</td><td><code>global</code>, <code>project</code>, <code>repo</code>, <code>local</code>, or compatible legacy values</td></tr><tr><td><code>injection_policy</code></td><td>string</td><td><code>global_context</code>, <code>project_context</code>, <code>on_demand</code>, <code>local_only</code>, <code>never</code></td></tr><tr><td><code>project_key</code></td><td>string</td><td>Stable project key for project-scoped rows</td></tr><tr><td><code>project_label</code></td><td>string</td><td>Display label</td></tr><tr><td><code>bucket</code></td><td>string</td><td>Compatibility grouping such as <code>durable</code>, <code>session</code>, <code>low_priority</code></td></tr><tr><td><code>memory_type</code></td><td>string</td><td><code>preference</code>, <code>procedural</code>, <code>semantic</code>, <code>episodic</code>, <code>task</code>, <code>rule</code>, <code>workflow</code></td></tr><tr><td><code>priority</code></td><td>string</td><td><code>high</code>, <code>medium</code>, <code>low</code></td></tr><tr><td><code>title</code></td><td>string</td><td>Short display title</td></tr><tr><td><code>value_note</code></td><td>string</td><td>The reusable rule or fact</td></tr><tr><td><code>source_window_ids</code></td><td>array</td><td>Evidence window ids</td></tr><tr><td><code>source_dates</code></td><td>array</td><td>Evidence dates</td></tr><tr><td><code>occurrence_count</code></td><td>integer</td><td>Repeated evidence count</td></tr><tr><td><code>evidence_contexts</code></td><td>array</td><td>Short sanitized reasons; not raw transcript</td></tr><tr><td><code>keywords</code></td><td>array</td><td>Search terms</td></tr></tbody></table></div>
+<p>Injection policy is the important boundary:</p>
+<div class="table-wrap"><table><thead><tr><th>Policy</th><th>Default behavior</th></tr></thead><tbody><tr><td><code>global_context</code></td><td>Eligible for bounded host context within global budget</td></tr><tr><td><code>project_context</code></td><td>Eligible for bounded host context within project budget</td></tr><tr><td><code>on_demand</code></td><td>Searchable in registry/index, not injected by default</td></tr><tr><td><code>local_only</code></td><td>Local display/search only</td></tr><tr><td><code>never</code></td><td>Do not inject and avoid surfacing unless explicitly inspecting local data</td></tr></tbody></table></div>
+<p>Do not use legacy <code>durable/session</code> labels as the product model for new docs. They exist for compatibility; current behavior is governed by <code>scope</code>, <code>injection_policy</code>, and <code>priority</code>.</p>
+<h2 id="asset-registry-contract">Asset Registry Contract</h2>
+<p>Path:</p>
+<pre><code class="language-text">registry/assets.jsonl</code></pre>
+<p>Purpose: stable reusable assets that a human or agent can intentionally reuse.</p>
+<p>Recommended row fields:</p>
+<div class="table-wrap"><table><thead><tr><th>Field</th><th>Type</th><th>Notes</th></tr></thead><tbody><tr><td><code>id</code></td><td>string</td><td>Stable asset id</td></tr><tr><td><code>title</code></td><td>string</td><td>Display title</td></tr><tr><td><code>type</code></td><td>string</td><td><code>playbook</code>, <code>skill</code>, <code>template</code>, <code>automation</code>, or related durable asset type</td></tr><tr><td><code>domain</code></td><td>string</td><td>Area such as <code>openrelix</code>, <code>general</code>, <code>frontend</code></td></tr><tr><td><code>scope</code></td><td>string</td><td><code>personal</code>, <code>repo</code>, <code>project</code>, or <code>global</code></td></tr><tr><td><code>status</code></td><td>string</td><td><code>active</code>, <code>draft</code>, <code>archived</code></td></tr><tr><td><code>created_at</code></td><td>string</td><td>ISO date</td></tr><tr><td><code>updated_at</code></td><td>string</td><td>ISO date</td></tr><tr><td><code>source_task</code></td><td>string</td><td>Sanitized task id or summary</td></tr><tr><td><code>source_review_path</code></td><td>string</td><td>Review path when available</td></tr><tr><td><code>reuse_count</code></td><td>integer</td><td>Count of recorded reuse events</td></tr><tr><td><code>minutes_saved_total</code></td><td>integer</td><td>Estimated time saved</td></tr><tr><td><code>value_note</code></td><td>string</td><td>Why this asset matters</td></tr><tr><td><code>artifact_paths</code></td><td>array</td><td>Local or repo-relative artifact paths</td></tr><tr><td><code>tags</code></td><td>array</td><td>Search/grouping tags</td></tr></tbody></table></div>
+<p>Only long-term reusable assets belong here. One-off task status belongs in a review or local note, not in <code>assets.jsonl</code>.</p>
+<h2 id="asset-candidate-contract">Asset Candidate Contract</h2>
+<p>There is currently no stable canonical <code>registry/asset_candidates.jsonl</code> writer. Treat this as a candidate/review-stage contract, not as current persisted repo truth.</p>
+<p>Suggested candidate fields when this becomes a durable workflow:</p>
+<div class="table-wrap"><table><thead><tr><th>Field</th><th>Type</th><th>Notes</th></tr></thead><tbody><tr><td><code>date</code></td><td>string</td><td>Candidate creation date</td></tr><tr><td><code>task</code></td><td>string</td><td>Sanitized task summary</td></tr><tr><td><code>domain</code></td><td>string</td><td>Domain or project area</td></tr><tr><td><code>repo</code></td><td>string</td><td>Optional repo label, not a private path</td></tr><tr><td><code>source_review_path</code></td><td>string</td><td>Review artifact when available</td></tr><tr><td><code>source_window_ids</code></td><td>array</td><td>Evidence window ids</td></tr><tr><td><code>decision</code></td><td>string</td><td><code>accept</code>, <code>defer</code>, <code>reject</code>, or <code>needs_user_confirmation</code></td></tr><tr><td><code>candidate_types</code></td><td>array</td><td><code>memory</code>, <code>playbook</code>, <code>template</code>, <code>automation</code>, <code>skill</code></td></tr><tr><td><code>confidence</code></td><td>string</td><td>Human-readable confidence or score</td></tr><tr><td><code>reuse_trigger</code></td><td>string</td><td>When this asset should be reused</td></tr><tr><td><code>evidence</code></td><td>array</td><td>Sanitized reasons, not raw transcript</td></tr><tr><td><code>privacy_risk</code></td><td>string</td><td>Privacy classification</td></tr><tr><td><code>scope_decision</code></td><td>string</td><td>Proposed asset scope</td></tr><tr><td><code>user_confirmation</code></td><td>string</td><td>Whether the user approved it</td></tr><tr><td><code>no_asset_reason</code></td><td>string</td><td>Why rejected or deferred</td></tr><tr><td><code>proposed_artifact_paths</code></td><td>array</td><td>Repo-relative or generic local paths</td></tr><tr><td><code>generated_asset_ids</code></td><td>array</td><td>Created asset ids</td></tr><tr><td><code>generated_memory_ids</code></td><td>array</td><td>Created memory ids</td></tr></tbody></table></div>
+<p>Do not let an asset candidate enter <code>assets.jsonl</code> or host context just because it was detected. Human confirmation or an explicit policy gate should decide.</p>
+<h2 id="usage-event-contract">Usage Event Contract</h2>
+<p>Path:</p>
+<pre><code class="language-text">registry/usage_events.jsonl</code></pre>
+<p>Purpose: evidence that an asset helped in a later task.</p>
+<p>Recommended row fields:</p>
+<div class="table-wrap"><table><thead><tr><th>Field</th><th>Type</th><th>Notes</th></tr></thead><tbody><tr><td><code>event_id</code></td><td>string</td><td>Stable event id</td></tr><tr><td><code>asset_id</code></td><td>string</td><td>Joins to <code>assets.jsonl</code></td></tr><tr><td><code>date</code></td><td>string</td><td>ISO date</td></tr><tr><td><code>task</code></td><td>string</td><td>Sanitized task summary</td></tr><tr><td><code>minutes_saved</code></td><td>integer</td><td>Estimated impact</td></tr><tr><td><code>outcome</code></td><td>string</td><td>Short result</td></tr><tr><td><code>source_window_id</code></td><td>string</td><td>Optional evidence reference</td></tr></tbody></table></div>
+<p>Usage events should not include raw user data or private logs. They prove reuse, not transcript content.</p>
+<h2 id="curated-pack-contract">Curated Pack Contract</h2>
+<p>Paths:</p>
+<pre><code class="language-text">registry/curated_memory_pack.json
+runtime/host-context/curated-personal-memory-summary.md</code></pre>
+<p>Purpose: deterministic review artifact generated from <code>registry/memory_entries.jsonl</code>.</p>
+<p>The curated pack is non-invasive: it does not replace the active host summary and does not change injection behavior by itself.</p>
+<p>Main fields:</p>
+<div class="table-wrap"><table><thead><tr><th>Field</th><th>Type</th><th>Notes</th></tr></thead><tbody><tr><td><code>schema_version</code></td><td>integer</td><td>Current curated pack schema</td></tr><tr><td><code>source</code></td><td>string</td><td>Input label, normally <code>registry/memory_entries.jsonl</code></td></tr><tr><td><code>model_calls</code></td><td>integer</td><td>Should be <code>0</code> for deterministic builder</td></tr><tr><td><code>entry_count</code></td><td>integer</td><td>Parsed memory rows</td></tr><tr><td><code>sections</code></td><td>object</td><td>Grouped profile, preferences, rules, playbooks, task groups, local volatile notes</td></tr><tr><td><code>diagnostics</code></td><td>object</td><td>Duplicate clusters, redaction, timeline-like entries, malformed lines</td></tr><tr><td><code>artifact</code></td><td>object</td><td>Output metadata</td></tr></tbody></table></div>
+<p>Section keys are stable:</p>
+<pre><code class="language-text">user_profile
+stable_preferences
+operating_rules
+project_playbooks
+task_groups
+local_volatile_notes</code></pre>
+<p>Curated item fields commonly include <code>section</code>, <code>canonical_key</code>, <code>title</code>, <code>value_note</code>, <code>scope</code>, <code>injection_policy</code>, <code>project_label</code>, <code>memory_type</code>, <code>priority</code>, <code>memory_key</code>, <code>user_feedback</code>, <code>evidence_count</code>, <code>source_entry_ids</code>, <code>source_memory_keys</code>, <code>source_window_ids</code>, <code>source_dates</code>, and <code>diagnostics</code>.</p>
+<p>Diagnostics commonly include <code>duplicate_clusters</code>, <code>timeline_like_entries</code>, <code>local_privacy_like_entries</code>, <code>possible_cross_project_leakage</code>, <code>truncation_markers</code>, and <code>malformed_lines</code>.</p>
+<h2 id="active-host-context-contract">Active Host Context Contract</h2>
+<p>Path inside state root:</p>
+<pre><code class="language-text">runtime/host-context/memory_summary.md</code></pre>
+<p>Host targets:</p>
+<pre><code class="language-text">CODEX_HOME/memories/memory_summary.md
+CLAUDE_HOME/CLAUDE.md</code></pre>
+<p>Purpose: bounded summary compiled from eligible memory entries and written into OpenRelix-managed blocks in each enabled host target.</p>
+<p>This is a compiled artifact, not source data. The source of truth is <code>registry/memory_entries.jsonl</code>; the active host context should be reproducible from registry rows, config, and compiler policy.</p>
+<p>Rules:</p>
+<ul>
+<li>Preserve host-owned content outside OpenRelix markers.</li>
+<li>Respect <code>memory_mode</code> and host feature flags.</li>
+<li>Include only eligible <code>global_context</code> and <code>project_context</code> entries within token budgets.</li>
+<li>Keep <code>on_demand</code>, <code>local_only</code>, <code>never</code>, and low-priority rows out of default host context.</li>
+<li>Never write a project repo file just to inject personal memory.</li>
+</ul>
+<p>Useful budget/config fields to surface in generated diagnostics include <code>target_tokens</code>, <code>warn_tokens</code>, <code>max_tokens</code>, <code>global_memory_tokens</code>, <code>project_memory_tokens</code>, and <code>personal_memory_tokens</code>.</p>
+<h2 id="runtime-config-contract">Runtime Config Contract</h2>
+<p>Path:</p>
+<pre><code class="language-text">runtime/config.json</code></pre>
+<p>Minimum contributor-facing fields:</p>
+<div class="table-wrap"><table><thead><tr><th>Field</th><th>Type</th><th>Notes</th></tr></thead><tbody><tr><td><code>schema_version</code></td><td>integer</td><td>Runtime config schema</td></tr><tr><td><code>language</code></td><td>string</td><td><code>zh</code> or <code>en</code></td></tr><tr><td><code>memory_mode</code></td><td>string</td><td><code>integrated</code>, <code>local-only</code>, or <code>off</code></td></tr><tr><td><code>personal_memory_enabled</code></td><td>boolean</td><td>Whether local personal memory writes are enabled</td></tr><tr><td><code>codex_context_enabled</code></td><td>boolean</td><td>Whether Codex host context sync is enabled</td></tr><tr><td><code>activity_source</code></td><td>string</td><td><code>history</code>, <code>app-server</code>, or <code>auto</code></td></tr><tr><td><code>activity_host</code></td><td>string</td><td><code>codex</code>, <code>claude</code>, or <code>all</code></td></tr><tr><td><code>model_cli</code></td><td>string</td><td><code>codex</code> or <code>claude</code></td></tr><tr><td><code>codex_model</code></td><td>string</td><td>Internal Codex model for OpenRelix jobs</td></tr><tr><td><code>claude_model</code></td><td>string</td><td>Internal Claude model for OpenRelix jobs</td></tr><tr><td><code>memory_summary_max_tokens</code></td><td>integer</td><td>Supported host-context budget max</td></tr><tr><td><code>host_context_targets</code></td><td>array</td><td>Enabled host context targets</td></tr></tbody></table></div>
+<h2 id="overview-data-contract">Overview Data Contract</h2>
+<p>Path:</p>
+<pre><code class="language-text">reports/overview-data.json</code></pre>
+<p>Purpose: stable renderer input for <code>reports/panel.html</code> and report files.</p>
+<p>Current contract validation lives in <code>scripts/openrelix_overview/contract.py</code>. Required top-level keys include:</p>
+<pre><code class="language-text">schema_version, language, generated_at, summary, metrics, mix,
+assets, reviews, usage_events, summary_terms, summary_term_views,
+pipeline_status, token_usage, window_overview, window_overview_views,
+memory_registry, memory_policy_views, nightly_memory_views,
+codex_native_memory, codex_native_memory_counts,
+claude_native_memory, claude_native_memory_counts</code></pre>
+<p>Renderer code should consume <code>overview-data.json</code> rather than rereading raw JSONL, host memory files, or raw windows.</p>
+<h2 id="fixture-contract">Fixture Contract</h2>
+<p>Sanitized sample state lives under:</p>
+<pre><code class="language-text">tests/fixtures/sample-state/</code></pre>
+<p>Rules for fixtures:</p>
+<ul>
+<li>Use artificial dates, ids, project names, and paths.</li>
+<li>Keep paths generic, for example <code>/tmp/openrelix-demo</code>.</li>
+<li>Include enough data for raw window lookup, daily summary, registry search, and curated pack validation.</li>
+<li>Do not include real local state, real host transcripts, account names, internal URLs, tokens, screenshots, or generated panel files.</li>
+</ul>
+<p>After changing fixture shape, run:</p>
+<pre><code class="language-bash">python3 -m unittest tests/test_sample_state_fixture.py</code></pre>
+      </div>
+    </article>
+    <aside class="toc" aria-label="Table of contents">
+      <p class="toc-title">On this page</p>
+      <a class="toc-link" href="#storage-boundary">Storage Boundary</a>
+<a class="toc-link" href="#state-root-layout">State Root Layout</a>
+<a class="toc-link" href="#raw-daily-contract">Raw Daily Contract</a>
+<a class="toc-link" href="#raw-window-contract">Raw Window Contract</a>
+<a class="toc-link" href="#consolidated-summary-contract">Consolidated Summary Contract</a>
+<a class="toc-link" href="#memory-registry-contract">Memory Registry Contract</a>
+<a class="toc-link" href="#asset-registry-contract">Asset Registry Contract</a>
+<a class="toc-link" href="#asset-candidate-contract">Asset Candidate Contract</a>
+<a class="toc-link" href="#usage-event-contract">Usage Event Contract</a>
+<a class="toc-link" href="#curated-pack-contract">Curated Pack Contract</a>
+<a class="toc-link" href="#active-host-context-contract">Active Host Context Contract</a>
+<a class="toc-link" href="#runtime-config-contract">Runtime Config Contract</a>
+<a class="toc-link" href="#overview-data-contract">Overview Data Contract</a>
+<a class="toc-link" href="#fixture-contract">Fixture Contract</a>
+      <p class="generated-note">After editing Markdown:<br><code>python3 scripts/build_local_docs.py</code><br>Auto-sync while editing:<br><code>python3 scripts/build_local_docs.py --watch</code></p>
+    </aside>
+  </main>
+  <script>
+    (() => {
+      const toc = document.querySelector(".toc");
+      const links = Array.from(document.querySelectorAll(".toc-link"));
+      const headings = links
+        .map((link) => document.getElementById(decodeURIComponent(link.hash.slice(1))))
+        .filter(Boolean);
+      if (!links.length || !headings.length) return;
+      let lastActiveId = "";
+      const applyActive = (activeId) => {
+        let activeLink = null;
+        links.forEach((link) => {
+          const isActive = link.hash === "#" + activeId;
+          link.classList.toggle("active", isActive);
+          link.setAttribute("aria-current", isActive ? "true" : "false");
+          if (isActive) activeLink = link;
+        });
+        if (activeLink && toc && activeId !== lastActiveId) {
+          activeLink.scrollIntoView({ block: "nearest", inline: "nearest" });
+          lastActiveId = activeId;
+        }
+      };
+      const getScrollActiveId = () => {
+        const marker = Math.min(window.innerHeight * 0.42, 260);
+        let activeId = headings[0].id;
+        for (const heading of headings) {
+          if (heading.getBoundingClientRect().top <= marker) activeId = heading.id;
+          else break;
+        }
+        return activeId;
+      };
+      const setActive = () => applyActive(getScrollActiveId());
+      const setHashActive = () => {
+        const hashId = decodeURIComponent(window.location.hash.slice(1));
+        if (hashId && headings.some((heading) => heading.id === hashId)) {
+          applyActive(hashId);
+        }
+        requestAnimationFrame(setActive);
+        window.setTimeout(setActive, 160);
+        window.setTimeout(setActive, 520);
+      };
+      window.addEventListener("scroll", setActive, { passive: true });
+      window.addEventListener("resize", setActive);
+      window.addEventListener("hashchange", setHashActive);
+      setHashActive();
+    })();
+  </script>
+</body>
+</html>

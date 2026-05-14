@@ -1,0 +1,377 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OpenRelix 验证矩阵 | OpenRelix Developer Docs</title>
+  <link rel="icon" href="../../openrelix-icon.png">
+  <style>
+:root {
+  color-scheme: light;
+  --ink: #181a1f;
+  --muted: #626873;
+  --paper: #ffffff;
+  --paper-soft: #f7f8f5;
+  --line: #dedfd9;
+  --line-strong: #c9cbc4;
+  --accent: #0f766e;
+  --accent-soft: #e6f4f1;
+  --code-bg: #101827;
+  --code-fg: #f8fafc;
+  --radius: 8px;
+  --max: 1180px;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; background: var(--paper-soft); }
+body {
+  margin: 0;
+  color: var(--ink);
+  background: var(--paper-soft);
+  font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+  line-height: 1.68;
+}
+a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 3px; }
+code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 0.94em;
+}
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  border-bottom: 1px solid rgba(222, 223, 217, 0.9);
+  background: rgba(255,255,255,0.94);
+  backdrop-filter: blur(16px);
+}
+.topbar-inner {
+  width: min(var(--max), calc(100% - 32px));
+  min-height: 64px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--ink);
+  font-weight: 760;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.brand img { width: 30px; height: 30px; border-radius: 7px; }
+.topnav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.topnav::-webkit-scrollbar { display: none; }
+.topnav a,
+.lang-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--ink);
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+  background: #fff;
+}
+.topnav a:hover,
+.lang-link:hover,
+.lang-link.active {
+  border-color: #bddbd5;
+  background: var(--accent-soft);
+  color: #0f5f59;
+}
+.shell {
+  width: min(var(--max), calc(100% - 32px));
+  margin: 34px auto 72px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 260px;
+  gap: 28px;
+  align-items: start;
+}
+.article {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--paper);
+  padding: clamp(22px, 4vw, 46px);
+}
+.doc-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  align-items: center;
+  margin-bottom: 24px;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+.doc-meta code { color: var(--ink); background: #f0f1ed; padding: 2px 6px; border-radius: 5px; }
+.language-switch { display: inline-flex; flex-wrap: wrap; gap: 8px; margin-left: auto; }
+.content h1 {
+  margin: 0 0 18px;
+  font-size: clamp(2.1rem, 4vw, 3.2rem);
+  line-height: 1.08;
+  letter-spacing: 0;
+}
+.content h2 {
+  margin: 46px 0 12px;
+  padding-top: 6px;
+  font-size: clamp(1.5rem, 3vw, 2rem);
+  line-height: 1.18;
+  letter-spacing: 0;
+}
+.content h3 {
+  margin: 30px 0 8px;
+  font-size: 1.24rem;
+  line-height: 1.28;
+}
+.content h4 { margin: 24px 0 8px; font-size: 1.04rem; }
+.content p,
+.content li {
+  color: var(--muted);
+  font-size: 1.04rem;
+}
+.content p { margin: 12px 0; }
+.content ul,
+.content ol { padding-left: 1.35em; margin: 12px 0 18px; }
+.content li + li { margin-top: 6px; }
+.content blockquote {
+  margin: 20px 0;
+  padding: 14px 18px;
+  border-left: 4px solid var(--accent);
+  background: var(--accent-soft);
+  border-radius: 0 var(--radius) var(--radius) 0;
+}
+.content blockquote p { margin: 0; color: #33524d; }
+.content pre {
+  margin: 18px 0 24px;
+  padding: 18px;
+  overflow: auto;
+  border-radius: var(--radius);
+  background: var(--code-bg);
+  color: var(--code-fg);
+}
+.content pre code { color: inherit; font-size: 0.96rem; }
+.content :not(pre) > code {
+  color: #0f5f59;
+  background: #eef4f1;
+  border: 1px solid #d9e7e2;
+  padding: 1px 5px;
+  border-radius: 5px;
+}
+.content hr { border: 0; border-top: 1px solid var(--line); margin: 28px 0; }
+.table-wrap {
+  width: 100%;
+  margin: 18px 0 26px;
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 620px;
+  background: #fff;
+}
+th, td {
+  padding: 11px 13px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+th {
+  color: var(--ink);
+  background: #f3f5f0;
+  font-weight: 780;
+}
+td { color: var(--muted); }
+tr:last-child td { border-bottom: 0; }
+.toc {
+  position: sticky;
+  top: 86px;
+  max-height: calc(100vh - 112px);
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--paper);
+  padding: 18px;
+  scrollbar-width: thin;
+}
+.toc-title {
+  margin: 0 0 12px;
+  color: var(--ink);
+  font-size: 0.96rem;
+  font-weight: 800;
+}
+.toc-link {
+  display: block;
+  border-left: 3px solid transparent;
+  border-radius: 7px;
+  padding: 7px 8px 7px 10px;
+  color: var(--muted);
+  text-decoration: none;
+  font-weight: 650;
+  line-height: 1.35;
+}
+.toc-link.sub { padding-left: 24px; font-size: 0.94rem; }
+.toc-link.active,
+.toc-link:hover {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+.toc-link.active {
+  border-left-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
+  font-weight: 800;
+}
+.toc-empty { color: var(--muted); margin: 0; }
+.generated-note {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+@media (max-width: 860px) {
+  .topbar-inner { align-items: flex-start; flex-direction: column; padding: 12px 0; gap: 10px; }
+  .topnav { width: 100%; margin-left: 0; }
+  .shell { grid-template-columns: 1fr; margin-top: 18px; }
+  .toc { position: static; order: -1; }
+  .language-switch { margin-left: 0; }
+}
+</style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="../index.html">
+        <img src="../../openrelix-icon.png" alt="">
+        <span>OpenRelix</span>
+      </a>
+      <nav class="topnav" aria-label="Developer docs navigation">
+        <a href="../index.html">文档首页</a>
+        <a href="../developer-guide.html">图解指南</a>
+        <a href="developer-guide.html">开发者详细指南</a>
+      </nav>
+    </div>
+  </header>
+  <main class="shell">
+    <article class="article">
+      <div class="doc-meta">
+        <span>HTML 由 Markdown 生成</span>
+        <span>源文件 <code>docs/validation-matrix.zh-CN.md</code></span>
+        <span class="language-switch" aria-label="Language versions">
+          <a class="lang-link active" href="validation-matrix.zh-CN.html">中文</a>
+<a class="lang-link" href="validation-matrix.html">EN</a>
+        </span>
+      </div>
+      <div class="content">
+<h1 id="openrelix">OpenRelix 验证矩阵</h1>
+<blockquote><p>语言版本：<a href="validation-matrix.html">English</a> | 简体中文</p></blockquote>
+<p>用这张矩阵为一次改动选择最小但有用的验证集合。先跑 common checks，再按你改到的文件补对应行。</p>
+<h2 id="section">通用检查</h2>
+<p>每次 OpenRelix 改动都要跑：</p>
+<pre><code class="language-bash">python3 scripts/check_personal_info.py
+git diff --check</code></pre>
+<p>如果 worktree 里有无关本地文件，不要 stage 或修改它们。交付时说明相关 dirty state。</p>
+<h2 id="section-2">按改动类型选择检查</h2>
+<div class="table-wrap"><table><thead><tr><th>改动类型</th><th>常见文件</th><th>额外检查</th></tr></thead><tbody><tr><td>Docs only</td><td><code>README*.md</code>, <code>docs/*.md</code>, <code>.github/*</code></td><td>bilingual companion check，link review，version review against <code>package.json</code>，privacy check</td></tr><tr><td>Public site docs</td><td><code>docs/*.html</code>, <code>docs/assets/*</code></td><td>local HTTP preview，布局变化时做 browser screenshot/interaction check，privacy check on screenshots/assets</td></tr><tr><td>Python scripts</td><td><code>scripts/*.py</code>, <code>scripts/openrelix_overview/*.py</code></td><td><code>python3 -m py_compile scripts/*.py install/*.py</code>，focused unit tests</td></tr><tr><td>Installer</td><td><code>install/</code>, <code>ops/launchd/</code>, <code>install/templates/</code></td><td><code>zsh -n install/install.sh scripts/*.sh</code>，focused installer tests，temporary state smoke</td></tr><tr><td>Runtime path/config</td><td><code>scripts/asset_runtime.py</code>, installer config writes</td><td>temporary <code>AI_ASSET_STATE_DIR</code> loop，config read/write focused tests</td></tr><tr><td>Host collection</td><td><code>scripts/collect_codex_activity.py</code></td><td><code>python3 -m unittest tests/test_collect_codex_activity.py</code></td></tr><tr><td>Memory policy/context</td><td><code>scripts/build_codex_memory_summary.py</code>, <code>scripts/sync_host_memory_summary.py</code>, <code>scripts/openrelix_overview/memory_context.py</code></td><td><code>python3 -m unittest tests/test_memory_context.py tests/test_memory_summary_builder.py</code></td></tr><tr><td>Curated memory pack</td><td><code>scripts/build_curated_memory_pack.py</code>, <code>scripts/openrelix_overview/curated_memory.py</code></td><td><code>python3 -m unittest tests/test_curated_memory.py</code></td></tr><tr><td>Index</td><td><code>scripts/openrelix_index.py</code></td><td><code>python3 -m unittest tests/test_openrelix_index.py</code></td></tr><tr><td>Overview/panel data</td><td><code>scripts/build_overview.py</code>, <code>scripts/openrelix_overview/*</code>, report contract</td><td>temporary overview build，加 <code>PYTHONPATH=scripts python3 -m openrelix_overview.contract --state-dir &quot;$STATE_DIR&quot;</code></td></tr><tr><td>Package surface</td><td><code>package.json</code>, package allowlist, public plugin bundle</td><td><code>npm pack --dry-run --json</code>，并检查文件列表</td></tr><tr><td>Release/publish</td><td>version、changelog、GitHub release、npm publish</td><td>full test suite，package dry run，release checklist</td></tr></tbody></table></div>
+<h2 id="state-loop">临时 State Loop</h2>
+<p>改动可能影响 state-root 行为时使用：</p>
+<pre><code class="language-bash">STATE_DIR=&quot;$(mktemp -d /tmp/openrelix-validation.XXXXXX)&quot;
+AI_ASSET_STATE_DIR=&quot;$STATE_DIR&quot; python3 scripts/build_overview.py
+python3 -m json.tool &quot;$STATE_DIR/reports/overview-data.json&quot; &gt;/dev/null
+PYTHONPATH=scripts python3 -m openrelix_overview.contract --state-dir &quot;$STATE_DIR&quot;</code></pre>
+<p>installer-to-panel smoke：</p>
+<pre><code class="language-bash">scripts/smoke_temp_panel.sh --no-open
+scripts/cleanup_smoke_temp.sh --dry-run</code></pre>
+<p>只有任务明确需要真实本机数据时才 seed current state。不要把 seeded output 复制进 repo 文件。</p>
+<h2 id="section-3">发布前完整检查</h2>
+<p>release、publish、installer、docs/site 或 package-surface 改动前运行：</p>
+<pre><code class="language-bash">python3 scripts/check_personal_info.py
+git diff --check
+python3 -m py_compile scripts/*.py install/*.py
+python3 -m unittest discover -s tests
+npm pack --dry-run --json</code></pre>
+<p>检查 package list，确认不会带进 state roots、raw history、generated reports、logs、private screenshots 或 development-only harness skills。</p>
+<h2 id="section-4">交付格式</h2>
+<p>最终 review note 或 PR 里包含：</p>
+<pre><code class="language-text">Change:
+Files:
+Verification:
+Skipped checks:
+Privacy/package notes:
+Residual risk:</code></pre>
+<p>命令输出摘要保持短，不粘贴私有原始日志。</p>
+      </div>
+    </article>
+    <aside class="toc" aria-label="Table of contents">
+      <p class="toc-title">本文导览</p>
+      <a class="toc-link" href="#section">通用检查</a>
+<a class="toc-link" href="#section-2">按改动类型选择检查</a>
+<a class="toc-link" href="#state-loop">临时 State Loop</a>
+<a class="toc-link" href="#section-3">发布前完整检查</a>
+<a class="toc-link" href="#section-4">交付格式</a>
+      <p class="generated-note">更新源 Markdown 后运行：<br><code>python3 scripts/build_local_docs.py</code><br>持续自动同步：<br><code>python3 scripts/build_local_docs.py --watch</code></p>
+    </aside>
+  </main>
+  <script>
+    (() => {
+      const toc = document.querySelector(".toc");
+      const links = Array.from(document.querySelectorAll(".toc-link"));
+      const headings = links
+        .map((link) => document.getElementById(decodeURIComponent(link.hash.slice(1))))
+        .filter(Boolean);
+      if (!links.length || !headings.length) return;
+      let lastActiveId = "";
+      const applyActive = (activeId) => {
+        let activeLink = null;
+        links.forEach((link) => {
+          const isActive = link.hash === "#" + activeId;
+          link.classList.toggle("active", isActive);
+          link.setAttribute("aria-current", isActive ? "true" : "false");
+          if (isActive) activeLink = link;
+        });
+        if (activeLink && toc && activeId !== lastActiveId) {
+          activeLink.scrollIntoView({ block: "nearest", inline: "nearest" });
+          lastActiveId = activeId;
+        }
+      };
+      const getScrollActiveId = () => {
+        const marker = Math.min(window.innerHeight * 0.42, 260);
+        let activeId = headings[0].id;
+        for (const heading of headings) {
+          if (heading.getBoundingClientRect().top <= marker) activeId = heading.id;
+          else break;
+        }
+        return activeId;
+      };
+      const setActive = () => applyActive(getScrollActiveId());
+      const setHashActive = () => {
+        const hashId = decodeURIComponent(window.location.hash.slice(1));
+        if (hashId && headings.some((heading) => heading.id === hashId)) {
+          applyActive(hashId);
+        }
+        requestAnimationFrame(setActive);
+        window.setTimeout(setActive, 160);
+        window.setTimeout(setActive, 520);
+      };
+      window.addEventListener("scroll", setActive, { passive: true });
+      window.addEventListener("resize", setActive);
+      window.addEventListener("hashchange", setHashActive);
+      setHashActive();
+    })();
+  </script>
+</body>
+</html>
