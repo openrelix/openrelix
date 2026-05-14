@@ -26840,7 +26840,7 @@ def build_html(data):
         if (state === "downvoted") {{
           return currentLanguage === "en" ? "Marked not useful; deprioritized." : "已标记无用，后续降权";
         }}
-        return currentLanguage === "en" ? "Feedback cleared" : "已取消标记";
+        return currentLanguage === "en" ? "Feedback cleared" : "已取消有用/无用标记";
       }}
 
       const memoryFeedbackStoreKey = "openrelix-memory-feedback-v1";
@@ -26879,7 +26879,7 @@ def build_html(data):
         }}
         const state = normalizeMemoryFeedbackValue(feedback);
         const store = readMemoryFeedbackStore();
-        if (!state || state === "neutral") {{
+        if (!state) {{
           delete store[memoryKey];
         }} else {{
           store[memoryKey] = {{ feedback: state, updated_at: Date.now() }};
@@ -27016,6 +27016,9 @@ def build_html(data):
             saved && typeof saved === "object" ? saved.feedback : saved
           );
           if (!state || state === "neutral") {{
+            if (state === "neutral") {{
+              updateMemoryFeedbackRow(row, state);
+            }}
             return;
           }}
           updateMemoryFeedbackRow(row, state);

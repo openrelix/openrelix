@@ -467,6 +467,47 @@ class NightlyLogicTests(unittest.TestCase):
         self.assertEqual([item["title"] for item in playbooks[:2]], ["用户标记有用规则", "普通高优规则"])
         self.assertEqual(playbooks[0]["user_feedback"], "liked")
 
+    def test_curated_memory_preview_clears_liked_feedback_with_neutral(self):
+        pack = build_overview.build_curated_memory_pack_preview(
+            [
+                {
+                    "source": "canonical",
+                    "scope": "project",
+                    "injection_policy": "project_context",
+                    "project_label": "OpenRelix",
+                    "memory_type": "workflow",
+                    "priority": "high",
+                    "title": "普通高优规则",
+                    "value_note": "默认排序会靠前。",
+                    "memory_key": "normal-project-key",
+                },
+                {
+                    "source": "canonical",
+                    "scope": "project",
+                    "injection_policy": "project_context",
+                    "project_label": "OpenRelix",
+                    "memory_type": "workflow",
+                    "priority": "medium",
+                    "title": "已取消有用规则",
+                    "value_note": "取消有用后不应继续按已标记排序。",
+                    "memory_key": "neutral-project-key",
+                    "user_feedback": "liked",
+                },
+            ],
+            feedback_by_key={
+                "neutral-project-key": {
+                    "memory_key": "neutral-project-key",
+                    "feedback": "neutral",
+                    "updated_at": "2026-05-09T12:30:00+08:00",
+                }
+            },
+        )
+
+        playbooks = pack["sections"][overview_curated_memory.SECTION_PROJECT_PLAYBOOKS]
+        self.assertEqual([item["title"] for item in playbooks[:2]], ["普通高优规则", "已取消有用规则"])
+        self.assertEqual(playbooks[1]["user_feedback"], "")
+        self.assertEqual(playbooks[1]["user_feedback_updated_at"], "2026-05-09T12:30:00+08:00")
+
     def test_curated_memory_panel_localizes_playbooks_and_expands_with_feedback(self):
         sections = {section: [] for section in overview_curated_memory.SECTION_ORDER}
         sections[overview_curated_memory.SECTION_PROJECT_PLAYBOOKS] = [
@@ -6043,6 +6084,13 @@ Native Codex profile.
             overview_memory_context.INJECTION_GLOBAL_CONTEXT,
         )
         self.assertTrue(overview_memory_context.memory_record_has_global_context_approval(liked))
+        neutral = overview_memory_feedback.apply_memory_feedback(
+            liked,
+            {"feedback": "neutral", "updated_at": "2026-05-09T12:30:00+08:00"},
+        )
+        self.assertEqual(neutral["user_feedback"], "")
+        self.assertEqual(neutral["user_feedback_updated_at"], "2026-05-09T12:30:00+08:00")
+        self.assertFalse(neutral["user_pinned"])
 
         downvoted = overview_memory_feedback.apply_memory_feedback(base, "downvoted")
         self.assertEqual(downvoted["bucket"], "low_priority")
@@ -6294,8 +6342,11 @@ Native Codex profile.
         self.assertIn("removeCuratedMemoryItem(row);", html)
         self.assertIn("rememberMemoryFeedback(memoryKey, savedFeedback);", html)
         self.assertIn("applyStoredMemoryFeedback();", html)
+        self.assertIn('if (state === "neutral")', html)
+        self.assertIn("store[memoryKey] = { feedback: state, updated_at: Date.now() };", html)
         self.assertIn("removeMemoryFeedbackCard(row);", html)
         self.assertIn("已标记有用，并置顶展示", html)
+        self.assertIn("已取消有用/无用标记", html)
         self.assertNotIn("const reloadAfterMs = Number((payload && payload.reload_after_ms) || 0);", html)
         self.assertIn('"OpenRelix 工作台": "OpenRelix Workbench"', html)
         self.assertIn(
