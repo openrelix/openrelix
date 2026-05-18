@@ -10,6 +10,7 @@ import io
 import json
 import os
 from pathlib import Path
+import signal
 import subprocess
 import sys
 from tempfile import TemporaryDirectory
@@ -984,11 +985,12 @@ class NightlyLogicTests(unittest.TestCase):
         self.assertIn("claude", result["provider_results"])
         merged_row = result["payload"]["daily"][0]
         self.assertEqual(merged_row["date"], "2026-05-04")
-        self.assertEqual(merged_row["totalTokens"], 220)
+        self.assertEqual(merged_row["totalTokens"], 235)
         self.assertEqual(merged_row["inputTokens"], 185)
         self.assertEqual(merged_row["cachedInputTokens"], 25)
         self.assertAlmostEqual(merged_row["costUSD"], 1.75)
         self.assertEqual(merged_row["providers"]["codex"]["inputTokens"], 120)
+        self.assertEqual(merged_row["providers"]["codex"]["totalTokens"], 150)
         self.assertEqual(merged_row["providers"]["claude"]["provider"], "claude")
         self.assertEqual([command[3:5] for command in commands], [["codex", "daily"], ["claude", "daily"]])
 
@@ -6744,7 +6746,9 @@ Native Codex profile.
         self.assertIn("return tokenRowDayKey(row, context) === endIso;", html)
         self.assertIn("function aggregateDailyRowsByMonth(rows, tokenUsage)", html)
         self.assertIn("const monthContext = Object.assign", html)
-        self.assertIn("aggregateDailyRowsByMonth(filteredRows, monthContext)", html)
+        self.assertIn("function normalizeTokenDisplayRow(row)", html)
+        self.assertIn("const normalizedRows = filteredRows.map(normalizeTokenDisplayRow);", html)
+        self.assertIn("aggregateDailyRowsByMonth(normalizedRows, monthContext)", html)
         self.assertIn("function tokenRowBreakdownValues(row)", html)
         self.assertIn("function dailySummaryTokenValueForDate(dateValue)", html)
         self.assertIn("function resolveNightlyStatValue(summary, item)", html)
@@ -8676,6 +8680,57 @@ Native Codex profile.
 
             render.assert_called_once_with()
             bootstrap.assert_called_once_with(plist_path)
+
+    def test_stop_stale_token_live_processes_targets_only_openrelix_server(self):
+        ps_output = "\n".join(
+            [
+                " 123 /usr/bin/python3 /opt/homebrew/lib/node_modules/openrelix/scripts/token_live_server.py",
+                " 124 /usr/bin/python3 /tmp/other/token_live_server.py",
+                " 125 /usr/bin/python3 /opt/homebrew/lib/node_modules/openrelix/scripts/openrelix.py",
+            ]
+        )
+        calls = []
+
+        def fake_runner(cmd, **kwargs):
+            return subprocess.CompletedProcess(cmd, 0, stdout=ps_output, stderr="")
+
+        def fake_kill(pid, signal_number):
+            calls.append((pid, signal_number))
+
+        stopped = openrelix.stop_stale_token_live_processes(
+            ps_runner=fake_runner,
+            kill_func=fake_kill,
+            sleep_func=lambda _seconds: None,
+            alive_func=lambda _pid: False,
+        )
+
+        self.assertEqual(stopped, [123])
+        self.assertEqual(calls, [(123, signal.SIGTERM)])
+
+    def test_token_live_bootstrap_stops_stale_process_before_starting(self):
+        events = []
+
+        def fake_run(cmd, **kwargs):
+            events.append(cmd)
+            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+        def fake_stop():
+            events.append("stop-stale-token-live")
+            return [123]
+
+        with mock.patch.object(openrelix.os, "getuid", return_value=501), mock.patch.object(
+            openrelix.subprocess,
+            "run",
+            side_effect=fake_run,
+        ), mock.patch.object(
+            openrelix,
+            "stop_stale_token_live_processes",
+            side_effect=fake_stop,
+        ):
+            openrelix.bootstrap_token_live_launch_agent(Path("/tmp/token-live.plist"))
+
+        self.assertEqual(events[2], "stop-stale-token-live")
+        self.assertEqual(events[3][:3], ["launchctl", "bootstrap", "gui/501"])
 
     def test_claude_desktop_resume_command_uses_settings_without_forcing_model(self):
         session_id = "c5ffea1c-8cf8-4dd2-a7ac-bf11f4dfa12b"
@@ -12638,6 +12693,45 @@ Native Codex profile.
             [row["tone"] for row in view["today_breakdown"]],
             ["token-input", "token-cache", "token-output", "token-reasoning"],
         )
+
+    def test_token_usage_view_repairs_cached_total_to_match_ccusage_table(self):
+        with mock.patch.object(
+            build_overview,
+            "current_local_datetime",
+            return_value=datetime.fromisoformat("2026-05-18T12:00:00+08:00"),
+        ):
+            view = build_overview.build_token_usage_view(
+                {
+                    "available": True,
+                    "payload": {
+                        "daily": [
+                            {
+                                "date": "2026-05-18",
+                                "inputTokens": 120,
+                                "cachedInputTokens": 20,
+                                "outputTokens": 30,
+                                "reasoningOutputTokens": 5,
+                                "totalTokens": 130,
+                                "costUSD": 1.0,
+                            }
+                        ]
+                    },
+                    "error": "",
+                    "fetched_at": "2026-05-18T12:00:00+08:00",
+                    "window_days": 7,
+                    "range_start": "2026-05-12",
+                    "range_end": "2026-05-18",
+                },
+                language="zh",
+            )
+
+        self.assertEqual(view["today_total_tokens"], 150)
+        self.assertEqual(view["period_total_tokens"], 150)
+        self.assertEqual(view["daily_rows"][-1]["value"], 150)
+        self.assertEqual(view["daily_rows"][-1]["display"], "150 · $1")
+        self.assertEqual(view["today_breakdown"][0]["value"], 100)
+        self.assertEqual(view["today_breakdown"][1]["value"], 20)
+        self.assertEqual(view["today_breakdown"][2]["value"], 30)
 
     def test_token_usage_view_shows_zero_when_today_has_no_usage_row(self):
         with mock.patch.object(

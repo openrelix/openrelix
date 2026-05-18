@@ -1633,6 +1633,87 @@ def token_live_health_ok(timeout=0.75):
     return bool(payload.get("ok")) and payload.get("service") == "token-live"
 
 
+def parse_openrelix_token_live_processes(ps_output, current_pid=None):
+    current_pid = os.getpid() if current_pid is None else current_pid
+    matches = []
+    for raw_line in str(ps_output or "").splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        parts = line.split(None, 1)
+        if len(parts) != 2:
+            continue
+        try:
+            pid = int(parts[0])
+        except ValueError:
+            continue
+        if pid == current_pid:
+            continue
+        command = parts[1]
+        lower_command = command.lower()
+        if "token_live_server.py" in lower_command and "openrelix" in lower_command:
+            matches.append((pid, command))
+    return matches
+
+
+def token_live_pid_alive(pid, kill_func=os.kill):
+    try:
+        kill_func(pid, 0)
+        return True
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except OSError:
+        return False
+
+
+def stop_stale_token_live_processes(
+    ps_runner=subprocess.run,
+    kill_func=os.kill,
+    sleep_func=time.sleep,
+    alive_func=None,
+):
+    try:
+        result = ps_runner(
+            ["ps", "-axo", "pid=,command="],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError:
+        return []
+
+    alive_func = alive_func or (lambda pid: token_live_pid_alive(pid, kill_func=kill_func))
+    stopped = []
+    for pid, _command in parse_openrelix_token_live_processes(getattr(result, "stdout", "")):
+        try:
+            kill_func(pid, signal.SIGTERM)
+        except ProcessLookupError:
+            continue
+        except OSError:
+            continue
+        stopped.append(pid)
+
+    if not stopped:
+        return []
+
+    deadline = time.monotonic() + 2.0
+    while time.monotonic() < deadline:
+        if not any(alive_func(pid) for pid in stopped):
+            return stopped
+        sleep_func(0.1)
+
+    for pid in stopped:
+        if not alive_func(pid):
+            continue
+        try:
+            kill_func(pid, signal.SIGKILL)
+        except (ProcessLookupError, OSError):
+            continue
+    return stopped
+
+
 def render_token_live_launch_agent():
     if not RENDER_TEMPLATE_SCRIPT.exists() or not TOKEN_LIVE_TEMPLATE.exists():
         raise FileNotFoundError("missing token-live launchd template")
@@ -1683,6 +1764,7 @@ def bootstrap_token_live_launch_agent(plist_path):
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
+    stop_stale_token_live_processes()
     subprocess.run(["launchctl", "bootstrap", "gui/{}".format(uid), str(plist_path)], check=True)
     subprocess.run(
         ["launchctl", "kickstart", "-k", "gui/{}/{}".format(uid, TOKEN_LIVE_LABEL)],

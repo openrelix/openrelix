@@ -1265,6 +1265,31 @@ render_plist() {
     --set "UPDATE_CHECK_MINUTE=$UPDATE_CHECK_MINUTE"
 }
 
+stop_stale_token_live_processes() {
+  local pid=""
+  local command=""
+  local lower_command=""
+  local attempt=0
+
+  ps -axo pid=,command= 2>/dev/null | while read -r pid command; do
+    [[ -n "$pid" && -n "$command" ]] || continue
+    [[ "$pid" == "$$" ]] && continue
+    lower_command="${command:l}"
+    [[ "$lower_command" == *openrelix* && "$lower_command" == *token_live_server.py* ]] || continue
+
+    kill -TERM "$pid" 2>/dev/null || continue
+    for attempt in {1..20}; do
+      if ! kill -0 "$pid" 2>/dev/null; then
+        break
+      fi
+      sleep 0.1
+    done
+    if kill -0 "$pid" 2>/dev/null; then
+      kill -KILL "$pid" 2>/dev/null || true
+    fi
+  done
+}
+
 bootstrap_launch_agent() {
   local plist_path="$1"
   local label="$2"
@@ -1285,6 +1310,9 @@ bootstrap_launch_agent() {
   done
   /usr/bin/plutil -lint "$plist_path" >/dev/null
   launchctl bootout "gui/$(id -u)" "$plist_path" >/dev/null 2>&1 || true
+  if [[ "$label" == "io.github.openrelix.token-live" ]]; then
+    stop_stale_token_live_processes
+  fi
   launchctl bootstrap "gui/$(id -u)" "$plist_path"
   if [[ "$kickstart" == "1" ]]; then
     launchctl kickstart -k "gui/$(id -u)/$label" >/dev/null 2>&1 || true

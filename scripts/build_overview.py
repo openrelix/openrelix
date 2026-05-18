@@ -28508,7 +28508,7 @@ def build_html(data):
       }}
 
       function tokenRowBreakdownValues(row) {{
-        const total = tokenRowNumericValue(row, ["totalTokens", "total_tokens", "value"]);
+        const directTotal = tokenRowNumericValue(row, ["totalTokens", "total_tokens", "value"]);
         const cachedDirect = tokenRowNumericValue(row, ["cachedInputTokens", "cached_input_tokens", "cacheReadTokens", "cache_read_tokens"]);
         const cacheCreateDirect = tokenRowNumericValue(row, ["cacheCreationTokens", "cache_creation_tokens", "cacheWriteTokens", "cache_write_tokens"]);
         const outputDirect = tokenRowNumericValue(row, ["outputTokens", "output_tokens"]);
@@ -28534,14 +28534,37 @@ def build_html(data):
         const reasoning = reasoningDirect !== null ? reasoningDirect : tokenRowDetailValue(row, function (label, title) {{
           return label.includes("推理") || label.includes("reasoning") || title.startsWith("推理") || title.startsWith("reasoning");
         }});
+        const totalInput = totalInputDirect !== null
+          ? totalInputDirect
+          : (Number(input) || 0) + (Number(cached) || 0) + (Number(cacheCreate) || 0);
+        const ccusageTableTotal = totalInput + (Number(output) || 0);
+        const total = directTotal !== null ? Math.max(directTotal, ccusageTableTotal) : ccusageTableTotal;
         return {{
-          total: total !== null ? total : 0,
+          total: total,
           input: input,
           cached: cached,
           cacheCreate: cacheCreate,
           output: output,
           reasoning: reasoning,
         }};
+      }}
+
+      function normalizeTokenDisplayRow(row) {{
+        const values = tokenRowBreakdownValues(row);
+        const total = Number(values.total) || 0;
+        const cost = extractTokenRowCost(row);
+        return Object.assign({{}}, row || {{}}, {{
+          value: total,
+          totalTokens: total,
+          totalInputTokens: (Number(values.input) || 0) + (Number(values.cached) || 0) + (Number(values.cacheCreate) || 0),
+          uncachedInputTokens: Number(values.input) || 0,
+          cachedInputTokens: Number(values.cached) || 0,
+          cacheCreationTokens: Number(values.cacheCreate) || 0,
+          outputTokens: Number(values.output) || 0,
+          reasoningOutputTokens: Number(values.reasoning) || 0,
+          display: compactTokenWithCostValue(total, cost),
+          token_display: compactTokenValue(total),
+        }});
       }}
 
       function buildTokenDetail(label, value, meta) {{
@@ -29042,9 +29065,11 @@ def build_html(data):
           range_start: activeFilters.startDate || derived.range_start || "",
           range_end: activeFilters.endDate || derived.range_end || "",
         }});
+        const normalizedRows = filteredRows.map(normalizeTokenDisplayRow);
         let displayRows = targetGroup === "month" && sourceGroup !== "month"
-          ? aggregateDailyRowsByMonth(filteredRows, monthContext)
-          : filteredRows.slice();
+          ? aggregateDailyRowsByMonth(normalizedRows, monthContext)
+          : normalizedRows.slice();
+        displayRows = displayRows.map(normalizeTokenDisplayRow);
         displayRows = appendZeroTokenEndRow(displayRows, monthContext, targetGroup);
         derived.group_by = targetGroup;
         derived.daily_rows = displayRows;
