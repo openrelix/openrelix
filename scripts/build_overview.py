@@ -28267,6 +28267,38 @@ def build_html(data):
         return true;
       }}
 
+      function tokenUsageCoversDateRange(tokenUsage, startDate, endDate) {{
+        if (!tokenUsage) {{
+          return false;
+        }}
+        const rangeStart = String(tokenUsage.range_start || "");
+        const rangeEnd = String(tokenUsage.range_end || "");
+        if (!rangeStart || !rangeEnd) {{
+          return false;
+        }}
+        if (startDate && rangeStart > startDate) {{
+          return false;
+        }}
+        if (endDate && rangeEnd < endDate) {{
+          return false;
+        }}
+        return true;
+      }}
+
+      function tokenUsageCoversFilters(tokenUsage, filters) {{
+        const activeFilters = filters || {{}};
+        return tokenUsageCoversDateRange(
+          tokenUsage,
+          activeFilters.startDate || "",
+          activeFilters.endDate || ""
+        );
+      }}
+
+      function tokenUsageCoversSourceRange(tokenUsage, filters) {{
+        const sourceRange = tokenSourceDateRange(filters || {{}});
+        return tokenUsageCoversDateRange(tokenUsage, sourceRange.startDate, sourceRange.endDate);
+      }}
+
       function getCachedTokenUsage(cacheKey) {{
         const entry = state.tokenUsageCache ? state.tokenUsageCache[cacheKey] : null;
         if (!entry || !entry.tokenUsage) {{
@@ -28279,8 +28311,11 @@ def build_html(data):
         return entry.tokenUsage;
       }}
 
-      function rememberTokenUsage(cacheKey, tokenUsage) {{
+      function rememberTokenUsage(cacheKey, tokenUsage, filters) {{
         if (!cacheKey || !tokenUsage || !tokenUsage.available) {{
+          return;
+        }}
+        if (filters && !tokenUsageCoversSourceRange(tokenUsage, filters)) {{
           return;
         }}
         state.tokenUsageCache[cacheKey] = {{
@@ -28848,7 +28883,7 @@ def build_html(data):
             merged,
             (state.tokenUsage && state.tokenUsage.window_days) || {window_days}
           );
-          if (previousKey === nextKey && state.tokenUsage) {{
+          if (previousKey === nextKey && state.tokenUsage && tokenUsageCoversFilters(state.tokenUsage, merged)) {{
             updateTokenVisuals(state.tokenUsage, state.tokenSourceKind);
           }} else {{
             refreshTokenUsage(false);
@@ -29367,7 +29402,7 @@ def build_html(data):
         state.tokenRequestSeq = requestSeq;
         if (!forceRefresh) {{
           const cachedTokenUsage = getCachedTokenUsage(cacheKey);
-          if (cachedTokenUsage) {{
+          if (cachedTokenUsage && tokenUsageCoversFilters(cachedTokenUsage, filters)) {{
             updateTokenVisuals(cachedTokenUsage, "cache");
             setStatus("live", "", "live_refreshed");
             setLoading(false);
@@ -29405,7 +29440,7 @@ def build_html(data):
             throw new Error(payload.error || "ccusage 当前不可用");
           }}
           if (!payload.stale) {{
-            rememberTokenUsage(cacheKey, payload.token_usage);
+            rememberTokenUsage(cacheKey, payload.token_usage, filters);
           }}
           if (requestSeq !== state.tokenRequestSeq) {{
             return;
@@ -29441,7 +29476,8 @@ def build_html(data):
       if (state.tokenUsage && tokenUsageMatchesRequestFilters(state.tokenUsage, state.tokenFilters)) {{
         rememberTokenUsage(
           tokenRequestCacheKey(state.tokenFilters, state.tokenUsage.window_days || {window_days}),
-          state.tokenUsage
+          state.tokenUsage,
+          state.tokenFilters
         );
       }}
 	      wireContentMoreButtons();
