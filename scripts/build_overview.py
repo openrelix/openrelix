@@ -58,6 +58,7 @@ from openrelix_overview import memory_registry as overview_memory_registry
 from openrelix_overview import pipeline_status as overview_pipeline_status
 from openrelix_overview import redaction as overview_redaction
 from openrelix_overview import token_fetcher as overview_token_fetcher
+from openrelix_overview import topic_refinement as overview_topic_refinement
 from openrelix_overview import token_usage as overview_token_usage
 from openrelix_overview import update_secret as overview_update_secret
 from openrelix_overview.config import (
@@ -1677,6 +1678,10 @@ CONTEXT_TOPIC_LABEL_EN = {
     "协作文档工具": "Collaboration document tools",
     "CLI 使用习惯": "CLI usage habits",
     "Codex 命令参数": "Codex command arguments",
+    "GS 埋点 BTM": "GS BTM analytics",
+    "垂搜请求参数": "Vertical-search request parameters",
+    "GS 筛选状态保持": "GS filter state retention",
+    "垂搜空态与 footer": "Vertical-search empty states / footer",
 }
 
 CONTEXT_TOPIC_GENERIC_KEYWORDS = {
@@ -4514,14 +4519,33 @@ def fallback_context_topic_label(item, language=None):
     return localized("其他需求", "Other needs", language)
 
 
+def semantic_refined_context_topic_label(item, initial_label=""):
+    """Refine only suspicious broad buckets with small, high-precision signals."""
+    return overview_topic_refinement.refined_label(
+        item,
+        canonical_context_label_zh(initial_label),
+        context_text=context_window_text(item),
+    )
+
+
 def infer_context_topic_label(item, language=None):
     text = context_window_text(item)
     lowered = " ".join(text.split()).lower()
     for label, keywords in CONTEXT_TOPIC_RULES:
         if context_topic_rule_matches(label, keywords, lowered, item):
+            refined_label = semantic_refined_context_topic_label(item, label)
+            if refined_label:
+                return localized_topic_label(refined_label, language)
             return localized_topic_label(label, language)
 
-    return fallback_context_topic_label(item, language=language)
+    fallback_label = fallback_context_topic_label(item, language=None)
+    refined_label = semantic_refined_context_topic_label(item, fallback_label)
+    if refined_label:
+        return localized_topic_label(refined_label, language)
+    if is_english(language):
+        fallback_label = fallback_context_topic_label(item, language=language)
+    return fallback_label
+
 
 
 def context_topic_rule_matches(label, keywords, lowered_text, item):
@@ -21680,6 +21704,93 @@ def build_html(data):
       text-overflow: ellipsis;
     }}
 
+    .context-task-edit {{
+      display: inline-flex;
+      align-items: center;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: var(--card);
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 650;
+      line-height: 1.2;
+      padding: 5px 8px;
+      white-space: nowrap;
+    }}
+
+    .context-task-edit:hover,
+    .context-task-edit:focus-visible {{
+      border-color: rgba(0, 113, 227, 0.48);
+      background: var(--accent-soft);
+      color: var(--teal);
+      outline: none;
+    }}
+
+    .context-task-editor {{
+      display: none;
+      align-items: center;
+      gap: 6px;
+      flex: 1 1 280px;
+      min-width: min(280px, 100%);
+    }}
+
+    .context-task-row.is-editing .context-task-editor {{
+      display: inline-flex;
+    }}
+
+    .context-task-row.is-editing .context-task-edit {{
+      display: none;
+    }}
+
+    .context-task-input {{
+      width: min(280px, 100%);
+      min-width: 120px;
+      border: 1px solid rgba(0, 113, 227, 0.32);
+      border-radius: 8px;
+      background: var(--card);
+      color: var(--ink);
+      font: inherit;
+      font-size: 13px;
+      line-height: 1.2;
+      padding: 6px 8px;
+    }}
+
+    .context-task-input:focus {{
+      border-color: rgba(0, 113, 227, 0.68);
+      outline: none;
+      box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.12);
+    }}
+
+    .context-task-editor-button {{
+      display: inline-flex;
+      align-items: center;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: var(--card);
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 650;
+      line-height: 1.2;
+      padding: 6px 8px;
+      white-space: nowrap;
+    }}
+
+    .context-task-editor-button.is-primary {{
+      border-color: rgba(0, 113, 227, 0.42);
+      background: var(--accent-soft);
+      color: var(--teal);
+    }}
+
+    .context-task-editor-button:hover,
+    .context-task-editor-button:focus-visible {{
+      border-color: rgba(0, 113, 227, 0.55);
+      background: var(--accent-soft-strong);
+      color: var(--teal);
+      outline: none;
+    }}
+
     .context-task-count {{
       display: inline-flex;
       align-items: center;
@@ -21805,6 +21916,13 @@ def build_html(data):
       min-width: 0;
     }}
 
+    .context-window-link-item {{
+      display: inline-flex;
+      align-items: stretch;
+      max-width: 190px;
+      min-width: 0;
+    }}
+
     .context-window-link-more-list {{
       max-height: none;
       overflow: visible;
@@ -21834,6 +21952,36 @@ def build_html(data):
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
+    }}
+
+    .context-window-link-item .context-window-link {{
+      min-width: 0;
+      border-radius: 999px 0 0 999px;
+      padding-right: 8px;
+    }}
+
+    .context-window-dismiss {{
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 27px;
+      min-width: 27px;
+      border: 1px solid rgba(0, 113, 227, 0.22);
+      border-left: 0;
+      border-radius: 0 999px 999px 0;
+      background: var(--accent-soft);
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1;
+      cursor: pointer;
+    }}
+
+    .context-window-dismiss:hover,
+    .context-window-dismiss:focus-visible {{
+      border-color: rgba(0, 113, 227, 0.48);
+      background: var(--accent-soft-strong);
+      color: var(--teal);
+      outline: none;
     }}
 
     .context-window-link:hover,
@@ -23985,6 +24133,8 @@ def build_html(data):
       const windowOverviewProjectVisibleCount = Math.max(Number(snapshot.window_overview_project_visible_count) || 3, 1);
       const contextWindowLinkVisibleCount = Math.max(Number(snapshot.context_window_link_visible_count) || 4, 1);
       const projectContextTopicVisibleCount = Math.max(Number(snapshot.project_context_topic_visible_count) || 5, 1);
+      const windowTraceCorrectionStoreKey = "openrelix-window-trace-corrections-v1";
+      const windowTopicCorrectionStoreKey = "openrelix-window-topic-corrections-v1";
       const state = {{
         tokenUsage: snapshot.token_usage || null,
         tokenRefreshedAt: (snapshot.token_usage && snapshot.token_usage.refreshed_at) || "",
@@ -24010,6 +24160,8 @@ def build_html(data):
         defaultWindowFilters: null,
         defaultAssetFilters: null,
         windowDetailsExpanded: false,
+        windowTraceCorrections: {{}},
+        windowTopicCorrections: {{}},
 	        assetHotnessExpanded: {{
 	          skills: false,
 	          mcp: false,
@@ -25736,6 +25888,100 @@ def build_html(data):
           : questionCount + " 问题 · " + conclusionCount + " 结论";
       }}
 
+      function loadWindowTraceCorrections() {{
+        try {{
+          const raw = window.localStorage ? window.localStorage.getItem(windowTraceCorrectionStoreKey) : "";
+          const parsed = raw ? JSON.parse(raw) : {{}};
+          return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {{}};
+        }} catch (error) {{
+          return {{}};
+        }}
+      }}
+
+      function saveWindowTraceCorrections() {{
+        try {{
+          if (window.localStorage) {{
+            window.localStorage.setItem(windowTraceCorrectionStoreKey, JSON.stringify(state.windowTraceCorrections || {{}}));
+          }}
+        }} catch (error) {{}}
+      }}
+
+      function windowTraceCorrectionKey(projectLabel, projectCwd, topicLabel, anchor) {{
+        return [
+          String(projectLabel || "").trim(),
+          String(projectCwd || "").trim(),
+          String(topicLabel || "").trim(),
+          String(anchor || "").trim(),
+        ].join("\\u001f");
+      }}
+
+      function windowTraceCorrectionIsHidden(projectLabel, projectCwd, topicLabel, anchor) {{
+        const key = windowTraceCorrectionKey(projectLabel, projectCwd, topicLabel, anchor);
+        return Boolean(key && state.windowTraceCorrections && state.windowTraceCorrections[key]);
+      }}
+
+      function rememberWindowTraceCorrection(key, topicLabel, anchor) {{
+        if (!key) return;
+        state.windowTraceCorrections = state.windowTraceCorrections || {{}};
+        state.windowTraceCorrections[key] = {{
+          hidden: true,
+          topic: String(topicLabel || ""),
+          anchor: String(anchor || ""),
+          updated_at: Date.now(),
+        }};
+        saveWindowTraceCorrections();
+      }}
+
+      function loadWindowTopicCorrections() {{
+        try {{
+          const raw = window.localStorage ? window.localStorage.getItem(windowTopicCorrectionStoreKey) : "";
+          const parsed = raw ? JSON.parse(raw) : {{}};
+          return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {{}};
+        }} catch (error) {{
+          return {{}};
+        }}
+      }}
+
+      function saveWindowTopicCorrections() {{
+        try {{
+          if (window.localStorage) {{
+            window.localStorage.setItem(windowTopicCorrectionStoreKey, JSON.stringify(state.windowTopicCorrections || {{}}));
+          }}
+        }} catch (error) {{}}
+      }}
+
+      function windowTopicCorrectionKey(projectLabel, projectCwd, topicLabel) {{
+        return [
+          String(projectLabel || "").trim(),
+          String(projectCwd || "").trim(),
+          String(topicLabel || "").trim(),
+        ].join("\\u001f");
+      }}
+
+      function windowTopicDisplayLabel(projectLabel, projectCwd, topicLabel) {{
+        const key = windowTopicCorrectionKey(projectLabel, projectCwd, topicLabel);
+        const record = key && state.windowTopicCorrections ? state.windowTopicCorrections[key] : null;
+        const label = record && typeof record === "object" ? String(record.label || "").trim() : "";
+        return label || String(topicLabel || "").trim();
+      }}
+
+      function rememberWindowTopicCorrection(key, originalLabel, nextLabel) {{
+        if (!key) return;
+        const original = String(originalLabel || "").trim();
+        const label = String(nextLabel || "").replace(/\\s+/g, " ").trim();
+        state.windowTopicCorrections = state.windowTopicCorrections || {{}};
+        if (!label || label === original) {{
+          delete state.windowTopicCorrections[key];
+        }} else {{
+          state.windowTopicCorrections[key] = {{
+            label: label,
+            original_topic: original,
+            updated_at: Date.now(),
+          }};
+        }}
+        saveWindowTopicCorrections();
+      }}
+
       function buildContextWindowLinkAttrs(sourceWindow, label, anchor) {{
         const title = cleanWindowTraceText(sourceWindow.task || sourceWindow.title || "");
         const takeaway = String(sourceWindow.takeaway || sourceWindow.mainTakeaway || "").trim();
@@ -25793,10 +26039,17 @@ def build_html(data):
             return "";
           }}
           const label = contextWindowLinkLabel(sourceWindow);
+          const traceKey = String(sourceWindow.traceKey || "");
+          const dismissLabel = localizeValue("隐藏这条不匹配追溯", "Hide this mismatched trace");
           return (
-            '<a class="context-window-link" ' + buildContextWindowLinkAttrs(sourceWindow, label, anchor) + '>' +
-              escapeHtml(label) +
-            '</a>'
+            '<span class="context-window-link-item">' +
+              '<a class="context-window-link" ' + buildContextWindowLinkAttrs(sourceWindow, label, anchor) + '>' +
+                escapeHtml(label) +
+              '</a>' +
+              '<button class="context-window-dismiss" type="button" data-window-trace-dismiss="true" data-window-trace-key="' + escapeHtml(traceKey) + '" data-window-trace-topic="' + escapeHtml(topic.label || "") + '" data-window-trace-anchor="' + escapeHtml(anchor) + '" title="' + escapeHtml(dismissLabel) + '" aria-label="' + escapeHtml(dismissLabel) + '">' +
+                '<span aria-hidden="true">&times;</span>' +
+              '</button>' +
+            '</span>'
           );
         }}
         const visibleLinks = windows.slice(0, contextWindowLinkVisibleCount).map(renderLink).filter(Boolean).join("");
@@ -25826,7 +26079,12 @@ def build_html(data):
       }}
 
       function renderDynamicContextTaskRow(topic) {{
-        const label = compactWindowLabel(topic.label, 26) || localizeValue("未命名任务", "Untitled task");
+        const label = compactWindowLabel(topic.displayLabel || topic.label, 26) || localizeValue("未命名任务", "Untitled task");
+        const fullLabel = String(topic.displayLabel || topic.label || "").trim();
+        const editLabel = localizeValue("编辑", "Edit");
+        const editTitle = localizeValue("编辑并行任务名称，清空可恢复默认", "Edit task name; leave empty to restore the default");
+        const saveLabel = localizeValue("保存", "Save");
+        const cancelLabel = localizeValue("取消", "Cancel");
         const windowLabel = currentLanguage === "en"
           ? pluralEn(topic.windowCount, "window")
           : topic.windowCount + " 窗口";
@@ -25836,7 +26094,13 @@ def build_html(data):
         return (
           '<div class="context-task-row">' +
             '<div class="context-task-main">' +
-              '<span class="context-task-name">' + escapeHtml(label) + '</span>' +
+              '<span class="context-task-name" title="' + escapeHtml(fullLabel || label) + '">' + escapeHtml(label) + '</span>' +
+              '<button class="context-task-edit" type="button" data-window-topic-edit="true" data-window-topic-edit-key="' + escapeHtml(topic.editKey || "") + '" data-window-topic-original="' + escapeHtml(topic.originalLabel || topic.label || "") + '" data-window-topic-label="' + escapeHtml(fullLabel || label) + '" title="' + escapeHtml(editTitle) + '" aria-label="' + escapeHtml(editTitle) + '">' + escapeHtml(editLabel) + '</button>' +
+              '<span class="context-task-editor" data-window-topic-editor hidden>' +
+                '<input class="context-task-input" type="text" data-window-topic-input value="' + escapeHtml(fullLabel || label) + '" aria-label="' + escapeHtml(editTitle) + '">' +
+                '<button class="context-task-editor-button is-primary" type="button" data-window-topic-save="true">' + escapeHtml(saveLabel) + '</button>' +
+                '<button class="context-task-editor-button" type="button" data-window-topic-cancel="true">' + escapeHtml(cancelLabel) + '</button>' +
+              '</span>' +
               '<span class="context-task-count">' + escapeHtml(windowLabel) + '</span>' +
               '<span class="context-task-count is-muted">' + escapeHtml(discussionLabel) + '</span>' +
             '</div>' +
@@ -25899,9 +26163,14 @@ def build_html(data):
             project.latestDisplay = meta.latestDisplay;
           }}
           const topicKey = meta.topic || meta.task || localizeValue("未命名任务", "Untitled task");
+          const traceKey = windowTraceCorrectionKey(meta.project, meta.cwd, topicKey, meta.anchor);
+          const topicEditKey = windowTopicCorrectionKey(meta.project, meta.cwd, topicKey);
           if (!project.topicsByKey.has(topicKey)) {{
             project.topicsByKey.set(topicKey, {{
               label: topicKey,
+              originalLabel: topicKey,
+              displayLabel: windowTopicDisplayLabel(meta.project, meta.cwd, topicKey),
+              editKey: topicEditKey,
               windowCount: 0,
               questionCount: 0,
               conclusionCount: 0,
@@ -25916,17 +26185,20 @@ def build_html(data):
           topic.conclusionCount += meta.conclusionCount;
           topic.discussionCount += meta.discussionCount;
           topic.latestSortValue = Math.max(topic.latestSortValue, sortValue);
-          topic.sourceWindows.push({{
-            anchor: meta.anchor,
-            displayLabel: meta.displayLabel,
-            createdDisplay: meta.createdDisplay,
-            latestDisplay: meta.latestDisplay,
-            task: meta.task,
-            takeaway: meta.takeaway,
-            questionCount: meta.questionCount,
-            conclusionCount: meta.conclusionCount,
-            sortValue: sortValue,
-          }});
+          if (!windowTraceCorrectionIsHidden(meta.project, meta.cwd, topicKey, meta.anchor)) {{
+            topic.sourceWindows.push({{
+              anchor: meta.anchor,
+              traceKey: traceKey,
+              displayLabel: meta.displayLabel,
+              createdDisplay: meta.createdDisplay,
+              latestDisplay: meta.latestDisplay,
+              task: meta.task,
+              takeaway: meta.takeaway,
+              questionCount: meta.questionCount,
+              conclusionCount: meta.conclusionCount,
+              sortValue: sortValue,
+            }});
+          }}
         }});
         return Array.from(projectsByKey.values()).map(function (project) {{
           project.topics = Array.from(project.topicsByKey.values()).sort(function (left, right) {{
@@ -27635,6 +27907,138 @@ def build_html(data):
           const tooltip = document.getElementById("context-window-hover-card");
           if (activeContextWindowTooltipLink && tooltip && !tooltip.hidden) {{
             positionContextWindowTooltip(activeContextWindowTooltipLink, tooltip);
+          }}
+        }});
+      }}
+
+      function wireWindowTraceCorrections() {{
+        if (!elements.windowOverviewContextList) {{
+          return;
+        }}
+        elements.windowOverviewContextList.addEventListener("click", function (event) {{
+          const button = event.target && event.target.closest
+            ? event.target.closest("[data-window-trace-dismiss]")
+            : null;
+          if (!button) {{
+            return;
+          }}
+          event.preventDefault();
+          event.stopPropagation();
+          const key = String(button.getAttribute("data-window-trace-key") || "");
+          rememberWindowTraceCorrection(
+            key,
+            button.getAttribute("data-window-trace-topic") || "",
+            button.getAttribute("data-window-trace-anchor") || ""
+          );
+          hideContextWindowTooltip();
+          applyWindowFilters();
+        }});
+      }}
+
+      function wireWindowTopicCorrections() {{
+        if (!elements.windowOverviewContextList) {{
+          return;
+        }}
+        function closeWindowTopicEditors(exceptRow) {{
+          elements.windowOverviewContextList.querySelectorAll(".context-task-row.is-editing").forEach(function (row) {{
+            if (exceptRow && row === exceptRow) {{
+              return;
+            }}
+            row.classList.remove("is-editing");
+            const editor = row.querySelector("[data-window-topic-editor]");
+            const input = row.querySelector("[data-window-topic-input]");
+            const editButton = row.querySelector("[data-window-topic-edit]");
+            if (editor) {{
+              editor.hidden = true;
+            }}
+            if (input && editButton) {{
+              input.value = String(editButton.getAttribute("data-window-topic-label") || "");
+            }}
+          }});
+        }}
+        function beginWindowTopicEdit(button) {{
+          const row = button ? button.closest(".context-task-row") : null;
+          if (!row) {{
+            return;
+          }}
+          closeWindowTopicEditors(row);
+          const editor = row.querySelector("[data-window-topic-editor]");
+          const input = row.querySelector("[data-window-topic-input]");
+          if (!editor || !input) {{
+            return;
+          }}
+          input.value = String(button.getAttribute("data-window-topic-label") || "");
+          editor.hidden = false;
+          row.classList.add("is-editing");
+          window.setTimeout(function () {{
+            input.focus();
+            input.select();
+          }}, 0);
+        }}
+        function cancelWindowTopicEdit(button) {{
+          const row = button ? button.closest(".context-task-row") : null;
+          if (!row) {{
+            return;
+          }}
+          closeWindowTopicEditors(null);
+        }}
+        function saveWindowTopicEdit(button) {{
+          const row = button ? button.closest(".context-task-row") : null;
+          const editButton = row ? row.querySelector("[data-window-topic-edit]") : null;
+          const input = row ? row.querySelector("[data-window-topic-input]") : null;
+          if (!row || !editButton || !input) {{
+            return;
+          }}
+          rememberWindowTopicCorrection(
+            String(editButton.getAttribute("data-window-topic-edit-key") || ""),
+            String(editButton.getAttribute("data-window-topic-original") || ""),
+            input.value
+          );
+          hideContextWindowTooltip();
+          applyWindowFilters();
+        }}
+        elements.windowOverviewContextList.addEventListener("click", function (event) {{
+          const editButton = event.target && event.target.closest
+            ? event.target.closest("[data-window-topic-edit]")
+            : null;
+          const saveButton = event.target && event.target.closest
+            ? event.target.closest("[data-window-topic-save]")
+            : null;
+          const cancelButton = event.target && event.target.closest
+            ? event.target.closest("[data-window-topic-cancel]")
+            : null;
+          const button = editButton || saveButton || cancelButton;
+          if (button) {{
+            event.preventDefault();
+            event.stopPropagation();
+          }}
+          if (editButton) {{
+            beginWindowTopicEdit(editButton);
+            return;
+          }}
+          if (saveButton) {{
+            saveWindowTopicEdit(saveButton);
+            return;
+          }}
+          if (cancelButton) {{
+            cancelWindowTopicEdit(cancelButton);
+          }}
+        }});
+        elements.windowOverviewContextList.addEventListener("keydown", function (event) {{
+          const input = event.target && event.target.matches && event.target.matches("[data-window-topic-input]")
+            ? event.target
+            : null;
+          if (!input) {{
+            return;
+          }}
+          if (event.key === "Enter") {{
+            event.preventDefault();
+            const row = input.closest(".context-task-row");
+            saveWindowTopicEdit(row ? row.querySelector("[data-window-topic-save]") : null);
+          }} else if (event.key === "Escape") {{
+            event.preventDefault();
+            const row = input.closest(".context-task-row");
+            cancelWindowTopicEdit(row ? row.querySelector("[data-window-topic-cancel]") : null);
           }}
         }});
       }}
@@ -29354,11 +29758,15 @@ def build_html(data):
           state.tokenUsage
         );
       }}
-	      wireContentMoreButtons();
-	      wireDatePickers();
-	      wireWindowFilters();
-	      wireAssetFilters();
+      state.windowTraceCorrections = loadWindowTraceCorrections();
+      state.windowTopicCorrections = loadWindowTopicCorrections();
+      wireContentMoreButtons();
+      wireDatePickers();
+      wireWindowFilters();
+      wireAssetFilters();
       wireWindowOverviewProjectMore();
+      wireWindowTraceCorrections();
+      wireWindowTopicCorrections();
       wireWindowFilterSticky();
       wireAssetFilterSticky();
       wireProjectContextWindowLinks();

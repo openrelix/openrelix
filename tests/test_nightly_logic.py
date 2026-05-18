@@ -37,6 +37,7 @@ from openrelix_overview import curated_memory as overview_curated_memory  # noqa
 from openrelix_overview import finder as overview_finder  # noqa: E402
 from openrelix_overview import memory_context as overview_memory_context  # noqa: E402
 from openrelix_overview import memory_feedback as overview_memory_feedback  # noqa: E402
+from openrelix_overview import topic_refinement as overview_topic_refinement  # noqa: E402
 from openrelix_overview import token_fetcher  # noqa: E402
 
 
@@ -2396,6 +2397,164 @@ wire_api = "responses"
             ),
             "移动端反馈交互修复",
         )
+
+    def test_context_topic_refines_over_broad_compile_bucket(self):
+        cases = [
+            (
+                {
+                    "project_label": "staggerOpt",
+                    "cwd": "/tmp/staggerOpt",
+                    "question_summary": "查 GS 模块埋点 BTM 的上报逻辑，确认没有编译报错。",
+                    "main_takeaway": "BTM 统一在 HeadView 处理，并已补上图文垂搜分支。",
+                    "keywords": ["GS", "BTM", "图文垂搜", "埋点", "tabtype"],
+                    "recent_prompts": [],
+                    "recent_conclusions": [],
+                },
+                "GS 埋点 BTM",
+            ),
+            (
+                {
+                    "project_label": "staggerOpt",
+                    "cwd": "/tmp/staggerOpt",
+                    "question_summary": "排查 enable_history 的逻辑，以及图文垂搜和综搜在 stream 请求上的上报差异。",
+                    "main_takeaway": "经验/图文垂搜应在 request bean 上补字段，而不是在 envTypes 扩展。",
+                    "keywords": ["enable_history", "图文垂搜", "综搜", "请求参数"],
+                    "recent_prompts": [],
+                    "recent_conclusions": [],
+                },
+                "垂搜请求参数",
+            ),
+            (
+                {
+                    "project_label": "staggerOpt",
+                    "cwd": "/tmp/staggerOpt",
+                    "question_summary": "围绕普通 GS 在筛选后丢失选中态的根因、修复方案、边界条件和验证结果展开。",
+                    "main_takeaway": "筛选刷新不再误清普通 GS 选中态，并清掉临时日志。",
+                    "keywords": ["GuideSearchModule", "GS选中态", "筛选刷新", "日志清理"],
+                    "recent_prompts": [],
+                    "recent_conclusions": [],
+                },
+                "GS 筛选状态保持",
+            ),
+        ]
+
+        for item, expected in cases:
+            with self.subTest(expected=expected):
+                self.assertEqual(build_overview.infer_context_topic_label(item), expected)
+
+    def test_context_topic_refinement_rules_are_separately_maintained(self):
+        self.assertIn("移动端编译/类型错误", overview_topic_refinement.REFINEMENT_TRIGGER_LABELS)
+        self.assertFalse(hasattr(build_overview, "CONTEXT_TOPIC_REFINEMENT_TRIGGER_LABELS"))
+        self.assertFalse(hasattr(build_overview, "CONTEXT_TOPIC_REFINEMENT_RULES"))
+        self.assertEqual(
+            overview_topic_refinement.refined_label(
+                {
+                    "project_label": "staggerOpt",
+                    "cwd": "/tmp/staggerOpt",
+                    "keywords": ["GS", "BTM", "埋点"],
+                },
+                "移动端编译/类型错误",
+                context_text="查 GS 模块 BTM 埋点上报逻辑。",
+            ),
+            "GS 埋点 BTM",
+        )
+
+    def test_project_contexts_refine_staggeropt_parallel_tasks(self):
+        window_overview = {
+            "date": "2026-05-15",
+            "windows": [
+                {
+                    "window_id": "w-btm",
+                    "project_label": "staggerOpt",
+                    "cwd": "/tmp/staggerOpt",
+                    "cwd_display": "staggerOpt",
+                    "window_title": "图文垂搜 GS BTM 已补齐",
+                    "question_count": 3,
+                    "conclusion_count": 3,
+                    "question_summary": "查 GS 模块埋点 BTM 的上报逻辑，并为图文垂搜补不同 BTM 值。",
+                    "main_takeaway": "BTM 统一在 HeadView 处理，并已补上图文垂搜分支。",
+                    "keywords": ["GS", "BTM", "图文垂搜", "埋点", "tabtype"],
+                    "latest_activity_at": "2026-05-14T19:45:01+08:00",
+                    "latest_activity_display": "05-14 19:45",
+                    "recent_prompts": [],
+                    "recent_conclusions": [],
+                },
+                {
+                    "window_id": "w-video-empty",
+                    "project_label": "staggerOpt",
+                    "cwd": "/tmp/staggerOpt",
+                    "cwd_display": "staggerOpt",
+                    "window_title": "视频垂搜空态改为复用综搜 footer",
+                    "question_count": 2,
+                    "conclusion_count": 2,
+                    "question_summary": "视频垂搜空文案和 footer 是否要和综搜统一，以及 EmptyType 该怎么设计。",
+                    "main_takeaway": "空态/footer 已对齐综搜，并显式扩出 VIDEO 类型。",
+                    "keywords": ["视频垂搜", "空态", "footer", "综搜", "EmptyType.VIDEO"],
+                    "latest_activity_at": "2026-05-14T16:54:10+08:00",
+                    "latest_activity_display": "05-14 16:54",
+                    "recent_prompts": [],
+                    "recent_conclusions": [],
+                },
+                {
+                    "window_id": "w-enable-history",
+                    "project_label": "staggerOpt",
+                    "cwd": "/tmp/staggerOpt",
+                    "cwd_display": "staggerOpt",
+                    "window_title": "图文垂搜 enable_history 按请求链路补齐",
+                    "question_count": 6,
+                    "conclusion_count": 6,
+                    "question_summary": "排查 enable_history 的逻辑，以及图文垂搜和综搜在 stream 请求上的上报差异。",
+                    "main_takeaway": "经验/图文垂搜应在 request bean 上补字段，而不是在 envTypes 扩展。",
+                    "keywords": ["enable_history", "图文垂搜", "综搜", "aslocate", "请求参数"],
+                    "latest_activity_at": "2026-05-14T11:38:00+08:00",
+                    "latest_activity_display": "05-14 11:38",
+                    "recent_prompts": [],
+                    "recent_conclusions": [],
+                },
+                {
+                    "window_id": "w-gs-selected",
+                    "project_label": "staggerOpt",
+                    "cwd": "/tmp/staggerOpt",
+                    "cwd_display": "staggerOpt",
+                    "window_title": "修复 GS 选中态丢失和日志清理",
+                    "question_count": 7,
+                    "conclusion_count": 7,
+                    "question_summary": "围绕普通 GS 在筛选后丢失选中态的根因、修复方案、边界条件和验证结果展开。",
+                    "main_takeaway": "已把修复收口到 GuideSearchModule，核心是筛选刷新不再误清普通 GS 选中态，并清掉临时日志。",
+                    "keywords": ["GuideSearchModule", "GS选中态", "筛选刷新", "adb", "wrangler", "日志清理"],
+                    "latest_activity_at": "2026-05-13T22:41:00+08:00",
+                    "latest_activity_display": "05-13 22:41",
+                    "recent_prompts": [],
+                    "recent_conclusions": [],
+                },
+                {
+                    "window_id": "w-image-empty",
+                    "project_label": "staggerOpt",
+                    "cwd": "/tmp/staggerOpt",
+                    "cwd_display": "staggerOpt",
+                    "window_title": "图文垂搜空文案对齐综搜",
+                    "question_count": 4,
+                    "conclusion_count": 4,
+                    "question_summary": "先确认图文页看到的文案来源，再把筛选态空文案和 footer 交互对齐综搜。",
+                    "main_takeaway": "把图文垂搜的底部文案链路改成和综搜一致，并已提交相关改动。",
+                    "keywords": ["图文垂搜", "空态", "footer", "综搜", "提交"],
+                    "latest_activity_at": "2026-05-13T22:23:09+08:00",
+                    "latest_activity_display": "05-13 22:23",
+                    "recent_prompts": [],
+                    "recent_conclusions": [],
+                },
+            ],
+        }
+
+        contexts = build_overview.build_project_contexts(window_overview)
+        topics = {topic["label"]: topic for topic in contexts[0]["topics"]}
+
+        self.assertEqual(contexts[0]["topic_count"], 4)
+        self.assertEqual(topics["垂搜空态与 footer"]["window_count"], 2)
+        self.assertEqual(topics["GS 筛选状态保持"]["window_count"], 1)
+        self.assertEqual(topics["垂搜请求参数"]["window_count"], 1)
+        self.assertEqual(topics["GS 埋点 BTM"]["window_count"], 1)
+        self.assertNotIn("移动端编译/类型错误", topics)
 
     def test_project_context_views_scan_recent_days_and_group_windows(self):
         old_raw_daily_dir = build_overview.RAW_DAILY_DIR
@@ -6347,6 +6506,31 @@ Native Codex profile.
         self.assertIn("removeMemoryFeedbackCard(row);", html)
         self.assertIn("已标记有用，并置顶展示", html)
         self.assertIn("已取消有用/无用标记", html)
+        self.assertIn("openrelix-window-trace-corrections-v1", html)
+        self.assertIn("data-window-trace-dismiss", html)
+        self.assertIn("rememberWindowTraceCorrection", html)
+        self.assertIn("wireWindowTraceCorrections();", html)
+        self.assertIn("openrelix-window-topic-corrections-v1", html)
+        self.assertIn("data-window-topic-edit", html)
+        self.assertIn("windowTopicDisplayLabel", html)
+        self.assertIn("rememberWindowTopicCorrection", html)
+        self.assertIn("wireWindowTopicCorrections();", html)
+        self.assertIn("state.windowTopicCorrections = loadWindowTopicCorrections();", html)
+        self.assertIn("编辑并行任务名称，清空可恢复默认", html)
+        self.assertIn("data-window-topic-input", html)
+        self.assertIn("data-window-topic-save", html)
+        self.assertIn("data-window-topic-cancel", html)
+        self.assertIn("beginWindowTopicEdit", html)
+        self.assertIn("saveWindowTopicEdit", html)
+        self.assertNotIn("window.prompt", html)
+        self.assertIn("if (!windowTraceCorrectionIsHidden(meta.project, meta.cwd, topicKey, meta.anchor))", html)
+        self.assertIn("topic.sourceWindows.push({", html)
+        self.assertNotIn(
+            "if (windowTraceCorrectionIsHidden(meta.project, meta.cwd, topicKey, meta.anchor)) {\n"
+            "            return;\n"
+            "          }",
+            html,
+        )
         self.assertNotIn("const reloadAfterMs = Number((payload && payload.reload_after_ms) || 0);", html)
         self.assertIn('"OpenRelix 工作台": "OpenRelix Workbench"', html)
         self.assertIn(
