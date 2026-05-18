@@ -330,7 +330,7 @@ tr:last-child td { border-bottom: 0; }
 <li>不需要 <code>pip install ...</code> 当前随包发布的 Python 脚本只使用 Python 标准库。</li>
 <li>不需要 <code>npm install</code> npm 包只是 bootstrapper，没有声明运行时 npm dependencies。</li>
 <li>不需要手动配置 <code>LaunchAgent</code> 启用后台服务时，installer 会自动渲染 plist 并通过 <code>launchctl</code> 注册。</li>
-<li>Token 统计是可选增强 面板会按需通过 <code>npx -y @ccusage/codex@latest</code> 获取 Codex 数据，通过 <code>npx -y ccusage@latest</code> 获取 Claude Code 数据；默认会合并两者。任一命令不可用、离线或首次拉包失败时，面板其他部分仍可运行，Token 卡片会显示不可用、partial 或最近缓存。</li>
+<li>Token 统计是可选增强 面板会按需通过 <code>npx -y ccusage@latest codex daily</code> 获取 Codex 数据，通过 <code>npx -y ccusage@latest claude daily</code> 获取 Claude Code 数据；默认会合并两者。任一命令不可用、离线或首次拉包失败时，面板其他部分仍可运行，Token 卡片会显示不可用、partial 或最近缓存。</li>
 </ul>
 <p>如果 macOS 上缺少 Python 3.10+，先安装 Python，再重新执行 installer：</p>
 <pre><code class="language-bash">brew install python

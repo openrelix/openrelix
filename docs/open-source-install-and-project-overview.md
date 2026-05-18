@@ -81,7 +81,7 @@ Gemini 和其他 host 是路线图；当前公开支持以 macOS + Codex / Claud
 - 不需要手动配置 `LaunchAgent`
   启用后台服务时，installer 会自动渲染 plist 并通过 `launchctl` 注册。
 - Token 统计是可选增强
-  面板会按需通过 `npx -y @ccusage/codex@latest` 获取 Codex 数据，通过 `npx -y ccusage@latest` 获取 Claude Code 数据；默认会合并两者。任一命令不可用、离线或首次拉包失败时，面板其他部分仍可运行，Token 卡片会显示不可用、partial 或最近缓存。
+  面板会按需通过 `npx -y ccusage@latest codex daily` 获取 Codex 数据，通过 `npx -y ccusage@latest claude daily` 获取 Claude Code 数据；默认会合并两者。任一命令不可用、离线或首次拉包失败时，面板其他部分仍可运行，Token 卡片会显示不可用、partial 或最近缓存。
 
 如果 macOS 上缺少 Python 3.10+，先安装 Python，再重新执行 installer：
 

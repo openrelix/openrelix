@@ -930,23 +930,28 @@ class NightlyLogicTests(unittest.TestCase):
         def fake_now():
             return datetime.fromisoformat("2026-05-04T10:00:00+08:00")
 
+        commands = []
+
         def fake_runner(cmd, **kwargs):
+            commands.append(cmd)
             package = cmd[2]
-            if package == "@ccusage/codex@latest":
+            provider_command = tuple(cmd[3:5])
+            self.assertEqual(package, "ccusage@latest")
+            if provider_command == ("codex", "daily"):
                 payload = {
                     "daily": [
                         {
-                            "date": "2026-05-04",
+                            "period": "2026-05-04",
                             "inputTokens": 100,
-                            "cachedInputTokens": 20,
+                            "cacheReadTokens": 20,
                             "outputTokens": 30,
                             "reasoningOutputTokens": 5,
                             "totalTokens": 135,
-                            "costUSD": 1.25,
+                            "totalCost": 1.25,
                         }
                     ]
                 }
-            elif package == "ccusage@latest":
+            elif provider_command == ("claude", "daily"):
                 payload = {
                     "daily": [
                         {
@@ -980,9 +985,12 @@ class NightlyLogicTests(unittest.TestCase):
         merged_row = result["payload"]["daily"][0]
         self.assertEqual(merged_row["date"], "2026-05-04")
         self.assertEqual(merged_row["totalTokens"], 220)
+        self.assertEqual(merged_row["inputTokens"], 185)
         self.assertEqual(merged_row["cachedInputTokens"], 25)
         self.assertAlmostEqual(merged_row["costUSD"], 1.75)
+        self.assertEqual(merged_row["providers"]["codex"]["inputTokens"], 120)
         self.assertEqual(merged_row["providers"]["claude"]["provider"], "claude")
+        self.assertEqual([command[3:5] for command in commands], [["codex", "daily"], ["claude", "daily"]])
 
     def test_token_fetcher_accepts_explicit_date_range(self):
         commands = []
@@ -1014,6 +1022,7 @@ class NightlyLogicTests(unittest.TestCase):
         self.assertEqual(result["range_start"], "2026-04-01")
         self.assertEqual(result["range_end"], "2026-04-30")
         self.assertEqual(result["window_days"], 30)
+        self.assertEqual(commands[0][2:5], ["ccusage@latest", "claude", "daily"])
         self.assertIn("--since", commands[0])
         self.assertEqual(commands[0][commands[0].index("--since") + 1], "20260401")
         self.assertEqual(commands[0][commands[0].index("--until") + 1], "20260430")

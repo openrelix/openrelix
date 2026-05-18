@@ -263,7 +263,7 @@ state root 的主要目录：
 - `reports/overview.csv`
 - `reports/panel.html`
 
-它会聚合资产数量、复用事件、估算节省、项目上下文、nightly memory、Codex / Claude Code native memory 对照和 token 使用趋势。Token 默认合并 Codex `@ccusage/codex` 与 Claude Code `ccusage`，也支持按 provider 单独查询。
+它会聚合资产数量、复用事件、估算节省、项目上下文、nightly memory、Codex / Claude Code native memory 对照和 token 使用趋势。Token 默认合并 `ccusage codex daily` 与 `ccusage claude daily`，也支持按 provider 单独查询。
 
 `scripts/build_overview.py` 当前仍是兼容入口；内部实现开始迁入 `scripts/openrelix_overview/`。当前已拆出 token/update secret、redaction、local path、display label、i18n、contract 和 memory registry 纯 helper，并解除 `token_live_server.py` 对整个 `build_overview.py` 的 import 依赖。后续隔离重构继续按“小步迁出纯 helper、保留兼容 facade、每步补 focused tests”的方式推进，重点是逐步拆分 memory grouping、window、asset 和 renderer 模块。
 
