@@ -1336,8 +1336,11 @@ class NightlyLogicTests(unittest.TestCase):
 
         with TemporaryDirectory() as tmpdir:
             cache_path = Path(tmpdir) / "token-live-cache.json"
+            report_cache_path = Path(tmpdir) / "token-usage-cache.json"
             old_cache_path = token_live_server.CACHE_PATH
+            old_report_cache_path = token_live_server.REPORT_TOKEN_CACHE_PATH
             token_live_server.CACHE_PATH = cache_path
+            token_live_server.REPORT_TOKEN_CACHE_PATH = report_cache_path
             try:
                 token_live_server.write_cache(
                     token_live_server.build_token_payload_from_result(
@@ -1360,6 +1363,7 @@ class NightlyLogicTests(unittest.TestCase):
                 cached = token_live_server.load_cache()
             finally:
                 token_live_server.CACHE_PATH = old_cache_path
+                token_live_server.REPORT_TOKEN_CACHE_PATH = old_report_cache_path
 
         self.assertEqual(cached["version"], 2)
         self.assertIn("all|2026-04-12|2026-05-11", cached["entries"])
@@ -6740,7 +6744,7 @@ Native Codex profile.
         self.assertIn("return tokenRowDayKey(row, context) === endIso;", html)
         self.assertIn("function aggregateDailyRowsByMonth(rows, tokenUsage)", html)
         self.assertIn("const monthContext = Object.assign", html)
-        self.assertIn("aggregateDailyRowsByMonth(sourceRows, monthContext)", html)
+        self.assertIn("aggregateDailyRowsByMonth(filteredRows, monthContext)", html)
         self.assertIn("function tokenRowBreakdownValues(row)", html)
         self.assertIn("function dailySummaryTokenValueForDate(dateValue)", html)
         self.assertIn("function resolveNightlyStatValue(summary, item)", html)
