@@ -1459,7 +1459,7 @@ class NightlyLogicTests(unittest.TestCase):
         self.assertEqual(all_payload["token_usage"]["today_total_tokens"], 300)
 
     def test_token_live_cache_prefers_non_empty_covering_entry(self):
-        def result(range_start, total_tokens):
+        def result(range_start, total_tokens, fetched_at="2026-05-18T10:00:00+08:00"):
             daily = []
             if total_tokens:
                 daily.append(
@@ -1483,6 +1483,7 @@ class NightlyLogicTests(unittest.TestCase):
                 "range_end": "2026-05-18",
                 "payload": {"daily": daily},
                 "error": "",
+                "fetched_at": fetched_at,
             }
 
         empty_week = token_live_server.build_token_payload_from_result(
@@ -1520,6 +1521,70 @@ class NightlyLogicTests(unittest.TestCase):
         self.assertIsNotNone(payload)
         self.assertEqual(payload["token_usage"]["today_total_tokens"], 300)
         self.assertEqual(payload["token_usage"]["active_period_count"], 1)
+
+    def test_token_live_cache_prefers_newer_ccusage_data_timestamp(self):
+        def result(range_start, total_tokens, fetched_at):
+            return {
+                "available": True,
+                "provider": "all",
+                "provider_label": token_fetcher.provider_display_name("all"),
+                "window_days": 30,
+                "range_start": range_start,
+                "range_end": "2026-05-18",
+                "payload": {
+                    "daily": [
+                        {
+                            "date": "2026-05-18",
+                            "provider": "all",
+                            "inputTokens": total_tokens,
+                            "cachedInputTokens": 0,
+                            "outputTokens": 0,
+                            "reasoningOutputTokens": 0,
+                            "totalTokens": total_tokens,
+                            "costUSD": 1.0,
+                        }
+                    ]
+                },
+                "error": "",
+                "fetched_at": fetched_at,
+            }
+
+        older_week = token_live_server.build_token_payload_from_result(
+            result("2026-05-12", 200, "2026-05-18T10:00:00+08:00"),
+            7,
+            "all",
+            start_date="2026-05-12",
+            end_date="2026-05-18",
+        )
+        older_week["_cached_at_epoch"] = token_live_server.time.time()
+        newer_month = token_live_server.build_token_payload_from_result(
+            result("2026-04-19", 300, "2026-05-18T10:05:00+08:00"),
+            30,
+            "all",
+            start_date="2026-04-19",
+            end_date="2026-05-18",
+        )
+        newer_month["_cached_at_epoch"] = token_live_server.time.time() - 10
+        cached = {
+            "version": 2,
+            "entries": {
+                "all|2026-05-12|2026-05-18": older_week,
+                "all|2026-04-19|2026-05-18": newer_month,
+            },
+        }
+
+        payload = token_live_server.build_payload_from_cache(
+            cached,
+            7,
+            "all",
+            start_date="2026-05-12",
+            end_date="2026-05-18",
+        )
+
+        self.assertIsNotNone(payload)
+        self.assertEqual(payload["token_usage"]["today_total_tokens"], 300)
+        self.assertEqual(payload["token_usage"]["refreshed_at"], "2026-05-18T10:05:00+08:00")
+        self.assertEqual(payload["token_usage"]["today_refreshed_at"], "2026-05-18T10:05:00+08:00")
 
     def test_token_live_background_refresh_does_not_wait_for_fetch_lock(self):
         started = token_live_server.threading.Event()
