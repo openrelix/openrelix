@@ -11,7 +11,7 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
-from asset_runtime import atomic_write_json, ensure_state_layout, get_runtime_language, get_runtime_paths
+from asset_runtime import atomic_write_json, ensure_state_layout, get_project_version, get_runtime_language, get_runtime_paths
 from openrelix_overview.common import current_local_datetime
 from openrelix_overview.claude_desktop import (
     CLAUDE_DESKTOP_OPEN_PATH,
@@ -48,6 +48,8 @@ from openrelix_overview.update_secret import read_or_create_update_token
 PATHS = get_runtime_paths()
 LANGUAGE = get_runtime_language(PATHS)
 RUNTIME_DIR = PATHS.runtime_dir
+SERVICE_VERSION = get_project_version(PATHS.repo_root, fallback="")
+SERVICE_SCRIPT_PATH = os.path.realpath(__file__)
 CACHE_PATH = RUNTIME_DIR / "token-live-cache.json"
 REPORT_TOKEN_CACHE_PATH = PATHS.reports_dir / "token-usage-cache.json"
 CACHE_TTL_SECONDS = 90
@@ -1055,6 +1057,9 @@ class TokenLiveHandler(BaseHTTPRequestHandler):
                 {
                     "ok": True,
                     "service": "token-live",
+                    "version": SERVICE_VERSION,
+                    "repo_root": str(PATHS.repo_root),
+                    "script_path": SERVICE_SCRIPT_PATH,
                     "endpoint": LIVE_TOKEN_ENDPOINT,
                 },
             )

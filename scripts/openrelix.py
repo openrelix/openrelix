@@ -1616,7 +1616,7 @@ def resolve_python_bin_for_launch_agent():
     return os.environ.get("PYTHON_BIN") or shutil.which("python3") or sys.executable
 
 
-def token_live_health_ok(timeout=0.75):
+def token_live_health_payload(timeout=0.75):
     request = urllib.request.Request(
         TOKEN_LIVE_HEALTH_URL,
         headers={"Accept": "application/json", "User-Agent": "openrelix-cli"},
@@ -1625,12 +1625,38 @@ def token_live_health_ok(timeout=0.75):
         with urllib.request.urlopen(request, timeout=timeout) as response:
             body = response.read().decode("utf-8")
     except (OSError, TimeoutError, UnicodeDecodeError, urllib.error.URLError):
+        return None
+    try:
+        return json.loads(body)
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return None
+
+
+def token_live_health_matches_current(payload):
+    if not isinstance(payload, dict):
+        return False
+    if not (bool(payload.get("ok")) and payload.get("service") == "token-live"):
+        return False
+
+    current_version = read_local_package_version()
+    service_version = str(payload.get("version") or "").strip()
+    if current_version and service_version != current_version:
+        return False
+
+    expected_script_path = (REPO_ROOT / "scripts" / "token_live_server.py").resolve()
+    service_script_path = str(payload.get("script_path") or "").strip()
+    if not service_script_path:
         return False
     try:
-        payload = json.loads(body)
-    except (UnicodeDecodeError, json.JSONDecodeError):
+        if Path(service_script_path).expanduser().resolve() != expected_script_path:
+            return False
+    except OSError:
         return False
-    return bool(payload.get("ok")) and payload.get("service") == "token-live"
+    return True
+
+
+def token_live_health_ok(timeout=0.75):
+    return token_live_health_matches_current(token_live_health_payload(timeout=timeout))
 
 
 def render_token_live_launch_agent():

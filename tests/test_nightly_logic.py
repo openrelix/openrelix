@@ -8646,6 +8646,90 @@ Native Codex profile.
             ],
         )
 
+    def test_openrelix_app_ensures_token_live_service_before_opening(self):
+        with TemporaryDirectory() as tmpdir:
+            app_path = Path(tmpdir) / "OpenRelix.app"
+            app_path.mkdir()
+            args = argparse.Namespace(
+                output=str(app_path),
+                build=False,
+                no_open=False,
+                print_path=False,
+            )
+            calls = []
+
+            with mock.patch.object(openrelix.sys, "platform", "darwin"), mock.patch.object(
+                openrelix,
+                "ensure_token_live_service",
+                side_effect=lambda: calls.append("ensure"),
+            ), mock.patch.object(
+                openrelix,
+                "open_path",
+                side_effect=lambda path: calls.append(("open", path)),
+            ), mock.patch(
+                "sys.stdout",
+                new_callable=io.StringIO,
+            ):
+                openrelix.command_app(args)
+
+        self.assertEqual(calls, ["ensure", ("open", app_path.resolve())])
+
+    def test_token_live_health_requires_current_version_and_script_path(self):
+        expected_script = (openrelix.REPO_ROOT / "scripts" / "token_live_server.py").resolve()
+
+        self.assertTrue(
+            openrelix.token_live_health_matches_current(
+                {
+                    "ok": True,
+                    "service": "token-live",
+                    "version": openrelix.read_local_package_version(),
+                    "script_path": str(expected_script),
+                }
+            )
+        )
+        self.assertFalse(openrelix.token_live_health_matches_current({"ok": True, "service": "token-live"}))
+        self.assertFalse(
+            openrelix.token_live_health_matches_current(
+                {
+                    "ok": True,
+                    "service": "token-live",
+                    "version": "0.0.1",
+                    "script_path": str(expected_script),
+                }
+            )
+        )
+        self.assertFalse(
+            openrelix.token_live_health_matches_current(
+                {
+                    "ok": True,
+                    "service": "token-live",
+                    "version": openrelix.read_local_package_version(),
+                    "script_path": "/tmp/old-openrelix/scripts/token_live_server.py",
+                }
+            )
+        )
+
+    def test_token_live_health_endpoint_reports_version_and_script_path(self):
+        server = token_live_server.ThreadingHTTPServer(("127.0.0.1", 0), token_live_server.TokenLiveHandler)
+        thread = token_live_server.threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            conn = http.client.HTTPConnection("127.0.0.1", server.server_address[1], timeout=2)
+            conn.request("GET", "/healthz")
+            response = conn.getresponse()
+            payload = json.loads(response.read().decode("utf-8"))
+            conn.close()
+        finally:
+            server.shutdown()
+            thread.join(timeout=2)
+            server.server_close()
+
+        self.assertEqual(response.status, 200)
+        self.assertEqual(payload["service"], "token-live")
+        self.assertEqual(payload["version"], token_live_server.SERVICE_VERSION)
+        self.assertEqual(payload["repo_root"], str(token_live_server.PATHS.repo_root))
+        self.assertEqual(payload["script_path"], token_live_server.SERVICE_SCRIPT_PATH)
+
     def test_ensure_token_live_service_bootstraps_when_health_check_fails(self):
         with TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -10523,6 +10607,18 @@ Native Codex profile.
         self.assertIn("首次自动学习会在下一个 1 小时周期运行", installer)
         self.assertIn("Automatic learning refresh is enabled", installer)
         self.assertIn("__OVERVIEW_RUN_AT_LOAD__", launchd_template)
+
+    def test_installer_boots_out_current_launch_agent_label_before_bootstrap(self):
+        installer = (ROOT / "install" / "install.sh").read_text(encoding="utf-8")
+
+        self.assertLess(
+            installer.index('launchctl bootout "gui/$(id -u)/$label"'),
+            installer.index('launchctl bootout "gui/$(id -u)" "$plist_path"'),
+        )
+        self.assertLess(
+            installer.index('launchctl bootout "gui/$(id -u)" "$plist_path"'),
+            installer.index('launchctl bootstrap "gui/$(id -u)" "$plist_path"'),
+        )
 
     def test_integrated_install_defaults_include_nightly_launchagents(self):
         installer = (ROOT / "install" / "install.sh").read_text(encoding="utf-8")

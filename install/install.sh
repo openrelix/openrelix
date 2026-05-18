@@ -1284,6 +1284,7 @@ bootstrap_launch_agent() {
     fi
   done
   /usr/bin/plutil -lint "$plist_path" >/dev/null
+  launchctl bootout "gui/$(id -u)/$label" >/dev/null 2>&1 || true
   launchctl bootout "gui/$(id -u)" "$plist_path" >/dev/null 2>&1 || true
   launchctl bootstrap "gui/$(id -u)" "$plist_path"
   if [[ "$kickstart" == "1" ]]; then
