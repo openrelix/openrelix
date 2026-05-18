@@ -740,8 +740,18 @@ def build_payload_from_cache(payload, window_days, provider, start_date=None, en
     ]
     if not matches:
         return None
+
+    def has_token_records(item):
+        token_usage = item.get("token_usage") or {}
+        if token_usage.get("active_period_count"):
+            return True
+        if token_usage.get("period_total_tokens") or token_usage.get("today_total_tokens"):
+            return True
+        return any((row.get("value") or row.get("totalTokens") or 0) for row in token_usage.get("daily_rows") or [])
+
     matches.sort(
         key=lambda item: (
+            1 if has_token_records(item) else 0,
             0 if item.get("stale") else 1,
             float(item.get("_cached_at_epoch") or 0),
         ),

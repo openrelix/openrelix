@@ -1458,6 +1458,69 @@ class NightlyLogicTests(unittest.TestCase):
         self.assertEqual(all_payload["provider"], "all")
         self.assertEqual(all_payload["token_usage"]["today_total_tokens"], 300)
 
+    def test_token_live_cache_prefers_non_empty_covering_entry(self):
+        def result(range_start, total_tokens):
+            daily = []
+            if total_tokens:
+                daily.append(
+                    {
+                        "date": "2026-05-18",
+                        "provider": "all",
+                        "inputTokens": total_tokens,
+                        "cachedInputTokens": 0,
+                        "outputTokens": 0,
+                        "reasoningOutputTokens": 0,
+                        "totalTokens": total_tokens,
+                        "costUSD": 1.0,
+                    }
+                )
+            return {
+                "available": True,
+                "provider": "all",
+                "provider_label": token_fetcher.provider_display_name("all"),
+                "window_days": 30,
+                "range_start": range_start,
+                "range_end": "2026-05-18",
+                "payload": {"daily": daily},
+                "error": "",
+            }
+
+        empty_week = token_live_server.build_token_payload_from_result(
+            result("2026-05-12", 0),
+            7,
+            "all",
+            start_date="2026-05-12",
+            end_date="2026-05-18",
+        )
+        empty_week["_cached_at_epoch"] = token_live_server.time.time()
+        month_with_data = token_live_server.build_token_payload_from_result(
+            result("2026-04-19", 300),
+            30,
+            "all",
+            start_date="2026-04-19",
+            end_date="2026-05-18",
+        )
+        month_with_data["_cached_at_epoch"] = token_live_server.time.time() - 10
+        cached = {
+            "version": 2,
+            "entries": {
+                "all|2026-05-12|2026-05-18": empty_week,
+                "all|2026-04-19|2026-05-18": month_with_data,
+            },
+        }
+
+        payload = token_live_server.build_payload_from_cache(
+            cached,
+            7,
+            "all",
+            start_date="2026-05-12",
+            end_date="2026-05-18",
+        )
+
+        self.assertIsNotNone(payload)
+        self.assertEqual(payload["token_usage"]["today_total_tokens"], 300)
+        self.assertEqual(payload["token_usage"]["active_period_count"], 1)
+
     def test_token_live_background_refresh_does_not_wait_for_fetch_lock(self):
         started = token_live_server.threading.Event()
         release = token_live_server.threading.Event()
