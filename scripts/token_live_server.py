@@ -39,6 +39,7 @@ from openrelix_overview.token_fetcher import (
     resolve_token_date_range,
     token_result_covers_request,
     token_result_for_provider,
+    write_token_usage_cache,
 )
 from openrelix_overview.token_usage import build_token_usage_view, normalize_token_group_by
 from openrelix_overview.update_secret import read_or_create_update_token
@@ -786,16 +787,20 @@ def build_payload_from_cache(payload, window_days, provider, start_date=None, en
 
 
 def token_cache_refresh_key(window_days, provider, start_date=None, end_date=None):
-    requested_start, requested_end, _ = resolve_token_date_range(
+    fetch_start, fetch_end, _ = resolve_token_cache_fetch_range(
         window_days=window_days,
         start_date=start_date or None,
         end_date=end_date or None,
+        cache_window_days=CCUSAGE_CACHE_WINDOW_DAYS,
     )
+    provider = normalize_token_provider(provider)
+    if provider in {"all", "codex", "claude"}:
+        provider = "all"
     return "|".join(
         [
-            normalize_token_provider(provider),
-            requested_start.isoformat(),
-            requested_end.isoformat(),
+            provider,
+            fetch_start.isoformat(),
+            fetch_end.isoformat(),
         ]
     )
 
@@ -803,6 +808,7 @@ def token_cache_refresh_key(window_days, provider, start_date=None, end_date=Non
 def refresh_token_cache(window_days, provider, start_date=None, end_date=None, group_by="day"):
     provider = normalize_token_provider(provider)
     group_by = normalize_token_group_by(group_by)
+    fetch_provider = "all" if provider in {"all", "codex", "claude"} else provider
     fetch_start, fetch_end, fetch_window_days = resolve_token_cache_fetch_range(
         window_days=window_days,
         start_date=start_date or None,
@@ -811,10 +817,23 @@ def refresh_token_cache(window_days, provider, start_date=None, end_date=None, g
     )
     ccusage_result = fetch_ccusage_daily(
         window_days=fetch_window_days,
-        provider=provider,
+        provider=fetch_provider,
         start_date=fetch_start,
         end_date=fetch_end,
     )
+    if fetch_provider == "all" and ccusage_result.get("available"):
+        source_payload = build_token_payload_from_result(
+            ccusage_result,
+            fetch_window_days,
+            "all",
+            start_date=fetch_start.isoformat(),
+            end_date=fetch_end.isoformat(),
+            group_by=group_by,
+            served_from_cache=False,
+            stale=False,
+        )
+        write_cache(source_payload)
+        write_token_usage_cache(ccusage_result, REPORT_TOKEN_CACHE_PATH)
     payload = build_token_payload_from_result(
         ccusage_result,
         window_days,
@@ -825,7 +844,7 @@ def refresh_token_cache(window_days, provider, start_date=None, end_date=None, g
         served_from_cache=False,
         stale=False,
     )
-    if payload.get("token_usage", {}).get("available"):
+    if payload.get("token_usage", {}).get("available") and fetch_provider != "all":
         write_cache(payload)
     return payload
 

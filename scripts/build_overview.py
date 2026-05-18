@@ -61,6 +61,7 @@ from openrelix_overview import token_fetcher as overview_token_fetcher
 from openrelix_overview import token_usage as overview_token_usage
 from openrelix_overview import update_secret as overview_update_secret
 from openrelix_overview.config import (
+    CCUSAGE_CACHE_WINDOW_DAYS,
     CCUSAGE_TIMEZONE,
     CCUSAGE_WINDOW_DAYS,
     LIVE_TOKEN_ENDPOINT,
@@ -23942,6 +23943,7 @@ def build_html(data):
       const supportedLanguages = ["zh", "en"];
       const supportedThemes = ["system", "light", "dark"];
       const themeStorageKey = "openrelix-panel-theme";
+      const tokenUsageStorageKey = "openrelix-token-usage-source-v1";
       const systemDarkQuery = window.matchMedia ? window.matchMedia("(prefers-color-scheme: dark)") : null;
       let currentLanguage = defaultLanguage;
       let currentThemeChoice = "system";
@@ -23985,11 +23987,19 @@ def build_html(data):
       const windowOverviewProjectVisibleCount = Math.max(Number(snapshot.window_overview_project_visible_count) || 3, 1);
       const contextWindowLinkVisibleCount = Math.max(Number(snapshot.context_window_link_visible_count) || 4, 1);
       const projectContextTopicVisibleCount = Math.max(Number(snapshot.project_context_topic_visible_count) || 5, 1);
+      const storedInitialTokenUsage = readStoredTokenUsage();
+      const snapshotTokenUsage = snapshot.token_usage || null;
+      const storedInitialProviderMatches = !storedInitialTokenUsage || !snapshotTokenUsage ||
+        normalizeTokenProvider(storedInitialTokenUsage.provider) === normalizeTokenProvider(snapshotTokenUsage.provider);
+      const initialTokenUsage = storedInitialTokenUsage && storedInitialProviderMatches &&
+        tokenUsageTimestampMillis(storedInitialTokenUsage) > tokenUsageTimestampMillis(snapshotTokenUsage)
+          ? storedInitialTokenUsage
+          : snapshotTokenUsage;
       const state = {{
-        tokenUsage: snapshot.token_usage || null,
-        tokenRefreshedAt: (snapshot.token_usage && snapshot.token_usage.refreshed_at) || "",
-        tokenTodayRefreshedAt: (snapshot.token_usage && (snapshot.token_usage.today_refreshed_at || snapshot.token_usage.refreshed_at)) || "",
-        tokenSourceKind: "snapshot",
+        tokenUsage: initialTokenUsage,
+        tokenRefreshedAt: (initialTokenUsage && initialTokenUsage.refreshed_at) || "",
+        tokenTodayRefreshedAt: (initialTokenUsage && (initialTokenUsage.today_refreshed_at || initialTokenUsage.refreshed_at)) || "",
+        tokenSourceKind: storedInitialTokenUsage === initialTokenUsage ? "cache" : "snapshot",
         tokenUsageCache: {{}},
         tokenStaleRetryTimer: null,
         tokenRequestSeq: 0,
@@ -28160,14 +28170,80 @@ def build_html(data):
         return tokenDateRangeDays(filters) || Math.max(Number(fallbackWindowDays) || {window_days}, 1);
       }}
 
+      function tokenSourceDateRange(filters) {{
+        const activeFilters = filters || {{}};
+        const endDate = activeFilters.endDate || defaultTokenDateRange.endDate || tokenDateInputValue(new Date());
+        return tokenDateRangeForDays({token_cache_window_days}, endDate);
+      }}
+
       function tokenRequestCacheKey(filters, windowDays) {{
         const activeFilters = filters || {{}};
+        const sourceRange = tokenSourceDateRange(activeFilters);
         return [
           normalizeTokenProvider(activeFilters.provider),
-          String(activeFilters.startDate || ""),
-          String(activeFilters.endDate || ""),
-          String(tokenEffectiveWindowDays(activeFilters, windowDays)),
+          sourceRange.startDate,
+          sourceRange.endDate,
+          String({token_cache_window_days}),
         ].join("|");
+      }}
+
+      function tokenUsageTimestampMillis(tokenUsage) {{
+        if (!tokenUsage) {{
+          return 0;
+        }}
+        const parsed = Date.parse(tokenUsage.today_refreshed_at || tokenUsage.refreshed_at || "");
+        return Number.isFinite(parsed) ? parsed : 0;
+      }}
+
+      function readStoredTokenUsage() {{
+        try {{
+          const raw = window.localStorage ? window.localStorage.getItem(tokenUsageStorageKey) : "";
+          if (!raw) {{
+            return null;
+          }}
+          const payload = JSON.parse(raw);
+          const tokenUsage = payload && (payload.tokenUsage || payload);
+          if (!tokenUsage || !tokenUsage.available) {{
+            return null;
+          }}
+          if (Date.now() - tokenUsageTimestampMillis(tokenUsage) > 24 * 60 * 60 * 1000) {{
+            return null;
+          }}
+          return tokenUsage;
+        }} catch (_) {{
+          return null;
+        }}
+      }}
+
+      function writeStoredTokenUsage(tokenUsage) {{
+        try {{
+          if (!window.localStorage || !tokenUsage || !tokenUsage.available) {{
+            return;
+          }}
+          window.localStorage.setItem(tokenUsageStorageKey, JSON.stringify({{
+            storedAt: new Date().toISOString(),
+            tokenUsage: tokenUsage,
+          }}));
+        }} catch (_) {{}}
+      }}
+
+      function tokenRowDateKey(row) {{
+        return String((row && (row.sort_key || row.date || row.raw_date)) || "");
+      }}
+
+      function tokenRowInActiveDateRange(row, filters) {{
+        const activeFilters = filters || {{}};
+        const key = tokenRowDateKey(row);
+        if (!key) {{
+          return true;
+        }}
+        if (activeFilters.startDate && key < activeFilters.startDate) {{
+          return false;
+        }}
+        if (activeFilters.endDate && key > activeFilters.endDate) {{
+          return false;
+        }}
+        return true;
       }}
 
       function tokenUsageMatchesRequestFilters(tokenUsage, filters) {{
@@ -28209,6 +28285,7 @@ def build_html(data):
           cachedAt: Date.now(),
           tokenUsage: tokenUsage,
         }};
+        writeStoredTokenUsage(tokenUsage);
       }}
 
       function tokenProviderLabel(provider) {{
@@ -28914,15 +28991,23 @@ def build_html(data):
       function deriveTokenUsageForGroup(tokenUsage, groupBy, relativeUpdate) {{
         const targetGroup = normalizeTokenGroupBy(groupBy);
         const derived = Object.assign({{}}, tokenUsage || {{}});
+        const activeFilters = state.tokenFilters || {{}};
         const sourceRows = Array.isArray(derived.daily_rows) ? derived.daily_rows : [];
+        const isFilteredByDate = Boolean(
+          (activeFilters.startDate && activeFilters.startDate !== String(derived.range_start || "")) ||
+          (activeFilters.endDate && activeFilters.endDate !== String(derived.range_end || ""))
+        );
+        const filteredRows = sourceRows.filter(function (row) {{
+          return tokenRowInActiveDateRange(row, activeFilters);
+        }});
         const sourceGroup = normalizeTokenGroupBy(derived.group_by);
         const monthContext = Object.assign({{}}, derived, {{
-          range_start: derived.range_start || (state.tokenFilters && state.tokenFilters.startDate) || "",
-          range_end: derived.range_end || (state.tokenFilters && state.tokenFilters.endDate) || "",
+          range_start: activeFilters.startDate || derived.range_start || "",
+          range_end: activeFilters.endDate || derived.range_end || "",
         }});
         let displayRows = targetGroup === "month" && sourceGroup !== "month"
-          ? aggregateDailyRowsByMonth(sourceRows, monthContext)
-          : sourceRows.slice();
+          ? aggregateDailyRowsByMonth(filteredRows, monthContext)
+          : filteredRows.slice();
         displayRows = appendZeroTokenEndRow(displayRows, monthContext, targetGroup);
         derived.group_by = targetGroup;
         derived.daily_rows = displayRows;
@@ -28947,11 +29032,11 @@ def build_html(data):
               ? displayRows[0].label + " to " + displayRows[displayRows.length - 1].label
               : displayRows[0].label + " 至 " + displayRows[displayRows.length - 1].label))
           : (derived.range_label || "");
-        derived.period_total_tokens = Number.isFinite(Number(derived.period_total_tokens)) && targetGroup === sourceGroup
+        derived.period_total_tokens = Number.isFinite(Number(derived.period_total_tokens)) && targetGroup === sourceGroup && !isFilteredByDate
           ? Number(derived.period_total_tokens)
           : total;
         derived.period_total_tokens_display = compactTokenValue(derived.period_total_tokens);
-        derived.period_cost_usd = Number.isFinite(Number(derived.period_cost_usd)) && targetGroup === sourceGroup
+        derived.period_cost_usd = Number.isFinite(Number(derived.period_cost_usd)) && targetGroup === sourceGroup && !isFilteredByDate
           ? Number(derived.period_cost_usd)
           : totalCost;
         derived.period_cost_display = formatUsdValue(derived.period_cost_usd);
@@ -28961,6 +29046,12 @@ def build_html(data):
         derived.active_period_count = activeCount;
         derived.period_unit = periodUnit;
         derived.range_label = rangeLabel || derived.range_label || "";
+        if (activeFilters.startDate) {{
+          derived.range_start = activeFilters.startDate;
+        }}
+        if (activeFilters.endDate) {{
+          derived.range_end = activeFilters.endDate;
+        }}
         if (latest) {{
           const latestValues = tokenRowBreakdownValues(latest);
           const latestCost = extractTokenRowCost(latest);
@@ -29267,10 +29358,8 @@ def build_html(data):
 
       async function refreshTokenUsage(forceRefresh) {{
         const filters = state.tokenFilters || {{}};
-        const windowDays = tokenEffectiveWindowDays(
-          filters,
-          (state.tokenUsage && state.tokenUsage.window_days) || {window_days}
-        );
+        const sourceRange = tokenSourceDateRange(filters);
+        const windowDays = {token_cache_window_days};
         const cacheKey = tokenRequestCacheKey(filters, windowDays);
         const requestSeq = state.tokenRequestSeq + 1;
         state.tokenRequestSeq = requestSeq;
@@ -29297,12 +29386,8 @@ def build_html(data):
           );
           requestUrl.searchParams.set("provider", normalizeTokenProvider(filters.provider));
           requestUrl.searchParams.set("group_by", "day");
-          if (filters.startDate) {{
-            requestUrl.searchParams.set("start_date", filters.startDate);
-          }}
-          if (filters.endDate) {{
-            requestUrl.searchParams.set("end_date", filters.endDate);
-          }}
+          requestUrl.searchParams.set("start_date", sourceRange.startDate);
+          requestUrl.searchParams.set("end_date", sourceRange.endDate);
           if (forceRefresh) {{
             requestUrl.searchParams.set("force", "1");
           }}
@@ -29999,6 +30084,7 @@ def build_html(data):
         live_token_poll_ms=LIVE_TOKEN_POLL_SECONDS * 1000,
         live_token_timeout_ms=LIVE_TOKEN_TIMEOUT_MS,
         window_days=token_usage.get("window_days", CCUSAGE_WINDOW_DAYS),
+        token_cache_window_days=CCUSAGE_CACHE_WINDOW_DAYS,
         asset_hotness_visible_count=ASSET_HOTNESS_VISIBLE_COUNT,
         token_filter_default_days=TOKEN_FILTER_DEFAULT_DAYS,
         context_window_link_label_limit=CONTEXT_WINDOW_LINK_LABEL_LIMIT,
