@@ -749,15 +749,40 @@ def build_payload_from_cache(payload, window_days, provider, start_date=None, en
             return True
         return any((row.get("value") or row.get("totalTokens") or 0) for row in token_usage.get("daily_rows") or [])
 
+    def token_time(item):
+        token_usage = item.get("token_usage") or {}
+        return str(token_usage.get("refreshed_at") or "")
+
     matches.sort(
         key=lambda item: (
             1 if has_token_records(item) else 0,
             0 if item.get("stale") else 1,
+            token_time(item),
             float(item.get("_cached_at_epoch") or 0),
         ),
         reverse=True,
     )
-    return matches[0]
+    selected = matches[0]
+    today_matches = [
+        item
+        for item in matches
+        if has_token_records(item) and (item.get("token_usage") or {}).get("today_total_tokens")
+    ]
+    if today_matches:
+        latest_today = sorted(
+            today_matches,
+            key=lambda item: (token_time(item), float(item.get("_cached_at_epoch") or 0)),
+            reverse=True,
+        )[0]
+        latest_usage = latest_today.get("token_usage") or {}
+        selected_usage = selected.get("token_usage") or {}
+        selected_usage["today_refreshed_at"] = latest_usage.get("refreshed_at") or selected_usage.get("refreshed_at", "")
+        selected_usage["today_refreshed_at_display"] = latest_usage.get("refreshed_at_display") or selected_usage.get(
+            "refreshed_at_display",
+            "",
+        )
+        selected["token_usage"] = selected_usage
+    return selected
 
 
 def token_cache_refresh_key(window_days, provider, start_date=None, end_date=None):

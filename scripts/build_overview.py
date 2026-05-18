@@ -23988,6 +23988,7 @@ def build_html(data):
       const state = {{
         tokenUsage: snapshot.token_usage || null,
         tokenRefreshedAt: (snapshot.token_usage && snapshot.token_usage.refreshed_at) || "",
+        tokenTodayRefreshedAt: (snapshot.token_usage && (snapshot.token_usage.today_refreshed_at || snapshot.token_usage.refreshed_at)) || "",
         tokenSourceKind: "snapshot",
         tokenUsageCache: {{}},
         tokenStaleRetryTimer: null,
@@ -27767,8 +27768,8 @@ def build_html(data):
         }}
         if (messageKey === "live_refreshed") {{
           return currentLanguage === "en"
-            ? "Token refreshed " + describeRelativeTime(state.tokenRefreshedAt, "") + "."
-            : "Token 已刷新，" + describeRelativeTime(state.tokenRefreshedAt, "更新") + "。";
+            ? "Token refreshed " + describeRelativeTime(state.tokenTodayRefreshedAt || state.tokenRefreshedAt, "") + "."
+            : "Token 已刷新，" + describeRelativeTime(state.tokenTodayRefreshedAt || state.tokenRefreshedAt, "更新") + "。";
         }}
         if (messageKey === "offline_snapshot") {{
           const snapshotTime = (snapshot.token_usage && snapshot.token_usage.refreshed_at) || snapshot.generated_at_iso;
@@ -29172,6 +29173,7 @@ def build_html(data):
         }}
         state.tokenUsage = tokenUsage;
         state.tokenRefreshedAt = tokenUsage.refreshed_at || state.tokenRefreshedAt;
+        state.tokenTodayRefreshedAt = tokenUsage.today_refreshed_at || state.tokenTodayRefreshedAt || state.tokenRefreshedAt;
         state.tokenSourceKind = sourceKind || state.tokenSourceKind;
         const currentFilters = state.tokenFilters || {{}};
         state.tokenFilters = {{
@@ -29181,6 +29183,7 @@ def build_html(data):
           groupBy: normalizeTokenGroupBy(currentFilters.groupBy || tokenUsage.group_by),
         }};
         const relativeUpdate = describeRelativeTime(state.tokenRefreshedAt, "更新");
+        const todayRelativeUpdate = describeRelativeTime(state.tokenTodayRefreshedAt || state.tokenRefreshedAt, "更新");
         const preparedTokenUsage = prepareTokenUsageForPanel(tokenUsage, relativeUpdate, state.tokenFilters.groupBy);
         const providerLabel = tokenProviderLabel(preparedTokenUsage.provider || state.tokenFilters.provider);
         const todayTokenValue = preparedTokenUsage.today_total_tokens_display ||
@@ -29192,14 +29195,14 @@ def build_html(data):
           "today_token",
           todayTokenValue,
           todayTokenCaption,
-          relativeUpdate,
+          todayRelativeUpdate,
           t("今日 Token")
         );
         updateMetricCard(
           "today_cost",
           todayCostValue,
           todayTokenCaption,
-          relativeUpdate,
+          todayRelativeUpdate,
           t("今日成本")
         );
         if (elements.dailyTokenNote) {{
@@ -29211,7 +29214,7 @@ def build_html(data):
             : t("暂未获取到 ccusage 的日维度统计");
         }}
         if (elements.todayTokenNote) {{
-          elements.todayTokenNote.textContent = t(preparedTokenUsage.current_period_label || preparedTokenUsage.today_date_label || "今日") + " · " + relativeUpdate;
+          elements.todayTokenNote.textContent = t(preparedTokenUsage.current_period_label || preparedTokenUsage.today_date_label || "今日") + " · " + todayRelativeUpdate;
         }}
         if (elements.tokenOverviewNote) {{
           elements.tokenOverviewNote.textContent = preparedTokenUsage.available
