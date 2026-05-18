@@ -1586,6 +1586,79 @@ class NightlyLogicTests(unittest.TestCase):
         self.assertEqual(payload["token_usage"]["refreshed_at"], "2026-05-18T10:05:00+08:00")
         self.assertEqual(payload["token_usage"]["today_refreshed_at"], "2026-05-18T10:05:00+08:00")
 
+    def test_token_live_force_refresh_uses_month_all_source_and_updates_report_cache(self):
+        def result(provider, total_tokens):
+            return {
+                "available": True,
+                "provider": provider,
+                "provider_label": token_fetcher.provider_display_name(provider),
+                "window_days": 30,
+                "range_start": "2026-04-19",
+                "range_end": "2026-05-18",
+                "payload": {
+                    "daily": [
+                        {
+                            "date": "2026-05-18",
+                            "provider": provider,
+                            "inputTokens": total_tokens,
+                            "cachedInputTokens": 0,
+                            "outputTokens": 0,
+                            "reasoningOutputTokens": 0,
+                            "totalTokens": total_tokens,
+                            "costUSD": 1.0,
+                        }
+                    ]
+                },
+                "error": "",
+                "fetched_at": "2026-05-18T10:05:00+08:00",
+            }
+
+        all_result = result("all", 300)
+        all_result["provider_results"] = {
+            "codex": result("codex", 100),
+            "claude": result("claude", 200),
+        }
+        captured = {}
+
+        def fake_fetch(**kwargs):
+            captured.update(kwargs)
+            return all_result
+
+        with TemporaryDirectory() as tmpdir:
+            cache_path = Path(tmpdir) / "token-live-cache.json"
+            report_cache_path = Path(tmpdir) / "token-usage-cache.json"
+            old_cache_path = token_live_server.CACHE_PATH
+            old_report_cache_path = token_live_server.REPORT_TOKEN_CACHE_PATH
+            token_live_server.CACHE_PATH = cache_path
+            token_live_server.REPORT_TOKEN_CACHE_PATH = report_cache_path
+            try:
+                with mock.patch.object(token_live_server, "fetch_ccusage_daily", side_effect=fake_fetch):
+                    payload = token_live_server.refresh_token_cache(
+                        7,
+                        "codex",
+                        start_date="2026-05-12",
+                        end_date="2026-05-18",
+                    )
+                cached = token_live_server.load_cache()
+                report_cached = json.loads(report_cache_path.read_text(encoding="utf-8"))
+            finally:
+                token_live_server.CACHE_PATH = old_cache_path
+                token_live_server.REPORT_TOKEN_CACHE_PATH = old_report_cache_path
+
+        self.assertEqual(captured["provider"], "all")
+        self.assertEqual(captured["window_days"], 30)
+        self.assertEqual(captured["start_date"].isoformat(), "2026-04-19")
+        self.assertEqual(captured["end_date"].isoformat(), "2026-05-18")
+        self.assertEqual(payload["provider"], "codex")
+        self.assertEqual(payload["token_usage"]["provider"], "codex")
+        self.assertEqual(payload["token_usage"]["range_start"], "2026-05-12")
+        self.assertEqual(payload["token_usage"]["range_end"], "2026-05-18")
+        self.assertEqual(payload["token_usage"]["today_total_tokens"], 100)
+        self.assertIn("all|2026-04-19|2026-05-18", cached["entries"])
+        self.assertEqual(report_cached["provider"], "all")
+        self.assertEqual(report_cached["range_start"], "2026-04-19")
+        self.assertEqual(report_cached["range_end"], "2026-05-18")
+
     def test_token_live_background_refresh_does_not_wait_for_fetch_lock(self):
         started = token_live_server.threading.Event()
         release = token_live_server.threading.Event()
@@ -6514,6 +6587,9 @@ Native Codex profile.
         self.assertIn("本地 Token 服务未启动。请运行 openrelix open panel 后再点实时刷新。", html)
         self.assertIn("The local Token service is not running. Run openrelix open panel", html)
         self.assertIn("window.localStorage", html)
+        self.assertIn("openrelix-token-usage-source-v1", html)
+        self.assertIn("tokenSourceDateRange", html)
+        self.assertIn('requestUrl.searchParams.set("start_date", sourceRange.startDate);', html)
         self.assertNotIn("side-nav-sublabel", html)
         self.assertIn("personal-memory-compiler-section", html)
         self.assertIn("personal-memory-curated-section", html)
