@@ -2,7 +2,7 @@
 
 [English](https://github.com/openrelix/openrelix/blob/main/README.md) | 简体中文
 
-面向 AI coding agents 的开源个人记忆珍藏系统，当前发布为 v0.3.6 预览版。
+面向 AI coding agents 的开源个人记忆珍藏系统，当前发布为 v0.3.7 预览版。
 
 OpenRelix™ 是一套本地优先的 AI 个人资产层。它把已经完成的 agent 工作沉淀成可复用的任务复盘、技能、模板、自动化、受限记忆摘要和私有面板，而不是让有价值的经验散落在历史聊天里。
 

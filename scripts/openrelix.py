@@ -1810,11 +1810,11 @@ def detected_update_install_flags():
     return flags
 
 
-def build_update_install_command(recommended=False, npx_bin=None):
+def build_update_install_command(recommended=False, npx_bin=None, package_spec=None):
     cmd = [
         npx_bin or "npx",
         "-y",
-        NPM_LATEST_SPEC,
+        package_spec or NPM_LATEST_SPEC,
         "install",
         "--state-dir",
         str(PATHS.state_root),
@@ -3459,7 +3459,8 @@ def command_update(args):
     if latest_version:
         status = "update_available" if update_available else "up_to_date"
     npx_bin = resolve_cli_tool("npx")
-    command = build_update_install_command(recommended=args.recommended, npx_bin=npx_bin)
+    package_spec = "{}@{}".format(NPM_PACKAGE_NAME, latest_version) if latest_version else NPM_LATEST_SPEC
+    command = build_update_install_command(recommended=args.recommended, npx_bin=npx_bin, package_spec=package_spec)
     command_text = shlex.join(command)
     payload = {
         "package": NPM_PACKAGE_NAME,

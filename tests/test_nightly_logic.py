@@ -9246,8 +9246,37 @@ Native Codex profile.
 
             command = run.call_args.args[0]
             self.assertEqual(command[0], str(npx_bin))
+            self.assertEqual(command[2], "openrelix@0.3.0")
             self.assertIn(str(bin_dir), run.call_args.kwargs["env"]["PATH"])
             self.assertEqual(run.call_args.kwargs["cwd"], str(openrelix.REPO_ROOT))
+
+    def test_openrelix_update_print_command_uses_explicit_latest_version(self):
+        args = argparse.Namespace(
+            check=False,
+            print_command=True,
+            recommended=False,
+            yes=False,
+            json=False,
+            force=False,
+        )
+
+        with mock.patch.object(openrelix, "read_local_package_version", return_value="0.3.5"), mock.patch.object(
+            openrelix,
+            "fetch_latest_npm_version",
+            return_value="0.3.7",
+        ), mock.patch.object(
+            openrelix,
+            "resolve_cli_tool",
+            return_value="/opt/homebrew/bin/npx",
+        ), mock.patch(
+            "sys.stdout",
+            new_callable=io.StringIO,
+        ) as stdout:
+            openrelix.command_update(args)
+
+        output = stdout.getvalue()
+        self.assertIn("/opt/homebrew/bin/npx -y openrelix@0.3.7 install", output)
+        self.assertNotIn("openrelix@latest install", output)
 
     def test_openrelix_update_reports_registry_lag_without_running_npx(self):
         args = argparse.Namespace(
