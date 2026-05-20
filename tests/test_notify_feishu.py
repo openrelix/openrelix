@@ -75,6 +75,40 @@ class NotifyFeishuTest(unittest.TestCase):
         self.assertIn("https://github.com/openrelix/openrelix/releases/tag/v0.4.0", message)
         self.assertIn("发布 0.4.0。", message)
 
+    def test_mention_for_github_actor_uses_open_id_mapping(self):
+        mention = notify_feishu.mention_for_github_actor(
+            "octocat",
+            json.dumps({"octocat": {"open_id": "ou_abc123", "name": "章三"}}),
+        )
+
+        self.assertEqual(mention, '<at user_id="ou_abc123">章三</at> (@octocat)')
+
+    def test_mention_for_github_actor_falls_back_for_name_only_mapping(self):
+        mention = notify_feishu.mention_for_github_actor(
+            "octocat",
+            json.dumps({"octocat": {"name": "章三"}}),
+        )
+
+        self.assertEqual(mention, "章三 (@octocat，未配置可 @ 的飞书 open_id)")
+
+    def test_backmerge_failure_message_includes_submitter_mapping(self):
+        with mock.patch.dict(
+            os.environ,
+            {
+                "GITHUB_REF_NAME": "bugfix/version_0_3",
+                "GITHUB_REPOSITORY": "openrelix/openrelix",
+                "GITHUB_SHA": "abcdef123456",
+                "GITHUB_ACTOR": "octocat",
+                "FEISHU_USER_MAP_JSON": json.dumps(
+                    {"octocat": {"open_id": "ou_abc123", "name": "章三"}}
+                ),
+            },
+            clear=True,
+        ):
+            message = notify_feishu.build_backmerge_failure_message()
+
+        self.assertIn("提交者：<at user_id=\"ou_abc123\">章三</at> (@octocat)", message)
+
     def test_send_message_skips_when_webhook_is_missing(self):
         with mock.patch.dict(os.environ, {}, clear=True):
             self.assertEqual(notify_feishu.send_message("hello"), 0)
