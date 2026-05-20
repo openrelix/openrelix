@@ -331,6 +331,7 @@ scripts/cleanup_smoke_temp.sh --dry-run</code></pre>
 </ol>
 <p><code>create-release.yml</code> 会自动执行这条版本线规则：发布 <code>x.y.0</code> 时，如果上一个 <code>bugfix/version_&lt;x&gt;_&lt;y&gt;</code> 分支还有未合入 <code>main</code> 的提交，会阻断 release；release 创建后，会在当前 release commit 上创建或复用新的远端维护分支 <code>bugfix/version_&lt;x&gt;_&lt;y&gt;</code>。</p>
 <p>提交进入远端 <code>bugfix/version_*</code> 分支后，<code>bugfix-backmerge.yml</code> 会先基于最新 <code>origin/main</code> 准备一次合并，在合并结果上跑提交检查，全部通过后才 push 回 <code>origin/main</code>。如果检查失败或 merge 冲突，workflow 保持失败，需要人工修复后再继续发布。</p>
+<p>如果要把回合失败消息发到飞书群，在目标群添加「自定义机器人」，把 webhook 保存到 GitHub Actions secret：<code>OPENRELIX_FEISHU_BACKMERGE_WEBHOOK_URL</code>。如果机器人开启了签名校验，再把签名密钥保存到 <code>OPENRELIX_FEISHU_BACKMERGE_SECRET</code>。这两个值都不要写进仓库；workflow 只会发送仓库、分支、commit、Actions 链接和通用处理提示。</p>
 <h2 id="release-notes">Release Notes 清单</h2>
 <p>Release notes 应该对用户和贡献者清楚：</p>
 <ul>

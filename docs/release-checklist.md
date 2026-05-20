@@ -80,6 +80,8 @@ The `create-release.yml` workflow enforces the release-line rule for `x.y.0` ver
 
 After a commit lands on a remote `bugfix/version_*` branch, the `bugfix-backmerge.yml` workflow prepares a merge against the latest `origin/main`, runs the commit checks on that merged result, and pushes it back to `origin/main` only after validation passes. If validation fails or the merge conflicts, the workflow stays red and the branch needs a manual fix before release work continues.
 
+To receive Feishu group notifications when the backmerge fails, add a Feishu custom bot to the target group and save its webhook as the GitHub Actions secret `OPENRELIX_FEISHU_BACKMERGE_WEBHOOK_URL`. If the bot enables signature validation, also save the signing secret as `OPENRELIX_FEISHU_BACKMERGE_SECRET`. Keep both values out of the repo; the workflow sends only the repo, branch, commit, Actions URL, and a generic fix hint.
+
 If a version has already been published, do not overwrite it. Prepare the next patch version instead.
 
 ## Release Notes Checklist

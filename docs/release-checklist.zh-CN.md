@@ -77,6 +77,8 @@ npm pack --dry-run --json
 
 提交进入远端 `bugfix/version_*` 分支后，`bugfix-backmerge.yml` 会先基于最新 `origin/main` 准备一次合并，在合并结果上跑提交检查，全部通过后才 push 回 `origin/main`。如果检查失败或 merge 冲突，workflow 保持失败，需要人工修复后再继续发布。
 
+如果要把回合失败消息发到飞书群，在目标群添加「自定义机器人」，把 webhook 保存到 GitHub Actions secret：`OPENRELIX_FEISHU_BACKMERGE_WEBHOOK_URL`。如果机器人开启了签名校验，再把签名密钥保存到 `OPENRELIX_FEISHU_BACKMERGE_SECRET`。这两个值都不要写进仓库；workflow 只会发送仓库、分支、commit、Actions 链接和通用处理提示。
+
 ## Release Notes 清单
 
 Release notes 应该对用户和贡献者清楚：
