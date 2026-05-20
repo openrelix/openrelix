@@ -36,12 +36,7 @@ Keep those layers separate:
 git status --short --branch
 ```
 
-For feature or docs work, prefer a dedicated worktree:
-
-```bash
-git worktree add -b codex/<task-name> ../openrelix-worktrees/<task-name> main
-cd ../openrelix-worktrees/<task-name>
-```
+Feature and docs work can use the current checkout or a normal branch by default. Create a separate worktree only when the task explicitly needs release isolation, dirty-state isolation, or parallel checkout isolation.
 
 Run this once per clone so local development checks are active:
 
@@ -95,7 +90,7 @@ The repo has no runtime npm dependency. Python should mostly use the standard li
 
 | Path | Responsibility | Change when |
 | --- | --- | --- |
-| `AGENTS.md` | Stable repo rules | contribution, privacy, worktree, validation rules change |
+| `AGENTS.md` | Stable repo rules | contribution, privacy, validation rules change |
 | `.agents/skills/memory-review/` | repo-local immediate review skill | review or asset registration behavior changes |
 | `.agents/skills/openrelix-*-harness/` | development harness skills | internal product, technical, implementation, or verification workflows change; these skills do not ship in npm |
 | `.agents/plugins/` | Codex plugin marketplace metadata | plugin display or entry declarations change |

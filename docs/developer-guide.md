@@ -36,12 +36,7 @@ state root，也就是 OpenRelix 应用根目录
 git status --short --branch
 ```
 
-如果要做功能或文档改动，优先在独立 worktree 里做：
-
-```bash
-git worktree add -b codex/<task-name> ../openrelix-worktrees/<task-name> main
-cd ../openrelix-worktrees/<task-name>
-```
+功能或文档改动默认可以在当前 checkout 或普通分支里做。只有任务明确需要 release 隔离、dirty-state 隔离或并行 checkout 隔离时，才额外创建独立 worktree。
 
 每个 clone 建议先启用本地开发检查：
 
@@ -95,7 +90,7 @@ open "$STATE_DIR/reports/panel.html"
 
 | 路径 | 职责 | 什么时候改这里 |
 | --- | --- | --- |
-| `AGENTS.md` | 本仓库稳定规则 | 固化贡献、隐私、worktree、验证规则 |
+| `AGENTS.md` | 本仓库稳定规则 | 固化贡献、隐私、验证规则 |
 | `.agents/skills/memory-review/` | repo-local 即时复盘 skill | 复盘流程、资产登记流程、skill 暴露方式变化 |
 | `.agents/skills/openrelix-*-harness/` | 维护本仓库的开发 harness skills | 产品、技术、实现、验证工作流变化；这些 skill 不进入 npm 包 |
 | `.agents/plugins/` | Codex plugin marketplace metadata | plugin 展示和入口声明变化 |

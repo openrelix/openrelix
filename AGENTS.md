@@ -13,6 +13,12 @@
 - macOS launchd templates live under `ops/launchd/`.
 - Runtime path resolution lives in `scripts/asset_runtime.py`.
 
+## Optional Local Agent Overlay
+
+- Developers may keep machine-local workflow preferences in `AGENTS.local.md` at the repo root.
+- `AGENTS.local.md` is ignored by git and may be absent. Agents should read it when present, treat it as local preference for this checkout only, and never copy its contents into tracked files, docs, release artifacts, or package contents.
+- Shared project rules still belong in `AGENTS.md` or repo docs; local overlay rules should not override privacy, packaging, or verification requirements.
+
 ## Development Harness Skills
 
 - OpenRelix repo-maintenance harness skills may live under `.agents/skills/openrelix-*-harness/`.
@@ -29,11 +35,11 @@
 - Prefer installer or template changes over one-off local setup instructions.
 - When adding automation, make state roots and Codex home paths configurable through environment variables.
 
-## Git / Worktree Merge Rules
+## Git / Merge Rules
 
-- For feature development or bug fixes, proactively create and work from a dedicated git worktree without waiting for the user to remind you.
-- When finishing development from a worktree branch and preparing to merge remotely, merge through local `main` and target `origin/main`; do not merge into other remote branches such as `origin/xxx`.
-- After a worktree branch has been merged into both local `main` and `origin/main`, delete the corresponding local branch. If its worktree is clean, remove that worktree too.
+- Feature development and bug fixes do not require a dedicated git worktree by default. Use the current checkout or a normal branch unless the task explicitly needs release isolation, dirty-state isolation, or parallel checkout isolation.
+- When finishing development from a branch and preparing to merge remotely, merge through local `main` and target `origin/main`; do not merge into other remote branches such as `origin/xxx`.
+- After a branch has been merged into both local `main` and `origin/main`, delete the corresponding local branch. If a separate worktree was intentionally created and is clean, remove it too.
 
 ## Commit Checks
 

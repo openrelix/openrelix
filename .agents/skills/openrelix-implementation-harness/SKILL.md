@@ -1,6 +1,6 @@
 ---
 name: openrelix-implementation-harness
-description: "Use when implementing OpenRelix features, bug fixes, refactors, docs-aligned code changes, installer updates, or panel behavior. Enforces worktree isolation, vertical slices, scoped patches, focused tests, privacy checks, and package-surface awareness."
+description: "Use when implementing OpenRelix features, bug fixes, refactors, docs-aligned code changes, installer updates, or panel behavior. Enforces a clean implementation boundary, vertical slices, scoped patches, focused tests, privacy checks, and package-surface awareness."
 ---
 
 # OpenRelix Implementation Harness
@@ -10,8 +10,8 @@ Use this skill when the user wants code or documentation changes made in the Ope
 ## Workflow
 
 1. Start from a clean implementation boundary:
-   - Use a dedicated git worktree for feature, bugfix, refactor, or docs/site changes.
    - Inspect `git status --short` and avoid touching unrelated user changes.
+   - Use the current checkout or a normal branch by default. Use a separate worktree only when the task explicitly needs release isolation, dirty-state isolation, or parallel checkout isolation.
 2. Gather the minimum current context:
    - Read the nearby source, tests, docs, and templates before editing.
    - Prefer repo patterns over new abstractions.
@@ -52,4 +52,4 @@ When done, report:
 
 - Do not clone or vendor third-party source into the repo unless the user explicitly requests it and license/package/privacy checks pass.
 - Do not add OpenRelix development-only skills to `plugins/openrelix/` or the npm `files` allowlist.
-- If a change might affect `main` versus a worktree, verify with git before claiming it has landed.
+- If a change might affect `main` versus another checkout, verify with git before claiming it has landed.

@@ -86,7 +86,7 @@ Use the pull request template when available. If a change touches release or pac
 
 This repo is co-maintained by humans and AI coding agents (Codex CLI, Claude Code). To keep multi-window work converging instead of fighting:
 
-- **Branch prefix**: use `codex/<task>` from Codex sessions and `claude/<task>` from Claude Code sessions, so `git log` and worktree listings make the producing agent obvious.
+- **Branch prefix**: use `codex/<task>` from Codex sessions and `claude/<task>` from Claude Code sessions, so `git log` and branch listings make the producing agent obvious.
 - **Hot files**: `scripts/build_overview.py` and `scripts/openrelix.py` are large single-file modules with high conflict risk under parallel work. Before editing either, claim the file by opening a draft PR titled `[wip:hot-file] <path>`; other agents should rebase or wait until the draft closes.
 - **Design harnesses**: non-trivial product or architecture changes should be grounded by the relevant harness skill under `.agents/skills/openrelix-*-harness/` (read the SKILL.md directly from Claude Code — those skills are Codex-discovered only).
 - **CI is the gate**: never `--no-verify` or skip the personal-info check to push faster. CI will fail the PR.

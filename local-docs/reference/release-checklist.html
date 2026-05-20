@@ -288,7 +288,7 @@ tr:last-child td { border-bottom: 0; }
 <li>Check <code>package.json</code> and changelog state.</li>
 <li>Check whether release notes should mention docs/site, installer, memory behavior, host adapters, package surface, or privacy changes.</li>
 </ul>
-<p>Use a dedicated worktree for release preparation.</p>
+<p>Prepare releases from a clean checkout based on current <code>main</code>. If the current checkout has unrelated dirty state, clean it up or choose an isolated checkout before changing version and release files.</p>
 <h2 id="version-and-docs">Version And Docs</h2>
 <p>Update only current-release truth:</p>
 <ul>

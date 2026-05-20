@@ -14,7 +14,7 @@ Before starting:
 - Check `package.json` and changelog state.
 - Check whether release notes should mention docs/site, installer, memory behavior, host adapters, package surface, or privacy changes.
 
-Use a dedicated worktree for release preparation.
+Prepare releases from a clean checkout based on current `main`. If the current checkout has unrelated dirty state, clean it up or choose an isolated checkout before changing version and release files.
 
 ## Version And Docs
 

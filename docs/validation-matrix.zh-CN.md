@@ -13,7 +13,7 @@ python3 scripts/check_personal_info.py
 git diff --check
 ```
 
-如果 worktree 里有无关本地文件，不要 stage 或修改它们。交付时说明相关 dirty state。
+如果 checkout 里有无关本地文件，不要 stage 或修改它们。交付时说明相关 dirty state。
 
 ## 按改动类型选择检查
 

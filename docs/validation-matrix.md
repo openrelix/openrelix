@@ -14,7 +14,7 @@ python3 scripts/check_personal_info.py
 git diff --check
 ```
 
-If the worktree has unrelated local files, do not stage or modify them. Mention any relevant dirty state in the handoff.
+If the checkout has unrelated local files, do not stage or modify them. Mention any relevant dirty state in the handoff.
 
 ## Change-Type Matrix
 
