@@ -1990,6 +1990,15 @@ def build_update_install_command(recommended=False, npx_bin=None, package_spec=N
     return cmd
 
 
+def update_install_cwd():
+    path = PATHS.runtime_dir / "npm-update"
+    try:
+        path.mkdir(parents=True, exist_ok=True)
+        return path
+    except OSError:
+        return Path(tempfile.gettempdir())
+
+
 def ensure_overview_snapshot():
     overview_path = REPORTS_DIR / "overview-data.json"
     if overview_path.exists():
@@ -3757,7 +3766,13 @@ def command_update(args):
             installability_error,
         ))
 
-    subprocess.run(command, cwd=str(REPO_ROOT), env=cli_tool_env(), check=True)
+    try:
+        subprocess.run(command, cwd=str(update_install_cwd()), env=cli_tool_env(), check=True)
+    except subprocess.CalledProcessError as exc:
+        raise SystemExit(localized(
+            "自动重装未完成，退出码 {}。上面的更新命令可手动重试。".format(exc.returncode),
+            "Automatic reinstall did not finish, exit code {}. Retry the update command above manually.".format(exc.returncode),
+        ))
 
 
 def resolve_memory_migration_dates(window_days, end_date=None):

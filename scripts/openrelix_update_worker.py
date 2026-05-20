@@ -40,6 +40,15 @@ def tail_text(text, line_count=UPDATE_LOG_TAIL_LINES):
     return "\n".join(lines[-line_count:])
 
 
+def output_says_up_to_date(text):
+    normalized = str(text or "").lower()
+    return (
+        "当前已是最新版本" in normalized
+        or "already up to date" in normalized
+        or "openrelix is up to date" in normalized
+    )
+
+
 def write_status(status_file, **fields):
     payload = {
         "status": fields.pop("status"),
@@ -128,17 +137,24 @@ def main(argv=None):
 
     output = (proc.stdout or "") + (proc.stderr or "")
     succeeded = proc.returncode == 0
+    reinstall_failed = (not succeeded) and output_says_up_to_date(output)
+    error = ""
+    if not succeeded:
+        if reinstall_failed:
+            error = "reinstall_failed_exit_code={}".format(proc.returncode)
+        else:
+            error = "exit_code={}".format(proc.returncode)
     write_status(
         status_file,
-        status="completed" if succeeded else "failed",
+        status="completed" if succeeded else ("reinstall_failed" if reinstall_failed else "failed"),
         started_at=started_at,
         ended_at=time.time(),
         exit_code=proc.returncode,
-        error="" if succeeded else "exit_code={}".format(proc.returncode),
+        error=error,
         log_tail=tail_text(output),
         reload_after_ms=1500 if succeeded else 0,
     )
-    return 0 if succeeded else proc.returncode
+    return 0 if succeeded or reinstall_failed else proc.returncode
 
 
 if __name__ == "__main__":

@@ -18199,7 +18199,8 @@ def build_html(data):
     }}
 
     .hero-update-card[data-update-state="checking"] .hero-update-dot,
-    .hero-update-card[data-update-state="running"] .hero-update-dot {{
+    .hero-update-card[data-update-state="running"] .hero-update-dot,
+    .hero-update-card[data-update-state="reinstall_failed"] .hero-update-dot {{
       background: var(--amber);
       box-shadow: 0 0 0 4px rgba(191, 107, 0, 0.16);
     }}
@@ -30404,6 +30405,7 @@ def build_html(data):
             availableStatus: "有新版本",
             runningStatus: "更新中",
             completedStatus: "已更新",
+            reinstallFailedStatus: "重装未完成",
             failedStatus: "更新失败",
             checkFailedStatus: "检查失败",
             idleMessage: function () {{ return "当前版本 " + versionLabel(current); }},
@@ -30412,6 +30414,7 @@ def build_html(data):
             availableMessage: function (latest) {{ return "发现 OpenRelix " + versionLabel(latest); }},
             runningMessage: "正在安装并重启...",
             completedMessage: "已更新，正在重载",
+            reinstallFailedMessage: "当前已是最新版本；自动重装未完成，可手动处理",
             failedMessage: "更新未完成，请手动处理",
             checkFailedMessage: "检查失败，请手动处理",
             serverUnavailableMessage: "本地更新服务不可用，请手动处理",
@@ -30434,6 +30437,7 @@ def build_html(data):
             availableStatus: "Update Available",
             runningStatus: "Updating",
             completedStatus: "Updated",
+            reinstallFailedStatus: "Reinstall Incomplete",
             failedStatus: "Update Failed",
             checkFailedStatus: "Check Failed",
             idleMessage: function () {{ return "Current version " + versionLabel(current); }},
@@ -30442,6 +30446,7 @@ def build_html(data):
             availableMessage: function (latest) {{ return "OpenRelix " + versionLabel(latest) + " is available"; }},
             runningMessage: "Installing and restarting...",
             completedMessage: "Updated, reloading",
+            reinstallFailedMessage: "OpenRelix is up to date; automatic reinstall did not finish.",
             failedMessage: "Update did not finish. Handle it manually.",
             checkFailedMessage: "Update check failed. Handle it manually.",
             serverUnavailableMessage: "Local update service is unavailable. Handle it manually.",
@@ -30478,6 +30483,16 @@ def build_html(data):
           }}
           if (nextMode === "completed") {{
             return {{ status: s.completedStatus, message: s.completedMessage, button: s.done, loading: false, showCommand: false, layout: "compact" }};
+          }}
+          if (nextMode === "reinstall_failed") {{
+            return {{
+              status: s.reinstallFailedStatus,
+              message: (extra && extra.message) || s.reinstallFailedMessage,
+              button: s.copy,
+              loading: false,
+              showCommand: true,
+              layout: "expanded"
+            }};
           }}
           if (nextMode === "check_failed") {{
             return {{
@@ -30562,6 +30577,11 @@ def build_html(data):
             clearUpdatePoll();
             setState("completed");
             scheduleReload(data.reload_after_ms);
+            return;
+          }}
+          if (data.status === "reinstall_failed") {{
+            clearUpdatePoll();
+            setState("reinstall_failed");
             return;
           }}
           if (data.status === "failed") {{

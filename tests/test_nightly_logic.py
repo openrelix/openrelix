@@ -7198,6 +7198,9 @@ Native Codex profile.
         self.assertIn('data-update-command="openrelix update --yes --force"', html)
         self.assertIn("版本与更新", html)
         self.assertIn("Version &amp; Updates", html)
+        self.assertIn("重装未完成", html)
+        self.assertIn("Reinstall Incomplete", html)
+        self.assertIn('data.status === "reinstall_failed"', html)
         self.assertIn('data-update-last-check', html)
         self.assertIn('data-update-compact-current', html)
         self.assertIn('data-update-primary', html)
@@ -9888,6 +9891,47 @@ Native Codex profile.
             self.assertEqual(payload["reload_after_ms"], 1500)
             self.assertIn("installed", payload["log_tail"])
 
+    def test_update_worker_downgrades_up_to_date_reinstall_failure(self):
+        with TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            repo_root = root / "repo"
+            (repo_root / "scripts").mkdir(parents=True)
+            status_path = root / "runtime" / "update-status.json"
+            completed = subprocess.CompletedProcess(
+                args=[],
+                returncode=2,
+                stdout="OpenRelix 更新检查\n- 当前已是最新版本。\n",
+                stderr="usage: openrelix ... invalid choice: 'install'\n",
+            )
+
+            with mock.patch.object(
+                openrelix_update_worker.subprocess,
+                "run",
+                return_value=completed,
+            ):
+                exit_code = openrelix_update_worker.main(
+                    [
+                        "--repo-root",
+                        str(repo_root),
+                        "--status-file",
+                        str(status_path),
+                        "--state-dir",
+                        str(root / "state"),
+                        "--codex-home",
+                        str(root / "codex-home"),
+                        "--python-bin",
+                        "/usr/bin/python3",
+                    ]
+                )
+
+            self.assertEqual(exit_code, 0)
+            payload = json.loads(status_path.read_text(encoding="utf-8"))
+            self.assertEqual(payload["status"], "reinstall_failed")
+            self.assertEqual(payload["exit_code"], 2)
+            self.assertEqual(payload["error"], "reinstall_failed_exit_code=2")
+            self.assertEqual(payload["reload_after_ms"], 0)
+            self.assertIn("当前已是最新版本", payload["log_tail"])
+
     def test_openrelix_update_finds_npx_from_common_tool_paths(self):
         with TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -9918,6 +9962,10 @@ Native Codex profile.
                 "check_npm_package_version_installable",
                 return_value="",
             ), mock.patch.object(
+                openrelix,
+                "update_install_cwd",
+                return_value=root / "npm-update",
+            ), mock.patch.object(
                 openrelix.subprocess,
                 "run",
                 return_value=subprocess.CompletedProcess(args=[], returncode=0),
@@ -9931,7 +9979,7 @@ Native Codex profile.
             self.assertEqual(command[0], str(npx_bin))
             self.assertEqual(command[2], "openrelix@0.3.0")
             self.assertIn(str(bin_dir), run.call_args.kwargs["env"]["PATH"])
-            self.assertEqual(run.call_args.kwargs["cwd"], str(openrelix.REPO_ROOT))
+            self.assertEqual(run.call_args.kwargs["cwd"], str(root / "npm-update"))
 
     def test_openrelix_update_print_command_uses_explicit_latest_version(self):
         args = argparse.Namespace(
