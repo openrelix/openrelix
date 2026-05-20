@@ -114,3 +114,64 @@ jobs:
         shell: bash
         run: |
           git push origin HEAD:main
+
+      - name: Notify Feishu on backmerge failure
+        if: failure()
+        shell: bash
+        env:
+          FEISHU_WEBHOOK_URL: ${{ secrets.OPENRELIX_FEISHU_BACKMERGE_WEBHOOK_URL }}
+          FEISHU_WEBHOOK_SECRET: ${{ secrets.OPENRELIX_FEISHU_BACKMERGE_SECRET }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          COMMIT_URL: ${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}
+        run: |
+          if [[ -z "${FEISHU_WEBHOOK_URL}" ]]; then
+            echo "OPENRELIX_FEISHU_BACKMERGE_WEBHOOK_URL is not configured; skip Feishu notification."
+            exit 0
+          fi
+          python3 - <<'PY' > /tmp/openrelix-feishu-backmerge.json
+          import base64
+          import hashlib
+          import hmac
+          import json
+          import os
+          import time
+
+          branch = os.environ.get("GITHUB_REF_NAME", "")
+          repo = os.environ.get("GITHUB_REPOSITORY", "")
+          sha = os.environ.get("GITHUB_SHA", "")
+          run_url = os.environ.get("RUN_URL", "")
+          commit_url = os.environ.get("COMMIT_URL", "")
+          message = "\n".join(
+              [
+                  "OpenRelix bugfix 回合 main 失败",
+                  "仓库：{}".format(repo),
+                  "分支：{}".format(branch),
+                  "提交：{}".format(sha[:7] or "unknown"),
+                  "结果：未推送 main",
+                  "处理：把最新 origin/main 合入 bugfix 分支，解决冲突或检查失败后重新 push。",
+                  "Actions：{}".format(run_url),
+                  "Commit：{}".format(commit_url),
+              ]
+          )
+          payload = {
+              "msg_type": "text",
+              "content": {"text": message},
+          }
+          secret = os.environ.get("FEISHU_WEBHOOK_SECRET", "")
+          if secret:
+              timestamp = str(int(time.time()))
+              string_to_sign = "{}\n{}".format(timestamp, secret)
+              digest = hmac.new(
+                  string_to_sign.encode("utf-8"),
+                  b"",
+                  digestmod=hashlib.sha256,
+              ).digest()
+              payload["timestamp"] = timestamp
+              payload["sign"] = base64.b64encode(digest).decode("utf-8")
+          print(json.dumps(payload, ensure_ascii=False))
+          PY
+          curl --fail --silent --show-error \
+            -X POST \
+            -H "Content-Type: application/json" \
+            --data @/tmp/openrelix-feishu-backmerge.json \
+            "${FEISHU_WEBHOOK_URL}"
