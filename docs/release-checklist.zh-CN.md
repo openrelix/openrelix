@@ -79,6 +79,8 @@ npm pack --dry-run --json
 
 如果要把回合失败消息发到飞书群，在目标群添加「自定义机器人」，把 webhook 保存到 GitHub Actions secret：`OPENRELIX_FEISHU_BACKMERGE_WEBHOOK_URL`。如果机器人开启了签名校验，再把签名密钥保存到 `OPENRELIX_FEISHU_BACKMERGE_SECRET`。这两个值都不要写进仓库；workflow 只会发送仓库、分支、commit、Actions 链接和通用处理提示。
 
+npm 发布通知由 `publish.yml` 发送：只有新版本真的发布成功后，才把版本号、npm 链接、GitHub Release 链接、Actions 链接和对应 changelog 条目发到飞书。默认复用 `OPENRELIX_FEISHU_BACKMERGE_WEBHOOK_URL`；只有发布通知需要发到另一个机器人或使用另一套签名密钥时，才额外配置 `OPENRELIX_FEISHU_RELEASE_WEBHOOK_URL` 和可选的 `OPENRELIX_FEISHU_RELEASE_SECRET`。
+
 ## Release Notes 清单
 
 Release notes 应该对用户和贡献者清楚：

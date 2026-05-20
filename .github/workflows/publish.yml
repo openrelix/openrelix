@@ -61,3 +61,18 @@ jobs:
       - name: Publish to npm
         if: steps.npm_version.outputs.published != 'true'
         run: npm publish --provenance
+
+      - name: Notify Feishu on npm publish
+        if: steps.npm_version.outputs.published != 'true'
+        shell: bash
+        env:
+          FEISHU_WEBHOOK_URL: ${{ secrets.OPENRELIX_FEISHU_RELEASE_WEBHOOK_URL }}
+          FEISHU_FALLBACK_WEBHOOK_URL: ${{ secrets.OPENRELIX_FEISHU_BACKMERGE_WEBHOOK_URL }}
+          FEISHU_WEBHOOK_SECRET: ${{ secrets.OPENRELIX_FEISHU_RELEASE_SECRET }}
+          FEISHU_FALLBACK_WEBHOOK_SECRET: ${{ secrets.OPENRELIX_FEISHU_BACKMERGE_SECRET }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          python3 scripts/notify_feishu.py npm-published \
+            --version "${{ steps.version.outputs.version }}" \
+            --changelog docs/changelog/v0.x.html \
+          || echo "::warning::Feishu npm publish notification failed."
