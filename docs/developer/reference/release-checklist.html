@@ -324,12 +324,15 @@ scripts/cleanup_smoke_temp.sh --dry-run</code></pre>
 <p>Use the repository&#x27;s configured release workflows where possible:</p>
 <ol>
 <li>Commit the release preparation.</li>
+<li>For an <code>x.y.0</code> release, confirm the previous release-line branch such as <code>bugfix/version_0_3</code> has already been merged into <code>main</code>.</li>
 <li>Tag with <code>v&lt;package.json version&gt;</code> only after validation passes.</li>
 <li>Push the branch and tag.</li>
 <li>Use the GitHub release workflow or release draft process configured in <code>.github/workflows/</code>.</li>
 <li>Verify npm publish or trusted-publishing output.</li>
 <li>Verify a fresh <code>npx openrelix --version</code> or package metadata check in a clean context.</li>
 </ol>
+<p>The <code>create-release.yml</code> workflow enforces the release-line rule for <code>x.y.0</code> versions: it blocks the release when the previous <code>bugfix/version_&lt;x&gt;_&lt;y&gt;</code> branch still has commits outside <code>main</code>, and after the release is created it creates or reuses the new remote branch <code>bugfix/version_&lt;x&gt;_&lt;y&gt;</code> at the release commit.</p>
+<p>After a commit lands on a remote <code>bugfix/version_*</code> branch, the <code>bugfix-backmerge.yml</code> workflow prepares a merge against the latest <code>origin/main</code>, runs the commit checks on that merged result, and pushes it back to <code>origin/main</code> only after validation passes. If validation fails or the merge conflicts, the workflow stays red and the branch needs a manual fix before release work continues.</p>
 <p>If a version has already been published, do not overwrite it. Prepare the next patch version instead.</p>
 <h2 id="release-notes-checklist">Release Notes Checklist</h2>
 <p>Release notes should be clear to users and contributors:</p>

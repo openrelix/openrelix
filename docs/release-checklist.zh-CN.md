@@ -67,10 +67,15 @@ npm pack --dry-run --json
 
 1. 确认本地分支已经合入目标 `main`。
 2. 确认 validation 通过。
-3. push branch 和 tag。
-4. 使用配置好的 GitHub release workflow 或 release draft 流程。
-5. 验证 npm publish 或 trusted-publishing 输出。
-6. 在干净上下文中验证 `npx openrelix --version` 或 package metadata。
+3. 如果发布 `x.y.0` 大版本，确认上一个版本线分支，例如 `bugfix/version_0_3`，已经合回 `main`。
+4. push branch 和 tag。
+5. 使用配置好的 GitHub release workflow 或 release draft 流程。
+6. 验证 npm publish 或 trusted-publishing 输出。
+7. 在干净上下文中验证 `npx openrelix --version` 或 package metadata。
+
+`create-release.yml` 会自动执行这条版本线规则：发布 `x.y.0` 时，如果上一个 `bugfix/version_<x>_<y>` 分支还有未合入 `main` 的提交，会阻断 release；release 创建后，会在当前 release commit 上创建或复用新的远端维护分支 `bugfix/version_<x>_<y>`。
+
+提交进入远端 `bugfix/version_*` 分支后，`bugfix-backmerge.yml` 会先基于最新 `origin/main` 准备一次合并，在合并结果上跑提交检查，全部通过后才 push 回 `origin/main`。如果检查失败或 merge 冲突，workflow 保持失败，需要人工修复后再继续发布。
 
 ## Release Notes 清单
 

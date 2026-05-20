@@ -323,11 +323,14 @@ scripts/cleanup_smoke_temp.sh --dry-run</code></pre>
 <ol>
 <li>确认本地分支已经合入目标 <code>main</code>。</li>
 <li>确认 validation 通过。</li>
+<li>如果发布 <code>x.y.0</code> 大版本，确认上一个版本线分支，例如 <code>bugfix/version_0_3</code>，已经合回 <code>main</code>。</li>
 <li>push branch 和 tag。</li>
 <li>使用配置好的 GitHub release workflow 或 release draft 流程。</li>
 <li>验证 npm publish 或 trusted-publishing 输出。</li>
 <li>在干净上下文中验证 <code>npx openrelix --version</code> 或 package metadata。</li>
 </ol>
+<p><code>create-release.yml</code> 会自动执行这条版本线规则：发布 <code>x.y.0</code> 时，如果上一个 <code>bugfix/version_&lt;x&gt;_&lt;y&gt;</code> 分支还有未合入 <code>main</code> 的提交，会阻断 release；release 创建后，会在当前 release commit 上创建或复用新的远端维护分支 <code>bugfix/version_&lt;x&gt;_&lt;y&gt;</code>。</p>
+<p>提交进入远端 <code>bugfix/version_*</code> 分支后，<code>bugfix-backmerge.yml</code> 会先基于最新 <code>origin/main</code> 准备一次合并，在合并结果上跑提交检查，全部通过后才 push 回 <code>origin/main</code>。如果检查失败或 merge 冲突，workflow 保持失败，需要人工修复后再继续发布。</p>
 <h2 id="release-notes">Release Notes 清单</h2>
 <p>Release notes 应该对用户和贡献者清楚：</p>
 <ul>
