@@ -28,6 +28,7 @@ function printHelp() {
   npx openrelix tokens [--provider all|codex|cc]
   npx openrelix models [--json | --bundled | --all]
   npx openrelix memory-migration status|ensure|run|complete
+  npx openrelix task-summary-migration status|ensure|run
   npx openrelix context sync
   npx openrelix index status|rebuild|search-memory|search-window
   npx openrelix recall <query>
@@ -57,6 +58,7 @@ Examples:
   npx openrelix models
   npx openrelix tokens --provider all
   npx openrelix memory-migration status
+  npx openrelix task-summary-migration status
   npx openrelix context sync
   npx openrelix index status
   npx openrelix index search-memory sqlite
@@ -269,6 +271,11 @@ function main() {
 
   if (command === "memory-migration") {
     runPythonCli(["memory-migration", ...args.slice(1)]);
+    return;
+  }
+
+  if (command === "task-summary-migration") {
+    runPythonCli(["task-summary-migration", ...args.slice(1)]);
     return;
   }
 

@@ -209,6 +209,21 @@ run_pending_memory_migration_if_needed() {
   fi
 }
 
+run_pending_task_summary_migration_if_needed() {
+  local disabled="${OPENRELIX_DISABLE_TASK_SUMMARY_MIGRATION:-0}"
+  case "${disabled:l}" in
+    1|true|yes|on)
+      return 0
+      ;;
+  esac
+  if [[ ! -f "$REPO_ROOT/scripts/openrelix.py" ]]; then
+    return 0
+  fi
+  if ! "$PYTHON_BIN" "$REPO_ROOT/scripts/openrelix.py" task-summary-migration run --if-pending --quiet; then
+    echo "refresh_overview: task summary migration failed; rule-based task grouping remains available." >&2
+  fi
+}
+
 case "${asset_layer_only:l}" in
   1|true|yes|on)
     pipeline_status_start "asset_layer_refresh"
@@ -222,6 +237,7 @@ case "${asset_layer_only:l}" in
 esac
 
 run_pending_memory_migration_if_needed
+run_pending_task_summary_migration_if_needed
 
 pipeline_status_start "refresh_overview"
 trap pipeline_status_finish EXIT

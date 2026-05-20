@@ -158,7 +158,8 @@ def normalize_provider_daily_row(row, provider):
     cache_read_tokens = int(row.get("cacheReadTokens") or row.get("cachedInputTokens") or 0)
     total_input_tokens = input_tokens + cache_creation_tokens + cache_read_tokens
     output_tokens = int(row.get("outputTokens") or 0)
-    total_tokens = int(row.get("totalTokens") or (total_input_tokens + output_tokens))
+    table_total_tokens = total_input_tokens + output_tokens
+    total_tokens = max(int(row.get("totalTokens") or 0), table_total_tokens)
     return {
         "date": str(row.get("date") or row.get("period") or ""),
         "provider": provider,
