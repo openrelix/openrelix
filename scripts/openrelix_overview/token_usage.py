@@ -534,6 +534,8 @@ def build_token_usage_view(
             "period_unit": token_period_unit(group_by, language=language),
             "refreshed_at": refreshed_at,
             "refreshed_at_display": refreshed_at_display,
+            "today_refreshed_at": refreshed_at,
+            "today_refreshed_at_display": refreshed_at_display,
             "window_days": window_days,
             "provider": ccusage_result.get("provider", "all"),
             "provider_label": ccusage_result.get("provider_label", "ccusage"),
@@ -549,6 +551,8 @@ def build_token_usage_view(
         label = parsed_date.strftime("%m-%d") if parsed_date else raw_date
         total_input_tokens = safe_int(row.get("inputTokens", 0))
         cached_input_tokens = safe_int(row.get("cachedInputTokens", 0))
+        output_tokens = safe_int(row.get("outputTokens", 0))
+        total_tokens = max(safe_int(row.get("totalTokens", 0)), total_input_tokens + output_tokens)
         uncached_input_tokens = max(total_input_tokens - cached_input_tokens, 0)
         parsed_rows.append(
             {
@@ -562,10 +566,10 @@ def build_token_usage_view(
                 "uncachedInputTokens": uncached_input_tokens,
                 "cachedInputTokens": cached_input_tokens,
                 "cacheCreationTokens": safe_int(row.get("cacheCreationTokens", 0)),
-                "outputTokens": safe_int(row.get("outputTokens", 0)),
+                "outputTokens": output_tokens,
                 "reasoningOutputTokens": safe_int(row.get("reasoningOutputTokens", 0)),
-                "totalTokens": safe_int(row.get("totalTokens", 0)),
-                "display_total_tokens": compact_token(row.get("totalTokens", 0), language=language),
+                "totalTokens": total_tokens,
+                "display_total_tokens": compact_token(total_tokens, language=language),
                 "costUSD": safe_float(row.get("costUSD", 0)),
                 "provider": row.get("provider", ccusage_result.get("provider", "codex")),
                 "providerLabel": row.get("providerLabel", ccusage_result.get("provider_label", "")),
@@ -847,6 +851,8 @@ def build_token_usage_view(
         "overview_note": overview_note,
         "refreshed_at": refreshed_at,
         "refreshed_at_display": refreshed_at_display,
+        "today_refreshed_at": refreshed_at,
+        "today_refreshed_at_display": refreshed_at_display,
         "window_days": window_days,
         "provider": ccusage_result.get("provider", "codex"),
         "provider_label": ccusage_result.get("provider_label", "ccusage"),

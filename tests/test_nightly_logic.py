@@ -10,6 +10,7 @@ import io
 import json
 import os
 from pathlib import Path
+import signal
 import subprocess
 import sys
 from tempfile import TemporaryDirectory
@@ -931,23 +932,28 @@ class NightlyLogicTests(unittest.TestCase):
         def fake_now():
             return datetime.fromisoformat("2026-05-04T10:00:00+08:00")
 
+        commands = []
+
         def fake_runner(cmd, **kwargs):
+            commands.append(cmd)
             package = cmd[2]
-            if package == "@ccusage/codex@latest":
+            provider_command = tuple(cmd[3:5])
+            self.assertEqual(package, "ccusage@latest")
+            if provider_command == ("codex", "daily"):
                 payload = {
                     "daily": [
                         {
-                            "date": "2026-05-04",
+                            "period": "2026-05-04",
                             "inputTokens": 100,
-                            "cachedInputTokens": 20,
+                            "cacheReadTokens": 20,
                             "outputTokens": 30,
                             "reasoningOutputTokens": 5,
                             "totalTokens": 135,
-                            "costUSD": 1.25,
+                            "totalCost": 1.25,
                         }
                     ]
                 }
-            elif package == "ccusage@latest":
+            elif provider_command == ("claude", "daily"):
                 payload = {
                     "daily": [
                         {
@@ -980,10 +986,14 @@ class NightlyLogicTests(unittest.TestCase):
         self.assertIn("claude", result["provider_results"])
         merged_row = result["payload"]["daily"][0]
         self.assertEqual(merged_row["date"], "2026-05-04")
-        self.assertEqual(merged_row["totalTokens"], 220)
+        self.assertEqual(merged_row["totalTokens"], 235)
+        self.assertEqual(merged_row["inputTokens"], 185)
         self.assertEqual(merged_row["cachedInputTokens"], 25)
         self.assertAlmostEqual(merged_row["costUSD"], 1.75)
+        self.assertEqual(merged_row["providers"]["codex"]["inputTokens"], 120)
+        self.assertEqual(merged_row["providers"]["codex"]["totalTokens"], 150)
         self.assertEqual(merged_row["providers"]["claude"]["provider"], "claude")
+        self.assertEqual([command[3:5] for command in commands], [["codex", "daily"], ["claude", "daily"]])
 
     def test_token_fetcher_accepts_explicit_date_range(self):
         commands = []
@@ -1015,6 +1025,7 @@ class NightlyLogicTests(unittest.TestCase):
         self.assertEqual(result["range_start"], "2026-04-01")
         self.assertEqual(result["range_end"], "2026-04-30")
         self.assertEqual(result["window_days"], 30)
+        self.assertEqual(commands[0][2:5], ["ccusage@latest", "claude", "daily"])
         self.assertIn("--since", commands[0])
         self.assertEqual(commands[0][commands[0].index("--since") + 1], "20260401")
         self.assertEqual(commands[0][commands[0].index("--until") + 1], "20260430")
@@ -1328,8 +1339,11 @@ class NightlyLogicTests(unittest.TestCase):
 
         with TemporaryDirectory() as tmpdir:
             cache_path = Path(tmpdir) / "token-live-cache.json"
+            report_cache_path = Path(tmpdir) / "token-usage-cache.json"
             old_cache_path = token_live_server.CACHE_PATH
+            old_report_cache_path = token_live_server.REPORT_TOKEN_CACHE_PATH
             token_live_server.CACHE_PATH = cache_path
+            token_live_server.REPORT_TOKEN_CACHE_PATH = report_cache_path
             try:
                 token_live_server.write_cache(
                     token_live_server.build_token_payload_from_result(
@@ -1352,6 +1366,7 @@ class NightlyLogicTests(unittest.TestCase):
                 cached = token_live_server.load_cache()
             finally:
                 token_live_server.CACHE_PATH = old_cache_path
+                token_live_server.REPORT_TOKEN_CACHE_PATH = old_report_cache_path
 
         self.assertEqual(cached["version"], 2)
         self.assertIn("all|2026-04-12|2026-05-11", cached["entries"])
@@ -1449,6 +1464,207 @@ class NightlyLogicTests(unittest.TestCase):
         self.assertIsNotNone(all_payload)
         self.assertEqual(all_payload["provider"], "all")
         self.assertEqual(all_payload["token_usage"]["today_total_tokens"], 300)
+
+    def test_token_live_cache_prefers_non_empty_covering_entry(self):
+        def result(range_start, total_tokens, fetched_at="2026-05-18T10:00:00+08:00"):
+            daily = []
+            if total_tokens:
+                daily.append(
+                    {
+                        "date": "2026-05-18",
+                        "provider": "all",
+                        "inputTokens": total_tokens,
+                        "cachedInputTokens": 0,
+                        "outputTokens": 0,
+                        "reasoningOutputTokens": 0,
+                        "totalTokens": total_tokens,
+                        "costUSD": 1.0,
+                    }
+                )
+            return {
+                "available": True,
+                "provider": "all",
+                "provider_label": token_fetcher.provider_display_name("all"),
+                "window_days": 30,
+                "range_start": range_start,
+                "range_end": "2026-05-18",
+                "payload": {"daily": daily},
+                "error": "",
+                "fetched_at": fetched_at,
+            }
+
+        empty_week = token_live_server.build_token_payload_from_result(
+            result("2026-05-12", 0),
+            7,
+            "all",
+            start_date="2026-05-12",
+            end_date="2026-05-18",
+        )
+        empty_week["_cached_at_epoch"] = token_live_server.time.time()
+        month_with_data = token_live_server.build_token_payload_from_result(
+            result("2026-04-19", 300),
+            30,
+            "all",
+            start_date="2026-04-19",
+            end_date="2026-05-18",
+        )
+        month_with_data["_cached_at_epoch"] = token_live_server.time.time() - 10
+        cached = {
+            "version": 2,
+            "entries": {
+                "all|2026-05-12|2026-05-18": empty_week,
+                "all|2026-04-19|2026-05-18": month_with_data,
+            },
+        }
+
+        payload = token_live_server.build_payload_from_cache(
+            cached,
+            7,
+            "all",
+            start_date="2026-05-12",
+            end_date="2026-05-18",
+        )
+
+        self.assertIsNotNone(payload)
+        self.assertEqual(payload["token_usage"]["today_total_tokens"], 300)
+        self.assertEqual(payload["token_usage"]["active_period_count"], 1)
+
+    def test_token_live_cache_prefers_newer_ccusage_data_timestamp(self):
+        def result(range_start, total_tokens, fetched_at):
+            return {
+                "available": True,
+                "provider": "all",
+                "provider_label": token_fetcher.provider_display_name("all"),
+                "window_days": 30,
+                "range_start": range_start,
+                "range_end": "2026-05-18",
+                "payload": {
+                    "daily": [
+                        {
+                            "date": "2026-05-18",
+                            "provider": "all",
+                            "inputTokens": total_tokens,
+                            "cachedInputTokens": 0,
+                            "outputTokens": 0,
+                            "reasoningOutputTokens": 0,
+                            "totalTokens": total_tokens,
+                            "costUSD": 1.0,
+                        }
+                    ]
+                },
+                "error": "",
+                "fetched_at": fetched_at,
+            }
+
+        older_week = token_live_server.build_token_payload_from_result(
+            result("2026-05-12", 200, "2026-05-18T10:00:00+08:00"),
+            7,
+            "all",
+            start_date="2026-05-12",
+            end_date="2026-05-18",
+        )
+        older_week["_cached_at_epoch"] = token_live_server.time.time()
+        newer_month = token_live_server.build_token_payload_from_result(
+            result("2026-04-19", 300, "2026-05-18T10:05:00+08:00"),
+            30,
+            "all",
+            start_date="2026-04-19",
+            end_date="2026-05-18",
+        )
+        newer_month["_cached_at_epoch"] = token_live_server.time.time() - 10
+        cached = {
+            "version": 2,
+            "entries": {
+                "all|2026-05-12|2026-05-18": older_week,
+                "all|2026-04-19|2026-05-18": newer_month,
+            },
+        }
+
+        payload = token_live_server.build_payload_from_cache(
+            cached,
+            7,
+            "all",
+            start_date="2026-05-12",
+            end_date="2026-05-18",
+        )
+
+        self.assertIsNotNone(payload)
+        self.assertEqual(payload["token_usage"]["today_total_tokens"], 300)
+        self.assertEqual(payload["token_usage"]["refreshed_at"], "2026-05-18T10:05:00+08:00")
+        self.assertEqual(payload["token_usage"]["today_refreshed_at"], "2026-05-18T10:05:00+08:00")
+
+    def test_token_live_force_refresh_uses_month_all_source_and_updates_report_cache(self):
+        def result(provider, total_tokens):
+            return {
+                "available": True,
+                "provider": provider,
+                "provider_label": token_fetcher.provider_display_name(provider),
+                "window_days": 30,
+                "range_start": "2026-04-19",
+                "range_end": "2026-05-18",
+                "payload": {
+                    "daily": [
+                        {
+                            "date": "2026-05-18",
+                            "provider": provider,
+                            "inputTokens": total_tokens,
+                            "cachedInputTokens": 0,
+                            "outputTokens": 0,
+                            "reasoningOutputTokens": 0,
+                            "totalTokens": total_tokens,
+                            "costUSD": 1.0,
+                        }
+                    ]
+                },
+                "error": "",
+                "fetched_at": "2026-05-18T10:05:00+08:00",
+            }
+
+        all_result = result("all", 300)
+        all_result["provider_results"] = {
+            "codex": result("codex", 100),
+            "claude": result("claude", 200),
+        }
+        captured = {}
+
+        def fake_fetch(**kwargs):
+            captured.update(kwargs)
+            return all_result
+
+        with TemporaryDirectory() as tmpdir:
+            cache_path = Path(tmpdir) / "token-live-cache.json"
+            report_cache_path = Path(tmpdir) / "token-usage-cache.json"
+            old_cache_path = token_live_server.CACHE_PATH
+            old_report_cache_path = token_live_server.REPORT_TOKEN_CACHE_PATH
+            token_live_server.CACHE_PATH = cache_path
+            token_live_server.REPORT_TOKEN_CACHE_PATH = report_cache_path
+            try:
+                with mock.patch.object(token_live_server, "fetch_ccusage_daily", side_effect=fake_fetch):
+                    payload = token_live_server.refresh_token_cache(
+                        7,
+                        "codex",
+                        start_date="2026-05-12",
+                        end_date="2026-05-18",
+                    )
+                cached = token_live_server.load_cache()
+                report_cached = json.loads(report_cache_path.read_text(encoding="utf-8"))
+            finally:
+                token_live_server.CACHE_PATH = old_cache_path
+                token_live_server.REPORT_TOKEN_CACHE_PATH = old_report_cache_path
+
+        self.assertEqual(captured["provider"], "all")
+        self.assertEqual(captured["window_days"], 30)
+        self.assertEqual(captured["start_date"].isoformat(), "2026-04-19")
+        self.assertEqual(captured["end_date"].isoformat(), "2026-05-18")
+        self.assertEqual(payload["provider"], "codex")
+        self.assertEqual(payload["token_usage"]["provider"], "codex")
+        self.assertEqual(payload["token_usage"]["range_start"], "2026-05-12")
+        self.assertEqual(payload["token_usage"]["range_end"], "2026-05-18")
+        self.assertEqual(payload["token_usage"]["today_total_tokens"], 100)
+        self.assertIn("all|2026-04-19|2026-05-18", cached["entries"])
+        self.assertEqual(report_cached["provider"], "all")
+        self.assertEqual(report_cached["range_start"], "2026-04-19")
+        self.assertEqual(report_cached["range_end"], "2026-05-18")
 
     def test_token_live_background_refresh_does_not_wait_for_fetch_lock(self):
         started = token_live_server.threading.Event()
@@ -6910,6 +7126,9 @@ Native Codex profile.
         self.assertIn("本地 Token 服务未启动。请运行 openrelix open panel 后再点实时刷新。", html)
         self.assertIn("The local Token service is not running. Run openrelix open panel", html)
         self.assertIn("window.localStorage", html)
+        self.assertIn("openrelix-token-usage-source-v1", html)
+        self.assertIn("tokenSourceDateRange", html)
+        self.assertIn('requestUrl.searchParams.set("start_date", sourceRange.startDate);', html)
         self.assertNotIn("side-nav-sublabel", html)
         self.assertIn("personal-memory-compiler-section", html)
         self.assertIn("personal-memory-curated-section", html)
@@ -7060,7 +7279,9 @@ Native Codex profile.
         self.assertIn("return tokenRowDayKey(row, context) === endIso;", html)
         self.assertIn("function aggregateDailyRowsByMonth(rows, tokenUsage)", html)
         self.assertIn("const monthContext = Object.assign", html)
-        self.assertIn("aggregateDailyRowsByMonth(sourceRows, monthContext)", html)
+        self.assertIn("function normalizeTokenDisplayRow(row)", html)
+        self.assertIn("const normalizedRows = filteredRows.map(normalizeTokenDisplayRow);", html)
+        self.assertIn("aggregateDailyRowsByMonth(normalizedRows, monthContext)", html)
         self.assertIn("function tokenRowBreakdownValues(row)", html)
         self.assertIn("function dailySummaryTokenValueForDate(dateValue)", html)
         self.assertIn("function resolveNightlyStatValue(summary, item)", html)
@@ -8965,6 +9186,90 @@ Native Codex profile.
             ],
         )
 
+    def test_openrelix_app_ensures_token_live_service_before_opening(self):
+        with TemporaryDirectory() as tmpdir:
+            app_path = Path(tmpdir) / "OpenRelix.app"
+            app_path.mkdir()
+            args = argparse.Namespace(
+                output=str(app_path),
+                build=False,
+                no_open=False,
+                print_path=False,
+            )
+            calls = []
+
+            with mock.patch.object(openrelix.sys, "platform", "darwin"), mock.patch.object(
+                openrelix,
+                "ensure_token_live_service",
+                side_effect=lambda: calls.append("ensure"),
+            ), mock.patch.object(
+                openrelix,
+                "open_path",
+                side_effect=lambda path: calls.append(("open", path)),
+            ), mock.patch(
+                "sys.stdout",
+                new_callable=io.StringIO,
+            ):
+                openrelix.command_app(args)
+
+        self.assertEqual(calls, ["ensure", ("open", app_path.resolve())])
+
+    def test_token_live_health_requires_current_version_and_script_path(self):
+        expected_script = (openrelix.REPO_ROOT / "scripts" / "token_live_server.py").resolve()
+
+        self.assertTrue(
+            openrelix.token_live_health_matches_current(
+                {
+                    "ok": True,
+                    "service": "token-live",
+                    "version": openrelix.read_local_package_version(),
+                    "script_path": str(expected_script),
+                }
+            )
+        )
+        self.assertFalse(openrelix.token_live_health_matches_current({"ok": True, "service": "token-live"}))
+        self.assertFalse(
+            openrelix.token_live_health_matches_current(
+                {
+                    "ok": True,
+                    "service": "token-live",
+                    "version": "0.0.1",
+                    "script_path": str(expected_script),
+                }
+            )
+        )
+        self.assertFalse(
+            openrelix.token_live_health_matches_current(
+                {
+                    "ok": True,
+                    "service": "token-live",
+                    "version": openrelix.read_local_package_version(),
+                    "script_path": "/tmp/old-openrelix/scripts/token_live_server.py",
+                }
+            )
+        )
+
+    def test_token_live_health_endpoint_reports_version_and_script_path(self):
+        server = token_live_server.ThreadingHTTPServer(("127.0.0.1", 0), token_live_server.TokenLiveHandler)
+        thread = token_live_server.threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            conn = http.client.HTTPConnection("127.0.0.1", server.server_address[1], timeout=2)
+            conn.request("GET", "/healthz")
+            response = conn.getresponse()
+            payload = json.loads(response.read().decode("utf-8"))
+            conn.close()
+        finally:
+            server.shutdown()
+            thread.join(timeout=2)
+            server.server_close()
+
+        self.assertEqual(response.status, 200)
+        self.assertEqual(payload["service"], "token-live")
+        self.assertEqual(payload["version"], token_live_server.SERVICE_VERSION)
+        self.assertEqual(payload["repo_root"], str(token_live_server.PATHS.repo_root))
+        self.assertEqual(payload["script_path"], token_live_server.SERVICE_SCRIPT_PATH)
+
     def test_ensure_token_live_service_bootstraps_when_health_check_fails(self):
         with TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -8995,6 +9300,57 @@ Native Codex profile.
 
             render.assert_called_once_with()
             bootstrap.assert_called_once_with(plist_path)
+
+    def test_stop_stale_token_live_processes_targets_only_openrelix_server(self):
+        ps_output = "\n".join(
+            [
+                " 123 /usr/bin/python3 /opt/homebrew/lib/node_modules/openrelix/scripts/token_live_server.py",
+                " 124 /usr/bin/python3 /tmp/other/token_live_server.py",
+                " 125 /usr/bin/python3 /opt/homebrew/lib/node_modules/openrelix/scripts/openrelix.py",
+            ]
+        )
+        calls = []
+
+        def fake_runner(cmd, **kwargs):
+            return subprocess.CompletedProcess(cmd, 0, stdout=ps_output, stderr="")
+
+        def fake_kill(pid, signal_number):
+            calls.append((pid, signal_number))
+
+        stopped = openrelix.stop_stale_token_live_processes(
+            ps_runner=fake_runner,
+            kill_func=fake_kill,
+            sleep_func=lambda _seconds: None,
+            alive_func=lambda _pid: False,
+        )
+
+        self.assertEqual(stopped, [123])
+        self.assertEqual(calls, [(123, signal.SIGTERM)])
+
+    def test_token_live_bootstrap_stops_stale_process_before_starting(self):
+        events = []
+
+        def fake_run(cmd, **kwargs):
+            events.append(cmd)
+            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+        def fake_stop():
+            events.append("stop-stale-token-live")
+            return [123]
+
+        with mock.patch.object(openrelix.os, "getuid", return_value=501), mock.patch.object(
+            openrelix.subprocess,
+            "run",
+            side_effect=fake_run,
+        ), mock.patch.object(
+            openrelix,
+            "stop_stale_token_live_processes",
+            side_effect=fake_stop,
+        ):
+            openrelix.bootstrap_token_live_launch_agent(Path("/tmp/token-live.plist"))
+
+        self.assertEqual(events[2], "stop-stale-token-live")
+        self.assertEqual(events[3][:3], ["launchctl", "bootstrap", "gui/501"])
 
     def test_claude_desktop_resume_command_uses_settings_without_forcing_model(self):
         session_id = "c5ffea1c-8cf8-4dd2-a7ac-bf11f4dfa12b"
@@ -9481,8 +9837,37 @@ Native Codex profile.
 
             command = run.call_args.args[0]
             self.assertEqual(command[0], str(npx_bin))
+            self.assertEqual(command[2], "openrelix@0.3.0")
             self.assertIn(str(bin_dir), run.call_args.kwargs["env"]["PATH"])
             self.assertEqual(run.call_args.kwargs["cwd"], str(openrelix.REPO_ROOT))
+
+    def test_openrelix_update_print_command_uses_explicit_latest_version(self):
+        args = argparse.Namespace(
+            check=False,
+            print_command=True,
+            recommended=False,
+            yes=False,
+            json=False,
+            force=False,
+        )
+
+        with mock.patch.object(openrelix, "read_local_package_version", return_value="0.3.5"), mock.patch.object(
+            openrelix,
+            "fetch_latest_npm_version",
+            return_value="0.3.7",
+        ), mock.patch.object(
+            openrelix,
+            "resolve_cli_tool",
+            return_value="/opt/homebrew/bin/npx",
+        ), mock.patch(
+            "sys.stdout",
+            new_callable=io.StringIO,
+        ) as stdout:
+            openrelix.command_update(args)
+
+        output = stdout.getvalue()
+        self.assertIn("/opt/homebrew/bin/npx -y openrelix@0.3.7 install", output)
+        self.assertNotIn("openrelix@latest install", output)
 
     def test_openrelix_update_reports_registry_lag_without_running_npx(self):
         args = argparse.Namespace(
@@ -10842,6 +11227,18 @@ Native Codex profile.
         self.assertIn("首次自动学习会在下一个 1 小时周期运行", installer)
         self.assertIn("Automatic learning refresh is enabled", installer)
         self.assertIn("__OVERVIEW_RUN_AT_LOAD__", launchd_template)
+
+    def test_installer_boots_out_current_launch_agent_label_before_bootstrap(self):
+        installer = (ROOT / "install" / "install.sh").read_text(encoding="utf-8")
+
+        self.assertLess(
+            installer.index('launchctl bootout "gui/$(id -u)/$label"'),
+            installer.index('launchctl bootout "gui/$(id -u)" "$plist_path"'),
+        )
+        self.assertLess(
+            installer.index('launchctl bootout "gui/$(id -u)" "$plist_path"'),
+            installer.index('launchctl bootstrap "gui/$(id -u)" "$plist_path"'),
+        )
 
     def test_integrated_install_defaults_include_nightly_launchagents(self):
         installer = (ROOT / "install" / "install.sh").read_text(encoding="utf-8")
@@ -12990,6 +13387,45 @@ Native Codex profile.
             [row["tone"] for row in view["today_breakdown"]],
             ["token-input", "token-cache", "token-output", "token-reasoning"],
         )
+
+    def test_token_usage_view_repairs_cached_total_to_match_ccusage_table(self):
+        with mock.patch.object(
+            build_overview,
+            "current_local_datetime",
+            return_value=datetime.fromisoformat("2026-05-18T12:00:00+08:00"),
+        ):
+            view = build_overview.build_token_usage_view(
+                {
+                    "available": True,
+                    "payload": {
+                        "daily": [
+                            {
+                                "date": "2026-05-18",
+                                "inputTokens": 120,
+                                "cachedInputTokens": 20,
+                                "outputTokens": 30,
+                                "reasoningOutputTokens": 5,
+                                "totalTokens": 130,
+                                "costUSD": 1.0,
+                            }
+                        ]
+                    },
+                    "error": "",
+                    "fetched_at": "2026-05-18T12:00:00+08:00",
+                    "window_days": 7,
+                    "range_start": "2026-05-12",
+                    "range_end": "2026-05-18",
+                },
+                language="zh",
+            )
+
+        self.assertEqual(view["today_total_tokens"], 150)
+        self.assertEqual(view["period_total_tokens"], 150)
+        self.assertEqual(view["daily_rows"][-1]["value"], 150)
+        self.assertEqual(view["daily_rows"][-1]["display"], "150 · $1")
+        self.assertEqual(view["today_breakdown"][0]["value"], 100)
+        self.assertEqual(view["today_breakdown"][1]["value"], 20)
+        self.assertEqual(view["today_breakdown"][2]["value"], 30)
 
     def test_token_usage_view_shows_zero_when_today_has_no_usage_row(self):
         with mock.patch.object(

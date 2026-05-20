@@ -1680,7 +1680,7 @@ def resolve_python_bin_for_launch_agent():
     return os.environ.get("PYTHON_BIN") or shutil.which("python3") or sys.executable
 
 
-def token_live_health_ok(timeout=0.75):
+def token_live_health_payload(timeout=0.75):
     request = urllib.request.Request(
         TOKEN_LIVE_HEALTH_URL,
         headers={"Accept": "application/json", "User-Agent": "openrelix-cli"},
@@ -1689,12 +1689,119 @@ def token_live_health_ok(timeout=0.75):
         with urllib.request.urlopen(request, timeout=timeout) as response:
             body = response.read().decode("utf-8")
     except (OSError, TimeoutError, UnicodeDecodeError, urllib.error.URLError):
+        return None
+    try:
+        return json.loads(body)
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return None
+
+
+def token_live_health_matches_current(payload):
+    if not isinstance(payload, dict):
+        return False
+    if not (bool(payload.get("ok")) and payload.get("service") == "token-live"):
+        return False
+
+    current_version = read_local_package_version()
+    service_version = str(payload.get("version") or "").strip()
+    if current_version and service_version != current_version:
+        return False
+
+    expected_script_path = (REPO_ROOT / "scripts" / "token_live_server.py").resolve()
+    service_script_path = str(payload.get("script_path") or "").strip()
+    if not service_script_path:
         return False
     try:
-        payload = json.loads(body)
-    except (UnicodeDecodeError, json.JSONDecodeError):
+        if Path(service_script_path).expanduser().resolve() != expected_script_path:
+            return False
+    except OSError:
         return False
-    return bool(payload.get("ok")) and payload.get("service") == "token-live"
+    return True
+
+
+def token_live_health_ok(timeout=0.75):
+    return token_live_health_matches_current(token_live_health_payload(timeout=timeout))
+
+
+def parse_openrelix_token_live_processes(ps_output, current_pid=None):
+    current_pid = os.getpid() if current_pid is None else current_pid
+    matches = []
+    for raw_line in str(ps_output or "").splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        parts = line.split(None, 1)
+        if len(parts) != 2:
+            continue
+        try:
+            pid = int(parts[0])
+        except ValueError:
+            continue
+        if pid == current_pid:
+            continue
+        command = parts[1]
+        lower_command = command.lower()
+        if "token_live_server.py" in lower_command and "openrelix" in lower_command:
+            matches.append((pid, command))
+    return matches
+
+
+def token_live_pid_alive(pid, kill_func=os.kill):
+    try:
+        kill_func(pid, 0)
+        return True
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except OSError:
+        return False
+
+
+def stop_stale_token_live_processes(
+    ps_runner=subprocess.run,
+    kill_func=os.kill,
+    sleep_func=time.sleep,
+    alive_func=None,
+):
+    try:
+        result = ps_runner(
+            ["ps", "-axo", "pid=,command="],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError:
+        return []
+
+    alive_func = alive_func or (lambda pid: token_live_pid_alive(pid, kill_func=kill_func))
+    stopped = []
+    for pid, _command in parse_openrelix_token_live_processes(getattr(result, "stdout", "")):
+        try:
+            kill_func(pid, signal.SIGTERM)
+        except ProcessLookupError:
+            continue
+        except OSError:
+            continue
+        stopped.append(pid)
+
+    if not stopped:
+        return []
+
+    deadline = time.monotonic() + 2.0
+    while time.monotonic() < deadline:
+        if not any(alive_func(pid) for pid in stopped):
+            return stopped
+        sleep_func(0.1)
+
+    for pid in stopped:
+        if not alive_func(pid):
+            continue
+        try:
+            kill_func(pid, signal.SIGKILL)
+        except (ProcessLookupError, OSError):
+            continue
+    return stopped
 
 
 def render_token_live_launch_agent():
@@ -1747,6 +1854,7 @@ def bootstrap_token_live_launch_agent(plist_path):
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
+    stop_stale_token_live_processes()
     subprocess.run(["launchctl", "bootstrap", "gui/{}".format(uid), str(plist_path)], check=True)
     subprocess.run(
         ["launchctl", "kickstart", "-k", "gui/{}/{}".format(uid, TOKEN_LIVE_LABEL)],
@@ -1848,11 +1956,11 @@ def detected_update_install_flags():
     return flags
 
 
-def build_update_install_command(recommended=False, npx_bin=None):
+def build_update_install_command(recommended=False, npx_bin=None, package_spec=None):
     cmd = [
         npx_bin or "npx",
         "-y",
-        NPM_LATEST_SPEC,
+        package_spec or NPM_LATEST_SPEC,
         "install",
         "--state-dir",
         str(PATHS.state_root),
@@ -3578,7 +3686,8 @@ def command_update(args):
     if latest_version:
         status = "update_available" if update_available else "up_to_date"
     npx_bin = resolve_cli_tool("npx")
-    command = build_update_install_command(recommended=args.recommended, npx_bin=npx_bin)
+    package_spec = "{}@{}".format(NPM_PACKAGE_NAME, latest_version) if latest_version else NPM_LATEST_SPEC
+    command = build_update_install_command(recommended=args.recommended, npx_bin=npx_bin, package_spec=package_spec)
     command_text = shlex.join(command)
     payload = {
         "package": NPM_PACKAGE_NAME,

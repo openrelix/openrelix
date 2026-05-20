@@ -125,11 +125,18 @@ def resolve_token_cache_fetch_range(
 
 def provider_package(provider):
     provider = normalize_token_provider(provider)
-    if provider == "codex":
-        return "@ccusage/codex@latest"
-    if provider == "claude":
+    if provider in {"codex", "claude"}:
         return "ccusage@latest"
     raise ValueError("provider_package expects codex or claude, got {}".format(provider))
+
+
+def provider_command_args(provider):
+    provider = normalize_token_provider(provider)
+    if provider == "codex":
+        return ["codex", "daily"]
+    if provider == "claude":
+        return ["claude", "daily"]
+    raise ValueError("provider_command_args expects codex or claude, got {}".format(provider))
 
 
 def provider_display_name(provider):
@@ -147,40 +154,24 @@ def provider_date_arg(date_value, provider):
 def normalize_provider_daily_row(row, provider):
     provider = normalize_token_provider(provider)
     row = row or {}
-    if provider == "claude":
-        input_tokens = int(row.get("inputTokens") or 0)
-        cache_creation_tokens = int(row.get("cacheCreationTokens") or 0)
-        cache_read_tokens = int(row.get("cacheReadTokens") or row.get("cachedInputTokens") or 0)
-        total_input_tokens = input_tokens + cache_creation_tokens + cache_read_tokens
-        output_tokens = int(row.get("outputTokens") or 0)
-        total_tokens = int(row.get("totalTokens") or (total_input_tokens + output_tokens))
-        return {
-            "date": str(row.get("date") or ""),
-            "provider": "claude",
-            "providerLabel": provider_display_name("claude"),
-            "inputTokens": total_input_tokens,
-            "cachedInputTokens": cache_read_tokens,
-            "cacheCreationTokens": cache_creation_tokens,
-            "outputTokens": output_tokens,
-            "reasoningOutputTokens": int(row.get("reasoningOutputTokens") or 0),
-            "totalTokens": total_tokens,
-            "costUSD": float(row.get("costUSD") or row.get("totalCost") or row.get("cost") or 0),
-            "models": row.get("models") or {},
-            "modelsUsed": row.get("modelsUsed") or [],
-            "modelBreakdowns": row.get("modelBreakdowns") or [],
-        }
-
+    input_tokens = int(row.get("inputTokens") or 0)
+    cache_creation_tokens = int(row.get("cacheCreationTokens") or 0)
+    cache_read_tokens = int(row.get("cacheReadTokens") or row.get("cachedInputTokens") or 0)
+    total_input_tokens = input_tokens + cache_creation_tokens + cache_read_tokens
+    output_tokens = int(row.get("outputTokens") or 0)
+    table_total_tokens = total_input_tokens + output_tokens
+    total_tokens = max(int(row.get("totalTokens") or 0), table_total_tokens)
     return {
-        "date": str(row.get("date") or ""),
-        "provider": "codex",
-        "providerLabel": provider_display_name("codex"),
-        "inputTokens": int(row.get("inputTokens") or 0),
-        "cachedInputTokens": int(row.get("cachedInputTokens") or 0),
-        "cacheCreationTokens": int(row.get("cacheCreationTokens") or 0),
-        "outputTokens": int(row.get("outputTokens") or 0),
+        "date": str(row.get("date") or row.get("period") or ""),
+        "provider": provider,
+        "providerLabel": provider_display_name(provider),
+        "inputTokens": total_input_tokens,
+        "cachedInputTokens": cache_read_tokens,
+        "cacheCreationTokens": cache_creation_tokens,
+        "outputTokens": output_tokens,
         "reasoningOutputTokens": int(row.get("reasoningOutputTokens") or 0),
-        "totalTokens": int(row.get("totalTokens") or 0),
-        "costUSD": float(row.get("costUSD") or row.get("totalCost") or 0),
+        "totalTokens": total_tokens,
+        "costUSD": float(row.get("costUSD") or row.get("totalCost") or row.get("cost") or 0),
         "models": row.get("models") or {},
         "modelsUsed": row.get("modelsUsed") or [],
         "modelBreakdowns": row.get("modelBreakdowns") or [],
@@ -211,6 +202,14 @@ def normalize_provider_payload(payload, provider):
     }
 
 
+def ensure_provider_payload(payload, provider):
+    if isinstance(payload, dict):
+        daily_rows = payload.get("daily") or []
+        if all(isinstance(row, dict) and row.get("provider") for row in daily_rows):
+            return payload
+    return normalize_provider_payload(payload, provider)
+
+
 def date_key(raw_date):
     text = str(raw_date or "").strip()
     if not text:
@@ -231,7 +230,7 @@ def merge_provider_payloads(provider_results):
     for provider, result in provider_results.items():
         if not result.get("available"):
             continue
-        provider_payload = normalize_provider_payload(result.get("payload") or empty_payload(), provider)
+        provider_payload = ensure_provider_payload(result.get("payload") or empty_payload(), provider)
         provider_daily[provider] = provider_payload.get("daily", [])
         for row in provider_payload.get("daily", []):
             key = date_key(row.get("date"))
@@ -365,7 +364,7 @@ def fetch_provider_ccusage_daily(
         resolve_npx_binary_func(),
         "-y",
         provider_package(provider),
-        "daily",
+        *provider_command_args(provider),
         "-j",
         "--since",
         provider_date_arg(start_date, provider),

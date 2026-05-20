@@ -2,7 +2,7 @@
 
 [English](https://github.com/openrelix/openrelix/blob/main/README.md) | 简体中文
 
-面向 AI coding agents 的开源个人记忆珍藏系统，当前发布为 v0.3.4 预览版。
+面向 AI coding agents 的开源个人记忆珍藏系统，当前发布为 v0.3.7 预览版。
 
 OpenRelix™ 是一套本地优先的 AI 个人资产层。它把已经完成的 agent 工作沉淀成可复用的任务复盘、技能、模板、自动化、受限记忆摘要和私有面板，而不是让有价值的经验散落在历史聊天里。
 
@@ -93,7 +93,7 @@ OPENRELIX_ACTIVITY_SOURCE=app-server openrelix review --date "$(date +%F)"
 - 不需要 `pip install ...`。随包发布的 Python 脚本只使用标准库。
 - 不需要 `npm install`。npm 包只是 bootstrapper，不声明运行时 npm 依赖。
 - 不需要手动配置 LaunchAgent。启用后台服务时，installer 会渲染并 bootstrap LaunchAgents。
-- Token 用量指标是可选增强。面板按需用 `npx -y @ccusage/codex@latest` 获取 Codex 数据，用 `npx -y ccusage@latest` 获取 Claude Code 数据；默认视图会合并两者。任一命令不可用或离线时，面板其他部分仍可使用，Token 卡片显示 fallback、partial 或缓存状态。
+- Token 用量指标是可选增强。面板按需用 `npx -y ccusage@latest codex daily` 获取 Codex 数据，用 `npx -y ccusage@latest claude daily` 获取 Claude Code 数据；默认视图会合并两者。任一命令不可用或离线时，面板其他部分仍可使用，Token 卡片显示 fallback、partial 或缓存状态。
 
 如果 macOS 上缺少 Python 3.10+，先安装 Python，再重新运行 installer：
 
@@ -396,7 +396,7 @@ openrelix config --activity-host all
 openrelix config --memory-summary-max-tokens 8000
 ```
 
-`openrelix models` 会通过 `codex debug models` 读取当前本机 Codex CLI 的模型 catalog，并只打印脱敏后的可选模型 ID。`openrelix tokens` 默认 `--provider all`，会合并 Codex 的 `@ccusage/codex` 和 Claude Code 的 `ccusage`；需要单独看某个 host 时传 `--provider codex` 或 `--provider cc`。`codex_model` 默认 `gpt-5.4-mini`，`claude_model` 默认 `sonnet`，`model_cli` 决定 OpenRelix 内部记忆回溯用哪个 CLI。`memory_summary_max_tokens` 默认 8000，支持 2000 到 20000。target 和 warning budgets 会自动从 max 派生。更新后默认刷新 summary、overview 和 panel；只想持久化配置时加 `--no-refresh`。
+`openrelix models` 会通过 `codex debug models` 读取当前本机 Codex CLI 的模型 catalog，并只打印脱敏后的可选模型 ID。`openrelix tokens` 默认 `--provider all`，会合并 Codex 的 `ccusage codex daily` 和 Claude Code 的 `ccusage claude daily`；需要单独看某个 host 时传 `--provider codex` 或 `--provider cc`。`codex_model` 默认 `gpt-5.4-mini`，`claude_model` 默认 `sonnet`，`model_cli` 决定 OpenRelix 内部记忆回溯用哪个 CLI。`memory_summary_max_tokens` 默认 8000，支持 2000 到 20000。target 和 warning budgets 会自动从 max 派生。更新后默认刷新 summary、overview 和 panel；只想持久化配置时加 `--no-refresh`。
 
 host context 可以随时重新同步。它会从 eligible 的全局和项目个人记忆编译一份统一摘要，再把同一份 bounded summary 写进启用的 Codex / Claude Code host 目标中的 OpenRelix 受控块。Codex 和 Claude Code 使用同一套选择策略：全局上下文 capped 在配置摘要预算的 10%，项目上下文 capped 在 30%。编译后的摘要保存在 OpenRelix state root 的 `runtime/host-context/memory_summary.md`，默认不会把个人记忆写进项目仓库，也不会替换受控块之外的 host 原生记忆。
 

@@ -2,7 +2,7 @@
 
 [English](README.md) | [简体中文](https://github.com/openrelix/openrelix/blob/main/README.zh-CN.md)
 
-Open-source personal memory relics for AI coding agents, currently published as a v0.3.4 preview.
+Open-source personal memory relics for AI coding agents, currently published as a v0.3.7 preview.
 
 OpenRelix™ is a local-first asset layer for AI coding agents. It turns finished agent work into reusable task reviews, skills, templates, bounded memory summaries, and a private dashboard instead of leaving useful patterns buried in old chats.
 
@@ -96,7 +96,7 @@ The one-line npm install should not require a separate project setup step after 
 - No `pip install ...` step is required. The shipped Python scripts use the Python standard library.
 - No `npm install` step is required. The npm package is a bootstrapper and does not declare runtime npm dependencies.
 - No manual LaunchAgent setup is required. The installer renders and bootstraps LaunchAgents when background services are enabled.
-- Token usage metrics are optional. The panel fetches Codex data with `npx -y @ccusage/codex@latest` and Claude Code data with `npx -y ccusage@latest` on demand. The default view merges both providers; if either command is unavailable or offline, the rest of the panel still works and Token cards show a fallback, partial, or cached state.
+- Token usage metrics are optional. The panel fetches Codex data with `npx -y ccusage@latest codex daily` and Claude Code data with `npx -y ccusage@latest claude daily` on demand. The default view merges both providers; if either command is unavailable or offline, the rest of the panel still works and Token cards show a fallback, partial, or cached state.
 
 If Python 3.10+ is missing on macOS, install Python first, then rerun the installer:
 
@@ -443,7 +443,7 @@ openrelix config --activity-host all
 openrelix config --memory-summary-max-tokens 8000
 ```
 
-`openrelix models` reads the current local Codex CLI model catalog through `codex debug models` and prints a sanitized list of selectable model IDs. `openrelix tokens` defaults to `--provider all`, merging Codex `@ccusage/codex` and Claude Code `ccusage`; pass `--provider codex` or `--provider cc` for a single host. `codex_model` defaults to `gpt-5.4-mini`, `claude_model` defaults to `sonnet`, and `model_cli` selects which CLI OpenRelix uses for internal memory consolidation. `memory_summary_max_tokens` defaults to 8000 and accepts values from 2000 to 20000. Target and warning budgets are derived automatically from that max. Updating config refreshes the summary, overview, and panel by default; add `--no-refresh` when you only want to persist the config.
+`openrelix models` reads the current local Codex CLI model catalog through `codex debug models` and prints a sanitized list of selectable model IDs. `openrelix tokens` defaults to `--provider all`, merging Codex `ccusage codex daily` and Claude Code `ccusage claude daily`; pass `--provider codex` or `--provider cc` for a single host. `codex_model` defaults to `gpt-5.4-mini`, `claude_model` defaults to `sonnet`, and `model_cli` selects which CLI OpenRelix uses for internal memory consolidation. `memory_summary_max_tokens` defaults to 8000 and accepts values from 2000 to 20000. Target and warning budgets are derived automatically from that max. Updating config refreshes the summary, overview, and panel by default; add `--no-refresh` when you only want to persist the config.
 
 Host context can be resynced at any time. It compiles one unified summary from eligible global and project personal memories, then writes that same bounded summary into OpenRelix-managed blocks in the enabled Codex / Claude Code host targets. Codex and Claude Code use the same selection policy: global context is capped at 10% of the configured summary budget, and project context is capped at 30%. The compiled summary stays in the OpenRelix state root under `runtime/host-context/memory_summary.md`; OpenRelix does not write personal memory into the project repository by default and does not replace host-owned native memory outside its managed blocks.
 
