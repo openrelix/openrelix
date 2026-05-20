@@ -145,10 +145,9 @@ def provider_display_name(provider):
 
 
 def provider_date_arg(date_value, provider):
-    provider = normalize_token_provider(provider)
-    if provider == "claude":
-        return date_value.strftime("%Y%m%d")
-    return date_value.isoformat()
+    # ccusage 20.0.0 accepts compact dates consistently across Codex and
+    # Claude; hyphenated Codex --until values can produce an empty result.
+    return date_value.strftime("%Y%m%d")
 
 
 def normalize_provider_daily_row(row, provider):
@@ -199,6 +198,48 @@ def normalize_provider_payload(payload, provider):
         "daily": normalized_daily,
         "totals": normalized_totals,
     }
+
+
+def build_provider_totals_from_rows(rows, provider):
+    rows = list(rows or [])
+    return {
+        "provider": normalize_token_provider(provider),
+        "providerLabel": provider_display_name(provider),
+        "inputTokens": sum(int(row.get("inputTokens") or 0) for row in rows),
+        "cachedInputTokens": sum(int(row.get("cachedInputTokens") or 0) for row in rows),
+        "cacheCreationTokens": sum(int(row.get("cacheCreationTokens") or 0) for row in rows),
+        "outputTokens": sum(int(row.get("outputTokens") or 0) for row in rows),
+        "reasoningOutputTokens": sum(int(row.get("reasoningOutputTokens") or 0) for row in rows),
+        "totalTokens": sum(int(row.get("totalTokens") or 0) for row in rows),
+        "costUSD": sum(float(row.get("costUSD") or 0) for row in rows),
+        "models": {},
+        "modelsUsed": [],
+        "modelBreakdowns": [],
+    }
+
+
+def filter_provider_payload_by_date(payload, provider, start_date=None, end_date=None):
+    provider_payload = ensure_provider_payload(payload, provider)
+    start = parse_token_date(start_date)
+    end = parse_token_date(end_date)
+    filtered_daily = []
+    for row in provider_payload.get("daily", []):
+        row_date = parse_token_date(row.get("date"))
+        if not row_date:
+            continue
+        if start and row_date < start:
+            continue
+        if end and row_date > end:
+            continue
+        filtered_daily.append(row)
+    return {
+        "daily": filtered_daily,
+        "totals": build_provider_totals_from_rows(filtered_daily, provider),
+    }
+
+
+def should_fallback_to_unfiltered_codex_payload(provider, payload):
+    return normalize_token_provider(provider) == "codex" and not (payload or {}).get("daily")
 
 
 def ensure_provider_payload(payload, provider):
@@ -365,40 +406,55 @@ def fetch_provider_ccusage_daily(
         provider_package(provider),
         *provider_command_args(provider),
         "-j",
+    ]
+    date_args = [
         "--since",
         provider_date_arg(start_date, provider),
         "--until",
         provider_date_arg(end_date, provider),
+    ]
+    timezone_args = [
         "--timezone",
         CCUSAGE_TIMEZONE,
     ]
 
-    attempts = [[], ["--offline"]]
-    last_error = None
-    for extra_args in attempts:
-        try:
-            result = runner(
-                base_cmd + extra_args,
-                capture_output=True,
-                text=True,
-                check=True,
-                env=env_func(),
-                timeout=120,
-            )
-            payload = json.loads(result.stdout)
-            return {
-                "available": True,
-                "provider": provider,
-                "provider_label": provider_display_name(provider),
-                "payload": normalize_provider_payload(payload, provider),
-                "error": "",
-                "fetched_at": now_func().isoformat(),
-                "window_days": resolved_window_days,
-                "range_start": start_date.isoformat(),
-                "range_end": end_date.isoformat(),
-            }
-        except Exception as exc:  # noqa: BLE001
-            last_error = str(exc)
+    def run_ccusage_command(command):
+        last_command_error = None
+        for extra_args in ([], ["--offline"]):
+            try:
+                result = runner(
+                    command + extra_args,
+                    capture_output=True,
+                    text=True,
+                    check=True,
+                    env=env_func(),
+                    timeout=120,
+                )
+                return normalize_provider_payload(json.loads(result.stdout), provider), None
+            except Exception as exc:  # noqa: BLE001
+                last_command_error = str(exc)
+        return None, last_command_error
+
+    payload, last_error = run_ccusage_command(base_cmd + date_args + timezone_args)
+    if payload is not None:
+        fallback = ""
+        if should_fallback_to_unfiltered_codex_payload(provider, payload):
+            full_payload, _fallback_error = run_ccusage_command(base_cmd + timezone_args)
+            if full_payload is not None:
+                payload = filter_provider_payload_by_date(full_payload, provider, start_date, end_date)
+                fallback = "unfiltered_local_range"
+        return {
+            "available": True,
+            "provider": provider,
+            "provider_label": provider_display_name(provider),
+            "payload": payload,
+            "error": "",
+            "fallback": fallback,
+            "fetched_at": now_func().isoformat(),
+            "window_days": resolved_window_days,
+            "range_start": start_date.isoformat(),
+            "range_end": end_date.isoformat(),
+        }
 
     return {
         "available": False,

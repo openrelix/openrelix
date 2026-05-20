@@ -1027,6 +1027,91 @@ class NightlyLogicTests(unittest.TestCase):
         self.assertEqual(commands[0][commands[0].index("--since") + 1], "20260401")
         self.assertEqual(commands[0][commands[0].index("--until") + 1], "20260430")
 
+    def test_token_fetcher_uses_compact_codex_date_range_for_ccusage(self):
+        commands = []
+
+        def fake_now():
+            return datetime.fromisoformat("2026-05-04T10:00:00+08:00")
+
+        def fake_runner(cmd, **kwargs):
+            commands.append(cmd)
+            return subprocess.CompletedProcess(
+                cmd,
+                0,
+                stdout=json.dumps({"daily": []}),
+                stderr="",
+            )
+
+        token_fetcher.fetch_ccusage_daily(
+            window_days=7,
+            now_func=fake_now,
+            resolve_npx_binary_func=lambda: "npx",
+            env_func=lambda: {},
+            runner=fake_runner,
+            provider="codex",
+            start_date="2026-04-01",
+            end_date="2026-04-30",
+        )
+
+        self.assertEqual(commands[0][2:5], ["ccusage@latest", "codex", "daily"])
+        self.assertEqual(commands[0][commands[0].index("--since") + 1], "20260401")
+        self.assertEqual(commands[0][commands[0].index("--until") + 1], "20260430")
+
+    def test_token_fetcher_falls_back_to_unfiltered_codex_payload_when_date_filter_is_empty(self):
+        commands = []
+
+        def fake_now():
+            return datetime.fromisoformat("2026-05-07T10:00:00+08:00")
+
+        def fake_runner(cmd, **kwargs):
+            commands.append(cmd)
+            if "--since" in cmd:
+                payload = {"daily": []}
+            else:
+                payload = {
+                    "daily": [
+                        {
+                            "date": "2026-04-30",
+                            "inputTokens": 10,
+                            "outputTokens": 1,
+                            "totalTokens": 11,
+                        },
+                        {
+                            "date": "2026-05-03",
+                            "inputTokens": 20,
+                            "outputTokens": 2,
+                            "totalTokens": 22,
+                        },
+                        {
+                            "date": "2026-05-08",
+                            "inputTokens": 30,
+                            "outputTokens": 3,
+                            "totalTokens": 33,
+                        },
+                    ]
+                }
+            return subprocess.CompletedProcess(cmd, 0, stdout=json.dumps(payload), stderr="")
+
+        result = token_fetcher.fetch_ccusage_daily(
+            window_days=7,
+            now_func=fake_now,
+            resolve_npx_binary_func=lambda: "npx",
+            env_func=lambda: {},
+            runner=fake_runner,
+            provider="codex",
+            start_date="2026-05-01",
+            end_date="2026-05-07",
+        )
+
+        self.assertTrue(result["available"])
+        self.assertEqual(result["fallback"], "unfiltered_local_range")
+        self.assertEqual(len(commands), 2)
+        self.assertIn("--since", commands[0])
+        self.assertNotIn("--since", commands[1])
+        self.assertEqual(result["payload"]["daily"][0]["date"], "2026-05-03")
+        self.assertEqual(result["payload"]["daily"][0]["totalTokens"], 22)
+        self.assertEqual(result["payload"]["totals"]["totalTokens"], 22)
+
     def test_token_cache_matches_open_ended_date_range(self):
         def fake_now():
             return datetime.fromisoformat("2026-05-04T10:00:00+08:00")
