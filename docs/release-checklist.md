@@ -82,6 +82,8 @@ After a commit lands on a remote `bugfix/version_*` branch, the `bugfix-backmerg
 
 To receive Feishu group notifications when the backmerge fails, add a Feishu custom bot to the target group and save its webhook as the GitHub Actions secret `OPENRELIX_FEISHU_BACKMERGE_WEBHOOK_URL`. If the bot enables signature validation, also save the signing secret as `OPENRELIX_FEISHU_BACKMERGE_SECRET`. Keep both values out of the repo; the workflow sends only the repo, branch, commit, Actions URL, and a generic fix hint.
 
+To mention the developer who pushed the failing bugfix commit, save a JSON mapping in `OPENRELIX_FEISHU_USER_MAP_JSON`. Feishu custom bots need member `open_id` values for real @ mentions; display names alone are only shown as text. Example: `{"github-login":{"open_id":"ou_xxx","name":"Name"}}`. Store the mapping as a GitHub Actions secret, not in the repo.
+
 For npm publish notifications, `publish.yml` sends the published version, npm URL, GitHub Release URL, Actions URL, and the matching changelog entry to Feishu after a new version is actually published. By default it reuses `OPENRELIX_FEISHU_BACKMERGE_WEBHOOK_URL`; set `OPENRELIX_FEISHU_RELEASE_WEBHOOK_URL` and optional `OPENRELIX_FEISHU_RELEASE_SECRET` only when release notifications should go to a different bot or signing secret.
 
 If a version has already been published, do not overwrite it. Prepare the next patch version instead.

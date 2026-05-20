@@ -121,6 +121,7 @@ jobs:
         env:
           FEISHU_WEBHOOK_URL: ${{ secrets.OPENRELIX_FEISHU_BACKMERGE_WEBHOOK_URL }}
           FEISHU_WEBHOOK_SECRET: ${{ secrets.OPENRELIX_FEISHU_BACKMERGE_SECRET }}
+          FEISHU_USER_MAP_JSON: ${{ secrets.OPENRELIX_FEISHU_USER_MAP_JSON }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           COMMIT_URL: ${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}
         run: |

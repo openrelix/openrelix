@@ -20,6 +20,7 @@ from pathlib import Path
 
 DEFAULT_CHANGELOG = Path("docs/changelog/v0.x.html")
 MAX_CHANGELOG_CHARS = 1400
+OPEN_ID_RE = re.compile(r"^ou_[A-Za-z0-9_-]+$")
 
 
 def select_env(primary: str, fallback: str = "") -> str:
@@ -46,6 +47,59 @@ def build_text_payload(message: str, secret: str = "", now: int | None = None) -
         payload["timestamp"] = timestamp
         payload["sign"] = feishu_sign(secret, timestamp)
     return payload
+
+
+def parse_user_map(raw: str) -> dict[str, dict[str, str]]:
+    if not str(raw or "").strip():
+        return {}
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError as error:
+        print("Failed to parse FEISHU_USER_MAP_JSON: {}".format(error), file=sys.stderr)
+        return {}
+    if not isinstance(data, dict):
+        print("FEISHU_USER_MAP_JSON must be a JSON object; ignore mapping.", file=sys.stderr)
+        return {}
+    result: dict[str, dict[str, str]] = {}
+    for github_login, value in data.items():
+        login = str(github_login or "").strip().lower()
+        if not login:
+            continue
+        if isinstance(value, str):
+            result[login] = {"open_id": value.strip(), "name": str(github_login).strip()}
+        elif isinstance(value, dict):
+            open_id = str(
+                value.get("open_id")
+                or value.get("feishu_open_id")
+                or value.get("user_id")
+                or ""
+            ).strip()
+            name = str(
+                value.get("name")
+                or value.get("feishu_name")
+                or value.get("display_name")
+                or github_login
+            ).strip()
+            result[login] = {"open_id": open_id, "name": name}
+    return result
+
+
+def mention_for_github_actor(actor: str, raw_user_map: str = "") -> str:
+    login = str(actor or "").strip()
+    if not login:
+        return "unknown"
+    mapping = parse_user_map(raw_user_map).get(login.lower(), {})
+    open_id = str(mapping.get("open_id") or "").strip()
+    name = str(mapping.get("name") or login).strip()
+    if open_id and OPEN_ID_RE.fullmatch(open_id):
+        return '<at user_id="{}">{}</at> (@{})'.format(
+            html.escape(open_id, quote=True),
+            html.escape(name, quote=False),
+            login,
+        )
+    if name and name != login:
+        return "{} (@{}，未配置可 @ 的飞书 open_id)".format(name, login)
+    return "@{}（未配置飞书 @ 映射）".format(login)
 
 
 def post_payload(webhook_url: str, payload: dict) -> None:
@@ -121,14 +175,17 @@ def build_backmerge_failure_message() -> str:
     branch = os.environ.get("GITHUB_REF_NAME", "")
     repo = os.environ.get("GITHUB_REPOSITORY", "")
     sha = os.environ.get("GITHUB_SHA", "")
+    actor = os.environ.get("GITHUB_ACTOR", "")
     run_url = os.environ.get("RUN_URL", "")
     commit_url = os.environ.get("COMMIT_URL", "")
+    submitter = mention_for_github_actor(actor, os.environ.get("FEISHU_USER_MAP_JSON", ""))
     return "\n".join(
         [
             "OpenRelix bugfix 回合 main 失败",
             "仓库：{}".format(repo),
             "分支：{}".format(branch),
             "提交：{}".format(sha[:7] or "unknown"),
+            "提交者：{}".format(submitter),
             "结果：未推送 main",
             "处理：把最新 origin/main 合入 bugfix 分支，解决冲突或检查失败后重新 push。",
             "Actions：{}".format(run_url),
