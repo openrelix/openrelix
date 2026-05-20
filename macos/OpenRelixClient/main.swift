@@ -1,7 +1,10 @@
 import AppKit
+import Darwin
 import WebKit
 
 private let stateRootResourceName = "OpenRelixStateRoot"
+private let tokenLiveLabel = "io.github.openrelix.token-live"
+private let tokenLivePlistName = "\(tokenLiveLabel).plist"
 
 private func trimmed(_ value: String) -> String {
     value.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -248,6 +251,7 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessag
         NSApp.setActivationPolicy(.regular)
         buildMenu()
         buildWindow()
+        ensureTokenLiveLaunchAgent(forceRestart: false)
         loadPanel()
         NSApp.activate(ignoringOtherApps: true)
     }
@@ -270,6 +274,7 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessag
         )
         configuration.userContentController.add(self, name: "openrelixTheme")
         configuration.userContentController.add(self, name: "openrelixOpenExternal")
+        configuration.userContentController.add(self, name: "openrelixEnsureTokenLive")
 
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.navigationDelegate = self
@@ -327,10 +332,45 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessag
             }
             return
         }
+        if message.name == "openrelixEnsureTokenLive" {
+            ensureTokenLiveLaunchAgent(forceRestart: true)
+            return
+        }
         if message.name == "openrelixOpenExternal",
            let rawURL = message.body as? String,
            let url = URL(string: rawURL) {
             _ = openOutsidePanel(url)
+        }
+    }
+
+    private func runLaunchctl(_ arguments: [String]) {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/launchctl")
+        process.arguments = arguments
+        do {
+            try process.run()
+            process.waitUntilExit()
+        } catch {
+        }
+    }
+
+    private func ensureTokenLiveLaunchAgent(forceRestart: Bool) {
+        let plistURL = URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true)
+            .appendingPathComponent("Library", isDirectory: true)
+            .appendingPathComponent("LaunchAgents", isDirectory: true)
+            .appendingPathComponent(tokenLivePlistName, isDirectory: false)
+        let plistPath = plistURL.path
+        guard FileManager.default.fileExists(atPath: plistPath) else {
+            return
+        }
+        let domain = "gui/\(getuid())"
+        let serviceTarget = "\(domain)/\(tokenLiveLabel)"
+        let kickstartArguments = forceRestart
+            ? ["kickstart", "-k", serviceTarget]
+            : ["kickstart", serviceTarget]
+        DispatchQueue.global(qos: .utility).async {
+            self.runLaunchctl(["bootstrap", domain, plistPath])
+            self.runLaunchctl(kickstartArguments)
         }
     }
 

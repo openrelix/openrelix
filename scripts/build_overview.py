@@ -458,8 +458,12 @@ PANEL_I18N_EN = {
     "本地 token 服务没有返回可用数据": "The local token service returned no usable data.",
     "ccusage 当前不可用": "ccusage is currently unavailable.",
     "实时 Token 暂时不可用，先展示最近一次成功缓存。": "Live Token data is unavailable. Showing the latest successful cache.",
-    "本地 Token 服务未启动。请运行 openrelix open panel 后再点实时刷新。": (
-        "The local Token service is not running. Run openrelix open panel, then refresh Token again."
+    "本地 Token 服务暂时不可用，已继续展示本地快照。OpenRelix App 会自动尝试恢复后台服务。": (
+        "The local Token service is temporarily unavailable. Showing the local snapshot. "
+        "OpenRelix.app will try to restore the background service automatically."
+    ),
+    "正在通过 OpenRelix App 启动本地 Token 服务，然后会自动重试…": (
+        "Starting the local Token service through OpenRelix.app, then retrying automatically..."
     ),
     "实时 Token 不可用，当前展示": "Live Token data is unavailable. Showing",
     "的本地快照。": "local snapshot.",
@@ -24521,6 +24525,7 @@ def build_html(data):
         tokenSourceKind: storedInitialTokenUsage === initialTokenUsage ? "cache" : "snapshot",
         tokenUsageCache: {{}},
         tokenStaleRetryTimer: null,
+        tokenServiceStartRequestedAt: 0,
         tokenRequestSeq: 0,
         tokenFilters: {{
           provider: (snapshot.token_usage && snapshot.token_usage.provider) || "all",
@@ -28405,7 +28410,10 @@ def build_html(data):
           return t("实时 Token 暂时不可用，先展示最近一次成功缓存。");
         }}
         if (messageKey === "offline_service") {{
-          return t("本地 Token 服务未启动。请运行 openrelix open panel 后再点实时刷新。");
+          return t("本地 Token 服务暂时不可用，已继续展示本地快照。OpenRelix App 会自动尝试恢复后台服务。");
+        }}
+        if (messageKey === "starting_service") {{
+          return t("正在通过 OpenRelix App 启动本地 Token 服务，然后会自动重试…");
         }}
         if (messageKey === "live_refreshed") {{
           return currentLanguage === "en"
@@ -30039,6 +30047,29 @@ def build_html(data):
           message.includes("networkerror");
       }}
 
+      function requestNativeTokenServiceStart() {{
+        const now = Date.now();
+        if (now - Number(state.tokenServiceStartRequestedAt || 0) < 10000) {{
+          return false;
+        }}
+        try {{
+          const webkit = window.webkit;
+          const handlers = webkit && webkit.messageHandlers;
+          const handler = handlers && handlers.openrelixEnsureTokenLive;
+          if (!handler || typeof handler.postMessage !== "function") {{
+            return false;
+          }}
+          state.tokenServiceStartRequestedAt = now;
+          handler.postMessage({{
+            source: "token-refresh",
+            endpoint: config.liveEndpoint,
+          }});
+          return true;
+        }} catch (error) {{
+          return false;
+        }}
+      }}
+
       function scheduleTokenStaleRetry() {{
         if (state.tokenStaleRetryTimer) {{
           return;
@@ -30101,6 +30132,7 @@ def build_html(data):
           if (requestSeq !== state.tokenRequestSeq) {{
             return;
           }}
+          state.tokenServiceStartRequestedAt = 0;
           updateTokenVisuals(payload.token_usage, payload.stale ? "stale" : "live");
           if (payload.stale) {{
             scheduleTokenStaleRetry();
@@ -30112,6 +30144,16 @@ def build_html(data):
           if (requestSeq !== state.tokenRequestSeq) {{
             return;
           }}
+          const serviceUnavailable = isLikelyTokenServiceUnavailable(error);
+          if (serviceUnavailable && requestNativeTokenServiceStart()) {{
+            setStatus("loading", "", "starting_service");
+            window.setTimeout(function () {{
+              if (requestSeq === state.tokenRequestSeq) {{
+                refreshTokenUsage(true);
+              }}
+            }}, 1600);
+            return;
+          }}
           if (!state.tokenUsage && snapshot.token_usage) {{
             updateTokenVisuals(snapshot.token_usage, "snapshot");
           }} else {{
@@ -30120,7 +30162,7 @@ def build_html(data):
           setStatus(
             "offline",
             "",
-            isLikelyTokenServiceUnavailable(error) ? "offline_service" : "offline_snapshot"
+            serviceUnavailable && forceRefresh ? "offline_service" : "offline_snapshot"
           );
         }} finally {{
           if (requestSeq === state.tokenRequestSeq) {{
