@@ -69,11 +69,16 @@ Inspect `npm pack --dry-run --json` output and confirm:
 Use the repository's configured release workflows where possible:
 
 1. Commit the release preparation.
-2. Tag with `v<package.json version>` only after validation passes.
-3. Push the branch and tag.
-4. Use the GitHub release workflow or release draft process configured in `.github/workflows/`.
-5. Verify npm publish or trusted-publishing output.
-6. Verify a fresh `npx openrelix --version` or package metadata check in a clean context.
+2. For an `x.y.0` release, confirm the previous release-line branch such as `bugfix/version_0_3` has already been merged into `main`.
+3. Tag with `v<package.json version>` only after validation passes.
+4. Push the branch and tag.
+5. Use the GitHub release workflow or release draft process configured in `.github/workflows/`.
+6. Verify npm publish or trusted-publishing output.
+7. Verify a fresh `npx openrelix --version` or package metadata check in a clean context.
+
+The `create-release.yml` workflow enforces the release-line rule for `x.y.0` versions: it blocks the release when the previous `bugfix/version_<x>_<y>` branch still has commits outside `main`, and after the release is created it creates or reuses the new remote branch `bugfix/version_<x>_<y>` at the release commit.
+
+After a commit lands on a remote `bugfix/version_*` branch, the `bugfix-backmerge.yml` workflow prepares a merge against the latest `origin/main`, runs the commit checks on that merged result, and pushes it back to `origin/main` only after validation passes. If validation fails or the merge conflicts, the workflow stays red and the branch needs a manual fix before release work continues.
 
 If a version has already been published, do not overwrite it. Prepare the next patch version instead.
 

@@ -70,6 +70,32 @@ jobs:
             echo "published=false" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Resolve maintenance branch policy
+        id: maintenance_branch
+        shell: bash
+        run: |
+          python3 scripts/release_maintenance_branch.py \
+            --version "${{ steps.version.outputs.version }}" \
+            --github-output "$GITHUB_OUTPUT"
+
+      - name: Check previous maintenance branch merged
+        if: steps.maintenance_branch.outputs.previous_branch != ''
+        shell: bash
+        run: |
+          previous_branch="${{ steps.maintenance_branch.outputs.previous_branch }}"
+          previous_tag="${{ steps.maintenance_branch.outputs.previous_tag }}"
+          echo "Checking ${previous_branch} from previous release tag ${previous_tag}."
+          if ! git ls-remote --exit-code --heads origin "${previous_branch}" >/dev/null; then
+            echo "::error::Previous maintenance branch ${previous_branch} is missing. Merge or create it before publishing ${{ steps.version.outputs.tag }}."
+            exit 1
+          fi
+          git fetch --no-tags origin "refs/heads/${previous_branch}:refs/remotes/origin/${previous_branch}"
+          if ! git merge-base --is-ancestor "refs/remotes/origin/${previous_branch}" HEAD; then
+            echo "::error::Previous maintenance branch ${previous_branch} has commits that are not merged into main. Merge it into main before publishing ${{ steps.version.outputs.tag }}."
+            exit 1
+          fi
+          echo "Previous maintenance branch ${previous_branch} is already merged into this release commit."
+
       - name: Create release
         id: create_release
         uses: actions/github-script@v7
@@ -118,6 +144,34 @@ jobs:
             });
             core.notice(`Created release: ${release.data.html_url}`);
             core.setOutput("release_url", release.data.html_url);
+
+      - name: Create maintenance bugfix branch
+        if: steps.maintenance_branch.outputs.should_create == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const branch = "${{ steps.maintenance_branch.outputs.branch }}";
+            const ref = `heads/${branch}`;
+
+            try {
+              const existing = await github.rest.git.getRef({ owner, repo, ref });
+              core.notice(`Maintenance branch already exists: ${branch} -> ${existing.data.object.sha}`);
+              return;
+            } catch (error) {
+              if (error.status !== 404) {
+                throw error;
+              }
+            }
+
+            await github.rest.git.createRef({
+              owner,
+              repo,
+              ref: `refs/heads/${branch}`,
+              sha: context.sha,
+            });
+            core.notice(`Created maintenance branch ${branch} at ${context.sha}.`);
 
       - name: Dispatch npm publish
         if: steps.npm_version.outputs.published != 'true'

@@ -1,27 +1,27 @@
-name: CI
+name: Bugfix Backmerge
 
 on:
-  pull_request:
-    branches:
-      - main
   push:
     branches:
-      - main
       - "bugfix/version_*"
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  group: bugfix-backmerge-${{ github.ref_name }}
+  cancel-in-progress: false
 
 jobs:
-  validate:
+  validate-and-backmerge:
     runs-on: ubuntu-latest
+    if: startsWith(github.ref_name, 'bugfix/version_')
     steps:
-      - name: Checkout
+      - name: Checkout bugfix branch
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -34,11 +34,23 @@ jobs:
           node-version: "20"
           registry-url: "https://registry.npmjs.org/"
 
+      - name: Prepare merge to main
+        shell: bash
+        run: |
+          bugfix_branch="${GITHUB_REF_NAME}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch --no-tags origin \
+            "refs/heads/main:refs/remotes/origin/main" \
+            "refs/heads/${bugfix_branch}:refs/remotes/origin/${bugfix_branch}"
+          git checkout -B main refs/remotes/origin/main
+          git merge --no-ff --no-edit "refs/remotes/origin/${bugfix_branch}"
+
       - name: Block personal-info leaks
         run: python3 scripts/check_personal_info.py
 
-      - name: Git diff --check
-        run: git diff --check HEAD
+      - name: Git diff --check merged changes
+        run: git diff --check refs/remotes/origin/main...HEAD
 
       - name: Compile Python sources
         run: python3 -m py_compile scripts/*.py install/*.py
@@ -94,3 +106,8 @@ jobs:
               len(files), manifest.get("size", 0)
           ))
           PY
+
+      - name: Push merged main
+        shell: bash
+        run: |
+          git push origin HEAD:main
