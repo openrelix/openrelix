@@ -218,6 +218,43 @@ Common diagnostic fields:
 | `learning_input_fingerprint` | Skip-if-unchanged fingerprint |
 | `quality` / `selection_decision` | Summary quality and selection metadata |
 
+## Window Task Summary Contract
+
+Path:
+
+```text
+consolidated/task_summaries/<from>_<to>.json
+```
+
+Purpose: model-backed project task clusters built from existing `window_summaries`. This layer does not read raw transcripts; it lets already-organized windows gain a business-level "parallel tasks" summary after install or upgrade.
+
+The model output is constrained by `templates/window-task-summary-schema.json`. Contributor-facing fields are:
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `schema_version` | integer | Contract version for the task summary artifact |
+| `task_cluster_algorithm_version` | integer | Algorithm version used for migration and cache invalidation |
+| `date_range` | object | Inclusive source summary date range |
+| `source_summary_dates` | array | Daily summaries that contributed windows |
+| `source_window_ids` | array | All compact input window ids; newer artifacts tombstone older overlapping clusters for these windows |
+| `source_fingerprint` | string | Fingerprint of the compact window-summary input |
+| `project_task_clusters` | array | Model task clusters |
+| `model_status` | string | `completed` or `failed`; failed artifacts can tombstone stale clusters |
+| `error` | string | Sanitized failure category when `model_status=failed` |
+
+Task cluster fields:
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `cluster_id` | string | Stable local identifier for grouping windows |
+| `project_label` | string | Project display label inferred from source windows |
+| `cwd` | string | Source working directory when stable |
+| `task_title` | string | User-visible business/feature task name |
+| `task_summary` | string | Short grouping rationale |
+| `source_window_ids` | array | Window ids from `window_summaries`; invalid ids are dropped |
+| `status_tags` | array | Process state such as compile, verification, or commit |
+| `confidence` | string | `high`, `medium`, or `low`; panel grouping uses high/medium and falls back for low |
+
 ## Memory Registry Contract
 
 Canonical path:

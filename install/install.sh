@@ -1684,7 +1684,24 @@ ensure_memory_migration_marker() {
     OPENRELIX_CLAUDE_SETTINGS="$CLAUDE_SETTINGS" \
     OPENRELIX_CLAUDE_ENV_FILE="$CLAUDE_ENV_FILE" \
     "$PYTHON_BIN" "$REPO_ROOT/scripts/openrelix.py" memory-migration ensure --quiet || \
-    echo "$(localized_text "个人记忆迁移标记写入失败；后续可运行 openrelix memory-migration ensure。" "Personal memory migration marker failed; run openrelix memory-migration ensure later.")" >&2
+	    echo "$(localized_text "个人记忆迁移标记写入失败；后续可运行 openrelix memory-migration ensure。" "Personal memory migration marker failed; run openrelix memory-migration ensure later.")" >&2
+}
+
+ensure_task_summary_migration_marker() {
+  AI_ASSET_STATE_DIR="$STATE_DIR" \
+    CODEX_HOME="$CODEX_HOME" \
+    CLAUDE_HOME="$CLAUDE_HOME" \
+    CLAUDE_BIN="$CLAUDE_BIN" \
+    AI_ASSET_LANGUAGE="$LANGUAGE" \
+    AI_ASSET_MEMORY_MODE="$MEMORY_MODE" \
+    OPENRELIX_ACTIVITY_SOURCE="$ACTIVITY_SOURCE" \
+    OPENRELIX_ACTIVITY_HOST="$ACTIVITY_HOST" \
+    OPENRELIX_MODEL_CLI="$MODEL_CLI" \
+    OPENRELIX_CLAUDE_MODEL="$CLAUDE_MODEL" \
+    OPENRELIX_CLAUDE_SETTINGS="$CLAUDE_SETTINGS" \
+    OPENRELIX_CLAUDE_ENV_FILE="$CLAUDE_ENV_FILE" \
+    "$PYTHON_BIN" "$REPO_ROOT/scripts/openrelix.py" task-summary-migration ensure --quiet || \
+    echo "$(localized_text "并行任务总结迁移标记写入失败；后续可运行 openrelix task-summary-migration ensure。" "Parallel task summary migration marker failed; run openrelix task-summary-migration ensure later.")" >&2
 }
 
 mark_memory_migration_completed_after_learning() {
@@ -1735,6 +1752,7 @@ else
 fi
 
 ensure_memory_migration_marker
+ensure_task_summary_migration_marker
 
 if [[ "$LANGUAGE" == "zh" ]]; then
   cat <<EOF
@@ -2101,10 +2119,10 @@ run_post_install_deep_learning() {
   mark_memory_migration_completed_after_learning
   if [[ "$LANGUAGE" == "en" ]]; then
     print -r -- ""
-    print -r -- "Deep learning backfill is complete. If the browser panel or OpenRelix app is already open, refresh it manually to see the final memories and summaries."
+    print -r -- "Deep learning backfill is complete. If the browser panel or OpenRelix app is already open, refresh it manually to see the final memories, summaries, and parallel task grouping."
   else
     print -r -- ""
-    print -r -- "深度回溯已完成。如果浏览器面板或 OpenRelix app 已经打开，请手动刷新当前页面或 app，查看终版记忆和日报。"
+    print -r -- "深度回溯已完成。如果浏览器面板或 OpenRelix app 已经打开，请手动刷新当前页面或 app，查看终版记忆、日报和并行任务聚合。"
   fi
 }
 

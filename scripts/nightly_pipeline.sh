@@ -112,6 +112,19 @@ write_asset_stats_snapshot_if_available() {
   fi
 }
 
+run_task_summary_if_enabled() {
+  local disabled="${OPENRELIX_DISABLE_TASK_SUMMARY_MIGRATION:-0}"
+  case "${disabled:l}" in
+    1|true|yes|on)
+      return 0
+      ;;
+  esac
+  pipeline_status_step "task_summary"
+  if ! "$PYTHON_BIN" "$REPO_ROOT/scripts/openrelix_task_summary.py" run --to "$target_date" --window-days 7 --quiet; then
+    echo "nightly_pipeline: task summary generation failed; rule-based task grouping remains available." >&2
+  fi
+}
+
 exit_if_latest_model_run_failed() {
   local failure_message=""
   set +e
@@ -302,6 +315,7 @@ fi
 pipeline_status_step "synthesize"
 "$PYTHON_BIN" "$REPO_ROOT/scripts/nightly_consolidate.py" --date "$target_date" --stage "$stage" "${nightly_args[@]}"
 if [[ "$defer_global_refresh" != "1" ]]; then
+  run_task_summary_if_enabled
   pipeline_status_step "rebuild_index"
   rebuild_sqlite_index_if_available
   pipeline_status_step "sync_summary"

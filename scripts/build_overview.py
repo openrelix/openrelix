@@ -69,6 +69,11 @@ from openrelix_overview.config import (
     LIVE_TOKEN_PORT,
     LIVE_TOKEN_TIMEOUT_MS,
 )
+from openrelix_task_summary import (
+    TASK_CLUSTER_ALGORITHM_VERSION,
+    TASK_SUMMARY_CONFIDENCE_FOR_GROUPING,
+    task_summary_dir,
+)
 
 PATHS = get_runtime_paths()
 LANGUAGE = get_runtime_language(PATHS)
@@ -1245,8 +1250,13 @@ def localized_context_label(label, language=None):
     return localized(zh_label, en_label, language)
 
 
+def canonical_context_topic_label_zh(label):
+    value = normalize_brand_display_text(str(label or ""))
+    return CONTEXT_TOPIC_LABEL_ZH.get(value, value)
+
+
 def localized_topic_label(label, language=None):
-    label = normalize_brand_display_text(label)
+    label = normalize_brand_display_text(canonical_context_topic_label_zh(label))
     return localized(label, normalize_brand_display_text(CONTEXT_TOPIC_LABEL_EN.get(str(label or ""), str(label or ""))), language)
 
 
@@ -1655,6 +1665,149 @@ CONTEXT_TOPIC_RULES = [
     ),
 ]
 
+WINDOW_STATUS_TAG_RULES = [
+    (
+        "编译",
+        (
+            "[KMP_CLI_LOG]",
+            "unresolved reference",
+            "compile",
+            "编译",
+            "飘红",
+            "报错",
+            "类型错误",
+        ),
+    ),
+    (
+        "提交",
+        (
+            "本地提交",
+            "已提交",
+            "提交完成",
+            "git commit",
+            "push",
+        ),
+    ),
+    (
+        "清理",
+        (
+            "代码清理",
+            "删除空行",
+            "final newline",
+            "EOF",
+        ),
+    ),
+    (
+        "验证",
+        (
+            "验证",
+            "自测",
+            "测试通过",
+            "编译通过",
+            "pytest",
+        ),
+    ),
+]
+
+PROCESS_CONTEXT_TOPIC_LABELS = {
+    "移动端编译/类型错误",
+    "代码清理与本地提交",
+    "IDE 索引排障",
+}
+
+BUSINESS_TASK_LEADING_PHRASES = (
+    "请帮我",
+    "帮我",
+    "帮忙",
+    "继续任务",
+    "继续",
+    "看一下",
+    "看下",
+    "处理一下",
+    "处理下",
+    "排查一下",
+    "排查下",
+    "给我",
+    "把",
+)
+BUSINESS_TASK_OPERATION_PREFIXES = (
+    "修复",
+    "处理",
+    "排查",
+    "对齐",
+    "调整",
+    "新增",
+    "支持",
+    "优化",
+    "完成",
+    "实现",
+    "改成",
+    "改为",
+)
+BUSINESS_TASK_STOP_TERMS = {
+    "修复",
+    "处理",
+    "排查",
+    "对齐",
+    "调整",
+    "新增",
+    "支持",
+    "优化",
+    "完成",
+    "实现",
+    "改成",
+    "改为",
+    "代码",
+    "清理",
+    "本地",
+    "提交",
+    "编译",
+    "类型",
+    "错误",
+    "验证",
+    "测试",
+    "通过",
+    "失败",
+    "报错",
+    "文件",
+    "页面",
+    "面板",
+    "移动",
+    "动端",
+    "移动端",
+    "功能",
+    "需求",
+    "任务",
+    "窗口",
+    "项目",
+    "问题",
+    "结论",
+    "文档",
+    "参数",
+    "文案",
+    "需要",
+    "没有",
+    "已经",
+    "当前",
+    "可以",
+    "是否",
+    "the",
+    "and",
+    "for",
+    "with",
+    "from",
+    "this",
+    "that",
+    "task",
+    "fix",
+    "bug",
+    "error",
+    "compile",
+    "commit",
+    "test",
+    "tests",
+}
+
 CONTEXT_TOPIC_LABEL_EN = {
     "移动端扫描/录制链路": "Mobile scan / recording workflow",
     "移动端编译/类型错误": "Mobile compile / type errors",
@@ -1678,6 +1831,7 @@ CONTEXT_TOPIC_LABEL_EN = {
     "CLI 使用习惯": "CLI usage habits",
     "Codex 命令参数": "Codex command arguments",
 }
+CONTEXT_TOPIC_LABEL_ZH = {value: key for key, value in CONTEXT_TOPIC_LABEL_EN.items()}
 
 CONTEXT_TOPIC_GENERIC_KEYWORDS = {
     "继续任务",
@@ -4467,6 +4621,339 @@ def useful_context_keywords(keywords):
     return useful
 
 
+def business_task_source_candidates(item):
+    candidates = [
+        item.get("window_title", ""),
+        item.get("window_summary", ""),
+        item.get("question_summary", ""),
+    ]
+    raw_pairs = item.get("summary_pairs") or item.get("question_conclusion_pairs") or []
+    if isinstance(raw_pairs, list):
+        for pair in raw_pairs[:2]:
+            if isinstance(pair, dict):
+                candidates.append(pair.get("question", "") or pair.get("problem", ""))
+    for prompt in item.get("recent_prompts", [])[:2]:
+        if isinstance(prompt, dict):
+            candidates.append(prompt.get("text", ""))
+    candidates.append(item.get("main_takeaway", ""))
+    return [candidate for candidate in candidates if str(candidate or "").strip()]
+
+
+def strip_business_task_prefixes(text):
+    value = str(text or "").strip()
+    changed = True
+    while changed and value:
+        changed = False
+        for prefix in BUSINESS_TASK_LEADING_PHRASES:
+            if value.startswith(prefix):
+                value = value[len(prefix):].strip(" ，,。:：-—")
+                changed = True
+                break
+    for prefix in BUSINESS_TASK_OPERATION_PREFIXES:
+        if value.startswith(prefix) and len(value) > len(prefix) + 1:
+            value = value[len(prefix):].strip(" ，,。:：-—")
+            break
+    return value
+
+
+def clean_business_task_candidate(text, limit=64):
+    candidate = compact_preview_text(text, limit=limit)
+    candidate = re.sub(
+        r"^\s*(?:\*\*)?(?:问题|结论|Question|Conclusion|Focus|Takeaway)(?:\*\*)?\s*[:：]\s*",
+        "",
+        candidate,
+        flags=re.IGNORECASE,
+    )
+    candidate = strip_business_task_prefixes(candidate)
+    candidate = clean_window_trace_title(candidate)
+    candidate = re.sub(r"\s+", " ", candidate).strip(" ，,。:：-—")
+    if not candidate or is_noisy_context_topic_candidate(candidate):
+        return ""
+    if normalize_context_topic_key(candidate) in {
+        normalize_context_topic_key(keyword) for keyword in CONTEXT_TOPIC_GENERIC_KEYWORDS
+    }:
+        return ""
+    return candidate
+
+
+def is_business_task_merge_term(term):
+    value = normalize_context_topic_key(term)
+    if not value or value in BUSINESS_TASK_STOP_TERMS:
+        return False
+    if value.isdigit():
+        return False
+    if len(value) < 2:
+        return False
+    return True
+
+
+def extract_business_task_terms_from_texts(texts, limit=32):
+    terms = []
+
+    def add_term(raw_term):
+        term = normalize_context_topic_key(raw_term)
+        if not is_business_task_merge_term(term):
+            return
+        if term not in terms:
+            terms.append(term)
+
+    for text in texts or []:
+        display_text = normalize_brand_display_text(str(text or ""))
+        lowered = display_text.lower()
+        for token in re.findall(r"[a-z][a-z0-9_-]{1,}|[0-9][a-z0-9_-]{1,}", lowered):
+            add_term(token)
+        for segment in re.findall(r"[\u4e00-\u9fff]{2,18}", display_text):
+            if 2 <= len(segment) <= 8:
+                add_term(segment)
+            for size in (4, 3, 2):
+                if len(segment) < size:
+                    continue
+                for index in range(0, len(segment) - size + 1):
+                    add_term(segment[index:index + size])
+        if len(terms) >= limit:
+            break
+    return terms[:limit]
+
+
+def infer_window_status_tags(item, topic_label="", language=None):
+    text = context_window_text(item)
+    lowered = " ".join(text.split()).lower()
+    tags = []
+    for tag, keywords in WINDOW_STATUS_TAG_RULES:
+        if any(keyword.lower() in lowered for keyword in keywords):
+            tags.append(localized(tag, tag, language))
+    return tags
+
+
+def infer_business_task_meta(item, topic_label="", language=None):
+    topic_zh = canonical_context_topic_label_zh(topic_label)
+    source_label = ""
+    for candidate in business_task_source_candidates(item):
+        source_label = clean_business_task_candidate(candidate)
+        if source_label:
+            break
+    fallback_label = localized_topic_label(topic_zh, language) if topic_zh else fallback_context_topic_label(item, language=language)
+    should_use_source_label = (
+        not topic_zh
+        or topic_zh in PROCESS_CONTEXT_TOPIC_LABELS
+        or str(topic_zh).startswith("其他需求")
+        or str(topic_zh).startswith("Other needs")
+    )
+    label = (source_label if should_use_source_label else "") or fallback_label
+    status_tags = infer_window_status_tags(item, topic_label=topic_zh or topic_label, language=language)
+    terms = extract_business_task_terms_from_texts(
+        [label] + useful_context_keywords(item.get("keywords", [])) + business_task_source_candidates(item)[:2]
+    )
+    project_identity_terms = set(
+        extract_business_task_terms_from_texts(
+            [
+                item.get("project_label", ""),
+                item.get("cwd_display", ""),
+                Path(str(item.get("cwd", "") or "")).name,
+            ]
+        )
+    )
+    if project_identity_terms:
+        terms = [term for term in terms if term not in project_identity_terms]
+    return {
+        "label": label,
+        "key": normalize_context_topic_key(label),
+        "status_tags": status_tags,
+        "terms": terms,
+        "topic_label": localized_topic_label(topic_zh, language) if topic_zh else str(topic_label or ""),
+    }
+
+
+def build_business_task_topics(entries, language=None):
+    if not entries:
+        return []
+
+    parents = list(range(len(entries)))
+
+    def find(index):
+        while parents[index] != index:
+            parents[index] = parents[parents[index]]
+            index = parents[index]
+        return index
+
+    def union(left, right):
+        left_root = find(left)
+        right_root = find(right)
+        if left_root != right_root:
+            parents[right_root] = left_root
+
+    entries_by_key = defaultdict(list)
+    for index, entry in enumerate(entries):
+        key = entry.get("task_key") or normalize_context_topic_key(entry.get("label", ""))
+        if key:
+            entries_by_key[key].append(index)
+
+    for indices in entries_by_key.values():
+        for index in indices[1:]:
+            union(indices[0], index)
+
+    components = defaultdict(list)
+    for index, entry in enumerate(entries):
+        components[find(index)].append(entry)
+
+    def latest_timestamp(entry):
+        parsed = parse_iso_datetime(entry.get("latest_activity_at", ""))
+        return parsed.timestamp() if parsed else 0
+
+    def component_label(component_entries):
+        labels = [
+            str(entry.get("label", "") or "").strip()
+            for entry in sorted(component_entries, key=latest_timestamp, reverse=True)
+            if str(entry.get("label", "") or "").strip()
+        ]
+        return labels[0] if labels else localized("未命名任务", "Untitled task", language)
+
+    topics = []
+    for component_entries in components.values():
+        label = component_label(component_entries)
+        topic = {
+            "label": label,
+            "window_count": 0,
+            "question_count": 0,
+            "conclusion_count": 0,
+            "latest_activity_at": "",
+            "latest_activity_display": localized("时间未知", "Unknown time", language),
+            "keywords": [],
+            "question_samples": [],
+            "takeaway_samples": [],
+            "source_windows": [],
+        }
+        for entry in component_entries:
+            topic["window_count"] += safe_int(entry.get("window_count", 0))
+            topic["question_count"] += safe_int(entry.get("question_count", 0))
+            topic["conclusion_count"] += safe_int(entry.get("conclusion_count", 0))
+            for keyword in entry.get("keywords", []):
+                if keyword and keyword not in topic["keywords"]:
+                    topic["keywords"].append(keyword)
+            for question in entry.get("question_samples", []):
+                if question and question not in topic["question_samples"]:
+                    topic["question_samples"].append(question)
+            for takeaway in entry.get("takeaway_samples", []):
+                if takeaway and takeaway not in topic["takeaway_samples"]:
+                    topic["takeaway_samples"].append(takeaway)
+            for source_window in entry.get("source_windows", []):
+                topic["source_windows"].append(source_window)
+            topic_latest = parse_iso_datetime(topic["latest_activity_at"])
+            entry_latest = parse_iso_datetime(entry.get("latest_activity_at", ""))
+            if entry_latest and (topic_latest is None or entry_latest > topic_latest):
+                topic["latest_activity_at"] = entry_latest.isoformat()
+                topic["latest_activity_display"] = entry.get(
+                    "latest_activity_display",
+                    localized("时间未知", "Unknown time", language),
+                )
+        topics.append(topic)
+    return topics
+
+
+@lru_cache(maxsize=1)
+def load_window_task_cluster_index():
+    cluster_index = {}
+    covered_window_ids = set()
+    artifact_dir = task_summary_dir(PATHS)
+    artifact_rows = []
+    try:
+        artifact_paths = [path for path in artifact_dir.glob("*.json") if not path.name.endswith(".candidate.json")]
+    except OSError:
+        return cluster_index
+
+    for artifact_path in artifact_paths:
+        try:
+            payload = json.loads(artifact_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError, ValueError):
+            continue
+        if not isinstance(payload, dict):
+            continue
+        if payload.get("task_cluster_algorithm_version") != TASK_CLUSTER_ALGORITHM_VERSION:
+            continue
+        try:
+            mtime = artifact_path.stat().st_mtime
+        except OSError:
+            mtime = 0
+        date_range = payload.get("date_range") if isinstance(payload.get("date_range"), dict) else {}
+        generated_at = parse_iso_datetime(payload.get("generated_at"))
+        generated_sort = generated_at.timestamp() if generated_at else 0
+        artifact_rows.append(
+            (
+                generated_sort,
+                str(date_range.get("to") or ""),
+                str(date_range.get("from") or ""),
+                mtime,
+                artifact_path,
+                payload,
+            )
+        )
+
+    for _, _, _, _, artifact_path, payload in sorted(artifact_rows, reverse=True):
+        artifact_window_ids = {
+            str(window_id or "").strip()
+            for window_id in (payload.get("source_window_ids") or [])
+            if str(window_id or "").strip()
+        }
+        if not artifact_window_ids:
+            for cluster in payload.get("project_task_clusters") or []:
+                if not isinstance(cluster, dict):
+                    continue
+                artifact_window_ids.update(
+                    str(window_id or "").strip()
+                    for window_id in (cluster.get("source_window_ids") or [])
+                    if str(window_id or "").strip()
+                )
+        for cluster in payload.get("project_task_clusters") or []:
+            if not isinstance(cluster, dict):
+                continue
+            confidence = str(cluster.get("confidence") or "").strip().lower()
+            if confidence not in TASK_SUMMARY_CONFIDENCE_FOR_GROUPING:
+                continue
+            label = normalize_brand_display_text(str(cluster.get("task_title") or "").strip())
+            if not label:
+                continue
+            cluster_id = normalize_context_topic_key(cluster.get("cluster_id") or label)
+            if not cluster_id:
+                continue
+            for raw_window_id in cluster.get("source_window_ids") or []:
+                window_id = str(raw_window_id or "").strip()
+                if not window_id or window_id in covered_window_ids or window_id in cluster_index:
+                    continue
+                cluster_index[window_id] = {
+                    "cluster_id": cluster_id,
+                    "label": label,
+                    "summary": compact_preview_text(cluster.get("task_summary", ""), limit=180),
+                    "confidence": confidence,
+                    "status_tags": [
+                        normalize_brand_display_text(tag)
+                        for tag in cluster.get("status_tags") or []
+                        if str(tag or "").strip()
+                    ][:8],
+                    "source": "model",
+                    "artifact": str(artifact_path),
+                }
+        covered_window_ids.update(artifact_window_ids)
+    return cluster_index
+
+
+def apply_window_task_clusters(items, cluster_index=None):
+    cluster_index = cluster_index if cluster_index is not None else load_window_task_cluster_index()
+    if not cluster_index:
+        return items
+    for item in items or []:
+        window_id = str(item.get("window_id", "") or "").strip()
+        cluster = cluster_index.get(window_id)
+        if not cluster:
+            continue
+        item["task_cluster_id"] = cluster.get("cluster_id", "")
+        item["task_cluster_label"] = cluster.get("label", "")
+        item["task_cluster_summary"] = cluster.get("summary", "")
+        item["task_cluster_confidence"] = cluster.get("confidence", "")
+        item["task_cluster_status_tags"] = cluster.get("status_tags", [])
+        item["task_cluster_source"] = cluster.get("source", "")
+    return items
+
+
 def is_noisy_context_topic_candidate(text):
     candidate = str(text or "").strip()
     if not candidate:
@@ -4665,7 +5152,7 @@ def build_project_contexts(window_overview, language=None):
                 "question_samples": [],
                 "takeaway_samples": [],
                 "source_windows": [],
-                "topics": {},
+                "task_entries": [],
             },
         )
 
@@ -4709,42 +5196,55 @@ def build_project_contexts(window_overview, language=None):
                 group["summary_candidates"].append(compact)
 
         topic_label = infer_context_topic_label(item, language=language)
-        topic_key = normalize_context_topic_key(topic_label)
-        topic = group["topics"].setdefault(
-            topic_key,
-            {
-                "label": topic_label,
-                "window_count": 0,
-                "question_count": 0,
-                "conclusion_count": 0,
-                "latest_activity_at": "",
-                "latest_activity_display": localized("时间未知", "Unknown time", language),
-                "keywords": [],
-                "question_samples": [],
-                "takeaway_samples": [],
-                "source_windows": [],
-            },
-        )
-        topic["window_count"] += 1
-        topic["question_count"] += item.get("question_count", 0)
-        topic["conclusion_count"] += item.get("conclusion_count", 0)
-        append_source_window_ref(topic, item)
+        task_meta = infer_business_task_meta(item, topic_label=topic_label, language=language)
+        cluster_label = str(item.get("task_cluster_label", "") or "").strip()
+        cluster_id = str(item.get("task_cluster_id", "") or "").strip()
+        cluster_status_tags = [
+            str(tag or "").strip()
+            for tag in item.get("task_cluster_status_tags", []) or []
+            if str(tag or "").strip()
+        ]
+        if cluster_label and cluster_id:
+            task_meta = {
+                **task_meta,
+                "label": cluster_label,
+                "key": "cluster:{}".format(cluster_id),
+                "status_tags": cluster_status_tags or task_meta.get("status_tags", []),
+                "topic_label": task_meta.get("topic_label", ""),
+            }
+        task_entry = {
+            "label": task_meta.get("label", ""),
+            "task_key": task_meta.get("key", ""),
+            "task_terms": task_meta.get("terms", []),
+            "task_source": item.get("task_cluster_source", "") or "rule",
+            "task_confidence": item.get("task_cluster_confidence", ""),
+            "window_count": 1,
+            "question_count": item.get("question_count", 0),
+            "conclusion_count": item.get("conclusion_count", 0),
+            "latest_activity_at": "",
+            "latest_activity_display": localized("时间未知", "Unknown time", language),
+            "keywords": [],
+            "question_samples": [],
+            "takeaway_samples": [],
+            "source_windows": [],
+        }
+        append_source_window_ref(task_entry, item)
         for keyword in item.get("keywords", []):
             display_keyword = localized_context_keyword(keyword, language=language)
-            if display_keyword and display_keyword not in topic["keywords"]:
-                topic["keywords"].append(display_keyword)
-        if question_preview and question_preview not in topic["question_samples"]:
-            topic["question_samples"].append(question_preview)
-        if takeaway_preview and takeaway_preview not in topic["takeaway_samples"]:
-            topic["takeaway_samples"].append(takeaway_preview)
-        topic_latest = parse_iso_datetime(topic["latest_activity_at"])
+            if display_keyword and display_keyword not in task_entry["keywords"]:
+                task_entry["keywords"].append(display_keyword)
+        if question_preview:
+            task_entry["question_samples"].append(question_preview)
+        if takeaway_preview:
+            task_entry["takeaway_samples"].append(takeaway_preview)
         item_latest = parse_iso_datetime(item.get("latest_activity_at", ""))
-        if item_latest and (topic_latest is None or item_latest > topic_latest):
-            topic["latest_activity_at"] = item_latest.isoformat()
-            topic["latest_activity_display"] = item.get(
+        if item_latest:
+            task_entry["latest_activity_at"] = item_latest.isoformat()
+            task_entry["latest_activity_display"] = item.get(
                 "latest_activity_display",
                 localized("时间未知", "Unknown time", language),
             )
+        group["task_entries"].append(task_entry)
 
         current_latest = parse_iso_datetime(group["latest_activity_at"])
         item_latest = parse_iso_datetime(item.get("latest_activity_at", ""))
@@ -4773,7 +5273,7 @@ def build_project_contexts(window_overview, language=None):
         if takeaway_preview and takeaway_preview != question_preview:
             summary_parts.append(localized("结论：{}".format(takeaway_preview), "Conclusion: {}".format(takeaway_preview), language))
         topics = []
-        for topic in group["topics"].values():
+        for topic in build_business_task_topics(group.get("task_entries", []), language=language):
             topic_question = (
                 topic["question_samples"][0]
                 if topic["question_samples"]
@@ -7786,6 +8286,7 @@ def build_window_overview(latest_nightly, language=None, target_date=""):
             reverse=True,
         )
         assign_window_display_indices(fallback_items)
+        apply_window_task_clusters(fallback_items)
         return {
             "date": target_date or "",
             "window_count": len(fallback_items),
@@ -7810,6 +8311,7 @@ def build_window_overview(latest_nightly, language=None, target_date=""):
     )
 
     assign_window_display_indices(items)
+    apply_window_task_clusters(items)
 
     return {
         "date": daily_capture.get("date", target_date or ""),
@@ -7913,6 +8415,7 @@ def build_context_window_overview_for_days(
         reverse=True,
     )
     assign_window_display_indices(windows)
+    apply_window_task_clusters(windows)
 
     return {
         "date": anchor_date,
@@ -15352,6 +15855,14 @@ def make_window_summary_cards(
                 or localized("未捕获窗口摘要", "No captured window summary", language)
             )
         topic_label = infer_context_topic_label(item, language=language)
+        task_meta = infer_business_task_meta(item, topic_label=topic_label, language=language)
+        if item.get("task_cluster_label") and item.get("task_cluster_id"):
+            task_meta = {
+                **task_meta,
+                "label": item.get("task_cluster_label", ""),
+                "key": "cluster:{}".format(item.get("task_cluster_id", "")),
+                "status_tags": item.get("task_cluster_status_tags", []) or task_meta.get("status_tags", []),
+            }
         resume_id = item.get("resume_id", "") or window_id
         resume_command = item.get("resume_command", "") or window_resume_command(
             ai_host,
@@ -15414,6 +15925,14 @@ def make_window_summary_cards(
             "data-window-project": project_label,
             "data-window-cwd": cwd_display,
             "data-window-task": window_summary,
+            "data-window-task-key": task_meta.get("key", ""),
+            "data-window-task-label": task_meta.get("label", ""),
+            "data-window-task-terms": "|".join(task_meta.get("terms", [])),
+            "data-window-status-tags": " / ".join(task_meta.get("status_tags", [])),
+            "data-window-task-cluster-key": item.get("task_cluster_id", ""),
+            "data-window-task-cluster-label": item.get("task_cluster_label", ""),
+            "data-window-task-cluster-confidence": item.get("task_cluster_confidence", ""),
+            "data-window-task-cluster-source": item.get("task_cluster_source", ""),
             "data-window-takeaway": compact_preview_text(main_takeaway, limit=180),
             "data-window-topic": topic_label,
             "data-window-anchor": card_dom_id,
@@ -25672,16 +26191,66 @@ def build_html(data):
         return 0;
       }}
 
+      const windowTaskMergeStopTerms = new Set([
+        "修复", "处理", "排查", "对齐", "调整", "新增", "支持", "优化",
+        "完成", "实现", "改成", "改为", "代码", "清理", "本地", "提交",
+        "编译", "类型", "错误", "验证", "测试", "通过", "失败", "报错",
+        "文件", "页面", "面板", "移动", "动端", "移动端", "功能", "需求", "任务", "窗口", "项目", "问题",
+        "结论", "文档", "参数", "文案", "需要", "没有", "已经", "当前",
+        "可以", "是否", "the", "and", "for", "with",
+        "from", "this", "that", "task", "fix", "bug", "error", "compile",
+        "commit", "test", "tests",
+      ]);
+
+      function normalizeWindowTaskKey(value) {{
+        const compact = String(value || "")
+          .toLowerCase()
+          .replace(/\\s+/g, "")
+          .replace(/[^0-9a-z\\u4e00-\\u9fff]+/g, "");
+        return compact || "untitled";
+      }}
+
+      function isWindowTaskMergeTerm(value) {{
+        const normalized = normalizeWindowTaskKey(value);
+        return normalized.length >= 2 &&
+          !/^\\d+$/.test(normalized) &&
+          !windowTaskMergeStopTerms.has(normalized);
+      }}
+
+      function parseWindowTaskTerms(value) {{
+        const terms = [];
+        String(value || "").split("|").forEach(function (term) {{
+          const normalized = normalizeWindowTaskKey(term);
+          if (isWindowTaskMergeTerm(normalized) && !terms.includes(normalized)) {{
+            terms.push(normalized);
+          }}
+        }});
+        return terms;
+      }}
+
       function readWindowCardMeta(card, fallbackIndex) {{
         const questionCount = Number(card.getAttribute("data-window-question-count")) || 0;
         const conclusionCount = Number(card.getAttribute("data-window-conclusion-count")) || 0;
         const task = String(card.getAttribute("data-window-task") || "").trim() || localizeValue("未命名任务", "Untitled task");
         const topic = String(card.getAttribute("data-window-topic") || "").trim() || task;
+        const taskLabel = String(card.getAttribute("data-window-task-label") || "").trim() || topic;
+        const clusterLabel = String(card.getAttribute("data-window-task-cluster-label") || "").trim();
+        const rawClusterKey = String(card.getAttribute("data-window-task-cluster-key") || "").trim();
+        const clusterKey = rawClusterKey ? normalizeWindowTaskKey(rawClusterKey) : "";
+        const taskKey = rawClusterKey && clusterKey
+          ? "cluster:" + clusterKey
+          : normalizeWindowTaskKey(card.getAttribute("data-window-task-key") || taskLabel || topic || task);
         return {{
           project: String(card.getAttribute("data-window-project") || "").trim() || localizeValue("未知项目", "Unknown Project"),
           cwd: String(card.getAttribute("data-window-cwd") || "").trim() || localizeValue("暂无工作目录", "No working directory"),
           task: task,
           topic: topic,
+          taskLabel: clusterLabel || taskLabel,
+          taskKey: taskKey,
+          taskClusterSource: String(card.getAttribute("data-window-task-cluster-source") || "").trim(),
+          taskClusterConfidence: String(card.getAttribute("data-window-task-cluster-confidence") || "").trim(),
+          taskTerms: parseWindowTaskTerms(card.getAttribute("data-window-task-terms") || ""),
+          statusTags: String(card.getAttribute("data-window-status-tags") || "").trim(),
           anchor: card.getAttribute("id") || card.getAttribute("data-window-anchor") || "",
           displayLabel: String(card.getAttribute("data-window-display-label") || fallbackIndex || "").trim(),
           createdDisplay: card.getAttribute("data-window-started-display") || "",
@@ -25884,11 +26453,15 @@ def build_html(data):
               latestAt: "",
               latestDisplay: "",
               latestSortValue: 0,
-              topicsByKey: new Map(),
+              windows: [],
             }});
           }}
           const project = projectsByKey.get(projectKey);
           const sortValue = windowCardSortValue(card);
+          project.windows.push({{
+            meta: meta,
+            sortValue: sortValue,
+          }});
           project.windowCount += 1;
           project.questionCount += meta.questionCount;
           project.conclusionCount += meta.conclusionCount;
@@ -25898,43 +26471,101 @@ def build_html(data):
             project.latestAt = meta.latestAt;
             project.latestDisplay = meta.latestDisplay;
           }}
-          const topicKey = meta.topic || meta.task || localizeValue("未命名任务", "Untitled task");
-          if (!project.topicsByKey.has(topicKey)) {{
-            project.topicsByKey.set(topicKey, {{
-              label: topicKey,
+        }});
+
+        function buildProjectTaskGroups(project) {{
+          const windows = project.windows || [];
+          if (!windows.length) {{
+            return [];
+          }}
+          const parents = windows.map(function (_, index) {{ return index; }});
+          function find(index) {{
+            while (parents[index] !== index) {{
+              parents[index] = parents[parents[index]];
+              index = parents[index];
+            }}
+            return index;
+          }}
+          function union(left, right) {{
+            const leftRoot = find(left);
+            const rightRoot = find(right);
+            if (leftRoot !== rightRoot) {{
+              parents[rightRoot] = leftRoot;
+            }}
+          }}
+          const indicesByKey = new Map();
+          windows.forEach(function (row, index) {{
+            const meta = row.meta || {{}};
+            const key = normalizeWindowTaskKey(meta.taskKey || meta.taskLabel || meta.topic || meta.task);
+            if (!indicesByKey.has(key)) {{
+              indicesByKey.set(key, []);
+            }}
+            indicesByKey.get(key).push(index);
+          }});
+          indicesByKey.forEach(function (indices) {{
+            indices.slice(1).forEach(function (index) {{
+              union(indices[0], index);
+            }});
+          }});
+          const componentRowsByRoot = new Map();
+          windows.forEach(function (row, index) {{
+            const root = find(index);
+            if (!componentRowsByRoot.has(root)) {{
+              componentRowsByRoot.set(root, []);
+            }}
+            componentRowsByRoot.get(root).push(row);
+          }});
+
+          function componentLabel(rows) {{
+            const newestRow = rows.slice().sort(function (left, right) {{
+              return (right.sortValue || 0) - (left.sortValue || 0);
+            }})[0] || {{}};
+            const newestMeta = newestRow.meta || {{}};
+            return newestMeta.taskLabel || newestMeta.topic || newestMeta.task || localizeValue("未命名任务", "Untitled task");
+          }}
+
+          return Array.from(componentRowsByRoot.values()).map(function (rows) {{
+            const topic = {{
+              label: componentLabel(rows),
               windowCount: 0,
               questionCount: 0,
               conclusionCount: 0,
               discussionCount: 0,
               latestSortValue: 0,
               sourceWindows: [],
+            }};
+            rows.forEach(function (row) {{
+              const meta = row.meta || {{}};
+              const sortValue = row.sortValue || 0;
+              topic.windowCount += 1;
+              topic.questionCount += meta.questionCount;
+              topic.conclusionCount += meta.conclusionCount;
+              topic.discussionCount += meta.discussionCount;
+              topic.latestSortValue = Math.max(topic.latestSortValue, sortValue);
+              topic.sourceWindows.push({{
+                anchor: meta.anchor,
+                displayLabel: meta.displayLabel,
+                createdDisplay: meta.createdDisplay,
+                latestDisplay: meta.latestDisplay,
+                task: meta.task,
+                takeaway: meta.takeaway,
+                questionCount: meta.questionCount,
+                conclusionCount: meta.conclusionCount,
+                sortValue: sortValue,
+              }});
             }});
-          }}
-          const topic = project.topicsByKey.get(topicKey);
-          topic.windowCount += 1;
-          topic.questionCount += meta.questionCount;
-          topic.conclusionCount += meta.conclusionCount;
-          topic.discussionCount += meta.discussionCount;
-          topic.latestSortValue = Math.max(topic.latestSortValue, sortValue);
-          topic.sourceWindows.push({{
-            anchor: meta.anchor,
-            displayLabel: meta.displayLabel,
-            createdDisplay: meta.createdDisplay,
-            latestDisplay: meta.latestDisplay,
-            task: meta.task,
-            takeaway: meta.takeaway,
-            questionCount: meta.questionCount,
-            conclusionCount: meta.conclusionCount,
-            sortValue: sortValue,
+            return topic;
           }});
-        }});
+        }}
+
         return Array.from(projectsByKey.values()).map(function (project) {{
-          project.topics = Array.from(project.topicsByKey.values()).sort(function (left, right) {{
+          project.topics = buildProjectTaskGroups(project).sort(function (left, right) {{
             return (right.windowCount - left.windowCount) ||
               (right.discussionCount - left.discussionCount) ||
               (right.latestSortValue - left.latestSortValue) ||
               String(left.label || "").localeCompare(String(right.label || ""));
           }});
+          delete project.windows;
           return project;
         }}).sort(function (left, right) {{
           return (right.discussionCount - left.discussionCount) ||

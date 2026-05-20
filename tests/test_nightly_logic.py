@@ -25,6 +25,7 @@ import build_codex_native_display_cache  # noqa: E402
 import check_personal_info  # noqa: E402
 import openrelix  # noqa: E402
 import openrelix_memory_migration  # noqa: E402
+import openrelix_task_summary  # noqa: E402
 import openrelix_update_worker  # noqa: E402
 import asset_runtime  # noqa: E402
 import nightly_consolidate  # noqa: E402
@@ -2396,6 +2397,538 @@ wire_api = "responses"
             ),
             "移动端反馈交互修复",
         )
+
+    def test_business_task_meta_keeps_process_words_as_status_tags(self):
+        item = {
+            "window_title": "修复 FeatureOrbit Bridge42 main lane",
+            "question_summary": "修复 FeatureOrbit Bridge42 main lane",
+            "main_takeaway": "本地编译通过，并完成本地提交。",
+            "keywords": [],
+            "recent_prompts": [],
+            "recent_conclusions": [
+                {"text": "[KMP_CLI_LOG] compile passed"},
+                {"text": "git commit completed"},
+            ],
+        }
+
+        topic_label = build_overview.infer_context_topic_label(item)
+        task_meta = build_overview.infer_business_task_meta(item, topic_label=topic_label)
+
+        self.assertEqual(topic_label, "移动端编译/类型错误")
+        self.assertEqual(task_meta["label"], "FeatureOrbit Bridge42 main lane")
+        self.assertEqual(task_meta["key"], "featureorbitbridge42mainlane")
+        self.assertIn("featureorbit", task_meta["terms"])
+        self.assertIn("bridge42", task_meta["terms"])
+        self.assertIn("编译", task_meta["status_tags"])
+        self.assertIn("提交", task_meta["status_tags"])
+
+        followup_meta = build_overview.infer_business_task_meta(
+            {
+                "window_title": "继续任务，之前断网了",
+                "question_summary": "继续任务，之前断网了",
+                "main_takeaway": "编译通过。",
+                "keywords": [],
+                "recent_prompts": [],
+                "recent_conclusions": [],
+            },
+            topic_label="移动端编译/类型错误",
+        )
+        self.assertEqual(followup_meta["label"], "之前断网了")
+
+    def test_project_context_groups_exact_business_task_across_process_topics(self):
+        windows = []
+        for index, (title, takeaway) in enumerate(
+            [
+                ("修复 FeatureOrbit Bridge42 main lane", "本地编译通过。"),
+                ("FeatureOrbit Bridge42 main lane", "已完成本地提交。"),
+                ("FeatureOrbit fallback view", "完成。"),
+            ],
+            1,
+        ):
+            windows.append(
+                {
+                    "window_id": "w{}".format(index),
+                    "project_label": "GenericApp",
+                    "cwd": "/tmp/generic-app",
+                    "cwd_display": "GenericApp",
+                    "window_title": title,
+                    "question_summary": title,
+                    "main_takeaway": takeaway,
+                    "keywords": [],
+                    "question_count": 1,
+                    "conclusion_count": 1,
+                    "latest_activity_at": "2026-05-14T10:0{}:00+08:00".format(index),
+                    "latest_activity_display": "05-14 10:0{}".format(index),
+                    "recent_prompts": [],
+                    "recent_conclusions": [],
+                }
+            )
+
+        contexts = build_overview.build_project_contexts({"windows": windows})
+
+        self.assertEqual(len(contexts), 1)
+        self.assertEqual(contexts[0]["topic_count"], 2)
+        topic_counts = {topic["label"]: topic["window_count"] for topic in contexts[0]["topics"]}
+        self.assertEqual(topic_counts["FeatureOrbit Bridge42 main lane"], 2)
+        self.assertEqual(topic_counts["FeatureOrbit fallback view"], 1)
+
+    def test_task_summary_normalizes_clusters_from_existing_window_summaries(self):
+        task_input = {
+            "date_range": {"from": "2026-05-14", "to": "2026-05-14"},
+            "source_summary_dates": ["2026-05-14"],
+            "windows": [
+                {
+                    "window_id": "w-resou-a",
+                    "cwd": "/tmp/staggerOpt",
+                    "project_label": "staggerOpt",
+                    "window_title": "图文重搜 GS BTM 参数修复",
+                    "question_summary": "图文重搜 GS BTM 参数修复",
+                    "main_takeaway": "编译通过。",
+                },
+                {
+                    "window_id": "w-resou-b",
+                    "cwd": "/tmp/staggerOpt",
+                    "project_label": "staggerOpt",
+                    "window_title": "视频重搜空态改为复用绿搜",
+                    "question_summary": "视频重搜空态改为复用绿搜",
+                    "main_takeaway": "完成验证。",
+                },
+            ],
+        }
+        model_payload = {
+            "project_task_clusters": [
+                {
+                    "cluster_id": "resou-empty-state",
+                    "project_label": "staggerOpt",
+                    "cwd": "/tmp/staggerOpt",
+                    "task_title": "重搜空态与参数链路修复",
+                    "task_summary": "图文重搜和视频重搜都围绕同一条重搜链路。",
+                    "source_window_ids": ["w-resou-a", "w-resou-b", "missing"],
+                    "status_tags": ["编译", "验证"],
+                    "confidence": "high",
+                }
+            ]
+        }
+
+        normalized = openrelix_task_summary.normalize_task_summary_payload(model_payload, task_input)
+
+        self.assertEqual(normalized["task_cluster_algorithm_version"], openrelix_task_summary.TASK_CLUSTER_ALGORITHM_VERSION)
+        self.assertEqual(len(normalized["project_task_clusters"]), 1)
+        cluster = normalized["project_task_clusters"][0]
+        self.assertEqual(cluster["task_title"], "重搜空态与参数链路修复")
+        self.assertEqual(cluster["source_window_ids"], ["w-resou-a", "w-resou-b"])
+        self.assertEqual(normalized["source_window_ids"], ["w-resou-a", "w-resou-b"])
+        self.assertIn("编译", cluster["status_tags"])
+        self.assertIn("source_fingerprint", normalized)
+
+    def test_task_summary_drops_cross_scope_model_cluster_members(self):
+        task_input = {
+            "date_range": {"from": "2026-05-14", "to": "2026-05-14"},
+            "source_summary_dates": ["2026-05-14"],
+            "windows": [
+                {
+                    "window_id": "w-openrelix",
+                    "cwd": "/tmp/openrelix",
+                    "project_label": "OpenRelix",
+                    "window_title": "面板任务聚合",
+                    "question_summary": "面板任务聚合",
+                    "main_takeaway": "完成。",
+                },
+                {
+                    "window_id": "w-douyin",
+                    "cwd": "/tmp/douyin",
+                    "project_label": "Douyin",
+                    "window_title": "移动端扫描链路",
+                    "question_summary": "移动端扫描链路",
+                    "main_takeaway": "完成。",
+                },
+            ],
+        }
+        model_payload = {
+            "project_task_clusters": [
+                {
+                    "cluster_id": "mixed-projects",
+                    "project_label": "Wrong",
+                    "cwd": "/tmp/wrong",
+                    "task_title": "错误跨项目聚合",
+                    "source_window_ids": ["w-openrelix", "w-douyin"],
+                    "confidence": "high",
+                }
+            ]
+        }
+
+        normalized = openrelix_task_summary.normalize_task_summary_payload(model_payload, task_input)
+
+        self.assertEqual(len(normalized["project_task_clusters"]), 1)
+        cluster = normalized["project_task_clusters"][0]
+        self.assertEqual(cluster["source_window_ids"], ["w-openrelix"])
+        self.assertEqual(cluster["project_label"], "OpenRelix")
+        self.assertEqual(cluster["cwd"], "/tmp/openrelix")
+
+    def test_task_summary_model_failure_messages_suppress_raw_output(self):
+        error = openrelix_task_summary.describe_model_failure(
+            stdout="partial summary PRIVATE_PATH token sk-testsecret123456",
+            stderr='{"access_token":"secret-token","task":"internal work"}',
+            returncode=1,
+        )
+
+        self.assertIn("exit code 1", error)
+        self.assertIn("原始输出", error)
+        self.assertNotIn("sk-testsecret", error)
+        self.assertNotIn("access_token", error)
+        self.assertNotIn("PRIVATE_PATH", error)
+
+    def test_task_summary_migration_state_clears_stale_failure_fields(self):
+        with TemporaryDirectory() as tmpdir:
+            paths = make_runtime_paths_for_test(tmpdir)
+            openrelix_task_summary.write_task_summary_migration_state(
+                paths,
+                status="failed",
+                error="model failed",
+                failed_at="2026-05-19T01:00:00+08:00",
+            )
+
+            state = openrelix_task_summary.write_task_summary_migration_state(
+                paths,
+                status="completed",
+                reason="migration_completed",
+            )
+
+            self.assertEqual(state["status"], "completed")
+            self.assertNotIn("error", state)
+            self.assertNotIn("failed_at", state)
+
+    def test_project_context_prefers_model_task_cluster(self):
+        windows = []
+        for index, title in enumerate(
+            [
+                "图文重搜 GS BTM 参数修复",
+                "视频重搜空态改为复用绿搜",
+            ],
+            1,
+        ):
+            windows.append(
+                {
+                    "window_id": "w{}".format(index),
+                    "project_label": "staggerOpt",
+                    "cwd": "/tmp/staggerOpt",
+                    "cwd_display": "staggerOpt",
+                    "window_title": title,
+                    "question_summary": title,
+                    "main_takeaway": "编译和验证完成。",
+                    "keywords": [],
+                    "question_count": 1,
+                    "conclusion_count": 1,
+                    "latest_activity_at": "2026-05-14T10:0{}:00+08:00".format(index),
+                    "latest_activity_display": "05-14 10:0{}".format(index),
+                    "recent_prompts": [],
+                    "recent_conclusions": [],
+                    "task_cluster_id": "resou-empty-state",
+                    "task_cluster_label": "重搜空态与参数链路修复",
+                    "task_cluster_confidence": "high",
+                    "task_cluster_source": "model",
+                }
+            )
+
+        contexts = build_overview.build_project_contexts({"windows": windows})
+
+        self.assertEqual(len(contexts), 1)
+        self.assertEqual(contexts[0]["topic_count"], 1)
+        self.assertEqual(contexts[0]["topics"][0]["label"], "重搜空态与参数链路修复")
+        self.assertEqual(contexts[0]["topics"][0]["window_count"], 2)
+
+    def test_window_task_cluster_index_reads_runtime_artifact(self):
+        old_paths = build_overview.PATHS
+        try:
+            with TemporaryDirectory() as tmpdir:
+                paths = make_runtime_paths_for_test(tmpdir)
+                artifact_dir = paths.consolidated_dir / "task_summaries"
+                artifact_dir.mkdir(parents=True, exist_ok=True)
+                (artifact_dir / "2026-05-14_2026-05-14.json").write_text(
+                    json.dumps(
+                        {
+                            "schema_version": 1,
+                            "task_cluster_algorithm_version": build_overview.TASK_CLUSTER_ALGORITHM_VERSION,
+                            "date_range": {"from": "2026-05-14", "to": "2026-05-14"},
+                            "source_summary_dates": ["2026-05-14"],
+                            "source_fingerprint": "demo",
+                            "project_task_clusters": [
+                                {
+                                    "cluster_id": "resou-empty-state",
+                                    "project_label": "staggerOpt",
+                                    "cwd": "/tmp/staggerOpt",
+                                    "task_title": "重搜空态与参数链路修复",
+                                    "task_summary": "",
+                                    "source_window_ids": ["w1"],
+                                    "status_tags": [],
+                                    "confidence": "medium",
+                                }
+                            ],
+                        },
+                        ensure_ascii=False,
+                    ),
+                    encoding="utf-8",
+                )
+                build_overview.PATHS = paths
+                build_overview.load_window_task_cluster_index.cache_clear()
+
+                items = [{"window_id": "w1"}]
+                build_overview.apply_window_task_clusters(items)
+
+                self.assertEqual(items[0]["task_cluster_id"], "resouemptystate")
+                self.assertEqual(items[0]["task_cluster_label"], "重搜空态与参数链路修复")
+                self.assertEqual(items[0]["task_cluster_source"], "model")
+        finally:
+            build_overview.PATHS = old_paths
+            build_overview.load_window_task_cluster_index.cache_clear()
+
+    def test_newer_task_summary_artifact_tombstones_stale_clusters(self):
+        old_paths = build_overview.PATHS
+        try:
+            with TemporaryDirectory() as tmpdir:
+                paths = make_runtime_paths_for_test(tmpdir)
+                artifact_dir = paths.consolidated_dir / "task_summaries"
+                artifact_dir.mkdir(parents=True, exist_ok=True)
+                older = artifact_dir / "2026-05-10_2026-05-16.json"
+                newer = artifact_dir / "2026-05-11_2026-05-17.json"
+                older.write_text(
+                    json.dumps(
+                        {
+                            "schema_version": 1,
+                            "task_cluster_algorithm_version": build_overview.TASK_CLUSTER_ALGORITHM_VERSION,
+                            "date_range": {"from": "2026-05-10", "to": "2026-05-16"},
+                            "source_summary_dates": ["2026-05-16"],
+                            "source_window_ids": ["w1"],
+                            "source_fingerprint": "old",
+                            "project_task_clusters": [
+                                {
+                                    "cluster_id": "old-resou",
+                                    "project_label": "staggerOpt",
+                                    "cwd": "/tmp/staggerOpt",
+                                    "task_title": "旧重搜任务",
+                                    "task_summary": "",
+                                    "source_window_ids": ["w1"],
+                                    "status_tags": [],
+                                    "confidence": "high",
+                                }
+                            ],
+                        },
+                        ensure_ascii=False,
+                    ),
+                    encoding="utf-8",
+                )
+                newer.write_text(
+                    json.dumps(
+                        {
+                            "schema_version": 1,
+                            "task_cluster_algorithm_version": build_overview.TASK_CLUSTER_ALGORITHM_VERSION,
+                            "date_range": {"from": "2026-05-11", "to": "2026-05-17"},
+                            "source_summary_dates": ["2026-05-17"],
+                            "source_window_ids": ["w1"],
+                            "source_fingerprint": "new",
+                            "project_task_clusters": [
+                                {
+                                    "cluster_id": "new-low-confidence",
+                                    "project_label": "staggerOpt",
+                                    "cwd": "/tmp/staggerOpt",
+                                    "task_title": "新低置信任务",
+                                    "task_summary": "",
+                                    "source_window_ids": ["w1"],
+                                    "status_tags": [],
+                                    "confidence": "low",
+                                }
+                            ],
+                        },
+                        ensure_ascii=False,
+                    ),
+                    encoding="utf-8",
+                )
+                os.utime(older, (100, 100))
+                os.utime(newer, (200, 200))
+                build_overview.PATHS = paths
+                build_overview.load_window_task_cluster_index.cache_clear()
+
+                items = [{"window_id": "w1"}]
+                build_overview.apply_window_task_clusters(items)
+
+                self.assertNotIn("task_cluster_id", items[0])
+        finally:
+            build_overview.PATHS = old_paths
+            build_overview.load_window_task_cluster_index.cache_clear()
+
+    def test_task_summary_failure_writes_tombstone_artifact(self):
+        with TemporaryDirectory() as tmpdir:
+            paths = make_runtime_paths_for_test(tmpdir)
+            summary_dir = paths.consolidated_daily_dir / "2026-05-14"
+            summary_dir.mkdir(parents=True, exist_ok=True)
+            (summary_dir / "summary.json").write_text(
+                json.dumps(
+                    {
+                        "date": "2026-05-14",
+                        "window_summaries": [
+                            {
+                                "window_id": "w1",
+                                "cwd": "/tmp/staggerOpt",
+                                "window_title": "图文重搜参数修复",
+                                "question_summary": "图文重搜参数修复",
+                                "main_takeaway": "模型失败时回退规则聚合。",
+                                "question_count": 1,
+                                "conclusion_count": 1,
+                            }
+                        ],
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+
+            def fail_after_candidate(_, output_path, **__):
+                Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+                Path(output_path).write_text(
+                    '{"project_task_clusters":[{"task_title":"raw private output"}]}',
+                    encoding="utf-8",
+                )
+                raise openrelix_task_summary.TaskSummaryModelError(
+                    1,
+                    stdout="PRIVATE_OUTPUT sk-testsecret123456",
+                    stderr='{"access_token":"secret-token"}',
+                )
+
+            with mock.patch.object(openrelix_task_summary, "run_model_task_summary", side_effect=fail_after_candidate):
+                with self.assertRaises(openrelix_task_summary.TaskSummaryModelError):
+                    openrelix_task_summary.run_task_summary_for_dates(
+                        ["2026-05-14"],
+                        paths=paths,
+                        force=True,
+                    )
+
+            artifact = paths.consolidated_dir / "task_summaries" / "2026-05-14_2026-05-14.json"
+            self.assertFalse((paths.consolidated_dir / "task_summaries" / "2026-05-14_2026-05-14.candidate.tmp").exists())
+            payload = json.loads(artifact.read_text(encoding="utf-8"))
+            self.assertEqual(payload["model_status"], "failed")
+            self.assertEqual(payload["source_window_ids"], ["w1"])
+            self.assertEqual(payload["project_task_clusters"], [])
+            self.assertIn("error", payload)
+            self.assertNotIn("PRIVATE_OUTPUT", payload["error"])
+            self.assertNotIn("access_token", payload["error"])
+
+    def test_window_task_cluster_index_ignores_candidate_artifacts(self):
+        old_paths = build_overview.PATHS
+        try:
+            with TemporaryDirectory() as tmpdir:
+                paths = make_runtime_paths_for_test(tmpdir)
+                artifact_dir = paths.consolidated_dir / "task_summaries"
+                artifact_dir.mkdir(parents=True, exist_ok=True)
+                (artifact_dir / "2026-05-14_2026-05-14.candidate.json").write_text(
+                    json.dumps(
+                        {
+                            "schema_version": 1,
+                            "task_cluster_algorithm_version": build_overview.TASK_CLUSTER_ALGORITHM_VERSION,
+                            "date_range": {"from": "2026-05-14", "to": "2026-05-14"},
+                            "source_summary_dates": ["2026-05-14"],
+                            "project_task_clusters": [
+                                {
+                                    "cluster_id": "raw-candidate",
+                                    "project_label": "Wrong",
+                                    "cwd": "/tmp/wrong",
+                                    "task_title": "未归一化候选输出",
+                                    "task_summary": "",
+                                    "source_window_ids": ["w1"],
+                                    "status_tags": [],
+                                    "confidence": "high",
+                                }
+                            ],
+                        },
+                        ensure_ascii=False,
+                    ),
+                    encoding="utf-8",
+                )
+                build_overview.PATHS = paths
+                build_overview.load_window_task_cluster_index.cache_clear()
+
+                items = [{"window_id": "w1"}]
+                build_overview.apply_window_task_clusters(items)
+
+                self.assertNotIn("task_cluster_id", items[0])
+        finally:
+            build_overview.PATHS = old_paths
+            build_overview.load_window_task_cluster_index.cache_clear()
+
+    def test_task_summary_artifact_order_prefers_generated_at_over_mtime(self):
+        old_paths = build_overview.PATHS
+        try:
+            with TemporaryDirectory() as tmpdir:
+                paths = make_runtime_paths_for_test(tmpdir)
+                artifact_dir = paths.consolidated_dir / "task_summaries"
+                artifact_dir.mkdir(parents=True, exist_ok=True)
+                older = artifact_dir / "2026-05-10_2026-05-16.json"
+                newer = artifact_dir / "2026-05-11_2026-05-17.json"
+                older.write_text(
+                    json.dumps(
+                        {
+                            "schema_version": 1,
+                            "task_cluster_algorithm_version": build_overview.TASK_CLUSTER_ALGORITHM_VERSION,
+                            "date_range": {"from": "2026-05-10", "to": "2026-05-16"},
+                            "source_summary_dates": ["2026-05-16"],
+                            "source_window_ids": ["w1"],
+                            "source_fingerprint": "old",
+                            "generated_at": "2026-05-16T23:00:00+08:00",
+                            "project_task_clusters": [
+                                {
+                                    "cluster_id": "old-resou",
+                                    "project_label": "staggerOpt",
+                                    "cwd": "/tmp/staggerOpt",
+                                    "task_title": "旧重搜任务",
+                                    "task_summary": "",
+                                    "source_window_ids": ["w1"],
+                                    "status_tags": [],
+                                    "confidence": "high",
+                                }
+                            ],
+                        },
+                        ensure_ascii=False,
+                    ),
+                    encoding="utf-8",
+                )
+                newer.write_text(
+                    json.dumps(
+                        {
+                            "schema_version": 1,
+                            "task_cluster_algorithm_version": build_overview.TASK_CLUSTER_ALGORITHM_VERSION,
+                            "date_range": {"from": "2026-05-11", "to": "2026-05-17"},
+                            "source_summary_dates": ["2026-05-17"],
+                            "source_window_ids": ["w1"],
+                            "source_fingerprint": "new",
+                            "generated_at": "2026-05-17T01:00:00+08:00",
+                            "project_task_clusters": [
+                                {
+                                    "cluster_id": "new-low-confidence",
+                                    "project_label": "staggerOpt",
+                                    "cwd": "/tmp/staggerOpt",
+                                    "task_title": "新低置信任务",
+                                    "task_summary": "",
+                                    "source_window_ids": ["w1"],
+                                    "status_tags": [],
+                                    "confidence": "low",
+                                }
+                            ],
+                        },
+                        ensure_ascii=False,
+                    ),
+                    encoding="utf-8",
+                )
+                os.utime(older, (300, 300))
+                os.utime(newer, (100, 100))
+                build_overview.PATHS = paths
+                build_overview.load_window_task_cluster_index.cache_clear()
+
+                items = [{"window_id": "w1"}]
+                build_overview.apply_window_task_clusters(items)
+
+                self.assertNotIn("task_cluster_id", items[0])
+        finally:
+            build_overview.PATHS = old_paths
+            build_overview.load_window_task_cluster_index.cache_clear()
 
     def test_project_context_views_scan_recent_days_and_group_windows(self):
         old_raw_daily_dir = build_overview.RAW_DAILY_DIR
@@ -7162,6 +7695,9 @@ Native Codex profile.
         self.assertIn('data-window-display-label="1"', html)
         self.assertIn('data-window-takeaway="**结论**：执行 codex resume', html)
         self.assertIn('data-window-topic=', html)
+        self.assertIn('data-window-task-key=', html)
+        self.assertIn('data-window-task-label=', html)
+        self.assertIn('data-window-status-tags=', html)
         self.assertIn('class="window-summary-pair-list"', html)
         self.assertIn('class="window-summary-pair-item"', html)
         self.assertNotIn("会话文件", html)
@@ -10609,12 +11145,28 @@ Native Codex profile.
         self.assertIn('command === "memory-migration"', npm_bin)
         self.assertIn('runPythonCli(["memory-migration", ...args.slice(1)])', npm_bin)
         self.assertIn("npx openrelix memory-migration status", npm_bin)
+        self.assertIn('command === "task-summary-migration"', npm_bin)
+        self.assertIn('runPythonCli(["task-summary-migration", ...args.slice(1)])', npm_bin)
+        self.assertIn("npx openrelix task-summary-migration status", npm_bin)
         self.assertIn('"context"', openrelix_cli)
         self.assertIn("command_context(args)", openrelix_cli)
         self.assertIn('command === "context"', npm_bin)
         self.assertIn('runPythonCli(["context", ...args.slice(1)])', npm_bin)
         self.assertIn("npx openrelix context sync", npm_bin)
         self.assertIn("scripts/openrelix_memory_migration.py", package_json["files"])
+        self.assertIn("scripts/openrelix_task_summary.py", package_json["files"])
+        self.assertIn("templates/", package_json["files"])
+        self.assertTrue((ROOT / "templates" / "window-task-summary-schema.json").exists())
+
+    def test_window_task_summary_schema_is_strict_codex_response_schema(self):
+        schema = json.loads((ROOT / "templates" / "window-task-summary-schema.json").read_text(encoding="utf-8"))
+
+        self.assertEqual(sorted(schema["required"]), sorted(schema["properties"].keys()))
+        cluster_schema = schema["properties"]["project_task_clusters"]["items"]
+        self.assertEqual(sorted(cluster_schema["required"]), sorted(cluster_schema["properties"].keys()))
+        self.assertNotIn("source_fingerprint", schema["properties"])
+        self.assertNotIn("source_window_ids", schema["properties"])
+        self.assertNotIn("model_status", schema["properties"])
 
     def test_sqlite_index_rebuild_is_warning_only_in_refresh_scripts(self):
         nightly = (ROOT / "scripts" / "nightly_pipeline.sh").read_text(encoding="utf-8")
@@ -10626,6 +11178,20 @@ Native Codex profile.
             self.assertIn("openrelix_index.py", script)
             self.assertIn("JSONL/raw outputs remain authoritative", script)
             self.assertIn("if ! \"$PYTHON_BIN\" \"$REPO_ROOT/scripts/openrelix_index.py\" rebuild >/dev/null; then", script)
+
+    def test_task_summary_generation_honors_disable_flag_in_refresh_and_nightly(self):
+        nightly = (ROOT / "scripts" / "nightly_pipeline.sh").read_text(encoding="utf-8")
+        refresh = (ROOT / "scripts" / "refresh_overview.sh").read_text(encoding="utf-8")
+
+        for script in (nightly, refresh):
+            self.assertIn("OPENRELIX_DISABLE_TASK_SUMMARY_MIGRATION", script)
+
+        self.assertIn("openrelix_task_summary.py", nightly)
+        self.assertIn("task-summary-migration", refresh)
+        self.assertIn("run_task_summary_if_enabled", nightly)
+        self.assertIn("case \"${disabled:l}\" in", nightly)
+        self.assertIn("1|true|yes|on)", nightly)
+        self.assertIn("run_task_summary_if_enabled", nightly.split("if [[ \"$defer_global_refresh\" != \"1\" ]]; then", 1)[1])
 
     def test_uninstall_local_memory_delete_has_dry_run_and_repo_guard(self):
         with TemporaryDirectory() as tmpdir:
@@ -12093,6 +12659,9 @@ Native Codex profile.
         self.assertIn("wireWindowResumeActions();", html)
         self.assertIn("function reviewPromptTextFromNode(node)", html)
         self.assertIn("node.content.textContent", html)
+        self.assertIn('const rawClusterKey = String(card.getAttribute("data-window-task-cluster-key") || "").trim();', html)
+        self.assertIn("const taskKey = rawClusterKey && clusterKey", html)
+        self.assertNotIn("cluster:untitled", html)
 
     def test_daily_summary_view_carries_bilingual_dynamic_fields(self):
         view = build_overview.build_daily_summary_view(

@@ -74,6 +74,17 @@ from openrelix_memory_migration import (
     mark_memory_migration_running,
     migrate_personal_memory_registry,
 )
+from openrelix_task_summary import (
+    TASK_CLUSTER_ALGORITHM_VERSION,
+    TASK_SUMMARY_WINDOW_DAYS,
+    ensure_task_summary_migration_state,
+    load_task_summary_migration_state,
+    mark_task_summary_migration_completed,
+    mark_task_summary_migration_failed,
+    print_task_summary_migration_state,
+    resolve_task_summary_dates,
+    run_task_summary_for_dates,
+)
 
 
 PATHS = get_runtime_paths()
@@ -526,6 +537,59 @@ def build_parser():
             "以 JSON 打印迁移状态。",
             "Print migration state as JSON.",
         ),
+    )
+
+    task_summary_migration = subparsers.add_parser(
+        "task-summary-migration",
+        help=localized(
+            "检查或执行并行任务总结迁移。",
+            "Check or run the parallel task summary migration.",
+        ),
+    )
+    task_summary_migration.add_argument(
+        "action",
+        nargs="?",
+        default="status",
+        choices=["status", "ensure", "run"],
+        help=localized(
+            "status 查看状态；ensure 只写 pending marker；run 基于已有窗口摘要补算任务总结。",
+            "status prints state; ensure writes a pending marker; run builds task summaries from existing window summaries.",
+        ),
+    )
+    task_summary_migration.add_argument(
+        "--window-days",
+        type=int,
+        default=TASK_SUMMARY_WINDOW_DAYS,
+        help=localized(
+            "迁移补算最近 N 天。默认 7。",
+            "Summarize the last N days during migration. Default: 7.",
+        ),
+    )
+    task_summary_migration.add_argument(
+        "--force",
+        action="store_true",
+        help=localized(
+            "即使当前任务聚合算法版本已标记完成，也重新安排或执行迁移。",
+            "Schedule or run migration even when the current task-cluster algorithm version is already marked complete.",
+        ),
+    )
+    task_summary_migration.add_argument(
+        "--if-pending",
+        action="store_true",
+        help=localized(
+            "仅当存在 pending migration 时执行；否则安静退出。",
+            "Run only when a pending migration exists; otherwise exit quietly.",
+        ),
+    )
+    task_summary_migration.add_argument(
+        "--quiet",
+        action="store_true",
+        help=localized("减少迁移过程输出。", "Reduce migration output."),
+    )
+    task_summary_migration.add_argument(
+        "--json",
+        action="store_true",
+        help=localized("以 JSON 打印迁移状态。", "Print migration state as JSON."),
     )
 
     uninstall = subparsers.add_parser(
@@ -1886,6 +1950,76 @@ def build_codex_native_display_cache_if_enabled(verbose=False):
     run_warning_only(cmd, warning)
 
 
+def task_summary_migration_disabled():
+    return str(os.environ.get("OPENRELIX_DISABLE_TASK_SUMMARY_MIGRATION", "")).strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
+def run_task_summary_migration_if_needed(verbose=False):
+    if task_summary_migration_disabled():
+        return
+    cmd = [
+        sys.executable,
+        str(REPO_ROOT / "scripts" / "openrelix.py"),
+        "task-summary-migration",
+        "run",
+        "--if-pending",
+        "--quiet",
+    ]
+    warning = "openrelix: task summary migration failed; existing rule-based task grouping remains available."
+    if verbose:
+        run_warning_only_with_progress(
+            cmd,
+            warning,
+            [
+                localized(
+                    "仍在刷新: 正在基于已整理窗口补算并行任务总结。",
+                    "Still refreshing: generating parallel task summaries from organized windows.",
+                ),
+                localized(
+                    "仍在刷新: 并行任务总结还在生成，完成后会继续重建面板。",
+                    "Still refreshing: parallel task summaries are still being generated; panel rebuild will continue afterward.",
+                ),
+            ],
+        )
+        return
+    run_warning_only(cmd, warning)
+
+
+def run_task_summary_for_dates_warning_only(dates, verbose=False):
+    if task_summary_migration_disabled():
+        return
+    normalized_dates = [str(date_str) for date_str in dates or [] if str(date_str or "").strip()]
+    if not normalized_dates:
+        return
+    state = ensure_task_summary_migration_state(PATHS, window_days=TASK_SUMMARY_WINDOW_DAYS, force=False)
+    if state.get("status") == "pending":
+        return
+    try:
+        result = run_task_summary_for_dates(normalized_dates, paths=PATHS, force=False)
+    except Exception as exc:
+        print(
+            localized(
+                "openrelix: 并行任务总结生成失败；已继续使用规则聚合，可稍后重试。",
+                "openrelix: task summary generation failed; rule-based task grouping remains available. Retry later.",
+            ),
+            file=sys.stderr,
+        )
+        return
+    if verbose and result.get("status") == "completed":
+        print(
+            localized(
+                "并行任务总结已更新: {} 个任务簇。".format(result.get("cluster_count", 0)),
+                "Parallel task summaries updated: {} task clusters.".format(result.get("cluster_count", 0)),
+            ),
+            flush=True,
+        )
+
+
 def sync_review_outputs(include_index=False, include_native_display=False, verbose=False):
     if verbose:
         print(
@@ -1897,13 +2031,13 @@ def sync_review_outputs(include_index=False, include_native_display=False, verbo
         )
     if include_index:
         if verbose:
-            print(localized("刷新中 [1/4]: 重建搜索索引。", "Refreshing [1/4]: rebuilding the search index."), flush=True)
+            print(localized("刷新中 [1/5]: 重建搜索索引。", "Refreshing [1/5]: rebuilding the search index."), flush=True)
         rebuild_sqlite_index_if_available(verbose=verbose)
     if verbose:
         print(
             localized(
-                "刷新中 [2/4]: 同步或清理 host context 摘要。",
-                "Refreshing [2/4]: syncing or clearing the host context summary.",
+                "刷新中 [2/5]: 同步或清理 host context 摘要。",
+                "Refreshing [2/5]: syncing or clearing the host context summary.",
             ),
             flush=True,
         )
@@ -1932,8 +2066,8 @@ def sync_review_outputs(include_index=False, include_native_display=False, verbo
     if include_native_display and verbose:
         print(
             localized(
-                "刷新中 [3/4]: 更新记忆卡展示缓存。",
-                "Refreshing [3/4]: updating memory-card display cache.",
+                "刷新中 [3/5]: 更新记忆卡展示缓存。",
+                "Refreshing [3/5]: updating memory-card display cache.",
             ),
             flush=True,
         )
@@ -1942,13 +2076,16 @@ def sync_review_outputs(include_index=False, include_native_display=False, verbo
     elif verbose:
         print(
             localized(
-                "刷新中 [3/4]: 跳过记忆卡展示缓存。",
-                "Refreshing [3/4]: skipping memory-card display cache.",
+                "刷新中 [3/5]: 跳过记忆卡展示缓存。",
+                "Refreshing [3/5]: skipping memory-card display cache.",
             ),
             flush=True,
         )
     if verbose:
-        print(localized("刷新中 [4/4]: 重建 overview 和面板。", "Refreshing [4/4]: rebuilding overview and panel."), flush=True)
+        print(localized("刷新中 [4/5]: 补算并行任务总结。", "Refreshing [4/5]: generating parallel task summaries."), flush=True)
+    run_task_summary_migration_if_needed(verbose=verbose)
+    if verbose:
+        print(localized("刷新中 [5/5]: 重建 overview 和面板。", "Refreshing [5/5]: rebuilding overview and panel."), flush=True)
     cmd = [sys.executable, str(BUILD_OVERVIEW_SCRIPT)]
     if verbose:
         run_checked_with_progress(
@@ -3009,6 +3146,13 @@ def command_review(args):
             pipeline_error = exc
     if not args.json:
         print(localized("刷新中: 同步 host context 摘要和面板。", "Refreshing: syncing host context summary and panel."))
+    run_task_summary_for_dates_warning_only(
+        resolve_task_summary_dates(
+            window_days=max(args.learn_window_days or 1, 1),
+            end_date=args.date,
+        ),
+        verbose=not args.json,
+    )
     sync_review_outputs(include_index=True, include_native_display=True, verbose=not args.json)
     if not args.json:
         print(localized("生成完成: 读取摘要。", "Generation complete: reading summary."))
@@ -3321,6 +3465,7 @@ def command_backfill(args):
                     "Refreshing: updating index, host context summary, and panel once; this may take a few minutes.",
                 )
             )
+        run_task_summary_for_dates_warning_only(dates, verbose=not args.json)
         sync_review_outputs(include_index=True, include_native_display=True, verbose=not args.json)
 
     if args.json:
@@ -3630,6 +3775,72 @@ def command_memory_migration(args):
         print_json(completed_state)
     elif not args.quiet:
         print_memory_migration_state(completed_state)
+
+
+def command_task_summary_migration(args):
+    window_days = max(int(args.window_days or TASK_SUMMARY_WINDOW_DAYS), 1)
+
+    if args.action == "status":
+        state = load_task_summary_migration_state(PATHS)
+        if not state:
+            state = ensure_task_summary_migration_state(PATHS, window_days=window_days, force=False)
+        if args.json:
+            print_json(state)
+        else:
+            print_task_summary_migration_state(state)
+        return
+
+    if args.action == "ensure":
+        state = ensure_task_summary_migration_state(PATHS, window_days=window_days, force=args.force)
+        if args.json:
+            print_json(state)
+        elif not args.quiet:
+            print_task_summary_migration_state(state)
+        return
+
+    state = ensure_task_summary_migration_state(PATHS, window_days=window_days, force=args.force)
+    if args.if_pending and state.get("status") != "pending":
+        if args.json:
+            print_json(state)
+        elif not args.quiet:
+            print_task_summary_migration_state(state)
+        return
+    if state.get("status") != "pending" and not args.force:
+        if args.json:
+            print_json(state)
+        elif not args.quiet:
+            print_task_summary_migration_state(state)
+        return
+
+    dates = resolve_task_summary_dates(window_days=window_days)
+    if not args.quiet:
+        print(localized("并行任务总结迁移开始", "Parallel task summary migration started"))
+        print("- task_cluster_algorithm_version: {}".format(TASK_CLUSTER_ALGORITHM_VERSION))
+        print("- dates: {}".format(", ".join(dates)))
+    try:
+        result = run_task_summary_for_dates(dates, paths=PATHS, force=True)
+        state = mark_task_summary_migration_completed(
+            PATHS,
+            dates=dates,
+            window_days=window_days,
+            result=result,
+        )
+    except Exception as exc:
+        failed_state = mark_task_summary_migration_failed(
+            PATHS,
+            dates=dates,
+            error=str(exc),
+            window_days=window_days,
+        )
+        if args.json:
+            print_json(failed_state)
+        elif not args.quiet:
+            print_task_summary_migration_state(failed_state)
+        raise SystemExit(getattr(exc, "returncode", 1) or 1) from exc
+    if args.json:
+        print_json(state)
+    elif not args.quiet:
+        print_task_summary_migration_state(state)
 
 
 def memory_mode_label(memory_mode):
@@ -5123,6 +5334,9 @@ def main():
         return
     if args.command == "memory-migration":
         command_memory_migration(args)
+        return
+    if args.command == "task-summary-migration":
+        command_task_summary_migration(args)
         return
     if args.command == "uninstall":
         command_uninstall(args)

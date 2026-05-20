@@ -235,12 +235,15 @@ state root 的主要目录：
 - `consolidated/daily/<date>/summary.json`
 - `consolidated/daily/<date>/summary.md`
 - `consolidated/daily/<date>/runs/*`
+- `consolidated/task_summaries/<from>_<to>.json`
 - `registry/memory_entries.jsonl`
 - `registry/nightly_learning_journal.jsonl`
 
 当模型整理失败时，会生成 fallback summary；当新结果质量不如已有结果时，会保留已有 summary，并记录 selection decision。
 
 个人记忆生成、筛选、去重或注入策略发生不兼容变化时，需要提升 `PERSONAL_MEMORY_ALGORITHM_VERSION`。该版本会进入 `learning_input_fingerprint`，避免增量用户因为 raw 输入未变而被 `--skip-if-unchanged` 挡住。安装器会写入 `runtime/memory-migration.json`，已有本地记忆且算法版本落后时标记为 pending；下一次普通 `refresh_overview` 会执行一次有界迁移：最近 7 天、`final`、`--learn-window-days 7`、强制关闭 unchanged skip。迁移完成后，`runtime/config.json` 记录 `personal_memory_algorithm_version`。
+
+窗口级 summary 已经存在后，并行任务聚合走独立的任务总结层：`scripts/openrelix_task_summary.py` 读取近期 `consolidated/daily/*/summary.json` 的 `window_summaries`，让当前 `model_cli` 只基于这些已整理窗口输出 `project_task_clusters`，写到 `consolidated/task_summaries/`。面板优先使用高/中置信度模型任务簇；缺失、失败或低置信度时继续使用本地规则兜底。artifact 会记录全量输入窗口 id，较新的低置信度或空结果会覆盖旧 artifact，避免 stale 模型簇继续生效。安装或更新会通过 `runtime/task-summary-migration.json` 标记老用户需要补算；下一次 refresh / review / backfill 会自动尝试，失败不阻塞面板。
 
 ### `scripts/build_overview.py`
 
@@ -285,6 +288,8 @@ openrelix refresh
 openrelix refresh --learn-memory --learn-window-days 7
 openrelix memory-migration status
 openrelix memory-migration run --if-pending
+openrelix task-summary-migration status
+openrelix task-summary-migration run --if-pending
 ./install/install.sh --profile integrated --enable-learning-refresh
 openrelix mode
 openrelix mode local-only
