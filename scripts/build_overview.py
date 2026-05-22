@@ -20186,6 +20186,11 @@ def build_html(data):
       border-color: rgba(0, 113, 227, 0.34);
     }}
 
+    .window-backfill-hint {{
+      max-width: none;
+      margin-bottom: 14px;
+    }}
+
     .nightly-detail-item {{
       position: relative;
       padding-left: 28px;
@@ -25072,6 +25077,21 @@ def build_html(data):
       <section class="grid" id="window-overview-section">
         <section class="panel window-overview-panel" id="window-overview-panel">
           {window_overview_header}
+          <div class="nightly-backfill window-backfill-hint" id="window-backfill-hint" hidden>
+            <div class="nightly-backfill-title" id="window-backfill-title">{window_backfill_title}</div>
+            <p class="nightly-backfill-note" id="window-backfill-note">{window_backfill_note}</p>
+            <div class="nightly-backfill-command">
+              <div class="nightly-backfill-label" id="window-backfill-light-label">{window_backfill_light_label}</div>
+              <code id="window-backfill-light-command"></code>
+              <button type="button" class="nightly-backfill-copy" data-window-backfill-copy="light">{copy_command_label}</button>
+            </div>
+            <div class="nightly-backfill-command">
+              <div class="nightly-backfill-label" id="window-backfill-deep-label">{window_backfill_deep_label}</div>
+              <code id="window-backfill-deep-command"></code>
+              <button type="button" class="nightly-backfill-copy" data-window-backfill-copy="deep">{copy_command_label}</button>
+            </div>
+            <p class="nightly-backfill-status" id="window-backfill-status" aria-live="polite"></p>
+          </div>
           <div class="window-summary-list" id="window-summary-list">
             {nightly_window_cards}
           </div>
@@ -25244,6 +25264,12 @@ def build_html(data):
         windowOverviewSection: document.getElementById("window-overview-section"),
         windowOverviewMap: document.getElementById("window-overview-map"),
         windowOverviewContextList: document.getElementById("window-overview-context-list"),
+        windowBackfillHint: document.getElementById("window-backfill-hint"),
+        windowBackfillNote: document.getElementById("window-backfill-note"),
+        windowBackfillLightCommand: document.getElementById("window-backfill-light-command"),
+        windowBackfillDeepCommand: document.getElementById("window-backfill-deep-command"),
+        windowBackfillStatus: document.getElementById("window-backfill-status"),
+        windowBackfillCopyButtons: Array.from(document.querySelectorAll("[data-window-backfill-copy]")),
         nightlyBadgeRow: document.getElementById("nightly-badge-row"),
         nightlyLead: document.getElementById("nightly-lead"),
         nightlyDetailList: document.getElementById("nightly-detail-list"),
@@ -27175,12 +27201,12 @@ def build_html(data):
           return;
         }}
         if (!filters.query) {{
-          elements.windowSearchStatus.textContent = localizeValue("输入关键词后检索", "Enter a query to search");
-          elements.windowSearchResults.innerHTML = '<p class="empty">' + escapeHtml(localizeValue("输入关键词后检索本地窗口索引。", "Enter a query to search the local window index.")) + '</p>';
+          elements.windowSearchStatus.textContent = windowSearchStatusText(localizeValue("输入关键词后检索", "Enter a query to search"), filters);
+          elements.windowSearchResults.innerHTML = '<p class="empty">' + escapeHtml(windowSearchStatusText(localizeValue("输入关键词后检索本地窗口索引。", "Enter a query to search the local window index."), filters)) + '</p>';
           return;
         }}
         if (statusKind === "loading") {{
-          elements.windowSearchStatus.textContent = localizeValue("查询本地索引…", "Searching local index...");
+          elements.windowSearchStatus.textContent = windowSearchStatusText(localizeValue("查询本地索引…", "Searching local index..."), filters);
           elements.windowSearchResults.innerHTML = "";
           return;
         }}
@@ -27188,14 +27214,14 @@ def build_html(data):
         const indexInfo = (payload && payload.index) || {{}};
         if (!payload || payload.ok === false) {{
           if (payload && payload.error === "service_unavailable") {{
-            elements.windowSearchStatus.textContent = localizeValue("本地服务未连接", "Local service unavailable");
-            elements.windowSearchResults.innerHTML = '<p class="empty">' + escapeHtml(localizeValue("请通过 OpenRelix 打开面板后再检索历史窗口。", "Open the panel through OpenRelix before searching historical windows.")) + '</p>';
+            elements.windowSearchStatus.textContent = windowSearchStatusText(localizeValue("本地服务未连接", "Local service unavailable"), filters);
+            elements.windowSearchResults.innerHTML = '<p class="empty">' + escapeHtml(windowSearchStatusText(localizeValue("请通过 OpenRelix 打开面板后再检索历史窗口。", "Open the panel through OpenRelix before searching historical windows."), filters)) + '</p>';
             return;
           }}
-          elements.windowSearchStatus.textContent = indexInfo.exists
+          elements.windowSearchStatus.textContent = windowSearchStatusText(indexInfo.exists
             ? localizeValue("索引暂不可用", "Index unavailable")
-            : localizeValue("索引未建立", "Index not built");
-          elements.windowSearchResults.innerHTML = '<p class="empty">' + escapeHtml(localizeValue("运行 openrelix index rebuild 后可检索历史窗口。", "Run openrelix index rebuild to search historical windows.")) + '</p>';
+            : localizeValue("索引未建立", "Index not built"), filters);
+          elements.windowSearchResults.innerHTML = '<p class="empty">' + escapeHtml(windowSearchStatusText(localizeValue("运行 openrelix index rebuild 后可检索历史窗口。", "Run openrelix index rebuild to search historical windows."), filters)) + '</p>';
           return;
         }}
         const allResults = results;
@@ -27206,9 +27232,9 @@ def build_html(data):
           ? ""
           : localizeValue(" · 已按当前筛选过滤", " · filtered by current filters");
         const staleNote = indexInfo.stale ? localizeValue(" · 可能不是最新", " · may be stale") : "";
-        elements.windowSearchStatus.textContent = localizeValue("命中 ", "Matched ") + filteredResults.length + localizeValue(" 个", "") + staleNote + filteredNote;
+        elements.windowSearchStatus.textContent = windowSearchStatusText(localizeValue("命中 ", "Matched ") + filteredResults.length + localizeValue(" 个", "") + staleNote + filteredNote, filters);
         if (!filteredResults.length) {{
-          elements.windowSearchResults.innerHTML = '<p class="empty">' + escapeHtml(localizeValue("本地索引没有命中。", "No local index matches.")) + '</p>';
+          elements.windowSearchResults.innerHTML = '<p class="empty">' + escapeHtml(windowSearchStatusText(localizeValue("本地索引没有命中。", "No local index matches."), filters)) + '</p>';
           return;
         }}
         elements.windowSearchResults.innerHTML = filteredResults.map(function (result) {{
@@ -27797,6 +27823,113 @@ def build_html(data):
         return rangeLabel + " · " + windowSearchScopeLabel(activeFilters.searchScope) + " / " + activeFilters.query;
       }}
 
+      function windowFilterRangeDays(filters) {{
+        const activeFilters = normalizeWindowFilters(filters);
+        const start = parseWindowDateValue(activeFilters.startDate);
+        const end = parseWindowDateValue(activeFilters.endDate);
+        if (!start || !end) {{
+          return 0;
+        }}
+        return Math.round((end.getTime() - start.getTime()) / (24 * 60 * 60 * 1000)) + 1;
+      }}
+
+      function windowBackfillCoverageStartDate() {{
+        const maxDays = Math.max(Number(snapshot.window_filter_max_days) || 30, 1);
+        const anchor = parseWindowDateValue(snapshotTodayDate()) ||
+          parseWindowDateValue(defaultWindowFilterEnd) ||
+          new Date();
+        anchor.setHours(0, 0, 0, 0);
+        const start = new Date(anchor);
+        start.setDate(start.getDate() - maxDays + 1);
+        return start;
+      }}
+
+      function windowFilterNeedsBackfillHint(filters) {{
+        const activeFilters = normalizeWindowFilters(filters);
+        const start = parseWindowDateValue(activeFilters.startDate);
+        const end = parseWindowDateValue(activeFilters.endDate);
+        if (!start && !end) {{
+          return false;
+        }}
+        const rangeDays = windowFilterRangeDays(activeFilters);
+        const maxDays = Math.max(Number(snapshot.window_filter_max_days) || 30, 1);
+        if (rangeDays > maxDays) {{
+          return true;
+        }}
+        const selectedStart = start || end;
+        const coverageStart = windowBackfillCoverageStartDate();
+        return Boolean(selectedStart && selectedStart < coverageStart);
+      }}
+
+      function windowBackfillCommand(filters, stage) {{
+        const activeFilters = normalizeWindowFilters(filters);
+        const startDate = activeFilters.startDate || activeFilters.endDate || snapshotTodayDate();
+        const endDate = activeFilters.endDate || activeFilters.startDate || startDate;
+        if (!startDate || !endDate) {{
+          return "";
+        }}
+        if (stage === "preliminary") {{
+          return "openrelix backfill --from " + startDate + " --to " + endDate + " --stage preliminary --learn-window-days 0";
+        }}
+        const days = Math.max(Number(backfillState().learn_window_days) || 7, 1);
+        return "openrelix backfill --from " + startDate + " --to " + endDate + " --stage final --learn-window-days " + days;
+      }}
+
+      function windowBackfillSearchWarning(filters) {{
+        const activeFilters = normalizeWindowFilters(filters);
+        if (!windowFilterNeedsBackfillHint(activeFilters)) {{
+          return "";
+        }}
+        return currentLanguage === "en"
+          ? "Warning: this search range is outside backfilled windows, so results may be incomplete"
+          : "强提醒：当前搜索范围超出已回溯窗口，结果可能不完整";
+      }}
+
+      function windowSearchStatusText(baseText, filters) {{
+        const warning = windowBackfillSearchWarning(filters);
+        return warning ? warning + " · " + baseText : baseText;
+      }}
+
+      function windowBackfillHintText(filters, matchedCount) {{
+        const activeFilters = normalizeWindowFilters(filters);
+        const rangeLabel = windowFilterSummaryLabel(activeFilters, matchedCount || 0);
+        if (activeFilters.query) {{
+          return currentLanguage === "en"
+            ? "Selected range: " + rangeLabel + ". Warning: search is scoped to a range outside backfilled windows, so results may only cover captured or summarized windows. Quick backfill refreshes window summaries and the index without model summarization; deep backfill uses the model for full synthesis."
+            : "当前筛选：" + rangeLabel + "。强提醒：搜索正在按这个范围查询；该范围超出已回溯窗口，搜索结果可能只覆盖已采集或已总结的窗口。轻度回溯只补窗口摘要和索引，不使用大模型总结；深度回溯会使用大模型生成完整总结。";
+        }}
+        return currentLanguage === "en"
+          ? "Selected range: " + rangeLabel + ". Warning: this range is outside backfilled windows, so the page may only show captured or summarized windows. Quick backfill refreshes window summaries and the index without model summarization; deep backfill uses the model for full synthesis."
+          : "当前筛选：" + rangeLabel + "。强提醒：该范围超出已回溯窗口，页面可能只展示已采集或已总结的窗口。轻度回溯只补窗口摘要和索引，不使用大模型总结；深度回溯会使用大模型生成完整总结。";
+      }}
+
+      function renderWindowBackfillHint(filters, matchedCount) {{
+        if (!elements.windowBackfillHint) {{
+          return;
+        }}
+        const activeFilters = normalizeWindowFilters(filters);
+        const shouldShow = windowFilterNeedsBackfillHint(activeFilters);
+        elements.windowBackfillHint.hidden = !shouldShow;
+        if (!shouldShow) {{
+          if (elements.windowBackfillStatus) {{
+            elements.windowBackfillStatus.textContent = "";
+          }}
+          return;
+        }}
+        if (elements.windowBackfillNote) {{
+          elements.windowBackfillNote.textContent = windowBackfillHintText(activeFilters, matchedCount || 0);
+        }}
+        if (elements.windowBackfillLightCommand) {{
+          elements.windowBackfillLightCommand.textContent = windowBackfillCommand(activeFilters, "preliminary");
+        }}
+        if (elements.windowBackfillDeepCommand) {{
+          elements.windowBackfillDeepCommand.textContent = windowBackfillCommand(activeFilters, "final");
+        }}
+        if (elements.windowBackfillStatus) {{
+          elements.windowBackfillStatus.textContent = "";
+        }}
+      }}
+
       function renderWindowOverviewFromCards(cards) {{
         if (!elements.windowOverviewMap || !elements.windowOverviewContextList) {{
           return;
@@ -27872,9 +28005,7 @@ def build_html(data):
           elements.windowSearchEndDateInput.value = filters.endDate;
         }}
         updateWindowDateDisplays();
-        const start = parseWindowDateValue(filters.startDate);
-        const end = parseWindowDateValue(filters.endDate);
-        const rangeDays = start && end ? Math.round((end.getTime() - start.getTime()) / (24 * 60 * 60 * 1000)) + 1 : 0;
+        const rangeDays = windowFilterRangeDays(filters);
         function syncRangeButton(button, attrName) {{
           const isActive = rangeDays > 0 && Number(button.getAttribute(attrName)) === rangeDays;
           button.classList.toggle("is-active", isActive);
@@ -27917,9 +28048,9 @@ def build_html(data):
             button.removeAttribute("data-active");
           }}
         }});
-	        if (state.activeDatePickerScope === "window" && elements.windowDatePopover && !elements.windowDatePopover.hidden) {{
-	          renderDatePicker();
-	          positionActiveDatePicker();
+        if (state.activeDatePickerScope === "window" && elements.windowDatePopover && !elements.windowDatePopover.hidden) {{
+          renderDatePicker();
+          positionActiveDatePicker();
         }}
       }}
 
@@ -27980,6 +28111,7 @@ def build_html(data):
             ? "Filtered to " + windowFilterSummaryLabel(filters, matchedCards.length) + ", sorted by recent activity."
             : "筛选 " + windowFilterSummaryLabel(filters, matchedCards.length) + "，按最近活动排序，可点开看详情。";
         }}
+        renderWindowBackfillHint(filters, matchedCards.length);
         const hiddenCount = Math.max(matchedCards.length - visibleLimit, 0);
         if (elements.windowDetailMoreRow && elements.windowDetailMoreButton) {{
           elements.windowDetailMoreRow.hidden = hiddenCount <= 0;
@@ -28511,6 +28643,28 @@ def build_html(data):
             }}).catch(function () {{
               if (elements.backfillStatus) {{
                 elements.backfillStatus.textContent = t("复制失败，请手动选择命令。");
+              }}
+            }});
+          }});
+        }});
+      }}
+
+      function wireWindowBackfillCopyButtons() {{
+        if (!elements.windowBackfillCopyButtons.length) {{
+          return;
+        }}
+        elements.windowBackfillCopyButtons.forEach(function (button) {{
+          button.addEventListener("click", function () {{
+            const target = button.getAttribute("data-window-backfill-copy");
+            const source = target === "deep" ? elements.windowBackfillDeepCommand : elements.windowBackfillLightCommand;
+            const command = source ? source.textContent : "";
+            copyText(command).then(function () {{
+              if (elements.windowBackfillStatus) {{
+                elements.windowBackfillStatus.textContent = t("已复制回溯命令");
+              }}
+            }}).catch(function () {{
+              if (elements.windowBackfillStatus) {{
+                elements.windowBackfillStatus.textContent = t("复制失败，请手动选择命令。");
               }}
             }});
           }});
@@ -31501,6 +31655,7 @@ def build_html(data):
       wireLanguageButtons();
       wireNightlyDateInput();
       wireBackfillCopyButtons();
+      wireWindowBackfillCopyButtons();
       wireFinderOpenActions();
       wireMemoryFeedbackActions();
       wireExternalPanelLinks();
@@ -32310,6 +32465,14 @@ def build_html(data):
             note_id="window-overview-note",
             title_id="window-overview-title",
         ),
+        window_backfill_title=panel_language_text_html("超出自动回溯周期", "Outside Auto Backfill Window"),
+        window_backfill_note=panel_language_text_html(
+            "当前窗口筛选范围超出自动回溯周期。可复制命令在终端补跑：轻度回溯只补窗口摘要和索引，不使用大模型总结；深度回溯会使用大模型生成完整总结。",
+            "The selected window range is outside the automatic backfill window. Copy a command to backfill it: quick backfill refreshes window summaries and the index without model summarization; deep backfill uses the model for full synthesis.",
+        ),
+        window_backfill_light_label=panel_language_text_html("轻度回溯（不使用大模型总结）", "Quick Backfill (No Model Summary)"),
+        window_backfill_deep_label=panel_language_text_html("深度回溯（使用大模型总结）", "Deep Backfill (Model Summary)"),
+        copy_command_label=panel_language_text_html("复制命令", "Copy"),
         nightly_window_cards=make_window_summary_cards(
             window_filter_overview,
             initial_start_date=window_filter_start_date,

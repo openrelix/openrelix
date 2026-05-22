@@ -135,6 +135,9 @@ TOKEN_LIVE_HEALTH_URL = "http://127.0.0.1:8765/healthz"
 TOKEN_LIVE_STARTUP_TIMEOUT_SECONDS = 8.0
 STAGE_PRIORITY = {"manual": 0, "preliminary": 1, "final": 2}
 MAX_BACKFILL_JOBS = 2
+RAW_HISTORY_HYDRATION_DEFAULT_DAYS = 30
+RAW_HISTORY_HYDRATION_DAYS_ENV = "OPENRELIX_RAW_HISTORY_WINDOW_DAYS"
+RAW_HISTORY_HYDRATION_STAGE = "final"
 
 _ACTIVE_CHILD_PROCESSES = set()
 _ACTIVE_CHILD_PROCESSES_LOCK = threading.Lock()
@@ -3185,6 +3188,105 @@ def precollect_learning_window_sources(date_strs, learn_window_days, verbose=Tru
     return collect_dates
 
 
+def raw_history_hydration_window_days():
+    raw_value = os.environ.get(RAW_HISTORY_HYDRATION_DAYS_ENV, "")
+    if not str(raw_value).strip():
+        return RAW_HISTORY_HYDRATION_DEFAULT_DAYS
+    try:
+        return max(0, int(raw_value))
+    except ValueError:
+        return RAW_HISTORY_HYDRATION_DEFAULT_DAYS
+
+
+def raw_daily_capture_stage(date_str):
+    raw_daily_path = PATHS.raw_daily_dir / "{}.json".format(date_str)
+    if not raw_daily_path.exists():
+        return ""
+    try:
+        payload = load_json(raw_daily_path)
+    except (OSError, json.JSONDecodeError):
+        return ""
+    return str(payload.get("stage") or "")
+
+
+def raw_daily_needs_final_hydration(date_str):
+    stage = raw_daily_capture_stage(date_str)
+    if not stage:
+        return True
+    return STAGE_PRIORITY.get(stage, 0) < STAGE_PRIORITY[RAW_HISTORY_HYDRATION_STAGE]
+
+
+def raw_history_hydration_dates(target_dates, days=None):
+    if not target_dates:
+        return []
+    window_days = raw_history_hydration_window_days() if days is None else max(0, int(days or 0))
+    if window_days <= 0:
+        return []
+    end_date = max(parse_date_arg(date_str, "--date") for date_str in target_dates)
+    start_date = end_date - timedelta(days=window_days - 1)
+    collect_dates = []
+    for offset in range(window_days):
+        date_str = (start_date + timedelta(days=offset)).isoformat()
+        if raw_daily_needs_final_hydration(date_str):
+            collect_dates.append(date_str)
+    return collect_dates
+
+
+def hydrate_raw_history_windows(target_dates, days=None, verbose=True):
+    collect_dates = raw_history_hydration_dates(target_dates, days=days)
+    if not collect_dates:
+        return []
+    if verbose:
+        print(
+            localized(
+                "历史窗口补采集: {} 天 raw 窗口只采集，不做模型总结。".format(len(collect_dates)),
+                "Raw history hydration: collecting {} daily raw window files without model summarization.".format(
+                    len(collect_dates)
+                ),
+            )
+        )
+    results = []
+    for index, date_str in enumerate(collect_dates, start=1):
+        if verbose:
+            print(
+                "[{}/{}] {} {}".format(
+                    index,
+                    len(collect_dates),
+                    date_str,
+                    localized("采集历史窗口。", "collecting raw windows."),
+                )
+            )
+        try:
+            run_checked_quiet(
+                [
+                    sys.executable,
+                    str(COLLECT_CODEX_ACTIVITY_SCRIPT),
+                    "--date",
+                    date_str,
+                    "--stage",
+                    RAW_HISTORY_HYDRATION_STAGE,
+                ]
+            )
+        except subprocess.CalledProcessError as exc:
+            results.append(
+                {
+                    "date": date_str,
+                    "status": "failed",
+                    "stage": RAW_HISTORY_HYDRATION_STAGE,
+                    "returncode": exc.returncode,
+                }
+            )
+            continue
+        results.append(
+            {
+                "date": date_str,
+                "status": "completed",
+                "stage": RAW_HISTORY_HYDRATION_STAGE,
+            }
+        )
+    return results
+
+
 def command_review(args):
     learning_sync_results = []
     if args.stage == "final" and args.learn_window_days > 0:
@@ -3580,7 +3682,12 @@ def command_backfill(args):
     )
     completed = sum(1 for item in results if item["status"] == "completed")
     failed_results = [item for item in results if item["status"] == "failed"]
-    if completed or failed_results:
+    raw_history_results = []
+    if args.stage == "final" and not failed_results:
+        raw_history_results = hydrate_raw_history_windows(dates, verbose=not args.json)
+    raw_history_completed = any(item["status"] == "completed" for item in raw_history_results)
+    raw_history_failed_results = [item for item in raw_history_results if item["status"] == "failed"]
+    if completed or failed_results or raw_history_completed:
         if not args.json:
             print(
                 localized(
@@ -3592,7 +3699,7 @@ def command_backfill(args):
         sync_review_outputs(include_index=True, include_native_display=True, verbose=not args.json)
 
     if args.json:
-        print_json({"dates": results})
+        print_json({"dates": results, "raw_history_hydration": raw_history_results})
         if failed_results:
             raise SystemExit(failed_result_exit_code(failed_results))
         return
@@ -3621,6 +3728,25 @@ def command_backfill(args):
         for item in failed_results[:5]:
             print("- {} (exit {})".format(item["date"], item.get("returncode", 1)))
         raise SystemExit(failed_result_exit_code(failed_results))
+    if raw_history_results:
+        print("")
+        print(
+            localized(
+                "历史窗口补采集: 完成 {} | 失败 {}".format(
+                    sum(1 for item in raw_history_results if item["status"] == "completed"),
+                    len(raw_history_failed_results),
+                ),
+                "Raw history hydration: completed {} | failed {}".format(
+                    sum(1 for item in raw_history_results if item["status"] == "completed"),
+                    len(raw_history_failed_results),
+                ),
+            )
+        )
+    if raw_history_failed_results:
+        print("")
+        print(localized("历史窗口补采集失败日期", "Failed raw history hydration dates"))
+        for item in raw_history_failed_results[:5]:
+            print("- {} (exit {})".format(item["date"], item.get("returncode", 1)))
 
 
 def command_core(args):

@@ -12349,6 +12349,33 @@ Native Codex profile.
                 self.assertIn("--defer-global-refresh", command)
                 self.assertIn("--skip-learning-collect", command)
 
+    def test_raw_history_hydration_collects_missing_or_nonfinal_daily_files_once(self):
+        with TemporaryDirectory() as tmpdir:
+            paths = make_runtime_paths_for_test(tmpdir)
+            paths.raw_daily_dir.mkdir(parents=True)
+            (paths.raw_daily_dir / "2026-05-20.json").write_text(
+                json.dumps({"date": "2026-05-20", "stage": "final"}),
+                encoding="utf-8",
+            )
+            (paths.raw_daily_dir / "2026-05-21.json").write_text(
+                json.dumps({"date": "2026-05-21", "stage": "manual"}),
+                encoding="utf-8",
+            )
+            calls = []
+
+            with mock.patch.object(openrelix, "PATHS", paths), mock.patch.object(
+                openrelix,
+                "run_checked_quiet",
+                side_effect=lambda cmd: calls.append(cmd),
+            ):
+                results = openrelix.hydrate_raw_history_windows(["2026-05-22"], days=3, verbose=False)
+
+            self.assertEqual([item["date"] for item in results], ["2026-05-21", "2026-05-22"])
+            self.assertEqual([item["status"] for item in results], ["completed", "completed"])
+            self.assertEqual([call[call.index("--date") + 1] for call in calls], ["2026-05-21", "2026-05-22"])
+            self.assertTrue(all(call[call.index("--stage") + 1] == "final" for call in calls))
+            self.assertTrue(all("--learn-window-days" not in call for call in calls))
+
     def test_backfill_jobs_parallelize_deferred_independent_dates(self):
         with TemporaryDirectory() as tmpdir:
             consolidated_daily_dir = Path(tmpdir) / "consolidated" / "daily"
@@ -12678,6 +12705,10 @@ Native Codex profile.
             side_effect=fake_run_backfill_dates,
         ), mock.patch.object(
             openrelix,
+            "hydrate_raw_history_windows",
+            side_effect=lambda dates, verbose=True: calls.append(("hydrate", dates, verbose)) or [],
+        ), mock.patch.object(
+            openrelix,
             "sync_review_outputs",
             side_effect=lambda **kwargs: calls.append(("refresh", kwargs)),
         ), mock.patch("sys.stdout", new_callable=io.StringIO):
@@ -12686,7 +12717,8 @@ Native Codex profile.
         self.assertEqual(calls[0][0], "backfill")
         self.assertIs(calls[0][6], True)
         self.assertEqual(calls[0][8], 2)
-        self.assertEqual(calls[1], ("refresh", {"include_index": True, "include_native_display": True, "verbose": True}))
+        self.assertEqual(calls[1], ("hydrate", ["2026-04-28", "2026-04-29"], True))
+        self.assertEqual(calls[2], ("refresh", {"include_index": True, "include_native_display": True, "verbose": True}))
 
     def test_backfill_final_refresh_progress_sets_user_expectations(self):
         source = (ROOT / "scripts" / "openrelix.py").read_text(encoding="utf-8")
@@ -12695,6 +12727,48 @@ Native Codex profile.
         self.assertIn("刷新提示: 最后同步会更新搜索索引、host context 摘要和面板", source)
         self.assertIn("仍在刷新: 已等待约 {} 分钟", source)
         self.assertIn("请手动刷新当前页面或 app", source)
+
+    def test_command_backfill_syncs_outputs_when_only_raw_history_hydrates(self):
+        calls = []
+
+        args = argparse.Namespace(
+            dates="2026-05-22",
+            date_from=None,
+            date_to="2026-05-22",
+            days=0,
+            stage="final",
+            learn_window_days=0,
+            force=False,
+            json=False,
+            jobs=1,
+        )
+
+        with mock.patch.object(
+            openrelix,
+            "run_backfill_dates",
+            return_value=[
+                {
+                    "date": "2026-05-22",
+                    "status": "skipped_existing",
+                    "summary_json": "",
+                    "summary_md": "",
+                }
+            ],
+        ), mock.patch.object(
+            openrelix,
+            "hydrate_raw_history_windows",
+            side_effect=lambda dates, verbose=True: calls.append(("hydrate", dates, verbose)) or [
+                {"date": "2026-05-21", "status": "completed", "stage": "final"}
+            ],
+        ), mock.patch.object(
+            openrelix,
+            "sync_review_outputs",
+            side_effect=lambda **kwargs: calls.append(("refresh", kwargs)),
+        ), mock.patch("sys.stdout", new_callable=io.StringIO):
+            openrelix.command_backfill(args)
+
+        self.assertEqual(calls[0], ("hydrate", ["2026-05-22"], True))
+        self.assertEqual(calls[1], ("refresh", {"include_index": True, "include_native_display": True, "verbose": True}))
 
     def test_preliminary_backfill_tells_user_it_is_ready_to_use(self):
         args = argparse.Namespace(
@@ -12830,6 +12904,10 @@ Native Codex profile.
                 openrelix,
                 "run_checked_with_progress",
                 side_effect=fake_run_checked_with_progress,
+            ), mock.patch.object(
+                openrelix,
+                "hydrate_raw_history_windows",
+                return_value=[],
             ), mock.patch.object(
                 openrelix,
                 "sync_review_outputs",
@@ -13395,6 +13473,13 @@ Native Codex profile.
         self.assertIn('id="window-overview-note"', html)
         self.assertIn('id="window-overview-map"', html)
         self.assertIn('id="window-overview-context-list"', html)
+        self.assertIn('id="window-backfill-hint" hidden', html)
+        self.assertIn("轻度回溯（不使用大模型总结）", html)
+        self.assertIn("深度回溯（使用大模型总结）", html)
+        self.assertIn('data-window-backfill-copy="light"', html)
+        self.assertIn('data-window-backfill-copy="deep"', html)
+        self.assertIn("强提醒：当前搜索范围超出已回溯窗口，结果可能不完整", html)
+        self.assertIn("搜索结果可能只覆盖已采集或已总结的窗口", html)
         self.assertIn('id="window-summary-list"', html)
         self.assertIn('id="window-detail-more-button"', html)
         self.assertIn('data-window-card="true"', html)
@@ -13407,6 +13492,13 @@ Native Codex profile.
         self.assertIn('"window_detail_visible_count": 20', html)
         self.assertIn('"window_overview_project_visible_count": 3', html)
         self.assertIn("function applyWindowFilters()", html)
+        self.assertIn("function windowFilterNeedsBackfillHint(filters)", html)
+        self.assertIn("function windowBackfillSearchWarning(filters)", html)
+        self.assertIn("function windowSearchStatusText(baseText, filters)", html)
+        self.assertIn("function renderWindowBackfillHint(filters, matchedCount)", html)
+        self.assertIn("openrelix backfill --from \" + startDate + \" --to \" + endDate + \" --stage preliminary --learn-window-days 0", html)
+        self.assertIn("openrelix backfill --from \" + startDate + \" --to \" + endDate + \" --stage final --learn-window-days \" + days", html)
+        self.assertIn("wireWindowBackfillCopyButtons();", html)
         self.assertIn("function wireWindowFilters()", html)
         self.assertIn("function normalizeWindowSearchValue(value)", html)
         self.assertIn("function windowCardMatchesSearch(card, filters)", html)
