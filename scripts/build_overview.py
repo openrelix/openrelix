@@ -11135,14 +11135,22 @@ def make_window_filter_panel(default_start_date, default_end_date):
                 {search_range_buttons}
               </div>
             </div>
-            <label class="token-filter-field window-search-date-field" for="window-search-start-date">
-              <span class="token-filter-label">{start_label}</span>
-              <input id="window-search-start-date" class="window-search-date-input" type="date" value="{start_date}">
-            </label>
-            <label class="token-filter-field window-search-date-field" for="window-search-end-date">
-              <span class="token-filter-label">{end_label}</span>
-              <input id="window-search-end-date" class="window-search-date-input" type="date" value="{end_date}">
-            </label>
+            <div class="token-filter-field token-filter-range window-search-date-field" data-window-search-date-field="start">
+              <span class="token-filter-label" id="window-search-start-date-label">{start_label}</span>
+              <button class="apple-date-button" type="button" data-date-picker-button="window-search:start" data-window-search-date-button="start" aria-labelledby="window-search-start-date-label">
+                <span class="apple-date-value" data-date-picker-display="window-search:start" data-window-search-date-display="start">{start_display}</span>
+                <span class="apple-date-chevron" aria-hidden="true">⌄</span>
+              </button>
+              <input id="window-search-start-date" class="token-date-input window-search-date-input" type="hidden" value="{start_date}">
+            </div>
+            <div class="token-filter-field token-filter-range window-search-date-field" data-window-search-date-field="end">
+              <span class="token-filter-label" id="window-search-end-date-label">{end_label}</span>
+              <button class="apple-date-button" type="button" data-date-picker-button="window-search:end" data-window-search-date-button="end" aria-labelledby="window-search-end-date-label">
+                <span class="apple-date-value" data-date-picker-display="window-search:end" data-window-search-date-display="end">{end_display}</span>
+                <span class="apple-date-chevron" aria-hidden="true">⌄</span>
+              </button>
+              <input id="window-search-end-date" class="token-date-input window-search-date-input" type="hidden" value="{end_date}">
+            </div>
           </div>
           <div class="window-search-dialog-form">
             <label class="token-filter-field window-search-field" for="window-search-query">
@@ -11161,6 +11169,17 @@ def make_window_filter_panel(default_start_date, default_end_date):
           </div>
         </div>
         <div class="window-search-results" id="window-search-results"></div>
+        <div class="apple-date-popover window-search-date-popover" id="window-search-date-popover" data-date-picker-popover="window-search" hidden>
+          <div class="apple-date-popover-head">
+            <button class="apple-date-nav-button" type="button" data-date-picker-nav="prev" data-window-search-date-nav="prev" aria-label="{prev_aria}">‹</button>
+            <strong id="window-search-date-month-label" data-date-picker-month-label="window-search"></strong>
+            <button class="apple-date-nav-button" type="button" data-date-picker-nav="next" data-window-search-date-nav="next" aria-label="{next_aria}">›</button>
+          </div>
+          <div class="apple-date-weekdays" aria-hidden="true">
+            <span>日</span><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span>
+          </div>
+          <div class="apple-date-grid" id="window-search-date-grid" data-date-picker-grid="window-search" role="grid" aria-labelledby="window-search-date-month-label"></div>
+        </div>
       </div>
       <div class="apple-date-popover" id="window-date-popover" data-date-picker-popover="window" hidden>
         <div class="apple-date-popover-head">
@@ -21158,26 +21177,8 @@ def build_html(data):
       grid-auto-columns: minmax(0, 1fr);
     }}
 
-    .window-search-date-input {{
-      width: 100%;
-      min-width: 0;
-      height: 40px;
-      padding: 0 12px;
-      border: 1px solid var(--line);
-      border-radius: 12px;
-      background: var(--soft);
-      color: var(--ink);
-      font: inherit;
-      font-size: 13px;
-      font-weight: 680;
-      outline: none;
-      transition: border-color 160ms ease, box-shadow 160ms ease, background 160ms ease;
-    }}
-
-    .window-search-date-input:focus {{
-      border-color: rgba(0, 113, 227, 0.42);
-      box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.14);
-      background: var(--elevated);
+    .window-search-date-popover {{
+      z-index: 8;
     }}
 
     .window-search-dialog-form {{
@@ -25964,7 +25965,7 @@ def build_html(data):
 
 	      function parseDatePickerKey(rawKey) {{
 	        const parts = String(rawKey || "").split(":");
-	        const scope = ["token", "asset", "window"].includes(parts[0]) ? parts[0] : "window";
+	        const scope = ["token", "asset", "window", "window-search"].includes(parts[0]) ? parts[0] : "window";
 	        const field = parts[1] === "end" ? "end" : "start";
 	        return {{ scope: scope, field: field, key: scope + ":" + field }};
 	      }}
@@ -25977,6 +25978,9 @@ def build_html(data):
 	        if (scope === "asset") {{
 	          return field === "end" ? elements.assetEndDateInput : elements.assetStartDateInput;
 	        }}
+	        if (scope === "window-search") {{
+	          return field === "end" ? elements.windowSearchEndDateInput : elements.windowSearchStartDateInput;
+	        }}
 	        return field === "end" ? elements.windowEndDateInput : elements.windowStartDateInput;
 	      }}
 
@@ -25986,6 +25990,9 @@ def build_html(data):
 	        }}
 	        if (scope === "asset") {{
 	          return state.assetFilters || {{}};
+	        }}
+	        if (scope === "window-search") {{
+	          return state.windowFilters || {{}};
 	        }}
 	        return state.windowFilters || {{}};
 	      }}
@@ -26035,6 +26042,7 @@ def build_html(data):
 
 	      function updateWindowDateDisplays() {{
 	        updateDatePickerDisplays("window");
+	        updateDatePickerDisplays("window-search");
 	      }}
 
 	      function updateDatePickerDisplays(scope) {{
@@ -26053,7 +26061,9 @@ def build_html(data):
 	        if (!popover || !button) {{
 	          return;
 	        }}
-	        const panel = button.closest(".token-filter-panel");
+	        const panel = scope === "window-search"
+	          ? button.closest(".window-search-live")
+	          : button.closest(".token-filter-panel");
 	        if (!panel) {{
 	          return;
 	        }}
@@ -26195,6 +26205,11 @@ def build_html(data):
 	        }}
 	        if (scope === "asset") {{
 	          setAssetFilterState(nextFilters);
+	          return;
+	        }}
+	        if (scope === "window-search") {{
+	          state.windowSearchOpen = true;
+	          setWindowFilterState(nextFilters);
 	          return;
 	        }}
 	        setWindowFilterState(nextFilters);
