@@ -2,7 +2,7 @@
 
 [English](README.md) | [简体中文](https://github.com/openrelix/openrelix/blob/main/README.zh-CN.md)
 
-Open-source personal memory relics for AI coding agents, currently published as a v0.3.8 preview.
+Open-source personal memory relics for AI coding agents, currently published as a v0.3.9 preview.
 
 OpenRelix™ is a local-first asset layer for AI coding agents. It turns finished agent work into reusable task reviews, skills, templates, bounded memory summaries, and a private dashboard instead of leaving useful patterns buried in old chats.
 
