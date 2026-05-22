@@ -530,7 +530,8 @@ def default_state_root() -> Path:
 def default_codex_home() -> Path:
     explicit = os.environ.get("CODEX_HOME")
     if explicit:
-        return _expand_path(explicit)
+        path = Path(explicit).expanduser()
+        return path if path.is_absolute() else path.resolve()
     return Path.home() / ".codex"
 
 

@@ -3,6 +3,7 @@
 from pathlib import Path
 import sys
 import unittest
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -169,6 +170,31 @@ class CollectCodexActivityTests(unittest.TestCase):
         self.assertEqual(window["resume_id"], "thread-1")
         self.assertEqual(window["ai_host"], "codex")
 
+    def test_primary_codex_home_profile_metadata_preserves_configured_symlink_entry(self):
+        from tempfile import TemporaryDirectory
+
+        with TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            real_home = root / "codex-real"
+            link_home = root / ".codex"
+            real_home.mkdir()
+            link_home.symlink_to(real_home, target_is_directory=True)
+            profile = codex_profiles.CodexProfile(
+                codex_home=real_home,
+                electron_user_data_path="/tmp/isolated-codex-profile",
+                source="running",
+                process_id=123,
+            )
+
+            with mock.patch.object(collect_codex_activity, "CODEX_HOME", link_home):
+                metadata = collect_codex_activity.profile_metadata(profile)
+                electron_user_data_path = collect_codex_activity.profile_electron_user_data_path(profile)
+
+        self.assertEqual(metadata["codex_home"], str(link_home))
+        self.assertEqual(metadata["codex_electron_user_data_path"], "")
+        self.assertEqual(metadata["codex_profile_source"], "running")
+        self.assertEqual(electron_user_data_path, "")
+
     def test_app_server_unavailable_message_points_to_doctor_and_history_override(self):
         message = collect_codex_activity.app_server_unavailable_message(
             RuntimeError("connection closed"),
@@ -311,6 +337,141 @@ class CollectCodexActivityTests(unittest.TestCase):
             ["OpenRelix 是本地优先的记忆与资产系统。", "安装入口在 install/install.sh。"],
         )
         self.assertNotIn("Tool", json.dumps(window, ensure_ascii=False))
+
+    def test_claude_mem_observer_session_is_excluded_from_work_windows(self):
+        from tempfile import TemporaryDirectory
+        import json
+
+        with TemporaryDirectory() as tmpdir:
+            session_path = Path(tmpdir) / "claude-mem-observer-sessions" / "session.jsonl"
+            session_path.parent.mkdir(parents=True)
+            rows = [
+                {
+                    "type": "user",
+                    "sessionId": "observer-session",
+                    "cwd": "/tmp/.claude-mem/observer-sessions",
+                    "timestamp": "2026-05-21T13:00:00Z",
+                    "uuid": "u1",
+                    "message": {
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": (
+                                    "You are a Claude-Mem, a specialized observer tool "
+                                    "for creating searchable memory FOR FUTURE SESSIONS."
+                                ),
+                            }
+                        ]
+                    },
+                },
+                {
+                    "type": "assistant",
+                    "sessionId": "observer-session",
+                    "cwd": "/tmp/.claude-mem/observer-sessions",
+                    "timestamp": "2026-05-21T13:01:00Z",
+                    "uuid": "a1",
+                    "message": {"content": [{"type": "text", "text": "Observation stored."}]},
+                },
+            ]
+            session_path.write_text(
+                "\n".join(json.dumps(row, ensure_ascii=False) for row in rows) + "\n",
+                encoding="utf-8",
+            )
+            window = collect_codex_activity.claude_session_file_to_window(
+                session_path,
+                "2026-05-21",
+                "manual",
+            )
+            included, excluded = collect_codex_activity.split_excluded_windows([window])
+
+        self.assertEqual(included, [])
+        self.assertEqual(len(excluded), 1)
+        self.assertEqual(excluded[0]["window_id"], "claude-observer-session")
+        self.assertEqual(excluded[0]["reason"], "claude_mem_observer_session")
+        self.assertEqual(excluded[0]["ai_host"], "claude")
+
+    def test_codex_window_mentioning_claude_mem_is_not_excluded(self):
+        window = collect_codex_activity.build_window_payload(
+            "2026-05-22",
+            {
+                "window_id": "codex-mentions-claude-mem",
+                "cwd": "/tmp/openrelix",
+                "ai_host": "codex",
+                "originator": "codex_app_server",
+                "source": "codex_app_server:vscode",
+                "started_at": "2026-05-22T10:00:00+08:00",
+                "session_file": "/tmp/codex-session.jsonl",
+            },
+            [
+                {
+                    "local_time": "2026-05-22T10:00:00+08:00",
+                    "text": "哥，咋回事啊，claude-mem 一直在调用 Claude 么？",
+                }
+            ],
+            [{"completed_at": "2026-05-22T10:01:00+08:00", "text": "这是一次诊断讨论。"}],
+            1,
+        )
+
+        included, excluded = collect_codex_activity.split_excluded_windows([window])
+
+        self.assertEqual([item["window_id"] for item in included], ["codex-mentions-claude-mem"])
+        self.assertEqual(excluded, [])
+
+    def test_codex_automation_window_is_excluded_from_work_windows(self):
+        window = collect_codex_activity.build_window_payload(
+            "2026-05-22",
+            {
+                "window_id": "codex-automation-refresh",
+                "cwd": "/tmp/search-kb",
+                "ai_host": "codex",
+                "originator": "codex_app_server",
+                "source": "codex_app_server:vscode",
+                "started_at": "2026-05-22T10:00:00+08:00",
+                "session_file": "/tmp/codex-session.jsonl",
+            },
+            [
+                {
+                    "local_time": "2026-05-22T10:00:00+08:00",
+                    "text": "Automation: Refresh Search Android KB\nAutomation ID: refresh",
+                }
+            ],
+            [{"completed_at": "2026-05-22T10:01:00+08:00", "text": "Refreshed."}],
+            1,
+        )
+
+        included, excluded = collect_codex_activity.split_excluded_windows([window])
+
+        self.assertEqual(included, [])
+        self.assertEqual(excluded[0]["window_id"], "codex-automation-refresh")
+        self.assertEqual(excluded[0]["reason"], "knowledge_automation_session")
+        self.assertEqual(excluded[0]["ai_host"], "codex")
+
+    def test_non_knowledge_codex_automation_window_is_not_excluded(self):
+        window = collect_codex_activity.build_window_payload(
+            "2026-05-22",
+            {
+                "window_id": "codex-automation-standup",
+                "cwd": "/tmp/project",
+                "ai_host": "codex",
+                "originator": "codex_app_server",
+                "source": "codex_app_server:vscode",
+                "started_at": "2026-05-22T10:00:00+08:00",
+                "session_file": "/tmp/codex-session.jsonl",
+            },
+            [
+                {
+                    "local_time": "2026-05-22T10:00:00+08:00",
+                    "text": "Automation: Draft daily standup\nAutomation ID: standup",
+                }
+            ],
+            [{"completed_at": "2026-05-22T10:01:00+08:00", "text": "Drafted."}],
+            1,
+        )
+
+        included, excluded = collect_codex_activity.split_excluded_windows([window])
+
+        self.assertEqual([item["window_id"] for item in included], ["codex-automation-standup"])
+        self.assertEqual(excluded, [])
 
 
 if __name__ == "__main__":

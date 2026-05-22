@@ -225,6 +225,103 @@ class OpenRelixIndexTests(unittest.TestCase):
                 [{"question": "add search command", "conclusion": "search command is next"}],
             )
 
+    def test_rebuild_skips_claude_mem_observer_windows(self):
+        with TemporaryDirectory() as tmpdir:
+            paths = runtime_paths_for_state(tmpdir)
+            asset_runtime.ensure_state_layout(paths)
+            normal_window = {
+                "date": "2026-05-21",
+                "window_id": "w-normal",
+                "ai_host": "codex",
+                "cwd": "/tmp/openrelix",
+                "originator": "codex_app_server",
+                "source": "codex_app_server:vscode",
+                "started_at": "2026-05-21T10:00:00+08:00",
+                "prompt_count": 1,
+                "conclusion_count": 1,
+                "prompts": [{"local_time": "2026-05-21T10:00:00+08:00", "text": "normal work"}],
+                "conclusions": [{"completed_at": "2026-05-21T10:01:00+08:00", "text": "normal result"}],
+            }
+            observer_window = {
+                "date": "2026-05-21",
+                "window_id": "claude-observer",
+                "ai_host": "claude",
+                "cwd": "/tmp/.claude-mem/observer-sessions",
+                "originator": "claude_code",
+                "source": "claude_code:jsonl",
+                "session_file": "/tmp/.claude/projects/claude-mem-observer-sessions/session.jsonl",
+                "started_at": "2026-05-21T11:00:00+08:00",
+                "prompt_count": 1,
+                "conclusion_count": 1,
+                "prompts": [
+                    {
+                        "local_time": "2026-05-21T11:00:00+08:00",
+                        "text": "You are a Claude-Mem, a specialized observer tool.",
+                    }
+                ],
+                "conclusions": [{"completed_at": "2026-05-21T11:01:00+08:00", "text": "stored"}],
+            }
+            automation_window = {
+                "date": "2026-05-21",
+                "window_id": "codex-automation",
+                "ai_host": "codex",
+                "cwd": "/tmp/search-kb",
+                "originator": "codex_app_server",
+                "source": "codex_app_server:vscode",
+                "started_at": "2026-05-21T12:00:00+08:00",
+                "prompt_count": 1,
+                "conclusion_count": 1,
+                "prompts": [
+                    {
+                        "local_time": "2026-05-21T12:00:00+08:00",
+                        "text": "Automation: Refresh Search Android KB\nAutomation ID: refresh",
+                    }
+                ],
+                "conclusions": [{"completed_at": "2026-05-21T12:01:00+08:00", "text": "refreshed"}],
+            }
+            raw_payload = {
+                "date": "2026-05-21",
+                "windows": [normal_window, observer_window, automation_window],
+            }
+            (paths.raw_daily_dir / "2026-05-21.json").write_text(
+                json.dumps(raw_payload),
+                encoding="utf-8",
+            )
+            raw_window_dir = paths.raw_windows_dir / "2026-05-21"
+            raw_window_dir.mkdir(parents=True, exist_ok=True)
+            (raw_window_dir / "w-normal.json").write_text(json.dumps(normal_window), encoding="utf-8")
+            (raw_window_dir / "claude-observer.json").write_text(
+                json.dumps(observer_window),
+                encoding="utf-8",
+            )
+            (raw_window_dir / "codex-automation.json").write_text(
+                json.dumps(automation_window),
+                encoding="utf-8",
+            )
+            db_path = Path(tmpdir) / "runtime" / "test-index.sqlite3"
+
+            stats = openrelix_index.rebuild_index(paths, db_path)
+            observer_results = openrelix_index.search_windows(
+                "Claude-Mem",
+                paths=paths,
+                db_path=db_path,
+            )
+            normal_results = openrelix_index.search_windows(
+                "normal result",
+                paths=paths,
+                db_path=db_path,
+            )
+            automation_results = openrelix_index.search_windows(
+                "Refresh Search Android KB",
+                paths=paths,
+                db_path=db_path,
+            )
+
+            self.assertEqual(stats["window_rows"], 1)
+            self.assertEqual(observer_results, [])
+            self.assertEqual(automation_results, [])
+            self.assertEqual([row["window_id"] for row in normal_results], ["w-normal"])
+
     def test_rebuild_indexes_canonical_memory_entries(self):
         with TemporaryDirectory() as tmpdir:
             paths = runtime_paths_for_state(tmpdir)

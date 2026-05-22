@@ -12,6 +12,7 @@ from pathlib import Path
 from urllib.parse import quote
 
 from asset_runtime import ensure_state_layout, get_runtime_paths
+from openrelix_overview.window_filters import is_excluded_window
 
 
 SCHEMA_VERSION = 4
@@ -1036,6 +1037,8 @@ def load_daily_window_rows(paths, summaries):
             window_id = compact_text(window.get("window_id", ""))
             if not window_id:
                 continue
+            if is_excluded_window(window, raw_path=path):
+                continue
             date_str = compact_text(window.get("date", payload.get("date", "")))
             seen.add((date_str, window_id))
             raw_window_path = paths.raw_windows_dir / date_str / "{}.json".format(window_id)
@@ -1056,6 +1059,8 @@ def load_standalone_window_rows(paths, summaries, seen_window_keys):
         window_id = compact_text(payload.get("window_id", ""))
         date_str = compact_text(payload.get("date", path.parent.name))
         if not window_id or (date_str, window_id) in seen_window_keys:
+            continue
+        if is_excluded_window(payload, raw_path=path):
             continue
         rows.append(normalize_window(payload, path, summaries.get((date_str, window_id))))
     return rows, skipped

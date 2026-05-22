@@ -2030,6 +2030,17 @@ class NightlyLogicTests(unittest.TestCase):
             ), mock.patch.object(asset_runtime.shutil, "which", return_value=str(path_bin)):
                 self.assertEqual(asset_runtime.default_claude_binary(), str(user_bin))
 
+    def test_default_codex_home_preserves_explicit_symlink_path(self):
+        with TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            real_home = root / "codex-real"
+            link_home = root / ".codex"
+            real_home.mkdir()
+            link_home.symlink_to(real_home, target_is_directory=True)
+
+            with mock.patch.dict(os.environ, {"CODEX_HOME": str(link_home)}, clear=False):
+                self.assertEqual(asset_runtime.default_codex_home(), link_home)
+
     def test_sync_codex_exec_home_tolerates_auth_symlink_race(self):
         with TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)

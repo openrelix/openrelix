@@ -20,6 +20,10 @@ from asset_runtime import (
     load_runtime_config,
 )
 from openrelix_overview import codex_profiles
+from openrelix_overview.window_filters import (
+    excluded_window_record,
+    window_exclusion_reason,
+)
 
 PATHS = get_runtime_paths()
 CODEX_HOME = PATHS.codex_home
@@ -100,14 +104,27 @@ def profile_value(profile, key, default=""):
     return getattr(profile, key, default)
 
 
+def profile_matches_primary_codex_home(profile=None):
+    home = Path(profile_value(profile, "codex_home", CODEX_HOME) or CODEX_HOME).expanduser()
+    return codex_profiles.resolved_path_key(home) == codex_profiles.resolved_path_key(CODEX_HOME)
+
+
 def profile_codex_home(profile=None):
+    if profile_matches_primary_codex_home(profile):
+        return CODEX_HOME
     return Path(profile_value(profile, "codex_home", CODEX_HOME) or CODEX_HOME).expanduser()
+
+
+def profile_electron_user_data_path(profile=None):
+    if profile_matches_primary_codex_home(profile):
+        return ""
+    return str(profile_value(profile, "electron_user_data_path", "") or "")
 
 
 def profile_metadata(profile=None):
     return {
         "codex_home": str(profile_codex_home(profile)),
-        "codex_electron_user_data_path": str(profile_value(profile, "electron_user_data_path", "") or ""),
+        "codex_electron_user_data_path": profile_electron_user_data_path(profile),
         "codex_profile_source": str(profile_value(profile, "source", "") or ""),
     }
 
@@ -933,8 +950,29 @@ def review_like_window_rows(windows):
     return rows
 
 
+def split_excluded_windows(windows):
+    included = []
+    excluded = []
+    for window in windows:
+        reason = window_exclusion_reason(window)
+        if reason:
+            excluded.append(excluded_window_record(window, reason))
+            continue
+        included.append(window)
+    return included, excluded
+
+
 def write_json(path, payload):
     atomic_write_json(path, payload)
+
+
+def remove_raw_window_file(target_date, window_id):
+    path = RAW_DIR / "windows" / target_date / "{}.json".format(safe_window_filename(window_id))
+    try:
+        if path.exists():
+            path.unlink()
+    except OSError:
+        pass
 
 
 def main():
@@ -954,7 +992,7 @@ def main():
         codex_profile_rows = [
             {
                 "codex_home": str(profile_codex_home(profile)),
-                "electron_user_data_path": profile_value(profile, "electron_user_data_path", "") or "",
+                "electron_user_data_path": profile_electron_user_data_path(profile),
                 "source": profile_value(profile, "source", "") or "",
             }
             for profile in profiles
@@ -996,7 +1034,7 @@ def main():
         codex_profile_rows = [
             {
                 "codex_home": str(profile_codex_home(profile)),
-                "electron_user_data_path": profile_value(profile, "electron_user_data_path", "") or "",
+                "electron_user_data_path": profile_electron_user_data_path(profile),
                 "source": profile_value(profile, "source", "") or "",
             }
             for profile in profiles
@@ -1015,7 +1053,9 @@ def main():
         else:
             collection_source = "mixed"
 
-    if activity_host == "all" and not windows and not collection_errors:
+    windows, excluded_windows = split_excluded_windows(windows)
+
+    if activity_host == "all" and not windows and not excluded_windows and not collection_errors:
         collection_errors.append("No Codex or Claude Code windows were found for {}".format(target_date))
 
     host_counts = {}
@@ -1030,6 +1070,8 @@ def main():
             RAW_DIR / "windows" / target_date / "{}.json".format(safe_window_filename(window_payload["window_id"])),
             window_payload,
         )
+    for excluded_window in excluded_windows:
+        remove_raw_window_file(target_date, excluded_window.get("window_id", ""))
 
     daily_payload = {
         "date": target_date,
