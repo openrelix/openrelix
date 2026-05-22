@@ -69,6 +69,7 @@ from openrelix_overview.config import (
     LIVE_TOKEN_POLL_SECONDS,
     LIVE_TOKEN_PORT,
     LIVE_TOKEN_TIMEOUT_MS,
+    WINDOW_SEARCH_ENDPOINT,
 )
 from openrelix_task_summary import (
     TASK_CLUSTER_ALGORITHM_VERSION,
@@ -11001,6 +11002,14 @@ def make_window_filter_panel(default_start_date, default_end_date):
         (7, "近一周", "Last week"),
         (30, "近一个月", "Last month"),
     ]
+    search_scopes = [
+        ("all", "全部", "All"),
+        ("raw-question", "原始问题", "Raw questions"),
+        ("raw-conclusion", "原始结论", "Raw conclusions"),
+        ("id", "窗口 ID", "Window ID"),
+        ("project", "项目", "Project"),
+        ("ai", "模型整理", "AI summary"),
+    ]
     buttons = []
     for days, label_zh, label_en in quick_ranges:
         pressed = str(days == WINDOW_FILTER_DEFAULT_DAYS).lower()
@@ -11017,6 +11026,44 @@ def make_window_filter_panel(default_start_date, default_end_date):
                 label=panel_language_text_html(label_zh, label_en),
             )
         )
+    search_range_buttons = []
+    for days, label_zh, label_en in quick_ranges:
+        pressed = str(days == WINDOW_FILTER_DEFAULT_DAYS).lower()
+        active_attr = ' data-active="true"' if days == WINDOW_FILTER_DEFAULT_DAYS else ""
+        search_range_buttons.append(
+            """
+            <button class="token-segment-button" type="button" data-window-search-range-days="{days}" aria-pressed="{pressed}"{active_attr}>
+              {label}
+            </button>
+            """.format(
+                days=escape(str(days), quote=True),
+                pressed=pressed,
+                active_attr=active_attr,
+                label=panel_language_text_html(label_zh, label_en),
+            )
+        )
+    scope_buttons = []
+    for value, label_zh, label_en in search_scopes:
+        pressed = "true" if value == "all" else "false"
+        active_attr = ' data-active="true"' if value == "all" else ""
+        scope_buttons.append(
+            """
+          <button class="token-segment-button" type="button" data-window-search-scope="{value}" aria-pressed="{pressed}"{active_attr}>
+            {label}
+          </button>
+            """.format(
+                value=escape(value, quote=True),
+                pressed=pressed,
+                active_attr=active_attr,
+                label=panel_language_text_html(label_zh, label_en),
+            )
+        )
+    search_icon = """
+    <svg class="window-search-icon-svg" viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+      <path d="M10.75 5.5a5.25 5.25 0 1 0 0 10.5 5.25 5.25 0 0 0 0-10.5Z"></path>
+      <path d="m15 15 4 4"></path>
+    </svg>
+    """
     return """
     <section class="token-filter-panel window-filter-panel" id="window-filter-panel">
       <div class="token-filter-head">
@@ -11047,6 +11094,74 @@ def make_window_filter_panel(default_start_date, default_end_date):
           <input id="window-end-date" class="token-date-input window-date-input" type="hidden" value="{end_date}">
         </div>
       </div>
+      <div class="window-search-grid">
+        <button id="window-search-trigger" class="window-search-trigger" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="window-search-live" data-window-search-active="false">
+          <span class="window-search-trigger-icon" aria-hidden="true">{search_icon}</span>
+          <span class="window-search-trigger-copy">
+            <span class="token-filter-label window-search-label">{search_label}</span>
+            <span class="window-search-trigger-text" id="window-search-trigger-text">{search_placeholder}</span>
+          </span>
+          <span class="window-search-trigger-meta" id="window-search-trigger-meta">{open_search_label}</span>
+        </button>
+        <div class="token-filter-field window-search-strip-scope-field">
+          <span class="token-filter-label">{scope_label}</span>
+          <div class="token-segment-group window-search-scope-group window-search-strip-scope-group" role="group" aria-label="{scope_aria}">
+            {scope_buttons}
+          </div>
+        </div>
+        <div id="window-search-reset-field" class="token-filter-field window-search-reset-field" hidden>
+          <span class="token-filter-label window-search-reset-spacer" aria-hidden="true">&nbsp;</span>
+          <button id="window-search-reset" class="window-search-reset" type="button" aria-label="{reset_aria}" title="{reset_aria}">
+            <span aria-hidden="true">×</span>
+          </button>
+        </div>
+      </div>
+      <div class="window-search-live" id="window-search-live" role="dialog" aria-modal="false" aria-labelledby="window-search-title" hidden>
+        <div class="window-search-sticky-stack">
+          <div class="window-search-live-head">
+            <div class="window-search-live-title">
+              <span class="token-filter-label" id="window-search-title">{index_label}</span>
+              <span class="window-search-live-status" id="window-search-status"></span>
+            </div>
+            <button id="window-search-close" class="window-search-close" type="button" aria-label="{close_aria}">
+              <span class="window-search-close-icon" aria-hidden="true">×</span>
+              <span class="window-search-close-label">{close_label}</span>
+            </button>
+          </div>
+          <div class="window-search-dialog-filters">
+            <div class="token-filter-field window-search-range-field">
+              <span class="token-filter-label">{quick_label}</span>
+              <div class="token-segment-group window-search-range-group" role="group" aria-label="{quick_aria}">
+                {search_range_buttons}
+              </div>
+            </div>
+            <label class="token-filter-field window-search-date-field" for="window-search-start-date">
+              <span class="token-filter-label">{start_label}</span>
+              <input id="window-search-start-date" class="window-search-date-input" type="date" value="{start_date}">
+            </label>
+            <label class="token-filter-field window-search-date-field" for="window-search-end-date">
+              <span class="token-filter-label">{end_label}</span>
+              <input id="window-search-end-date" class="window-search-date-input" type="date" value="{end_date}">
+            </label>
+          </div>
+          <div class="window-search-dialog-form">
+            <label class="token-filter-field window-search-field" for="window-search-query">
+              <span class="token-filter-label window-search-label">{search_label}</span>
+              <span class="window-search-control">
+                <span class="window-search-input-icon" aria-hidden="true">{search_icon}</span>
+                <input id="window-search-query" class="window-search-input" type="text" role="searchbox" autocomplete="off" spellcheck="false" placeholder="{search_placeholder}">
+              </span>
+            </label>
+            <div class="token-filter-field window-search-scope-field">
+              <span class="token-filter-label">{scope_label}</span>
+              <div class="token-segment-group window-search-scope-group" role="group" aria-label="{scope_aria}">
+                {scope_buttons}
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="window-search-results" id="window-search-results"></div>
+      </div>
       <div class="apple-date-popover" id="window-date-popover" data-date-picker-popover="window" hidden>
         <div class="apple-date-popover-head">
           <button class="apple-date-nav-button" type="button" data-date-picker-nav="prev" data-window-date-nav="prev" aria-label="{prev_aria}">‹</button>
@@ -11066,6 +11181,18 @@ def make_window_filter_panel(default_start_date, default_end_date):
         buttons="".join(buttons),
         start_label=panel_language_text_html("起始日期", "Start Date"),
         end_label=panel_language_text_html("结束日期", "End Date"),
+        search_label=panel_language_text_html("搜索窗口", "Search Windows"),
+        search_placeholder=escape(localized("搜问题、结论、项目或窗口 ID", "Search questions, conclusions, projects, or window IDs"), quote=True),
+        open_search_label=panel_language_text_html("打开搜索", "Open Search"),
+        reset_aria=escape(localized("删除搜索并恢复未检索状态", "Clear search and restore unsearched state"), quote=True),
+        close_aria=escape(localized("关闭窗口搜索", "Close window search"), quote=True),
+        close_label=panel_language_text_html("关闭", "Close"),
+        scope_label=panel_language_text_html("搜索范围", "Search Scope"),
+        scope_aria=escape(localized("窗口搜索范围", "Window search scope"), quote=True),
+        index_label=panel_language_text_html("本地索引结果", "Local Index Results"),
+        scope_buttons="".join(scope_buttons),
+        search_range_buttons="".join(search_range_buttons),
+        search_icon=search_icon,
         start_date=escape(default_start_date, quote=True),
         end_date=escape(default_end_date, quote=True),
         start_display=escape(str(default_start_date).replace("-", "/") if default_start_date else "—"),
@@ -15762,6 +15889,23 @@ def make_window_summary_cards(
             raw_label=escape(localized("原始信息", "Raw info", language)),
         )
 
+    def search_text_from_pairs(pairs, key):
+        values = []
+        for pair in pairs or []:
+            if not isinstance(pair, dict):
+                continue
+            value = pair.get(key, "")
+            if value:
+                values.append(str(value))
+        return compact_preview_text(" ".join(values), limit=4000, strip_markdown=True)
+
+    def window_card_search_text(*values):
+        return compact_preview_text(
+            " ".join(str(value or "") for value in values if str(value or "").strip()),
+            limit=6000,
+            strip_markdown=True,
+        )
+
     cards = []
     for card_index, item in enumerate(window_overview.get("windows", []), 1):
         item_window_date = item.get("date", window_date)
@@ -15920,6 +16064,16 @@ def make_window_summary_cards(
             initial_visible_count is not None and initial_visible_seen > initial_visible_count
         ):
             hidden_attr = " hidden"
+        ai_search_text = window_card_search_text(
+            window_summary,
+            question_summary_display,
+            conclusion_summary_display,
+            " ".join(item.get("keywords", []) or []),
+        )
+        raw_question_search_text = search_text_from_pairs(raw_summary_pairs, "question")
+        raw_conclusion_search_text = search_text_from_pairs(raw_summary_pairs, "conclusion")
+        project_search_text = window_card_search_text(project_label, cwd_raw, cwd_display, topic_label)
+        window_id_search_text = window_card_search_text(window_id, item.get("window_id_short", ""), resume_id)
         data_attrs = {
             "data-window-card": "true",
             "data-window-date": item_window_date,
@@ -15944,6 +16098,18 @@ def make_window_summary_cards(
             "data-window-display-label": item.get("display_label") or item.get("display_index") or card_index,
             "data-window-question-count": str(question_count),
             "data-window-conclusion-count": str(conclusion_count),
+            "data-window-search-ai": ai_search_text,
+            "data-window-search-raw-question": raw_question_search_text,
+            "data-window-search-raw-conclusion": raw_conclusion_search_text,
+            "data-window-search-id": window_id_search_text,
+            "data-window-search-project": project_search_text,
+            "data-window-search-all": window_card_search_text(
+                ai_search_text,
+                raw_question_search_text,
+                raw_conclusion_search_text,
+                project_search_text,
+                window_id_search_text,
+            ),
         }
         data_attr_html = " ".join(
             '{}="{}"'.format(name, escape(str(value or ""), quote=True))
@@ -17451,7 +17617,7 @@ def build_html(data):
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="openrelix:version" content="{current_version}" data-pkg="{npm_package}" data-update-endpoint="{update_endpoint}" data-update-status-endpoint="{update_status_endpoint}" data-asset-refresh-endpoint="{asset_refresh_endpoint}" data-codex-desktop-endpoint="{codex_desktop_endpoint}" data-memory-feedback-endpoint="{memory_feedback_endpoint}" data-claude-desktop-endpoint="{claude_desktop_endpoint}" data-finder-open-endpoint="{finder_open_endpoint}" data-update-token="{update_token}">
+  <meta name="openrelix:version" content="{current_version}" data-pkg="{npm_package}" data-update-endpoint="{update_endpoint}" data-update-status-endpoint="{update_status_endpoint}" data-asset-refresh-endpoint="{asset_refresh_endpoint}" data-window-search-endpoint="{window_search_endpoint}" data-codex-desktop-endpoint="{codex_desktop_endpoint}" data-memory-feedback-endpoint="{memory_feedback_endpoint}" data-claude-desktop-endpoint="{claude_desktop_endpoint}" data-finder-open-endpoint="{finder_open_endpoint}" data-update-token="{update_token}">
   <title>{document_title}</title>
   <script>
     (function () {{
@@ -20644,7 +20810,12 @@ def build_html(data):
       margin-top: 16px;
       position: relative;
       overflow: visible;
+      isolation: isolate;
       box-shadow: none;
+    }}
+
+    .window-filter-panel.is-search-open {{
+      z-index: 76;
     }}
 
     .asset-filter-panel {{
@@ -20666,6 +20837,10 @@ def build_html(data):
       backdrop-filter: saturate(180%) blur(28px);
     }}
 
+    .window-filter-panel.is-sticky.is-search-open {{
+      z-index: 76;
+    }}
+
     .window-filter-sticky-placeholder[hidden],
     .asset-filter-sticky-placeholder[hidden] {{
       display: none;
@@ -20673,6 +20848,419 @@ def build_html(data):
 
     .window-filter-grid {{
       grid-template-columns: minmax(360px, 1.3fr) repeat(2, minmax(160px, 0.72fr));
+    }}
+
+    .window-search-grid {{
+      display: grid;
+      grid-template-columns: minmax(280px, 0.95fr) minmax(360px, 1.25fr) auto;
+      gap: 12px;
+      align-items: end;
+      margin-top: 12px;
+    }}
+
+    .window-search-trigger {{
+      width: 100%;
+      min-width: 0;
+      min-height: 48px;
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 12px;
+      padding: 8px 12px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--soft);
+      color: var(--ink);
+      font: inherit;
+      text-align: left;
+      cursor: pointer;
+      transition: border-color 160ms ease, box-shadow 160ms ease, background 160ms ease;
+    }}
+
+    .window-search-trigger:hover,
+    .window-search-trigger:focus-visible,
+    .window-search-trigger[aria-expanded="true"] {{
+      border-color: rgba(0, 113, 227, 0.42);
+      box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.12);
+      background: var(--elevated);
+      outline: none;
+    }}
+
+    .window-search-trigger-icon,
+    .window-search-input-icon {{
+      width: 18px;
+      height: 18px;
+      color: var(--muted);
+      display: inline-grid;
+      place-items: center;
+    }}
+
+    .window-search-icon-svg {{
+      width: 18px;
+      height: 18px;
+      display: block;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }}
+
+    .window-search-trigger:hover .window-search-trigger-icon,
+    .window-search-trigger:focus-visible .window-search-trigger-icon,
+    .window-search-trigger[aria-expanded="true"] .window-search-trigger-icon {{
+      color: var(--accent);
+    }}
+
+    .window-search-trigger-copy {{
+      min-width: 0;
+      display: grid;
+      gap: 3px;
+    }}
+
+    .token-filter-label.window-search-label {{
+      color: var(--ink);
+      font-size: 12px;
+      font-weight: 820;
+      line-height: 1;
+    }}
+
+    .window-search-trigger-text {{
+      min-width: 0;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 640;
+      line-height: 1.35;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }}
+
+    .window-search-trigger[data-window-search-active="true"] .window-search-trigger-text {{
+      color: var(--ink);
+      font-weight: 760;
+    }}
+
+    .window-search-trigger-meta {{
+      color: var(--accent);
+      font-size: 12px;
+      font-weight: 760;
+      white-space: nowrap;
+    }}
+
+    .window-search-reset-field {{
+      width: 48px;
+      min-width: 48px;
+      display: grid;
+      gap: 8px;
+    }}
+
+    .window-search-reset-field[hidden] {{
+      display: none;
+    }}
+
+    .window-search-reset-spacer {{
+      visibility: hidden;
+    }}
+
+    .window-search-reset {{
+      width: 100%;
+      height: 42px;
+      min-height: 42px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--soft);
+      color: var(--muted);
+      font: inherit;
+      font-size: 24px;
+      font-weight: 520;
+      line-height: 1;
+      cursor: pointer;
+      transition: border-color 160ms ease, box-shadow 160ms ease, background 160ms ease, color 160ms ease;
+    }}
+
+    .window-search-reset:hover,
+    .window-search-reset:focus-visible {{
+      border-color: rgba(255, 59, 48, 0.34);
+      box-shadow: 0 0 0 3px rgba(255, 59, 48, 0.10);
+      background: var(--elevated);
+      color: #d70015;
+      outline: none;
+    }}
+
+    .window-search-control {{
+      position: relative;
+      display: block;
+      min-width: 0;
+    }}
+
+    .window-search-input-icon {{
+      position: absolute;
+      left: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+      pointer-events: none;
+    }}
+
+    .window-search-input {{
+      width: 100%;
+      min-width: 0;
+      height: 40px;
+      padding: 0 12px 0 38px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--soft);
+      color: var(--ink);
+      font: inherit;
+      font-size: 13px;
+      font-weight: 650;
+      outline: none;
+      transition: border-color 160ms ease, box-shadow 160ms ease, background 160ms ease;
+    }}
+
+    .window-search-input:focus {{
+      border-color: rgba(0, 113, 227, 0.42);
+      box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.14);
+      background: var(--elevated);
+    }}
+
+    .window-search-input::placeholder {{
+      color: var(--muted);
+      opacity: 0.78;
+    }}
+
+    .window-search-scope-group {{
+      grid-auto-columns: minmax(0, 1fr);
+    }}
+
+    .window-search-strip-scope-field {{
+      min-width: 0;
+    }}
+
+    .window-search-live {{
+      position: absolute;
+      top: -1px;
+      left: -1px;
+      right: -1px;
+      z-index: 4;
+      width: auto;
+      max-height: min(720px, calc(100vh - 104px));
+      display: grid;
+      grid-template-rows: auto auto;
+      align-content: start;
+      gap: 12px;
+      padding: 18px;
+      border: 1px solid var(--line);
+      border-radius: inherit;
+      background: color-mix(in srgb, var(--elevated) 94%, transparent);
+      box-shadow: 0 22px 72px rgba(15, 23, 42, 0.18), 0 2px 8px rgba(15, 23, 42, 0.08);
+      backdrop-filter: blur(18px);
+      overflow: auto;
+      overscroll-behavior: contain;
+      scrollbar-gutter: stable;
+      -webkit-overflow-scrolling: touch;
+    }}
+
+    .window-search-live[hidden] {{
+      display: none;
+    }}
+
+    .window-search-sticky-stack {{
+      position: sticky;
+      top: -18px;
+      z-index: 3;
+      display: grid;
+      gap: 12px;
+      margin: -18px -18px 0;
+      padding: 18px 18px 12px;
+      border-bottom: 1px solid rgba(210, 210, 215, 0.58);
+      background: color-mix(in srgb, var(--elevated) 96%, transparent);
+      backdrop-filter: blur(18px);
+    }}
+
+    .window-search-live-head {{
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }}
+
+    .window-search-live-title {{
+      min-width: 0;
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
+      flex-wrap: wrap;
+    }}
+
+    .window-search-live-status {{
+      min-height: 18px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 650;
+      text-align: right;
+    }}
+
+    .window-search-close {{
+      flex: 0 0 auto;
+      min-height: 34px;
+      padding: 0 12px 0 10px;
+      border: 1px solid rgba(0, 113, 227, 0.22);
+      border-radius: 999px;
+      background: rgba(0, 113, 227, 0.10);
+      color: var(--accent);
+      font: inherit;
+      font-size: 12px;
+      font-weight: 760;
+      line-height: 1;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+      cursor: pointer;
+      box-shadow: 0 8px 20px rgba(0, 113, 227, 0.10);
+      transition: border-color 160ms ease, box-shadow 160ms ease, background 160ms ease, color 160ms ease;
+    }}
+
+    .window-search-close:hover,
+    .window-search-close:focus-visible {{
+      color: #fff;
+      border-color: rgba(0, 113, 227, 0.42);
+      background: linear-gradient(135deg, #0071e3, #4da2ff);
+      box-shadow: 0 10px 24px rgba(0, 113, 227, 0.18);
+      outline: none;
+    }}
+
+    .window-search-close-icon {{
+      font-size: 17px;
+      font-weight: 650;
+      line-height: 1;
+    }}
+
+    .window-search-close-label {{
+      line-height: 1;
+      white-space: nowrap;
+    }}
+
+    .window-search-dialog-filters {{
+      display: grid;
+      grid-template-columns: minmax(300px, 1.45fr) minmax(150px, 0.7fr) minmax(150px, 0.7fr);
+      gap: 12px;
+      align-items: end;
+    }}
+
+    .window-search-range-group {{
+      grid-auto-columns: minmax(0, 1fr);
+    }}
+
+    .window-search-date-input {{
+      width: 100%;
+      min-width: 0;
+      height: 40px;
+      padding: 0 12px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--soft);
+      color: var(--ink);
+      font: inherit;
+      font-size: 13px;
+      font-weight: 680;
+      outline: none;
+      transition: border-color 160ms ease, box-shadow 160ms ease, background 160ms ease;
+    }}
+
+    .window-search-date-input:focus {{
+      border-color: rgba(0, 113, 227, 0.42);
+      box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.14);
+      background: var(--elevated);
+    }}
+
+    .window-search-dialog-form {{
+      display: grid;
+      grid-template-columns: minmax(280px, 0.95fr) minmax(360px, 1.25fr);
+      gap: 12px;
+      align-items: end;
+    }}
+
+    .window-search-results {{
+      display: grid;
+      min-height: 120px;
+      gap: 8px;
+      max-height: none;
+      overflow: visible;
+      padding-right: 0;
+    }}
+
+    .window-search-result {{
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 10px;
+      align-items: center;
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--elevated);
+    }}
+
+    .window-search-result-main {{
+      min-width: 0;
+      display: grid;
+      gap: 4px;
+    }}
+
+    .window-search-result-title {{
+      color: var(--ink);
+      font-size: 13px;
+      font-weight: 780;
+      overflow-wrap: anywhere;
+    }}
+
+    .window-search-result-meta,
+    .window-search-result-text {{
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 600;
+      line-height: 1.45;
+      overflow-wrap: anywhere;
+    }}
+
+    .window-search-highlight {{
+      display: inline;
+      padding: 0 2px;
+      border-radius: 4px;
+      background: rgba(255, 214, 10, 0.38);
+      color: inherit;
+      font-weight: 860;
+    }}
+
+    .window-search-result-text .window-search-highlight {{
+      color: var(--ink);
+    }}
+
+    .window-search-result-action {{
+      min-width: 64px;
+      height: 32px;
+      padding: 0 12px;
+      border: 1px solid rgba(0, 113, 227, 0.24);
+      border-radius: 999px;
+      background: rgba(0, 113, 227, 0.12);
+      color: var(--accent);
+      font: inherit;
+      font-size: 12px;
+      font-weight: 760;
+      cursor: pointer;
+    }}
+
+    .window-search-result-action:hover,
+    .window-search-result-action:focus-visible {{
+      border-color: rgba(0, 113, 227, 0.42);
+      background: rgba(0, 113, 227, 0.18);
+      outline: none;
+    }}
+
+    .window-search-result-action[disabled] {{
+      cursor: default;
+      opacity: 0.55;
     }}
 
     .asset-filter-grid {{
@@ -23703,6 +24291,14 @@ def build_html(data):
         grid-template-columns: repeat(2, minmax(0, 1fr));
       }}
 
+      .window-search-grid {{
+        grid-template-columns: 1fr;
+      }}
+
+      .window-search-dialog-form {{
+        grid-template-columns: 1fr;
+      }}
+
       .token-filter-presets,
       .window-filter-presets,
       .asset-filter-presets {{
@@ -23891,6 +24487,38 @@ def build_html(data):
 
       .token-filter-grain .token-segment-group {{
         grid-template-columns: repeat(2, minmax(0, 1fr));
+      }}
+
+      .window-search-scope-group {{
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }}
+
+      .window-search-dialog-filters,
+      .window-search-dialog-form {{
+        grid-template-columns: 1fr;
+      }}
+
+      .window-search-range-group {{
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }}
+
+      .window-search-live {{
+        top: -1px;
+        right: -1px;
+        left: -1px;
+        max-height: calc(100vh - 28px);
+      }}
+
+      .window-search-results {{
+        max-height: none;
+      }}
+
+      .window-search-result {{
+        grid-template-columns: 1fr;
+      }}
+
+      .window-search-result-action {{
+        width: 100%;
       }}
 
       .token-summary-row {{
@@ -24474,6 +25102,7 @@ def build_html(data):
       const config = {{
         autoReloadMs: {auto_refresh_ms},
         liveEndpoint: {live_token_endpoint},
+        windowSearchEndpoint: "{window_search_endpoint}",
         pipelineEndpoint: "http://127.0.0.1:8765/pipeline-status",
         livePollMs: {live_token_poll_ms},
         requestTimeoutMs: {live_token_timeout_ms},
@@ -24538,7 +25167,13 @@ def build_html(data):
         windowFilters: {{
           startDate: defaultWindowFilterStart,
           endDate: defaultWindowFilterEnd,
+          query: "",
+          searchScope: "all",
         }},
+        windowSearchRequestSeq: 0,
+        windowSearchTimer: null,
+        windowSearchResults: null,
+        windowSearchOpen: false,
         assetFilters: {{
           startDate: defaultAssetFilterStart,
           endDate: defaultAssetFilterEnd,
@@ -24577,6 +25212,20 @@ def build_html(data):
         windowFilterSummary: document.getElementById("window-filter-summary"),
         windowStartDateInput: document.getElementById("window-start-date"),
 	        windowEndDateInput: document.getElementById("window-end-date"),
+        windowSearchTriggerButton: document.getElementById("window-search-trigger"),
+        windowSearchTriggerText: document.getElementById("window-search-trigger-text"),
+        windowSearchTriggerMeta: document.getElementById("window-search-trigger-meta"),
+        windowSearchResetField: document.getElementById("window-search-reset-field"),
+        windowSearchResetButton: document.getElementById("window-search-reset"),
+        windowSearchStartDateInput: document.getElementById("window-search-start-date"),
+        windowSearchEndDateInput: document.getElementById("window-search-end-date"),
+        windowSearchRangeButtons: Array.from(document.querySelectorAll("[data-window-search-range-days]")),
+        windowSearchInput: document.getElementById("window-search-query"),
+        windowSearchCloseButton: document.getElementById("window-search-close"),
+        windowSearchScopeButtons: Array.from(document.querySelectorAll("[data-window-search-scope]")),
+        windowSearchLive: document.getElementById("window-search-live"),
+        windowSearchStatus: document.getElementById("window-search-status"),
+        windowSearchResults: document.getElementById("window-search-results"),
 	        windowRangeButtons: Array.from(document.querySelectorAll("[data-window-range-days]")),
 	        windowDateButtons: Array.from(document.querySelectorAll("[data-window-date-button]")),
 	        windowDateDisplays: Array.from(document.querySelectorAll("[data-window-date-display]")),
@@ -24665,6 +25314,47 @@ def build_html(data):
           .replace(/</g, "&lt;")
           .replace(/>/g, "&gt;")
           .replace(/"/g, "&quot;");
+      }}
+
+      function escapeRegExp(value) {{
+        return String(value)
+          .replace(/[\\^$.*+?()[\\]|]/g, "\\$&")
+          .replace(/[{{}}]/g, "\\$&");
+      }}
+
+      function windowSearchHighlightTerms(query) {{
+        const seen = {{}};
+        return String(query || "")
+          .split(/\\s+/)
+          .map(function (term) {{ return term.trim(); }})
+          .filter(function (term) {{
+            const key = term.toLowerCase();
+            if (!key || seen[key]) {{
+              return false;
+            }}
+            seen[key] = true;
+            return true;
+          }})
+          .sort(function (left, right) {{ return right.length - left.length; }});
+      }}
+
+      function highlightWindowSearchText(value, query) {{
+        const text = String(value || "");
+        const terms = windowSearchHighlightTerms(query);
+        if (!text || !terms.length) {{
+          return escapeHtml(text);
+        }}
+        const pattern = new RegExp(terms.map(escapeRegExp).join("|"), "gi");
+        let lastIndex = 0;
+        let html = "";
+        text.replace(pattern, function (match, offset) {{
+          html += escapeHtml(text.slice(lastIndex, offset));
+          html += '<mark class="window-search-highlight">' + escapeHtml(match) + '</mark>';
+          lastIndex = offset + match.length;
+          return match;
+        }});
+        html += escapeHtml(text.slice(lastIndex));
+        return html;
       }}
 
       function localizeValue(zh, en) {{
@@ -25713,6 +26403,10 @@ def build_html(data):
         const source = nextFilters || {{}};
         let startDate = String(source.startDate || defaultWindowFilterStart || "").slice(0, 10);
         let endDate = String(source.endDate || defaultWindowFilterEnd || "").slice(0, 10);
+        const query = String(source.query || "").trim();
+        const searchScope = ["all", "ai", "raw-question", "raw-conclusion", "id", "project"].includes(source.searchScope)
+          ? source.searchScope
+          : "all";
         if (startDate && endDate && startDate > endDate) {{
           const swap = startDate;
           startDate = endDate;
@@ -25721,6 +26415,8 @@ def build_html(data):
         return {{
           startDate: startDate,
           endDate: endDate,
+          query: query,
+          searchScope: searchScope,
         }};
       }}
 
@@ -26173,11 +26869,37 @@ def build_html(data):
         return String((card && card.getAttribute("data-window-date")) || "").slice(0, 10);
       }}
 
+      function normalizeWindowSearchValue(value) {{
+        return String(value || "").toLowerCase().replace(/\\s+/g, " ").trim();
+      }}
+
+      function windowCardSearchText(card, scope) {{
+        const resolvedScope = ["all", "ai", "raw-question", "raw-conclusion", "id", "project"].includes(scope)
+          ? scope
+          : "all";
+        return normalizeWindowSearchValue(card && card.getAttribute("data-window-search-" + resolvedScope));
+      }}
+
+      function windowCardMatchesSearch(card, filters) {{
+        const activeFilters = normalizeWindowFilters(filters || state.windowFilters);
+        const query = normalizeWindowSearchValue(activeFilters.query);
+        if (!query) {{
+          return true;
+        }}
+        const haystack = windowCardSearchText(card, activeFilters.searchScope);
+        if (!haystack) {{
+          return false;
+        }}
+        return query.split(" ").filter(Boolean).every(function (term) {{
+          return haystack.indexOf(term) !== -1;
+        }});
+      }}
+
       function windowCardMatchesFilter(card, filters) {{
         const dateValue = windowCardDate(card);
         const activeFilters = normalizeWindowFilters(filters || state.windowFilters);
         if (!dateValue) {{
-          return !activeFilters.startDate && !activeFilters.endDate;
+          return !activeFilters.startDate && !activeFilters.endDate && windowCardMatchesSearch(card, activeFilters);
         }}
         if (activeFilters.startDate && dateValue < activeFilters.startDate) {{
           return false;
@@ -26185,7 +26907,399 @@ def build_html(data):
         if (activeFilters.endDate && dateValue > activeFilters.endDate) {{
           return false;
         }}
-        return true;
+        return windowCardMatchesSearch(card, activeFilters);
+      }}
+
+      function windowSearchPairPreview(pairs) {{
+        const list = Array.isArray(pairs) ? pairs : [];
+        for (let index = 0; index < list.length; index += 1) {{
+          const pair = list[index] || {{}};
+          const text = [pair.question || "", pair.conclusion || ""].filter(Boolean).join(" / ");
+          if (text) {{
+            return text;
+          }}
+        }}
+        return "";
+      }}
+
+      function windowSearchValueMatchesQuery(value, query) {{
+        const haystack = normalizeWindowSearchValue(value);
+        const terms = normalizeWindowSearchValue(query).split(" ").filter(Boolean);
+        if (!haystack || !terms.length) {{
+          return false;
+        }}
+        return terms.every(function (term) {{ return haystack.indexOf(term) !== -1; }});
+      }}
+
+      function windowSearchPairValuePreview(pairs, key, label, query) {{
+        const list = Array.isArray(pairs) ? pairs : [];
+        let fallback = "";
+        for (let index = 0; index < list.length; index += 1) {{
+          const pair = list[index] || {{}};
+          const value = pair[key] || "";
+          if (!value) {{
+            continue;
+          }}
+          if (!fallback) {{
+            fallback = value;
+          }}
+          if (windowSearchValueMatchesQuery(value, query)) {{
+            return label + "：" + value;
+          }}
+        }}
+        return fallback ? label + "：" + fallback : "";
+      }}
+
+      function windowSearchPairText(pairs, key) {{
+        const list = Array.isArray(pairs) ? pairs : [];
+        return normalizeWindowSearchValue(list.map(function (pair) {{
+          return pair && pair[key] ? pair[key] : "";
+        }}).filter(Boolean).join(" "));
+      }}
+
+      function windowSearchMessageLabel(kind) {{
+        return kind === "prompt"
+          ? localizeValue("原始问题", "Raw question")
+          : localizeValue("原始结论", "Raw conclusion");
+      }}
+
+      function windowSearchMatchedMessages(result, kind) {{
+        const list = Array.isArray(result && result.matched_messages) ? result.matched_messages : [];
+        return list.filter(function (message) {{
+          return message && message.text && (!kind || message.kind === kind);
+        }});
+      }}
+
+      function windowSearchMatchedMessagePreview(result, kind) {{
+        const matches = windowSearchMatchedMessages(result, kind);
+        if (!matches.length) {{
+          return "";
+        }}
+        const message = matches[0];
+        return windowSearchMessageLabel(message.kind) + "：" + message.text;
+      }}
+
+      function windowSearchMatchedMessageText(result, kind) {{
+        return normalizeWindowSearchValue(windowSearchMatchedMessages(result, kind).map(function (message) {{
+          return message.text || "";
+        }}).filter(Boolean).join(" "));
+      }}
+
+      function windowSearchResultScopeText(result, scope) {{
+        const resolvedScope = ["all", "ai", "raw-question", "raw-conclusion", "id", "project"].includes(scope)
+          ? scope
+          : "all";
+        if (!result) {{
+          return "";
+        }}
+        if (resolvedScope === "id") {{
+          return normalizeWindowSearchValue(result.window_id || "");
+        }}
+        if (resolvedScope === "project") {{
+          return normalizeWindowSearchValue([result.project_label || "", result.cwd || ""].join(" "));
+        }}
+        if (resolvedScope === "raw-question") {{
+          return normalizeWindowSearchValue([
+            windowSearchMatchedMessageText(result, "prompt"),
+            windowSearchPairText(result.raw_summary_pairs, "question"),
+          ].join(" "));
+        }}
+        if (resolvedScope === "raw-conclusion") {{
+          return normalizeWindowSearchValue([
+            windowSearchMatchedMessageText(result, "conclusion"),
+            windowSearchPairText(result.raw_summary_pairs, "conclusion"),
+          ].join(" "));
+        }}
+        if (resolvedScope === "ai") {{
+          return normalizeWindowSearchValue([
+            result.window_title || "",
+            result.question_summary || "",
+            result.main_takeaway || "",
+            windowSearchPairText(result.summary_pairs, "question"),
+            windowSearchPairText(result.summary_pairs, "conclusion"),
+            Array.isArray(result.keywords) ? result.keywords.join(" ") : "",
+          ].join(" "));
+        }}
+        return normalizeWindowSearchValue([
+          result.window_id || "",
+          result.project_label || "",
+          result.cwd || "",
+          result.window_title || "",
+          result.question_summary || "",
+          result.main_takeaway || "",
+          windowSearchPairText(result.summary_pairs, "question"),
+          windowSearchPairText(result.summary_pairs, "conclusion"),
+          windowSearchMatchedMessageText(result),
+          windowSearchPairText(result.raw_summary_pairs, "question"),
+          windowSearchPairText(result.raw_summary_pairs, "conclusion"),
+          Array.isArray(result.keywords) ? result.keywords.join(" ") : "",
+        ].join(" "));
+      }}
+
+      function windowSearchResultMatchesScope(result, filters) {{
+        const activeFilters = normalizeWindowFilters(filters || state.windowFilters);
+        const query = normalizeWindowSearchValue(activeFilters.query);
+        if (!query) {{
+          return true;
+        }}
+        const haystack = windowSearchResultScopeText(result, activeFilters.searchScope);
+        if (!haystack) {{
+          return false;
+        }}
+        return query.split(" ").filter(Boolean).every(function (term) {{
+          return haystack.indexOf(term) !== -1;
+        }});
+      }}
+
+      function windowSearchResultAnchor(result) {{
+        const resultId = normalizeWindowSearchValue(result && result.window_id);
+        const resultDate = String((result && result.date) || "").slice(0, 10);
+        if (!resultId) {{
+          return "";
+        }}
+        const cards = windowCardList();
+        for (let index = 0; index < cards.length; index += 1) {{
+          const card = cards[index];
+          const cardIdText = normalizeWindowSearchValue(card.getAttribute("data-window-search-id"));
+          const cardDate = windowCardDate(card);
+          if (cardIdText.indexOf(resultId) >= 0 && (!resultDate || cardDate === resultDate)) {{
+            return card.getAttribute("data-window-anchor") || "";
+          }}
+        }}
+        return "";
+      }}
+
+      function windowSearchResultText(result, filters) {{
+        const activeFilters = normalizeWindowFilters(filters || state.windowFilters);
+        const scope = activeFilters.searchScope || "all";
+        const query = activeFilters.query || "";
+        if (scope === "raw-question") {{
+          return windowSearchMatchedMessagePreview(result, "prompt") ||
+            windowSearchPairValuePreview(result.raw_summary_pairs, "question", localizeValue("原始问题", "Raw question"), query) ||
+            result.question_summary ||
+            "";
+        }}
+        if (scope === "raw-conclusion") {{
+          return windowSearchMatchedMessagePreview(result, "conclusion") ||
+            windowSearchPairValuePreview(result.raw_summary_pairs, "conclusion", localizeValue("原始结论", "Raw conclusion"), query) ||
+            result.main_takeaway ||
+            "";
+        }}
+        if (scope === "id") {{
+          return result.window_id ? localizeValue("窗口 ID：", "Window ID: ") + result.window_id : "";
+        }}
+        if (scope === "project") {{
+          return [result.project_label || "", result.cwd || ""].filter(Boolean).join(" · ");
+        }}
+        const matchedRawText = windowSearchMatchedMessagePreview(result);
+        if (matchedRawText) {{
+          return matchedRawText;
+        }}
+        return result.main_takeaway ||
+          windowSearchPairPreview(result.summary_pairs) ||
+          windowSearchPairPreview(result.raw_summary_pairs) ||
+          result.question_summary ||
+          "";
+      }}
+
+      function windowSearchResultDate(result) {{
+        return String((result && result.date) || "").slice(0, 10);
+      }}
+
+      function windowSearchResultMatchesFilters(result, filters) {{
+        const activeFilters = normalizeWindowFilters(filters || state.windowFilters);
+        const dateValue = windowSearchResultDate(result);
+        if (!dateValue) {{
+          return !activeFilters.startDate && !activeFilters.endDate && windowSearchResultMatchesScope(result, activeFilters);
+        }}
+        if (activeFilters.startDate && dateValue < activeFilters.startDate) {{
+          return false;
+        }}
+        if (activeFilters.endDate && dateValue > activeFilters.endDate) {{
+          return false;
+        }}
+        return windowSearchResultMatchesScope(result, activeFilters);
+      }}
+
+      function syncWindowSearchDialogVisibility() {{
+        const isOpen = !!state.windowSearchOpen;
+        if (elements.windowSearchLive) {{
+          elements.windowSearchLive.hidden = !isOpen;
+        }}
+        if (elements.windowSearchTriggerButton) {{
+          elements.windowSearchTriggerButton.setAttribute("aria-expanded", isOpen ? "true" : "false");
+        }}
+        if (elements.windowFilterPanel) {{
+          elements.windowFilterPanel.classList.toggle("is-search-open", isOpen);
+        }}
+      }}
+
+      function syncWindowSearchTrigger(filters) {{
+        const activeFilters = normalizeWindowFilters(filters || state.windowFilters);
+        if (elements.windowSearchTriggerText) {{
+          elements.windowSearchTriggerText.textContent = activeFilters.query
+            ? windowSearchScopeLabel(activeFilters.searchScope) + " / " + activeFilters.query
+            : localizeValue("搜问题、结论、项目或窗口 ID", "Search questions, conclusions, projects, or window IDs");
+        }}
+        if (elements.windowSearchTriggerButton) {{
+          elements.windowSearchTriggerButton.setAttribute("data-window-search-active", activeFilters.query ? "true" : "false");
+        }}
+        if (elements.windowSearchTriggerMeta) {{
+          elements.windowSearchTriggerMeta.textContent = activeFilters.query
+            ? localizeValue("继续搜索", "Search")
+            : localizeValue("打开搜索", "Open Search");
+        }}
+      }}
+
+      function setWindowSearchOpen(isOpen, shouldFocus) {{
+        state.windowSearchOpen = !!isOpen;
+        syncWindowSearchDialogVisibility();
+        if (state.windowSearchOpen) {{
+          renderWindowSearchResults(state.windowSearchResults);
+          if (shouldFocus && elements.windowSearchInput) {{
+            window.setTimeout(function () {{
+              elements.windowSearchInput.focus();
+              elements.windowSearchInput.select();
+            }}, 0);
+          }}
+        }}
+      }}
+
+      function renderWindowSearchResults(payload, statusKind) {{
+        if (!elements.windowSearchLive || !elements.windowSearchResults || !elements.windowSearchStatus) {{
+          return;
+        }}
+        const filters = normalizeWindowFilters(state.windowFilters);
+        syncWindowSearchDialogVisibility();
+        if (!state.windowSearchOpen) {{
+          return;
+        }}
+        if (!filters.query) {{
+          elements.windowSearchStatus.textContent = localizeValue("输入关键词后检索", "Enter a query to search");
+          elements.windowSearchResults.innerHTML = '<p class="empty">' + escapeHtml(localizeValue("输入关键词后检索本地窗口索引。", "Enter a query to search the local window index.")) + '</p>';
+          return;
+        }}
+        if (statusKind === "loading") {{
+          elements.windowSearchStatus.textContent = localizeValue("查询本地索引…", "Searching local index...");
+          elements.windowSearchResults.innerHTML = "";
+          return;
+        }}
+        const results = payload && Array.isArray(payload.results) ? payload.results : [];
+        const indexInfo = (payload && payload.index) || {{}};
+        if (!payload || payload.ok === false) {{
+          if (payload && payload.error === "service_unavailable") {{
+            elements.windowSearchStatus.textContent = localizeValue("本地服务未连接", "Local service unavailable");
+            elements.windowSearchResults.innerHTML = '<p class="empty">' + escapeHtml(localizeValue("请通过 OpenRelix 打开面板后再检索历史窗口。", "Open the panel through OpenRelix before searching historical windows.")) + '</p>';
+            return;
+          }}
+          elements.windowSearchStatus.textContent = indexInfo.exists
+            ? localizeValue("索引暂不可用", "Index unavailable")
+            : localizeValue("索引未建立", "Index not built");
+          elements.windowSearchResults.innerHTML = '<p class="empty">' + escapeHtml(localizeValue("运行 openrelix index rebuild 后可检索历史窗口。", "Run openrelix index rebuild to search historical windows.")) + '</p>';
+          return;
+        }}
+        const allResults = results;
+        const filteredResults = allResults.filter(function (result) {{
+          return windowSearchResultMatchesFilters(result, filters);
+        }});
+        const filteredNote = filteredResults.length === allResults.length
+          ? ""
+          : localizeValue(" · 已按当前筛选过滤", " · filtered by current filters");
+        const staleNote = indexInfo.stale ? localizeValue(" · 可能不是最新", " · may be stale") : "";
+        elements.windowSearchStatus.textContent = localizeValue("命中 ", "Matched ") + filteredResults.length + localizeValue(" 个", "") + staleNote + filteredNote;
+        if (!filteredResults.length) {{
+          elements.windowSearchResults.innerHTML = '<p class="empty">' + escapeHtml(localizeValue("本地索引没有命中。", "No local index matches.")) + '</p>';
+          return;
+        }}
+        elements.windowSearchResults.innerHTML = filteredResults.map(function (result) {{
+          const anchor = windowSearchResultAnchor(result);
+          const title = result.window_title || result.question_summary || result.window_id || localizeValue("未命名窗口", "Untitled window");
+          const metaParts = [
+            result.date || "",
+            result.project_label || result.cwd || "",
+            result.window_id || "",
+          ].filter(Boolean);
+          const text = windowSearchResultText(result, filters);
+          const actionHtml = anchor
+            ? '<button class="window-search-result-action" type="button" data-window-search-target="' + escapeHtml(anchor) + '">' + escapeHtml(localizeValue("定位", "Locate")) + '</button>'
+            : '<span class="window-search-result-meta">' + escapeHtml(localizeValue("历史", "History")) + '</span>';
+          return (
+            '<div class="window-search-result">' +
+              '<div class="window-search-result-main">' +
+                '<div class="window-search-result-title">' + highlightWindowSearchText(title, filters.query) + '</div>' +
+                '<div class="window-search-result-meta">' + highlightWindowSearchText(metaParts.join(" · "), filters.query) + '</div>' +
+                (text ? '<div class="window-search-result-text">' + highlightWindowSearchText(text, filters.query) + '</div>' : '') +
+              '</div>' +
+              actionHtml +
+            '</div>'
+          );
+        }}).join("");
+      }}
+
+      function clearWindowSearchRequest() {{
+        if (state.windowSearchTimer) {{
+          window.clearTimeout(state.windowSearchTimer);
+          state.windowSearchTimer = null;
+        }}
+      }}
+
+      async function runWindowSearchRequest(requestSeq, filters) {{
+        const endpoint = config.windowSearchEndpoint || openrelixMetaAttr("data-window-search-endpoint");
+        const token = openrelixMetaAttr("data-update-token");
+        if (!endpoint || !token || !window.fetch) {{
+          renderWindowSearchResults({{ ok: false, error: "service_unavailable", index: {{ exists: false }} }});
+          return;
+        }}
+        try {{
+          const requestUrl = new URL(endpoint);
+          requestUrl.searchParams.set("q", filters.query);
+          requestUrl.searchParams.set("limit", "20");
+          requestUrl.searchParams.set("scope", filters.searchScope || "all");
+          if (filters.startDate) {{
+            requestUrl.searchParams.set("date_from", filters.startDate);
+          }}
+          if (filters.endDate) {{
+            requestUrl.searchParams.set("date_to", filters.endDate);
+          }}
+          const headers = {{}};
+          headers["X-OpenRelix-Token"] = token;
+          const response = await fetchWithTimeout(requestUrl.toString(), Math.min(config.requestTimeoutMs, 8000), {{
+            headers: headers,
+          }});
+          const payload = await response.json();
+          if (requestSeq !== state.windowSearchRequestSeq) {{
+            return;
+          }}
+          if (!response.ok) {{
+            renderWindowSearchResults(Object.assign({{ ok: false }}, payload || {{}}));
+            return;
+          }}
+          state.windowSearchResults = payload;
+          renderWindowSearchResults(payload);
+        }} catch (error) {{
+          if (requestSeq !== state.windowSearchRequestSeq) {{
+            return;
+          }}
+          renderWindowSearchResults({{ ok: false, error: "service_unavailable", index: {{ exists: false }} }});
+        }}
+      }}
+
+      function scheduleWindowSearchRequest() {{
+        clearWindowSearchRequest();
+        const filters = normalizeWindowFilters(state.windowFilters);
+        if (!filters.query) {{
+          state.windowSearchRequestSeq += 1;
+          state.windowSearchResults = null;
+          renderWindowSearchResults(null);
+          return;
+        }}
+        const requestSeq = state.windowSearchRequestSeq + 1;
+        state.windowSearchRequestSeq = requestSeq;
+        renderWindowSearchResults(null, "loading");
+        state.windowSearchTimer = window.setTimeout(function () {{
+          state.windowSearchTimer = null;
+          runWindowSearchRequest(requestSeq, filters);
+        }}, 280);
       }}
 
       function windowCardSortValue(card) {{
@@ -26662,6 +27776,27 @@ def build_html(data):
         return localizeValue("截至", "Until") + " " + activeFilters.endDate + " · " + countLabel;
       }}
 
+      function windowSearchScopeLabel(scope) {{
+        const labels = {{
+          all: localizeValue("全部", "All"),
+          ai: localizeValue("模型整理", "AI summary"),
+          "raw-question": localizeValue("原始问题", "Raw questions"),
+          "raw-conclusion": localizeValue("原始结论", "Raw conclusions"),
+          id: localizeValue("窗口 ID", "Window ID"),
+          project: localizeValue("项目", "Project"),
+        }};
+        return labels[scope] || labels.all;
+      }}
+
+      function windowFilterSummaryLabel(filters, windowCount) {{
+        const activeFilters = normalizeWindowFilters(filters);
+        const rangeLabel = windowFilterRangeLabel(activeFilters, windowCount);
+        if (!activeFilters.query) {{
+          return rangeLabel;
+        }}
+        return rangeLabel + " · " + windowSearchScopeLabel(activeFilters.searchScope) + " / " + activeFilters.query;
+      }}
+
       function renderWindowOverviewFromCards(cards) {{
         if (!elements.windowOverviewMap || !elements.windowOverviewContextList) {{
           return;
@@ -26688,7 +27823,7 @@ def build_html(data):
         const note = currentLanguage === "en"
           ? "Current filter: " + pluralEn(cards.length, "window") + " and " + pluralEn(discussionCount, "discussion") + "; projects sorted by discussion count with links back to window details."
           : "当前筛选范围共 " + cards.length + " 个窗口、" + discussionCount + " 次讨论；项目按讨论数排序，可追溯到窗口明细。";
-        const meta = localizeValue("窗口筛选", "Window filter") + " · " + windowFilterRangeLabel(state.windowFilters, cards.length);
+        const meta = localizeValue("窗口筛选", "Window filter") + " · " + windowFilterSummaryLabel(state.windowFilters, cards.length);
         const statsHtml = [
           [projectCount, localizeValue("项目", "Contexts")],
           [taskCount, localizeValue("并行任务", "Tasks")],
@@ -26730,12 +27865,50 @@ def build_html(data):
         if (elements.windowEndDateInput && elements.windowEndDateInput.value !== filters.endDate) {{
           elements.windowEndDateInput.value = filters.endDate;
         }}
+        if (elements.windowSearchStartDateInput && elements.windowSearchStartDateInput.value !== filters.startDate) {{
+          elements.windowSearchStartDateInput.value = filters.startDate;
+        }}
+        if (elements.windowSearchEndDateInput && elements.windowSearchEndDateInput.value !== filters.endDate) {{
+          elements.windowSearchEndDateInput.value = filters.endDate;
+        }}
         updateWindowDateDisplays();
         const start = parseWindowDateValue(filters.startDate);
         const end = parseWindowDateValue(filters.endDate);
         const rangeDays = start && end ? Math.round((end.getTime() - start.getTime()) / (24 * 60 * 60 * 1000)) + 1 : 0;
+        function syncRangeButton(button, attrName) {{
+          const isActive = rangeDays > 0 && Number(button.getAttribute(attrName)) === rangeDays;
+          button.classList.toggle("is-active", isActive);
+          button.setAttribute("aria-pressed", isActive ? "true" : "false");
+          if (isActive) {{
+            button.setAttribute("data-active", "true");
+          }} else {{
+            button.removeAttribute("data-active");
+          }}
+        }}
         elements.windowRangeButtons.forEach(function (button) {{
-          const isActive = rangeDays > 0 && Number(button.getAttribute("data-window-range-days")) === rangeDays;
+          syncRangeButton(button, "data-window-range-days");
+        }});
+        elements.windowSearchRangeButtons.forEach(function (button) {{
+          syncRangeButton(button, "data-window-search-range-days");
+        }});
+        if (elements.windowFilterSummary) {{
+          elements.windowFilterSummary.textContent = windowFilterSummaryLabel(filters, matchedCount || 0);
+        }}
+        if (elements.windowSearchInput && elements.windowSearchInput.value !== filters.query) {{
+          elements.windowSearchInput.value = filters.query;
+        }}
+        if (elements.windowSearchResetButton) {{
+          const shouldHideReset = !filters.query && filters.searchScope === "all";
+          elements.windowSearchResetButton.hidden = shouldHideReset;
+          if (elements.windowSearchResetField) {{
+            elements.windowSearchResetField.hidden = shouldHideReset;
+          }}
+        }}
+        syncWindowSearchTrigger(filters);
+        syncWindowSearchDialogVisibility();
+        elements.windowSearchScopeButtons.forEach(function (button) {{
+          const scope = button.getAttribute("data-window-search-scope") || "all";
+          const isActive = scope === filters.searchScope;
           button.classList.toggle("is-active", isActive);
           button.setAttribute("aria-pressed", isActive ? "true" : "false");
           if (isActive) {{
@@ -26744,9 +27917,6 @@ def build_html(data):
             button.removeAttribute("data-active");
           }}
         }});
-        if (elements.windowFilterSummary) {{
-          elements.windowFilterSummary.textContent = windowFilterRangeLabel(filters, matchedCount || 0);
-        }}
 	        if (state.activeDatePickerScope === "window" && elements.windowDatePopover && !elements.windowDatePopover.hidden) {{
 	          renderDatePicker();
 	          positionActiveDatePicker();
@@ -26757,6 +27927,7 @@ def build_html(data):
         if (!elements.windowSummaryList) {{
           return;
         }}
+        const filters = normalizeWindowFilters(state.windowFilters);
         let emptyNode = document.getElementById("window-detail-empty");
         if (hasMatches) {{
           if (emptyNode) {{
@@ -26770,7 +27941,9 @@ def build_html(data):
           emptyNode.id = "window-detail-empty";
           elements.windowSummaryList.appendChild(emptyNode);
         }}
-        emptyNode.textContent = localizeValue("筛选范围内暂无窗口明细。", "No window details in this range.");
+        emptyNode.textContent = filters.query
+          ? localizeValue("没有匹配的窗口。", "No matching windows.")
+          : localizeValue("筛选范围内暂无窗口明细。", "No window details in this range.");
       }}
 
       function applyWindowFilters() {{
@@ -26804,8 +27977,8 @@ def build_html(data):
         }}
         if (elements.windowOverviewNote) {{
           elements.windowOverviewNote.textContent = currentLanguage === "en"
-            ? "Filtered to " + windowFilterRangeLabel(filters, matchedCards.length) + ", sorted by recent activity."
-            : "筛选 " + windowFilterRangeLabel(filters, matchedCards.length) + "，按最近活动排序，可点开看详情。";
+            ? "Filtered to " + windowFilterSummaryLabel(filters, matchedCards.length) + ", sorted by recent activity."
+            : "筛选 " + windowFilterSummaryLabel(filters, matchedCards.length) + "，按最近活动排序，可点开看详情。";
         }}
         const hiddenCount = Math.max(matchedCards.length - visibleLimit, 0);
         if (elements.windowDetailMoreRow && elements.windowDetailMoreButton) {{
@@ -26827,6 +28000,20 @@ def build_html(data):
         state.windowDetailsExpanded = false;
         state.windowOverviewProjectsExpanded = false;
         applyWindowFilters();
+        scheduleWindowSearchRequest();
+      }}
+
+      function resetWindowSearchToIdle(shouldFocusTrigger) {{
+        clearWindowSearchRequest();
+        state.windowSearchOpen = false;
+        state.windowSearchResults = null;
+        setWindowFilterState(Object.assign({{}}, state.windowFilters, {{
+          query: "",
+          searchScope: "all",
+        }}));
+        if (shouldFocusTrigger && elements.windowSearchTriggerButton) {{
+          elements.windowSearchTriggerButton.focus();
+        }}
       }}
 
       function wireWindowFilters() {{
@@ -26834,10 +28021,10 @@ def build_html(data):
           return;
         }}
         const onDateChange = function () {{
-          setWindowFilterState({{
+          setWindowFilterState(Object.assign({{}}, state.windowFilters, {{
             startDate: elements.windowStartDateInput ? elements.windowStartDateInput.value : state.windowFilters.startDate,
             endDate: elements.windowEndDateInput ? elements.windowEndDateInput.value : state.windowFilters.endDate,
-          }});
+          }}));
         }};
         [elements.windowStartDateInput, elements.windowEndDateInput].forEach(function (input) {{
           if (!input) {{
@@ -26847,13 +28034,120 @@ def build_html(data):
             input.addEventListener(eventName, onDateChange);
           }});
         }});
-	        elements.windowRangeButtons.forEach(function (button) {{
-	          button.addEventListener("click", function () {{
-	            closeWindowDatePicker();
+        elements.windowRangeButtons.forEach(function (button) {{
+          button.addEventListener("click", function () {{
+            closeWindowDatePicker();
             const days = Number(button.getAttribute("data-window-range-days")) || Number(snapshot.window_filter_default_days) || 3;
             const endDate = state.windowFilters.endDate || defaultWindowFilterEnd || tokenDateInputValue(new Date());
-            setWindowFilterState(windowFilterDateRange(days, endDate));
+            setWindowFilterState(Object.assign({{}}, state.windowFilters, windowFilterDateRange(days, endDate)));
           }});
+        }});
+        elements.windowSearchRangeButtons.forEach(function (button) {{
+          button.addEventListener("click", function () {{
+            state.windowSearchOpen = true;
+            closeWindowDatePicker();
+            const days = Number(button.getAttribute("data-window-search-range-days")) || Number(snapshot.window_filter_default_days) || 3;
+            const endDate = state.windowFilters.endDate || defaultWindowFilterEnd || tokenDateInputValue(new Date());
+            setWindowFilterState(Object.assign({{}}, state.windowFilters, windowFilterDateRange(days, endDate)));
+          }});
+        }});
+        const onSearchDateChange = function () {{
+          state.windowSearchOpen = true;
+          setWindowFilterState(Object.assign({{}}, state.windowFilters, {{
+            startDate: elements.windowSearchStartDateInput ? elements.windowSearchStartDateInput.value : state.windowFilters.startDate,
+            endDate: elements.windowSearchEndDateInput ? elements.windowSearchEndDateInput.value : state.windowFilters.endDate,
+          }}));
+        }};
+        [elements.windowSearchStartDateInput, elements.windowSearchEndDateInput].forEach(function (input) {{
+          if (!input) {{
+            return;
+          }}
+          ["change", "input"].forEach(function (eventName) {{
+            input.addEventListener(eventName, onSearchDateChange);
+          }});
+        }});
+        if (elements.windowSearchTriggerButton) {{
+          elements.windowSearchTriggerButton.addEventListener("click", function () {{
+            setWindowSearchOpen(true, true);
+            if (normalizeWindowFilters(state.windowFilters).query && !state.windowSearchResults) {{
+              scheduleWindowSearchRequest();
+            }}
+          }});
+        }}
+        if (elements.windowSearchInput) {{
+          elements.windowSearchInput.addEventListener("input", function () {{
+            state.windowSearchOpen = true;
+            setWindowFilterState(Object.assign({{}}, state.windowFilters, {{
+              query: elements.windowSearchInput.value,
+            }}));
+          }});
+        }}
+        if (elements.windowSearchResetButton) {{
+          elements.windowSearchResetButton.addEventListener("click", function (event) {{
+            event.preventDefault();
+            event.stopPropagation();
+            resetWindowSearchToIdle(true);
+          }});
+        }}
+        if (elements.windowSearchCloseButton) {{
+          elements.windowSearchCloseButton.addEventListener("click", function () {{
+            setWindowSearchOpen(false, false);
+            if (elements.windowSearchTriggerButton) {{
+              elements.windowSearchTriggerButton.focus();
+            }}
+          }});
+        }}
+        elements.windowSearchScopeButtons.forEach(function (button) {{
+          button.addEventListener("click", function () {{
+            if (elements.windowSearchLive && elements.windowSearchLive.contains(button)) {{
+              state.windowSearchOpen = true;
+            }}
+            setWindowFilterState(Object.assign({{}}, state.windowFilters, {{
+              searchScope: button.getAttribute("data-window-search-scope") || "all",
+            }}));
+          }});
+        }});
+        if (elements.windowSearchResults) {{
+          elements.windowSearchResults.addEventListener("click", function (event) {{
+            const button = event.target && event.target.closest ? event.target.closest("[data-window-search-target]") : null;
+            if (!button) {{
+              return;
+            }}
+            const anchor = button.getAttribute("data-window-search-target") || "";
+            if (anchor) {{
+              setWindowSearchOpen(false, false);
+              revealWindowCardById(anchor, true);
+              try {{
+                window.history.replaceState(null, "", "#" + anchor);
+              }} catch (error) {{
+                window.location.hash = anchor;
+              }}
+            }}
+          }});
+        }}
+        document.addEventListener("keydown", function (event) {{
+          if (event.key === "Escape" && state.windowSearchOpen) {{
+            setWindowSearchOpen(false, false);
+          }}
+        }});
+        document.addEventListener("pointerdown", function (event) {{
+          if (!state.windowSearchOpen) {{
+            return;
+          }}
+          const target = event.target;
+          if (elements.windowSearchLive && elements.windowSearchLive.contains(target)) {{
+            return;
+          }}
+          if (elements.windowSearchTriggerButton && elements.windowSearchTriggerButton.contains(target)) {{
+            return;
+          }}
+          if (elements.windowSearchResetButton && elements.windowSearchResetButton.contains(target)) {{
+            return;
+          }}
+          if (elements.windowSearchResetField && elements.windowSearchResetField.contains(target)) {{
+            return;
+          }}
+          setWindowSearchOpen(false, false);
         }});
         if (elements.windowDetailMoreButton) {{
           elements.windowDetailMoreButton.addEventListener("click", function () {{
@@ -28080,15 +29374,28 @@ def build_html(data):
         }}
         if (target.hidden && !windowCardMatchesFilter(target, state.windowFilters)) {{
           const targetDate = windowCardDate(target);
-          if (targetDate) {{
-            state.windowFilters = normalizeWindowFilters({{
+          const currentFilters = normalizeWindowFilters(state.windowFilters);
+          let revealFilters = targetDate
+            ? normalizeWindowFilters(Object.assign({{}}, currentFilters, {{
               startDate: targetDate,
               endDate: targetDate,
-            }});
-            state.windowDetailsExpanded = true;
-            applyWindowFilters();
-            target = document.getElementById(targetId);
+            }}))
+            : currentFilters;
+          if (!windowCardMatchesFilter(target, revealFilters)) {{
+            revealFilters = normalizeWindowFilters(Object.assign({{}}, revealFilters, {{
+              searchScope: "all",
+            }}));
           }}
+          if (!windowCardMatchesFilter(target, revealFilters)) {{
+            revealFilters = normalizeWindowFilters(Object.assign({{}}, revealFilters, {{
+              query: "",
+              searchScope: "all",
+            }}));
+          }}
+          state.windowFilters = revealFilters;
+          state.windowDetailsExpanded = true;
+          applyWindowFilters();
+          target = document.getElementById(targetId);
         }}
         if (target && target.hidden) {{
           state.windowDetailsExpanded = true;
@@ -30024,16 +31331,17 @@ def build_html(data):
         translateStaticText();
       }}
 
-      function fetchWithTimeout(url, timeoutMs) {{
+      function fetchWithTimeout(url, timeoutMs, options) {{
         const controller = new AbortController();
         const timeoutId = window.setTimeout(function () {{
           controller.abort();
         }}, timeoutMs);
-        return fetch(url, {{
+        return fetch(url, Object.assign({{
           method: "GET",
           cache: "no-store",
+        }}, options || {{}}, {{
           signal: controller.signal,
-        }}).finally(function () {{
+        }})).finally(function () {{
           window.clearTimeout(timeoutId);
         }});
       }}
@@ -30776,6 +32084,7 @@ def build_html(data):
         update_endpoint=escape("http://{}:{}/run-update".format(LIVE_TOKEN_HOST, LIVE_TOKEN_PORT), quote=True),
         update_status_endpoint=escape("http://{}:{}/update-status".format(LIVE_TOKEN_HOST, LIVE_TOKEN_PORT), quote=True),
         asset_refresh_endpoint=escape("http://{}:{}/run-refresh".format(LIVE_TOKEN_HOST, LIVE_TOKEN_PORT), quote=True),
+        window_search_endpoint=escape(WINDOW_SEARCH_ENDPOINT, quote=True),
         codex_desktop_endpoint=escape(
             "http://{}:{}{}".format(
                 LIVE_TOKEN_HOST,

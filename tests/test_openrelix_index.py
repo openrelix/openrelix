@@ -225,6 +225,16 @@ class OpenRelixIndexTests(unittest.TestCase):
                 [{"question": "add search command", "conclusion": "search command is next"}],
             )
 
+            raw_question_windows = openrelix_index.search_windows(
+                "add search",
+                search_scope="raw-question",
+                paths=paths,
+                db_path=db_path,
+            )
+            self.assertEqual([item["window_id"] for item in raw_question_windows], ["w-search"])
+            self.assertEqual(raw_question_windows[0]["matched_messages"][0]["kind"], "prompt")
+            self.assertEqual(raw_question_windows[0]["matched_messages"][0]["text"], "add search command")
+
     def test_rebuild_skips_claude_mem_observer_windows(self):
         with TemporaryDirectory() as tmpdir:
             paths = runtime_paths_for_state(tmpdir)
@@ -321,6 +331,74 @@ class OpenRelixIndexTests(unittest.TestCase):
             self.assertEqual(observer_results, [])
             self.assertEqual(automation_results, [])
             self.assertEqual([row["window_id"] for row in normal_results], ["w-normal"])
+
+    def test_window_id_scope_prioritizes_real_window_and_can_exclude_observers(self):
+        with TemporaryDirectory() as tmpdir:
+            paths = runtime_paths_for_state(tmpdir)
+            self.write_fixture_state(paths)
+            target_id = "019e49ee-8333-79d2-8029-0cc3696117c5"
+            window_dir = paths.raw_windows_dir / "2026-05-21"
+            window_dir.mkdir(parents=True, exist_ok=True)
+            (window_dir / "{}.json".format(target_id)).write_text(
+                json.dumps(
+                    {
+                        "date": "2026-05-21",
+                        "window_id": target_id,
+                        "cwd": "/tmp/openviking",
+                        "originator": "codex_app_server",
+                        "source": "codex_app_server:vscode",
+                        "started_at": "2026-05-21T17:47:08+08:00",
+                        "prompt_count": 1,
+                        "conclusion_count": 1,
+                        "prompts": [{"local_time": "2026-05-21T17:47:08+08:00", "text": "install OpenViking"}],
+                        "conclusions": [{"completed_at": "2026-05-21T18:06:22+08:00", "text": "OpenViking configured"}],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (window_dir / "claude-observer.json").write_text(
+                json.dumps(
+                    {
+                        "date": "2026-05-21",
+                        "window_id": "claude-observer",
+                        "cwd": "/tmp/observer-sessions",
+                        "originator": "claude_code",
+                        "source": "claude_code:jsonl",
+                        "started_at": "2026-05-21T22:24:17+08:00",
+                        "prompt_count": 1,
+                        "conclusion_count": 1,
+                        "review_related_window": True,
+                        "prompts": [
+                            {
+                                "local_time": "2026-05-21T22:24:17+08:00",
+                                "text": "Hello memory agent, observe window {}".format(target_id),
+                            }
+                        ],
+                        "conclusions": [{"completed_at": "2026-05-21T22:25:51+08:00", "text": "observer summary"}],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            db_path = Path(tmpdir) / "runtime" / "test-index.sqlite3"
+            openrelix_index.rebuild_index(paths, db_path)
+
+            id_results = openrelix_index.search_windows(
+                target_id,
+                search_scope="id",
+                include_review_related=False,
+                paths=paths,
+                db_path=db_path,
+            )
+            all_results = openrelix_index.search_windows(
+                target_id,
+                include_review_related=False,
+                paths=paths,
+                db_path=db_path,
+            )
+
+            self.assertEqual([row["window_id"] for row in id_results], [target_id])
+            self.assertNotIn("claude-observer", [row["window_id"] for row in all_results])
+            self.assertEqual(all_results[0]["window_id"], target_id)
 
     def test_rebuild_indexes_canonical_memory_entries(self):
         with TemporaryDirectory() as tmpdir:
@@ -598,6 +676,64 @@ class OpenRelixIndexTests(unittest.TestCase):
             self.assertTrue(db_path.exists())
             self.assertEqual(len(results), 1)
             self.assertEqual(results[0]["bucket"], "session")
+
+    def test_search_windows_can_skip_rebuild_for_readonly_panel_queries(self):
+        with TemporaryDirectory() as tmpdir:
+            paths = runtime_paths_for_state(tmpdir)
+            self.write_fixture_state(paths)
+            db_path = Path(tmpdir) / "runtime" / "test-index.sqlite3"
+            openrelix_index.rebuild_index(paths, db_path)
+            before_mtime = db_path.stat().st_mtime_ns
+
+            memory_path = paths.registry_dir / "memory_items.jsonl"
+            memory_path.write_text(
+                memory_path.read_text(encoding="utf-8")
+                + json.dumps(
+                    {
+                        "date": "2026-04-29",
+                        "source": "nightly_codex",
+                        "bucket": "durable",
+                        "title": "Stale marker",
+                        "memory_type": "semantic",
+                        "priority": "high",
+                        "value_note": "Readonly window search should not rebuild.",
+                        "source_window_ids": ["w-index"],
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            self.assertTrue(openrelix_index.index_status(paths, db_path)["stale"])
+            with mock.patch.object(openrelix_index, "rebuild_index") as rebuild:
+                windows = openrelix_index.search_windows(
+                    "sidecar",
+                    paths=paths,
+                    db_path=db_path,
+                    rebuild=False,
+                )
+
+            rebuild.assert_not_called()
+            self.assertEqual([row["window_id"] for row in windows], ["w-index"])
+            self.assertEqual(db_path.stat().st_mtime_ns, before_mtime)
+
+    def test_search_windows_without_rebuild_does_not_create_missing_index(self):
+        with TemporaryDirectory() as tmpdir:
+            paths = runtime_paths_for_state(tmpdir)
+            self.write_fixture_state(paths)
+            db_path = Path(tmpdir) / "runtime" / "missing-index.sqlite3"
+
+            with mock.patch.object(openrelix_index, "rebuild_index") as rebuild:
+                windows = openrelix_index.search_windows(
+                    "sidecar",
+                    paths=paths,
+                    db_path=db_path,
+                    rebuild=False,
+                )
+
+            rebuild.assert_not_called()
+            self.assertEqual(windows, [])
+            self.assertFalse(db_path.exists())
 
     def test_status_is_read_only_when_index_is_missing_or_present(self):
         with TemporaryDirectory() as tmpdir:

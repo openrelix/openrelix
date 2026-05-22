@@ -10,5 +10,9 @@ LIVE_TOKEN_ENDPOINT = "http://{}:{}/token-usage".format(
     LIVE_TOKEN_HOST,
     LIVE_TOKEN_PORT,
 )
+WINDOW_SEARCH_ENDPOINT = "http://{}:{}/window-search".format(
+    LIVE_TOKEN_HOST,
+    LIVE_TOKEN_PORT,
+)
 LIVE_TOKEN_POLL_SECONDS = 300
 LIVE_TOKEN_TIMEOUT_MS = 20000

@@ -7874,6 +7874,36 @@ Native Codex profile.
         self.assertIn('id="window-date-grid"', html)
         self.assertIn('data-window-range-days="1"', html)
         self.assertIn('data-window-range-days="3" aria-pressed="true" data-active="true"', html)
+        self.assertIn('id="window-search-trigger"', html)
+        self.assertIn('aria-haspopup="dialog"', html)
+        self.assertIn('aria-controls="window-search-live"', html)
+        self.assertIn('id="window-search-reset"', html)
+        self.assertIn('删除搜索并恢复未检索状态', html)
+        self.assertIn('id="window-search-live" role="dialog" aria-modal="false"', html)
+        self.assertIn('id="window-search-close"', html)
+        self.assertIn('class="window-search-close-label"', html)
+        self.assertIn(">关闭</span>", html)
+        self.assertIn('data-window-search-range-days="1"', html)
+        self.assertIn('data-window-search-range-days="3" aria-pressed="true" data-active="true"', html)
+        self.assertIn('id="window-search-start-date"', html)
+        self.assertIn('type="date" value="2026-05-06"', html)
+        self.assertIn('id="window-search-end-date"', html)
+        self.assertIn('type="date" value="2026-05-08"', html)
+        self.assertIn('for="window-search-query"', html)
+        self.assertIn('id="window-search-query"', html)
+        self.assertIn('type="text" role="searchbox"', html)
+        self.assertIn('class="window-search-trigger-icon"', html)
+        self.assertIn('class="window-search-input-icon"', html)
+        self.assertIn('window-search-strip-scope-group', html)
+        self.assertIn('data-window-search-active', html)
+        self.assertNotIn('id="window-search-clear"', html)
+        self.assertIn('data-window-search-scope="all" aria-pressed="true" data-active="true"', html)
+        self.assertIn('data-window-search-scope="ai"', html)
+        self.assertIn('data-window-search-scope="raw-question"', html)
+        self.assertIn('data-window-search-scope="raw-conclusion"', html)
+        self.assertIn('data-window-search-scope="id"', html)
+        self.assertIn('data-window-search-scope="project"', html)
+        self.assertLess(html.index('data-window-search-scope="project"'), html.index('data-window-search-scope="ai"'))
         self.assertIn('data-window-range-days="7"', html)
         self.assertIn('data-window-range-days="30"', html)
         self.assertNotIn('id="window-overview-date-input"', html)
@@ -8019,6 +8049,13 @@ Native Codex profile.
         self.assertIn("窗口创建 刚刚", html)
         self.assertLess(html.index("窗口创建 刚刚"), html.index("最近活动 刚刚"))
         self.assertIn('data-window-started-display="刚刚"', html)
+        self.assertIn('data-window-search-ai="', html)
+        self.assertIn('data-window-search-raw-question="', html)
+        self.assertIn('data-window-search-raw-conclusion="', html)
+        self.assertIn('data-window-search-id="', html)
+        self.assertIn('data-window-search-project="', html)
+        self.assertIn('data-window-search-all="', html)
+        self.assertIn(thread_id, html[html.index('data-window-search-id="') : html.index('data-window-search-project="')])
         self.assertIn('data-window-display-label="1"', html)
         self.assertIn('data-window-takeaway="**结论**：执行 codex resume', html)
         self.assertIn('data-window-topic=', html)
@@ -8065,9 +8102,11 @@ Native Codex profile.
 
         self.assertEqual(html.count('data-window-card="true"'), 21)
         visible_start = html.index('id="window-w19"')
-        self.assertNotIn(" hidden>", html[visible_start : visible_start + 800])
+        visible_tag = html[visible_start : html.index(">", visible_start) + 1]
+        self.assertNotIn(" hidden", visible_tag)
         hidden_start = html.index('id="window-w20"')
-        self.assertIn(" hidden>", html[hidden_start : hidden_start + 800])
+        hidden_tag = html[hidden_start : html.index(">", hidden_start) + 1]
+        self.assertIn(" hidden", hidden_tag)
         self.assertIn('data-window-date="2026-05-08"', html)
         self.assertIn('data-window-display-label="21"', html)
 
@@ -8110,6 +8149,17 @@ Native Codex profile.
         self.assertIn("原始信息", html)
         self.assertIn("原始问法", html)
         self.assertIn("原始答复", html)
+        ai_search_attr = html[html.index('data-window-search-ai="') : html.index('data-window-search-raw-question="')]
+        self.assertIn("搜索 UI 是否先做", ai_search_attr)
+        self.assertIn("UI 后置", ai_search_attr)
+        raw_question_attr = html[
+            html.index('data-window-search-raw-question="') : html.index('data-window-search-raw-conclusion="')
+        ]
+        raw_conclusion_attr = html[
+            html.index('data-window-search-raw-conclusion="') : html.index('data-window-search-id="')
+        ]
+        self.assertIn("原始问法", raw_question_attr)
+        self.assertIn("原始答复", raw_conclusion_attr)
         detail_html = html[html.index('class="window-card-detail"') :]
         summary_html = html[
             html.index('<summary class="window-card-trigger">') : html.index("</summary>")
@@ -9702,6 +9752,161 @@ Native Codex profile.
 
         self.assertEqual(response.status, 403, body)
         self.assertIsNone(response.getheader("Access-Control-Allow-Origin"))
+
+    def test_window_search_endpoint_uses_readonly_index_and_requires_panel_token(self):
+        with TemporaryDirectory() as tmpdir:
+            paths = make_runtime_paths_for_test(tmpdir)
+            status_payload = {
+                "ok": True,
+                "exists": True,
+                "stale": True,
+                "fts_enabled": True,
+                "window_rows": 12,
+                "rebuilt_at": "2026-05-20T10:00:00+08:00",
+            }
+            result_rows = [
+                {
+                    "window_id": "w-sqlite",
+                    "date": "2026-05-20",
+                    "cwd": "/tmp/openrelix",
+                    "project_label": "openrelix",
+                    "source": "history",
+                    "originator": "codex_cli",
+                    "started_at": "2026-05-20T09:50:00+08:00",
+                    "latest_activity_at": "2026-05-20T10:00:00+08:00",
+                    "session_file": "/tmp/private-session.jsonl",
+                    "raw_path": "/tmp/private-window.json",
+                    "prompt_count": 2,
+                    "conclusion_count": 1,
+                    "window_title": "SQLite window search",
+                    "question_summary": "Should the panel search historical windows?",
+                    "main_takeaway": "Use readonly SQLite queries from the local service.",
+                    "summary_status": "summarized",
+                    "summary_pairs": [
+                        {
+                            "question": "Should the panel search historical windows?",
+                            "conclusion": "Use readonly SQLite queries from the local service.",
+                        }
+                    ],
+                    "raw_summary_pairs": [
+                        {
+                            "question": "原始问题",
+                            "conclusion": "原始结论",
+                        }
+                    ],
+                    "matched_messages": [
+                        {
+                            "kind": "prompt",
+                            "ordinal": 0,
+                            "event_time": "2026-05-20T09:50:00+08:00",
+                            "text": "原始问题 sqlite",
+                        }
+                    ],
+                    "keywords": ["sqlite", "window"],
+                }
+            ]
+            server = token_live_server.ThreadingHTTPServer(("127.0.0.1", 0), token_live_server.TokenLiveHandler)
+            thread = token_live_server.threading.Thread(target=server.serve_forever, daemon=True)
+            with mock.patch.object(token_live_server, "PATHS", paths), mock.patch.object(
+                token_live_server,
+                "get_update_token",
+                return_value="secret",
+            ), mock.patch.object(
+                token_live_server.openrelix_index,
+                "index_status",
+                return_value=status_payload,
+            ), mock.patch.object(
+                token_live_server.openrelix_index,
+                "search_windows",
+                return_value=result_rows,
+            ) as search:
+                thread.start()
+                try:
+                    connection = http.client.HTTPConnection("127.0.0.1", server.server_address[1], timeout=5)
+                    connection.request(
+                        "GET",
+                        token_live_server.WINDOW_SEARCH_PATH
+                        + "?q=sqlite&limit=5&scope=id&project=openrelix&date_from=2026-05-19&date_to=2026-05-20",
+                        headers={"Origin": "null", "X-OpenRelix-Token": "secret"},
+                    )
+                    response = connection.getresponse()
+                    body = response.read().decode("utf-8")
+                    connection.close()
+                finally:
+                    server.shutdown()
+                    server.server_close()
+                    thread.join(timeout=5)
+
+            self.assertEqual(response.status, 200, body)
+            self.assertEqual(response.getheader("Access-Control-Allow-Origin"), "null")
+            payload = json.loads(body)
+            self.assertTrue(payload["ok"])
+            self.assertTrue(payload["readonly"])
+            self.assertTrue(payload["index"]["stale"])
+            self.assertEqual(payload["scope"], "id")
+            self.assertEqual(payload["count"], 1)
+            self.assertEqual(payload["results"][0]["window_id"], "w-sqlite")
+            self.assertEqual(payload["results"][0]["raw_summary_pairs"][0]["question"], "原始问题")
+            self.assertEqual(payload["results"][0]["matched_messages"][0]["text"], "原始问题 sqlite")
+            self.assertNotIn("raw_path", payload["results"][0])
+            self.assertNotIn("session_file", payload["results"][0])
+            search.assert_called_once_with(
+                "sqlite",
+                project="openrelix",
+                date_from="2026-05-19",
+                date_to="2026-05-20",
+                search_scope="id",
+                include_review_related=False,
+                limit=5,
+                paths=paths,
+                rebuild=False,
+            )
+
+    def test_window_search_endpoint_rejects_untrusted_origin_and_missing_token(self):
+        with TemporaryDirectory() as tmpdir:
+            paths = make_runtime_paths_for_test(tmpdir)
+            server = token_live_server.ThreadingHTTPServer(("127.0.0.1", 0), token_live_server.TokenLiveHandler)
+            thread = token_live_server.threading.Thread(target=server.serve_forever, daemon=True)
+            with mock.patch.object(token_live_server, "PATHS", paths), mock.patch.object(
+                token_live_server,
+                "get_update_token",
+                return_value="secret",
+            ), mock.patch.object(token_live_server.openrelix_index, "search_windows") as search:
+                thread.start()
+                try:
+                    connection = http.client.HTTPConnection("127.0.0.1", server.server_address[1], timeout=5)
+                    connection.request(
+                        "OPTIONS",
+                        token_live_server.WINDOW_SEARCH_PATH,
+                        headers={
+                            "Origin": "https://example.com",
+                            "Access-Control-Request-Method": "GET",
+                            "Access-Control-Request-Headers": "x-openrelix-token",
+                        },
+                    )
+                    preflight = connection.getresponse()
+                    preflight_body = preflight.read().decode("utf-8")
+                    connection.close()
+
+                    connection = http.client.HTTPConnection("127.0.0.1", server.server_address[1], timeout=5)
+                    connection.request(
+                        "GET",
+                        token_live_server.WINDOW_SEARCH_PATH + "?q=sqlite",
+                        headers={"Origin": "null"},
+                    )
+                    response = connection.getresponse()
+                    body = response.read().decode("utf-8")
+                    connection.close()
+                finally:
+                    server.shutdown()
+                    server.server_close()
+                    thread.join(timeout=5)
+
+            self.assertEqual(preflight.status, 403, preflight_body)
+            self.assertIsNone(preflight.getheader("Access-Control-Allow-Origin"))
+            self.assertEqual(response.status, 403, body)
+            self.assertIsNone(response.getheader("Access-Control-Allow-Origin"))
+            search.assert_not_called()
 
     def test_panel_refresh_runs_refresh_overview_for_requested_date(self):
         with TemporaryDirectory() as tmpdir:
@@ -13177,6 +13382,15 @@ Native Codex profile.
         self.assertIn("function openWindowDatePicker(fieldKey)", html)
         self.assertIn("function renderWindowDatePicker()", html)
         self.assertIn('data-window-range-days="3" aria-pressed="true" data-active="true"', html)
+        self.assertIn('id="window-search-query"', html)
+        self.assertIn('id="window-search-trigger"', html)
+        self.assertIn('id="window-search-live" role="dialog" aria-modal="false"', html)
+        self.assertIn('id="window-search-close"', html)
+        self.assertIn('id="window-search-results"', html)
+        self.assertIn('data-window-search-endpoint="http://127.0.0.1:8765/window-search"', html)
+        self.assertIn('windowSearchEndpoint: "http://127.0.0.1:8765/window-search"', html)
+        self.assertIn('query: "",', html)
+        self.assertIn('searchScope: "all"', html)
         self.assertIn('id="window-overview-title"', html)
         self.assertIn('id="window-overview-note"', html)
         self.assertIn('id="window-overview-map"', html)
@@ -13194,6 +13408,50 @@ Native Codex profile.
         self.assertIn('"window_overview_project_visible_count": 3', html)
         self.assertIn("function applyWindowFilters()", html)
         self.assertIn("function wireWindowFilters()", html)
+        self.assertIn("function normalizeWindowSearchValue(value)", html)
+        self.assertIn("function windowCardMatchesSearch(card, filters)", html)
+        self.assertIn("function windowSearchResultMatchesFilters(result, filters)", html)
+        self.assertIn("function windowSearchResultMatchesScope(result, filters)", html)
+        self.assertIn("function setWindowSearchOpen(isOpen, shouldFocus)", html)
+        self.assertIn("function syncWindowSearchDialogVisibility()", html)
+        self.assertIn("windowSearchOpen: false", html)
+        self.assertIn("const filteredResults = allResults.filter(function (result)", html)
+        self.assertIn("已按当前筛选过滤", html)
+        self.assertIn("function runWindowSearchRequest(requestSeq, filters)", html)
+        self.assertIn('requestUrl.searchParams.set("scope", filters.searchScope || "all");', html)
+        self.assertIn('requestUrl.searchParams.set("date_from", filters.startDate);', html)
+        self.assertIn('requestUrl.searchParams.set("date_to", filters.endDate);', html)
+        self.assertIn("function scheduleWindowSearchRequest()", html)
+        self.assertIn("data-window-search-target", html)
+        self.assertIn("data-window-search-ai", html)
+        self.assertIn(".window-filter-panel.is-search-open", html)
+        self.assertIn(".window-filter-panel.is-sticky.is-search-open", html)
+        self.assertIn('elements.windowFilterPanel.classList.toggle("is-search-open", isOpen);', html)
+        self.assertIn("position: absolute;", html)
+        self.assertIn("top: -1px;", html)
+        self.assertIn("left: -1px;", html)
+        self.assertIn("right: -1px;", html)
+        self.assertIn("border-radius: inherit;", html)
+        self.assertIn("max-height: min(720px, calc(100vh - 104px));", html)
+        self.assertIn("align-content: start;", html)
+        self.assertIn('class="window-search-sticky-stack"', html)
+        self.assertIn(".window-search-sticky-stack", html)
+        self.assertIn("position: sticky;", html)
+        self.assertIn("top: -18px;", html)
+        self.assertIn(".window-search-trigger[data-window-search-active=", html)
+        self.assertIn("window-search-strip-scope-field", html)
+        self.assertIn(".window-search-close-label", html)
+        self.assertIn('document.addEventListener("pointerdown"', html)
+        self.assertIn("elements.windowSearchLive.contains(target)", html)
+        self.assertIn("setWindowSearchOpen(false, false);", html)
+        self.assertIn("overflow: auto;", html)
+        self.assertIn("scrollbar-gutter: stable;", html)
+        self.assertIn("max-height: none;", html)
+        self.assertIn("overscroll-behavior: contain;", html)
+        self.assertIn("windowSearchTriggerButton", html)
+        self.assertIn("windowSearchInput", html)
+        self.assertIn("windowSearchScopeButtons", html)
+        self.assertIn("windowSearchResults", html)
         self.assertIn("wireWindowFilters();", html)
         self.assertIn("windowOverviewProjectVisibleCount", html)
         self.assertIn("data-window-overview-project-more", html)
@@ -13204,6 +13462,9 @@ Native Codex profile.
         self.assertIn("function wireWindowFilterSticky()", html)
         self.assertIn("wireWindowFilterSticky();", html)
         self.assertIn("scroll-margin-top: calc(var(--window-filter-sticky-height, 0px) + 28px);", html)
+        self.assertIn("const currentFilters = normalizeWindowFilters(state.windowFilters);", html)
+        self.assertIn("revealWindowCardById(anchor, true);", html)
+        self.assertIn('window.history.replaceState(null, "", "#" + anchor);', html)
         self.assertIn("function syncDateControlValue(select)", html)
         self.assertNotIn("wireWindowOverviewDateInput();", html)
         self.assertIn("function wireExternalPanelLinks()", html)

@@ -971,6 +971,12 @@ def build_parser():
     index.add_argument("--priority", help=localized("按 memory priority 过滤。", "Filter by memory priority."))
     index.add_argument("--scope", help=localized("按 memory scope 过滤。", "Filter by memory scope."))
     index.add_argument(
+        "--search-scope",
+        choices=sorted(["all", "ai", "raw-question", "raw-conclusion", "id", "project"]),
+        default="all",
+        help=localized("按窗口搜索范围过滤。", "Filter by window search scope."),
+    )
+    index.add_argument(
         "--injection-policy",
         help=localized("按 memory injection_policy 过滤。", "Filter by memory injection_policy."),
     )
@@ -4750,6 +4756,7 @@ def command_index(args):
             project=args.project,
             date_from=args.date_from,
             date_to=args.date_to,
+            search_scope=getattr(args, "search_scope", "all"),
             limit=args.limit,
             paths=PATHS,
         )

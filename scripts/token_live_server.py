@@ -43,6 +43,7 @@ from openrelix_overview.token_fetcher import (
 )
 from openrelix_overview.token_usage import build_token_usage_view, normalize_token_group_by
 from openrelix_overview.update_secret import read_or_create_update_token
+import openrelix_index
 
 
 PATHS = get_runtime_paths()
@@ -69,6 +70,9 @@ PANEL_REFRESH_PATH = "/run-refresh"
 PANEL_REFRESH_TIMEOUT_SECONDS = 180
 PANEL_REFRESH_LOG_TAIL_LINES = 20
 MEMORY_FEEDBACK_PATH = "/memory-feedback"
+WINDOW_SEARCH_PATH = "/window-search"
+WINDOW_SEARCH_DEFAULT_LIMIT = 20
+WINDOW_SEARCH_MAX_LIMIT = 50
 MEMORY_FEEDBACK_REFRESH_TIMEOUT_SECONDS = 120
 MEMORY_FEEDBACK_REFRESH_LOCK = threading.RLock()
 MEMORY_FEEDBACK_REFRESH_STATE = {
@@ -102,6 +106,7 @@ TRUSTED_POST_PATHS = {
     CLAUDE_DESKTOP_OPEN_PATH,
     FINDER_REVEAL_PATH,
 }
+SENSITIVE_GET_PATHS = {WINDOW_SEARCH_PATH}
 
 
 def get_update_token():
@@ -120,6 +125,180 @@ def is_allowed_panel_origin(origin):
     if origin in ALLOWED_PANEL_ORIGIN_EXACT:
         return True
     return any(origin.startswith(prefix) for prefix in ALLOWED_PANEL_ORIGIN_PREFIXES)
+
+
+def compact_window_search_text(value, limit=600):
+    text = " ".join(str(value or "").split())
+    if len(text) <= limit:
+        return text
+    return text[: max(limit - 1, 0)].rstrip() + "…"
+
+
+def normalize_window_search_limit(value):
+    try:
+        limit = int(value)
+    except (TypeError, ValueError):
+        limit = WINDOW_SEARCH_DEFAULT_LIMIT
+    return max(1, min(limit, WINDOW_SEARCH_MAX_LIMIT))
+
+
+def safe_window_search_int(value):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 0
+
+
+def first_query_value(query, *names):
+    for name in names:
+        values = query.get(name)
+        if values:
+            return str(values[0] or "").strip()
+    return ""
+
+
+def public_index_status(status):
+    status = status or {}
+    return {
+        "ok": bool(status.get("ok")),
+        "exists": bool(status.get("exists")),
+        "stale": bool(status.get("stale")),
+        "fts_enabled": bool(status.get("fts_enabled")),
+        "window_rows": safe_window_search_int(status.get("window_rows")),
+        "rebuilt_at": status.get("rebuilt_at", ""),
+    }
+
+
+def compact_window_search_pairs(pairs, limit=3):
+    compacted = []
+    for pair in pairs or []:
+        if not isinstance(pair, dict):
+            continue
+        compacted.append(
+            {
+                "question": compact_window_search_text(pair.get("question", ""), 500),
+                "conclusion": compact_window_search_text(pair.get("conclusion", ""), 700),
+            }
+        )
+        if len(compacted) >= limit:
+            break
+    return compacted
+
+
+def compact_window_search_messages(messages, limit=3):
+    compacted = []
+    for message in messages or []:
+        if not isinstance(message, dict):
+            continue
+        compacted.append(
+            {
+                "kind": compact_window_search_text(message.get("kind", ""), 24),
+                "ordinal": safe_window_search_int(message.get("ordinal")),
+                "event_time": compact_window_search_text(message.get("event_time", ""), 48),
+                "text": compact_window_search_text(message.get("text", ""), 700),
+            }
+        )
+        if len(compacted) >= limit:
+            break
+    return compacted
+
+
+def public_window_search_result(item):
+    return {
+        "window_id": item.get("window_id", ""),
+        "date": item.get("date", ""),
+        "cwd": item.get("cwd", ""),
+        "project_label": item.get("project_label", ""),
+        "source": item.get("source", ""),
+        "originator": item.get("originator", ""),
+        "started_at": item.get("started_at", ""),
+        "latest_activity_at": item.get("latest_activity_at", ""),
+        "prompt_count": safe_window_search_int(item.get("prompt_count")),
+        "conclusion_count": safe_window_search_int(item.get("conclusion_count")),
+        "window_title": compact_window_search_text(item.get("window_title", ""), 160),
+        "question_summary": compact_window_search_text(item.get("question_summary", ""), 360),
+        "main_takeaway": compact_window_search_text(item.get("main_takeaway", ""), 500),
+        "summary_status": item.get("summary_status", ""),
+        "summary_pairs": compact_window_search_pairs(item.get("summary_pairs", [])),
+        "raw_summary_pairs": compact_window_search_pairs(item.get("raw_summary_pairs", [])),
+        "matched_messages": compact_window_search_messages(item.get("matched_messages", [])),
+        "keywords": [compact_window_search_text(keyword, 80) for keyword in (item.get("keywords") or [])[:12]],
+    }
+
+
+def normalize_window_search_scope(value):
+    return openrelix_index.normalize_window_search_scope(value)
+
+
+def build_window_search_payload(query):
+    raw_query = first_query_value(query, "q", "query")
+    search_query = compact_window_search_text(raw_query, 240)
+    limit = normalize_window_search_limit(first_query_value(query, "limit"))
+    project = compact_window_search_text(first_query_value(query, "project"), 180)
+    date_from = first_query_value(query, "date_from", "start_date")[:10]
+    date_to = first_query_value(query, "date_to", "end_date")[:10]
+    search_scope = normalize_window_search_scope(first_query_value(query, "scope", "search_scope"))
+    status = openrelix_index.index_status(PATHS)
+    index = public_index_status(status)
+    if not search_query:
+        return {
+            "ok": True,
+            "query": "",
+            "scope": search_scope,
+            "results": [],
+            "count": 0,
+            "limit": limit,
+            "index": index,
+            "readonly": True,
+        }
+    if not status.get("ok"):
+        return {
+            "ok": False,
+            "error": "index_unavailable",
+            "query": search_query,
+            "scope": search_scope,
+            "results": [],
+            "count": 0,
+            "limit": limit,
+            "index": index,
+            "readonly": True,
+        }
+    try:
+        rows = openrelix_index.search_windows(
+            search_query,
+            project=project or None,
+            date_from=date_from or None,
+            date_to=date_to or None,
+            search_scope=search_scope,
+            include_review_related=False,
+            limit=limit,
+            paths=PATHS,
+            rebuild=False,
+        )
+    except Exception as exc:
+        return {
+            "ok": False,
+            "error": "window_search_failed",
+            "message": compact_window_search_text(exc, 240),
+            "query": search_query,
+            "scope": search_scope,
+            "results": [],
+            "count": 0,
+            "limit": limit,
+            "index": index,
+            "readonly": True,
+        }
+    results = [public_window_search_result(row) for row in rows]
+    return {
+        "ok": True,
+        "query": search_query,
+        "scope": search_scope,
+        "results": results,
+        "count": len(results),
+        "limit": limit,
+        "index": index,
+        "readonly": True,
+    }
 
 
 def update_state_snapshot():
@@ -1040,6 +1219,20 @@ class TokenLiveHandler(BaseHTTPRequestHandler):
 
     def do_OPTIONS(self):
         parsed = urlparse(self.path)
+        if parsed.path in SENSITIVE_GET_PATHS:
+            if not self._client_is_local():
+                self._send_json(403, {"ok": False, "error": "forbidden_address"}, allow_origin=None)
+                return
+            origin = self.headers.get("Origin", "").strip()
+            if origin and not is_allowed_panel_origin(origin):
+                self._send_json(403, {"ok": False, "error": "forbidden_origin"}, allow_origin=None)
+                return
+            requested_method = self.headers.get("Access-Control-Request-Method", "").strip().upper()
+            if requested_method and requested_method != "GET":
+                self._send_json(403, {"ok": False, "error": "forbidden_method"}, allow_origin=None)
+                return
+            self._send_json(200, {"ok": True}, allow_origin=origin or None)
+            return
         if parsed.path in TRUSTED_POST_PATHS:
             origin = self.headers.get("Origin", "").strip()
             if origin and not is_allowed_panel_origin(origin):
@@ -1071,6 +1264,24 @@ class TokenLiveHandler(BaseHTTPRequestHandler):
 
         if parsed.path == "/pipeline-status":
             self._send_json(200, load_pipeline_status(PATHS))
+            return
+
+        if parsed.path == WINDOW_SEARCH_PATH:
+            if not self._client_is_local():
+                self._send_json(403, {"ok": False, "error": "forbidden_address"}, allow_origin=None)
+                return
+            origin = self.headers.get("Origin", "").strip()
+            if origin and not is_allowed_panel_origin(origin):
+                self._send_json(403, {"ok": False, "error": "forbidden_origin"}, allow_origin=None)
+                return
+            provided_token = self.headers.get("X-OpenRelix-Token", "").strip()
+            expected_token = get_update_token()
+            if not (expected_token and provided_token and secrets.compare_digest(provided_token, expected_token)):
+                self._send_json(403, {"ok": False, "error": "forbidden_token"}, allow_origin=None)
+                return
+            payload = build_window_search_payload(parse_qs(parsed.query))
+            status_code = 200 if payload.get("ok") else 503
+            self._send_json(status_code, payload, allow_origin=origin or None)
             return
 
         if parsed.path != "/token-usage":

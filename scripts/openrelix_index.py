@@ -6,6 +6,7 @@ import json
 import os
 import re
 import sqlite3
+from contextlib import closing
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -1184,7 +1185,7 @@ def index_status(paths=None, db_path=None):
     if not db_path.exists():
         return payload
     try:
-        with connect_readonly(db_path) as conn:
+        with closing(connect_readonly(db_path)) as conn:
             metadata = load_metadata(conn)
             payload.update(
                 {
@@ -1282,6 +1283,91 @@ def like_pattern(query):
     return "%{}%".format(escaped)
 
 
+def like_prefix_pattern(query):
+    escaped = str(query or "").replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return "{}%".format(escaped)
+
+
+WINDOW_SEARCH_SCOPES = {"all", "ai", "raw-question", "raw-conclusion", "id", "project"}
+
+
+def normalize_window_search_scope(search_scope):
+    value = str(search_scope or "all").strip().lower()
+    return value if value in WINDOW_SEARCH_SCOPES else "all"
+
+
+def window_search_terms(query):
+    return [term for term in compact_text(query).lower().split(" ") if term]
+
+
+def window_text_matches_query(text, query):
+    terms = window_search_terms(query)
+    if not terms:
+        return False
+    haystack = compact_text(text).lower()
+    return all(term in haystack for term in terms)
+
+
+def compact_window_match_text(value, limit=700):
+    text = compact_text(value)
+    if limit and len(text) > limit:
+        return text[: max(0, limit - 3)].rstrip() + "..."
+    return text
+
+
+def window_match_kinds_for_scope(search_scope):
+    search_scope = normalize_window_search_scope(search_scope)
+    if search_scope == "raw-question":
+        return ("prompt",)
+    if search_scope == "raw-conclusion":
+        return ("conclusion",)
+    if search_scope == "all":
+        return ("prompt", "conclusion")
+    return ()
+
+
+def window_match_messages(conn, row_id, query, search_scope, limit=3):
+    kinds = window_match_kinds_for_scope(search_scope)
+    if not kinds or not query:
+        return []
+    placeholders = ",".join("?" for _ in kinds)
+    rows = conn.execute(
+        """
+        SELECT kind, ordinal, turn_id, event_time, text
+        FROM window_messages
+        WHERE window_row_id = ? AND kind IN ({})
+        ORDER BY ordinal
+        LIMIT 80
+        """.format(placeholders),
+        [row_id, *kinds],
+    ).fetchall()
+    matches = []
+    for row in rows:
+        text = compact_window_match_text(row["text"])
+        if not text or not window_text_matches_query(text, query):
+            continue
+        matches.append(
+            {
+                "kind": row["kind"],
+                "ordinal": row["ordinal"],
+                "turn_id": row["turn_id"],
+                "event_time": row["event_time"],
+                "text": text,
+            }
+        )
+        if len(matches) >= limit:
+            break
+    return matches
+
+
+def row_to_window_search_result(conn, row, query, search_scope):
+    item = row_to_window(row)
+    matches = window_match_messages(conn, row["id"], query, search_scope)
+    if matches:
+        item["matched_messages"] = matches
+    return item
+
+
 def build_filter_clause(filters, params):
     clauses = []
     for column, value in filters:
@@ -1320,6 +1406,57 @@ def execute_window_like(conn, query, clauses, params, limit):
     return conn.execute(sql, like_params).fetchall()
 
 
+def execute_window_scoped_like(conn, query, clauses, params, limit, search_scope):
+    search_scope = normalize_window_search_scope(search_scope)
+    like_clauses = list(clauses)
+    like_params = list(params)
+    sql = "SELECT w.* FROM windows w"
+    if query:
+        pattern = like_pattern(query)
+        if search_scope == "id":
+            like_clauses.append("w.window_id LIKE ? ESCAPE '\\'")
+            like_params.append(pattern)
+        elif search_scope == "project":
+            like_clauses.append("(w.project_label LIKE ? ESCAPE '\\' OR w.cwd LIKE ? ESCAPE '\\')")
+            like_params.extend([pattern, pattern])
+        elif search_scope == "ai":
+            like_clauses.append(
+                "(w.window_title LIKE ? ESCAPE '\\' OR w.question_summary LIKE ? ESCAPE '\\' "
+                "OR w.main_takeaway LIKE ? ESCAPE '\\' OR w.summary_pairs_json LIKE ? ESCAPE '\\' "
+                "OR w.keywords_json LIKE ? ESCAPE '\\')"
+            )
+            like_params.extend([pattern, pattern, pattern, pattern, pattern])
+        elif search_scope == "raw-question":
+            like_clauses.append(
+                "EXISTS (SELECT 1 FROM window_messages wm "
+                "WHERE wm.window_row_id = w.id AND wm.kind = 'prompt' AND wm.text LIKE ? ESCAPE '\\')"
+            )
+            like_params.append(pattern)
+        elif search_scope == "raw-conclusion":
+            like_clauses.append(
+                "EXISTS (SELECT 1 FROM window_messages wm "
+                "WHERE wm.window_row_id = w.id AND wm.kind = 'conclusion' AND wm.text LIKE ? ESCAPE '\\')"
+            )
+            like_params.append(pattern)
+        else:
+            like_clauses.append("w.search_text LIKE ? ESCAPE '\\'")
+            like_params.append(pattern)
+    if like_clauses:
+        sql += " WHERE " + " AND ".join(like_clauses)
+    if query and search_scope == "id":
+        sql += (
+            " ORDER BY CASE "
+            "WHEN w.window_id = ? THEN 0 "
+            "WHEN w.window_id LIKE ? ESCAPE '\\' THEN 1 "
+            "ELSE 2 END, w.latest_activity_at DESC, w.window_id LIMIT ?"
+        )
+        like_params.extend([str(query or ""), like_prefix_pattern(query), limit])
+    else:
+        sql += " ORDER BY w.latest_activity_at DESC, w.window_id LIMIT ?"
+        like_params.append(limit)
+    return conn.execute(sql, like_params).fetchall()
+
+
 def search_memories(
     query="",
     *,
@@ -1337,7 +1474,7 @@ def search_memories(
     ensure_index(paths, db_path)
     db_path = Path(db_path or default_db_path(paths)).expanduser()
     limit = max(1, min(int(limit or DEFAULT_LIMIT), 200))
-    with connect(db_path) as conn:
+    with closing(connect(db_path)) as conn:
         metadata = load_metadata(conn)
         params = []
         clauses = build_filter_clause(
@@ -1384,12 +1521,27 @@ def search_memories(
             return [row_to_memory(row) for row in execute_memory_like(conn, query, clauses, params, limit)]
 
 
-def search_windows(query="", *, project=None, date_from=None, date_to=None, limit=DEFAULT_LIMIT, paths=None, db_path=None):
+def search_windows(
+    query="",
+    *,
+    project=None,
+    date_from=None,
+    date_to=None,
+    search_scope="all",
+    include_review_related=True,
+    limit=DEFAULT_LIMIT,
+    paths=None,
+    db_path=None,
+    rebuild=True,
+):
     paths = paths or get_runtime_paths()
-    ensure_index(paths, db_path)
+    status = ensure_index(paths, db_path) if rebuild else index_status(paths, db_path)
+    if not status.get("ok"):
+        return []
     db_path = Path(db_path or default_db_path(paths)).expanduser()
     limit = max(1, min(int(limit or DEFAULT_LIMIT), 200))
-    with connect(db_path) as conn:
+    connect_fn = connect if rebuild else connect_readonly
+    with closing(connect_fn(db_path)) as conn:
         metadata = load_metadata(conn)
         params = []
         clauses = []
@@ -1402,6 +1554,15 @@ def search_windows(query="", *, project=None, date_from=None, date_to=None, limi
         if date_to:
             clauses.append("w.date <= ?")
             params.append(date_to)
+        if not include_review_related:
+            clauses.append("w.review_like_window = 0")
+            clauses.append("w.review_related_window = 0")
+        search_scope = normalize_window_search_scope(search_scope)
+        if query and search_scope != "all":
+            return [
+                row_to_window_search_result(conn, row, query, search_scope)
+                for row in execute_window_scoped_like(conn, query, clauses, params, limit, search_scope)
+            ]
         if query and metadata.get("fts_enabled") == "1":
             sql = "SELECT w.* FROM window_fts f JOIN windows w ON w.id = f.rowid"
             clauses.append("window_fts MATCH ?")
@@ -1415,7 +1576,7 @@ def search_windows(query="", *, project=None, date_from=None, date_to=None, limi
                 fts_rows = []
             params.pop()
             clauses.pop()
-            like_rows = execute_window_like(conn, query, clauses, params, limit)
+            like_rows = execute_window_scoped_like(conn, query, clauses, params, limit, search_scope)
             rows = []
             seen = set()
             for row in list(fts_rows) + list(like_rows):
@@ -1426,9 +1587,12 @@ def search_windows(query="", *, project=None, date_from=None, date_to=None, limi
                 rows.append(row)
                 if len(rows) >= limit:
                     break
-            return [row_to_window(row) for row in rows]
+            return [row_to_window_search_result(conn, row, query, search_scope) for row in rows]
         else:
-            return [row_to_window(row) for row in execute_window_like(conn, query, clauses, params, limit)]
+            return [
+                row_to_window_search_result(conn, row, query, search_scope)
+                for row in execute_window_scoped_like(conn, query, clauses, params, limit, search_scope)
+            ]
 
 
 def parse_args():
@@ -1450,6 +1614,7 @@ def parse_args():
     window.add_argument("--project")
     window.add_argument("--date-from")
     window.add_argument("--date-to")
+    window.add_argument("--search-scope", choices=sorted(WINDOW_SEARCH_SCOPES), default="all")
     window.add_argument("--limit", type=int, default=DEFAULT_LIMIT)
     return parser.parse_args()
 
@@ -1488,6 +1653,7 @@ def main():
                     project=args.project,
                     date_from=args.date_from,
                     date_to=args.date_to,
+                    search_scope=args.search_scope,
                     limit=args.limit,
                 ),
                 ensure_ascii=False,
