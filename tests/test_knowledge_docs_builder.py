@@ -143,6 +143,11 @@ class KnowledgeDocsBuilderTests(unittest.TestCase):
             self.assertEqual(doc["model_status"], "not_run")
             self.assertEqual(doc["redaction_status"], "publish_safe")
             self.assertFalse(doc["visibility"]["host_context"])
+            self.assertEqual(doc["source_range"], {"from": "2026-04-28", "to": "2026-04-28"})
+            self.assertEqual(doc["source_contexts"][0]["window_id"], "w-synthetic-route")
+            self.assertEqual(doc["source_contexts"][0]["title"], "Fix botmux route bug")
+            self.assertEqual(doc["business_items"][0]["source_window_ids"], ["w-synthetic-route"])
+            self.assertEqual(doc["feishu_export"]["status"], "not_configured")
             self.assertEqual(doc["body_path"], "knowledge/docs/2026/fix-botmux-route-bug.md")
             body_text = (paths.state_root / doc["body_path"]).read_text(encoding="utf-8")
             serialized = json.dumps({"candidate": candidate, "doc": doc, "body": body_text}, ensure_ascii=False)
@@ -235,6 +240,14 @@ class KnowledgeDocsBuilderTests(unittest.TestCase):
             self.assertEqual(result["date_range"], {"from": "2026-04-28", "to": "2026-04-29"})
             self.assertEqual(result["created_candidates"], 2)
             candidates = read_jsonl(paths.registry_dir / "knowledge_candidates.jsonl")
+            self.assertEqual(
+                {row["aggregation_scope"] for row in candidates},
+                {"cross_day_project"},
+            )
+            self.assertEqual(
+                {tuple(sorted(row["source_range"].items())) for row in candidates},
+                {(("from", "2026-04-28"), ("to", "2026-04-29"))},
+            )
             self.assertEqual(
                 sorted({date for row in candidates for date in row["source_refs"]["summary_dates"]}),
                 ["2026-04-28", "2026-04-29"],

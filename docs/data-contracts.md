@@ -373,12 +373,16 @@ Recommended row fields:
 | `canonical_key` | string | Stable dedupe key; MVP is project-scoped |
 | `source_fingerprint` | string | Hash of compact input, schema, algorithm, and prompt version |
 | `source_refs` | object | Summary/window/memory/review references only |
+| `source_range` | object | Bounded source date range with `from` and `to` |
+| `source_contexts` | array | Sanitized window context objects: host, date, window id, title, project label, takeaway |
 | `project_key` / `project_label` | string | Project isolation keys |
 | `generation_mode` | string | `llm_rewrite`, `deterministic_fallback`, `pending_llm`, or `failed` |
 | `aggregation_key` | string | Stable project-scoped grouping key for merged evidence |
-| `aggregation_scope` | string | `project` or `local`; MVP does not do global merge |
+| `aggregation_scope` | string | `window`, `day`, `project`, `cross_day_project`, or `local`; MVP does not do global merge |
 | `evidence_window_days` | integer | Distinct source summary dates represented by the doc |
 | `source_window_count` | integer | Distinct source windows represented by the doc |
+| `business_items` | array | Project/business subtopics represented by the document, each with supporting window ids and dates |
+| `feishu_export` | object | Local Lark/Feishu export state: status, URL/token, timestamp, and sanitized error hint |
 | `scope` | string | `project`, `global`, or `user_private` |
 | `sensitivity` | string | Privacy classification |
 | `quality_score` | number | Local quality gate result |
@@ -419,6 +423,7 @@ Current MVP CLI entrypoint:
 openrelix knowledge build --date YYYY-MM-DD
 openrelix knowledge build --from YYYY-MM-DD --to YYYY-MM-DD --project PROJECT_KEY
 openrelix knowledge build --date YYYY-MM-DD --deterministic
+openrelix knowledge build --date YYYY-MM-DD --no-model
 openrelix knowledge list
 openrelix knowledge status
 openrelix knowledge review --doc-id DOC_ID
@@ -431,8 +436,10 @@ openrelix index search-knowledge "query" --status draft
 `--from/--to` range of daily summaries, plus the active memory registry. By
 default it sends sanitized compact candidates and safe draft docs through the
 configured model runner so the LLM can merge project-scoped evidence into
-business subtopics. `--deterministic` keeps the local rule-based fallback for
-offline tests and diagnostics. The command writes only `registry/knowledge_candidates.jsonl`,
+business subtopics. `--deterministic`, `--no-model`, and
+`--fallback-deterministic` keep the local rule-based fallback for offline tests
+and diagnostics; fallback docs are marked `generation_mode=deterministic_fallback`
+and do not masquerade as model output. The command writes only `registry/knowledge_candidates.jsonl`,
 `registry/knowledge_docs.jsonl`, `knowledge/docs/**`, and
 `knowledge/runs/**`.
 `review`, `publish`, and `reject` update only `knowledge_docs.jsonl` plus the

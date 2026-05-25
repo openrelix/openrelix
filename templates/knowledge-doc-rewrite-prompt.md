@@ -25,10 +25,16 @@ Rules:
   unless you intentionally merge multiple drafts; merged docs must carry the
   union of source refs and a stable project-scoped `canonical_key`.
 - Set `generation_mode=llm_rewrite` for model-authored docs. Keep
-  `aggregation_scope=project` for project builds, set `aggregation_key` to a
-  stable project/subtopic key, and update `evidence_window_days` plus
-  `source_window_count` from the merged source refs.
-- Preserve evidence in `source_refs`; never include raw transcript text.
+  `aggregation_scope=project` or `cross_day_project` for project builds, set
+  `aggregation_key` to a stable project/subtopic key, and update
+  `evidence_window_days` plus `source_window_count` from the merged source refs.
+- Preserve evidence in `source_refs`, `source_range`, and `source_contexts`;
+  never include raw transcript text or absolute local paths.
+- Fill `business_items` with the project/business subtopics represented by the
+  doc. Each item must include a stable key, a concise label, a summary, and the
+  supporting window ids/dates.
+- Keep `feishu_export.status=not_configured` with empty URL/token/error fields
+  unless an explicit export result is already included in the input.
 - If evidence is weak, output a rejected document with `model_status=not_run`
   or let the caller keep only a rejected candidate.
 - Redact private paths, account data, emails, tokens, keys, cookies, and

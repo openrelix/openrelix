@@ -81,6 +81,10 @@ class KnowledgeDocsContractTests(unittest.TestCase):
         self.assertIn("aggregation_scope", required)
         self.assertIn("evidence_window_days", required)
         self.assertIn("source_window_count", required)
+        self.assertIn("source_range", required)
+        self.assertIn("source_contexts", required)
+        self.assertIn("business_items", required)
+        self.assertIn("feishu_export", required)
         self.assertIn("reviewer_state", required)
         self.assertIn("visibility", required)
         self.assertIn("body_sections", required)
@@ -100,6 +104,10 @@ class KnowledgeDocsContractTests(unittest.TestCase):
         self.assertEqual(
             schema["properties"]["generation_mode"]["enum"],
             ["llm_rewrite", "deterministic_fallback", "pending_llm", "failed"],
+        )
+        self.assertEqual(
+            schema["properties"]["aggregation_scope"]["enum"],
+            ["local", "window", "day", "project", "cross_day_project"],
         )
 
     def test_canonical_key_is_deterministic_and_project_scoped(self):
@@ -204,6 +212,10 @@ class KnowledgeDocsContractTests(unittest.TestCase):
             self.assertEqual(doc["status"], "draft")
             self.assertEqual(doc["generation_mode"], "llm_rewrite")
             self.assertEqual(doc["aggregation_scope"], "project")
+            self.assertEqual(doc["source_range"], {"from": "2026-04-28", "to": "2026-04-28"})
+            self.assertEqual(doc["source_contexts"][0]["window_id"], "w-synthetic-route")
+            self.assertEqual(doc["business_items"][0]["source_window_ids"], ["w-synthetic-route"])
+            self.assertEqual(doc["feishu_export"]["status"], "not_configured")
             self.assertEqual(doc["visibility"]["host_context"], False)
             self.assertEqual(doc["redaction_status"], "publish_safe")
             self.assertEqual(

@@ -13460,7 +13460,16 @@ def make_knowledge_docs_panel_body(rows):
         window_ids = [str(item) for item in (source_refs.get("window_ids") or []) if str(item)]
         memory_ids = [str(item) for item in (source_refs.get("memory_ids") or []) if str(item)]
         review_paths = [str(item) for item in (source_refs.get("review_paths") or []) if str(item)]
+        source_range = row.get("source_range") or {}
+        source_contexts = [item for item in (row.get("source_contexts") or []) if isinstance(item, dict)]
         source_rows = []
+        if source_range.get("from") or source_range.get("to"):
+            source_rows.append(
+                (
+                    "source_range",
+                    ["{} -> {}".format(source_range.get("from") or "-", source_range.get("to") or "-")],
+                )
+            )
         if summary_dates:
             source_rows.append(("summary_dates", summary_dates))
         if window_ids:
@@ -13469,6 +13478,16 @@ def make_knowledge_docs_panel_body(rows):
             source_rows.append(("memories", memory_ids))
         if review_paths:
             source_rows.append(("reviews", review_paths))
+        for context in source_contexts:
+            context_parts = [
+                str(context.get("date") or "").strip(),
+                str(context.get("ai_host") or "").strip(),
+                str(context.get("window_id") or "").strip(),
+                str(context.get("title") or "").strip(),
+                str(context.get("project_label") or "").strip(),
+                str(context.get("main_takeaway") or "").strip(),
+            ]
+            source_rows.append(("context", [" · ".join(part for part in context_parts if part)]))
         source_html = """
           <details class="knowledge-doc-source-detail">
             <summary>查看来源与上下文</summary>
@@ -13480,7 +13499,7 @@ def make_knowledge_docs_panel_body(rows):
             rows="\n".join(
                 "<dt>{}</dt><dd>{}</dd>".format(
                     escape(label),
-                    escape(", ".join(values[:12])),
+                    escape(", ".join(values)),
                 )
                 for label, values in source_rows
             )

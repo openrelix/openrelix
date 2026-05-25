@@ -66,6 +66,17 @@ def sample_doc():
             "review_paths": [],
             "project_keys": ["openrelix"],
         },
+        "source_range": {"from": "2026-04-28", "to": "2026-04-28"},
+        "source_contexts": [
+            {
+                "ai_host": "codex",
+                "date": "2026-04-28",
+                "window_id": "w-route",
+                "title": "Route drift window",
+                "project_label": "OpenRelix",
+                "main_takeaway": "Keep route refs project-scoped.",
+            }
+        ],
         "project_key": "openrelix",
         "project_label": "OpenRelix",
         "generation_mode": "llm_rewrite",
@@ -73,6 +84,22 @@ def sample_doc():
         "aggregation_scope": "project",
         "evidence_window_days": 1,
         "source_window_count": 1,
+        "business_items": [
+            {
+                "key": "route-drift",
+                "label": "Route drift",
+                "summary": "Project-scoped route evidence.",
+                "source_window_ids": ["w-route"],
+                "source_dates": ["2026-04-28"],
+            }
+        ],
+        "feishu_export": {
+            "status": "not_configured",
+            "doc_url": "",
+            "doc_token": "",
+            "updated_at": "",
+            "error_hint": "",
+        },
         "scope": "project",
         "sensitivity": "internal",
         "quality_score": 0.87,
@@ -119,6 +146,8 @@ class KnowledgeDocsOverviewTests(unittest.TestCase):
             self.assertIn("Route drift troubleshooting", html)
             self.assertIn("needs_review", html)
             self.assertIn("查看来源与上下文", html)
+            self.assertIn("Route drift window", html)
+            self.assertIn("Keep route refs project-scoped.", html)
             self.assertIn("data-knowledge-doc-card-href", html)
             self.assertIn("data-knowledge-lark-doc", html)
             self.assertIn("w-route", html)

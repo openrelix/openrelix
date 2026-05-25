@@ -1043,10 +1043,21 @@ def build_parser():
     )
     knowledge.add_argument(
         "--deterministic",
+        dest="deterministic",
         action="store_true",
         help=localized(
             "使用本地确定性草稿生成，不调用 LLM。",
             "Use deterministic local draft rendering without invoking the LLM.",
+        ),
+    )
+    knowledge.add_argument(
+        "--no-model",
+        "--fallback-deterministic",
+        dest="deterministic",
+        action="store_true",
+        help=localized(
+            "显式跳过模型调用，仅生成带 fallback 标识的本地草稿。",
+            "Explicitly skip model calls and generate local drafts marked as fallback.",
         ),
     )
     knowledge.add_argument("--limit", type=int, default=20, help=localized("最多返回条数。", "Maximum result count."))

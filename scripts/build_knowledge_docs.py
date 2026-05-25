@@ -38,6 +38,8 @@ DOC_REQUIRED_FIELDS = (
     "canonical_key",
     "source_fingerprint",
     "source_refs",
+    "source_range",
+    "source_contexts",
     "project_key",
     "project_label",
     "generation_mode",
@@ -45,6 +47,8 @@ DOC_REQUIRED_FIELDS = (
     "aggregation_scope",
     "evidence_window_days",
     "source_window_count",
+    "business_items",
+    "feishu_export",
     "scope",
     "sensitivity",
     "quality_score",
@@ -65,6 +69,10 @@ BODY_SECTION_REQUIRED_FIELDS = (
     "next_actions",
 )
 SOURCE_REF_REQUIRED_FIELDS = ("summary_dates", "window_ids", "memory_ids", "review_paths", "project_keys")
+SOURCE_CONTEXT_REQUIRED_FIELDS = ("ai_host", "date", "window_id", "title", "project_label", "main_takeaway")
+SOURCE_RANGE_REQUIRED_FIELDS = ("from", "to")
+BUSINESS_ITEM_REQUIRED_FIELDS = ("key", "label", "summary", "source_window_ids", "source_dates")
+FEISHU_EXPORT_REQUIRED_FIELDS = ("status", "doc_url", "doc_token", "updated_at", "error_hint")
 VISIBILITY_REQUIRED_FIELDS = ("panel", "default_search", "host_context", "trust_level")
 QUALITY_THRESHOLD = 0.50
 
@@ -270,6 +278,68 @@ def source_refs_for(target_date: str, window: Mapping[str, Any], memories: list[
     }
 
 
+def source_contexts_for(target_date: str, window: Mapping[str, Any], project_label: str) -> list[dict]:
+    window_id = compact_text(window.get("window_id"))
+    if not window_id:
+        return []
+    return [
+        {
+            "ai_host": compact_text(window.get("ai_host") or window.get("host") or window.get("activity_host")),
+            "date": target_date,
+            "window_id": window_id,
+            "title": compact_text(window.get("window_title") or window.get("question_summary")),
+            "project_label": compact_text(project_label),
+            "main_takeaway": compact_text(window.get("main_takeaway")),
+        }
+    ]
+
+
+def aggregation_scope_for(candidate: Mapping[str, Any], date_from: str, date_to: str, explicit_project: bool) -> str:
+    has_project = bool(compact_text(candidate.get("project_key")))
+    cross_day = compact_text(date_from) != compact_text(date_to)
+    if has_project and (explicit_project or cross_day):
+        return "cross_day_project" if cross_day else "project"
+    if has_project:
+        return "project"
+    if cross_day:
+        return "day"
+    return "window"
+
+
+def default_source_range(date_from: str, date_to: str) -> dict:
+    return {"from": compact_text(date_from), "to": compact_text(date_to)}
+
+
+def business_item_from_candidate(candidate: Mapping[str, Any]) -> dict:
+    title = compact_text(candidate.get("title")) or "Knowledge item"
+    source_refs = candidate.get("source_refs") or {}
+    return {
+        "key": knowledge_docs.slug_component(title),
+        "label": title,
+        "summary": compact_text(candidate.get("summary")),
+        "source_window_ids": [
+            compact_text(item)
+            for item in (source_refs.get("window_ids") or [])
+            if compact_text(item)
+        ],
+        "source_dates": [
+            compact_text(item)
+            for item in (source_refs.get("summary_dates") or [])
+            if compact_text(item)
+        ],
+    }
+
+
+def default_feishu_export() -> dict:
+    return {
+        "status": "not_configured",
+        "doc_url": "",
+        "doc_token": "",
+        "updated_at": "",
+        "error_hint": "",
+    }
+
+
 def extract_candidates(summary: Mapping[str, Any], memory_rows: list[dict], target_date: str) -> list[dict]:
     sanitized_summary = openrelix_model_runner.sanitize_model_input(summary)
     sanitized_memories = openrelix_model_runner.sanitize_model_input(memory_rows)
@@ -296,6 +366,7 @@ def extract_candidates(summary: Mapping[str, Any], memory_rows: list[dict], targ
         refs = source_refs_for(target_date, window, memories)
         if project_key and project_key not in refs["project_keys"]:
             refs["project_keys"].append(project_key)
+        source_contexts = source_contexts_for(target_date, window, project_label)
         fingerprint_payload = {
             "schema_version": knowledge_docs.KNOWLEDGE_DOC_SCHEMA_VERSION,
             "algorithm_version": knowledge_docs.KNOWLEDGE_DOC_ALGORITHM_VERSION,
@@ -323,6 +394,8 @@ def extract_candidates(summary: Mapping[str, Any], memory_rows: list[dict], targ
             "sensitivity": "internal",
             "quality_score": quality,
             "source_refs": refs,
+            "source_range": default_source_range(target_date, target_date),
+            "source_contexts": source_contexts,
             "redaction_status": "source_safe",
             "model_status": openrelix_model_runner.MODEL_STATUS_NOT_RUN,
             "reason": "Reusable summary evidence met the MVP quality threshold."
@@ -344,10 +417,14 @@ def extract_candidates_for_summaries(
 ) -> list[dict]:
     candidates = []
     wanted_project = compact_text(project_key)
+    range_from = target_dates[0] if target_dates else today_str()
+    range_to = target_dates[-1] if target_dates else range_from
     for target_date, summary in zip(target_dates, summaries):
         for candidate in extract_candidates(summary, memory_rows, target_date):
             if wanted_project and compact_text(candidate.get("project_key")) != wanted_project:
                 continue
+            candidate["source_range"] = default_source_range(range_from, range_to)
+            candidate["aggregation_scope"] = aggregation_scope_for(candidate, range_from, range_to, bool(wanted_project))
             candidates.append(candidate)
     return candidates
 
@@ -432,13 +509,19 @@ def deterministic_doc_from_candidate(candidate: Mapping[str, Any], created_at: s
         "canonical_key": candidate["canonical_key"],
         "source_fingerprint": candidate["source_fingerprint"],
         "source_refs": source_refs,
+        "source_range": candidate.get("source_range") or default_source_range(candidate.get("date"), candidate.get("date")),
+        "source_contexts": candidate.get("source_contexts") or [],
         "project_key": compact_text(candidate.get("project_key")),
         "project_label": compact_text(candidate.get("project_label")),
         "generation_mode": "deterministic_fallback",
         "aggregation_key": candidate["canonical_key"],
-        "aggregation_scope": "project" if compact_text(candidate.get("project_key")) else "local",
+        "aggregation_scope": compact_text(candidate.get("aggregation_scope")) or (
+            "project" if compact_text(candidate.get("project_key")) else "local"
+        ),
         "evidence_window_days": max(1, len({compact_text(item) for item in summary_dates if compact_text(item)})),
         "source_window_count": len({compact_text(item) for item in window_ids if compact_text(item)}),
+        "business_items": [business_item_from_candidate(candidate)],
+        "feishu_export": default_feishu_export(),
         "scope": candidate.get("scope") or "project",
         "sensitivity": candidate.get("sensitivity") or "internal",
         "quality_score": candidate["quality_score"],
@@ -479,7 +562,7 @@ def validate_doc_payload(payload: Mapping[str, Any]) -> list[str]:
         errors.append("invalid model_status: {}".format(payload["model_status"]))
     if payload["generation_mode"] not in {"llm_rewrite", "deterministic_fallback", "pending_llm", "failed"}:
         errors.append("invalid generation_mode: {}".format(payload["generation_mode"]))
-    if payload["aggregation_scope"] not in {"project", "local"}:
+    if payload["aggregation_scope"] not in {"local", "window", "day", "project", "cross_day_project"}:
         errors.append("invalid aggregation_scope: {}".format(payload["aggregation_scope"]))
     if not isinstance(payload["evidence_window_days"], int) or payload["evidence_window_days"] < 1:
         errors.append("evidence_window_days must be a positive integer")
@@ -507,6 +590,56 @@ def validate_doc_payload(payload: Mapping[str, Any]) -> list[str]:
                 errors.append("missing required source_refs field: {}".format(field))
         for field in set(source_refs) - set(SOURCE_REF_REQUIRED_FIELDS):
             errors.append("unexpected source_refs field: {}".format(field))
+
+    source_range = payload["source_range"]
+    if not isinstance(source_range, Mapping):
+        errors.append("source_range must be an object")
+    else:
+        for field in SOURCE_RANGE_REQUIRED_FIELDS:
+            if field not in source_range:
+                errors.append("missing required source_range field: {}".format(field))
+        for field in set(source_range) - set(SOURCE_RANGE_REQUIRED_FIELDS):
+            errors.append("unexpected source_range field: {}".format(field))
+
+    source_contexts = payload["source_contexts"]
+    if not isinstance(source_contexts, list):
+        errors.append("source_contexts must be an array")
+    else:
+        for index, item in enumerate(source_contexts):
+            if not isinstance(item, Mapping):
+                errors.append("source_contexts[{}] must be an object".format(index))
+                continue
+            for field in SOURCE_CONTEXT_REQUIRED_FIELDS:
+                if field not in item:
+                    errors.append("missing required source_contexts field: {}".format(field))
+            for field in set(item) - set(SOURCE_CONTEXT_REQUIRED_FIELDS):
+                errors.append("unexpected source_contexts field: {}".format(field))
+
+    business_items = payload["business_items"]
+    if not isinstance(business_items, list):
+        errors.append("business_items must be an array")
+    else:
+        for index, item in enumerate(business_items):
+            if not isinstance(item, Mapping):
+                errors.append("business_items[{}] must be an object".format(index))
+                continue
+            for field in BUSINESS_ITEM_REQUIRED_FIELDS:
+                if field not in item:
+                    errors.append("missing required business_items field: {}".format(field))
+            for field in set(item) - set(BUSINESS_ITEM_REQUIRED_FIELDS):
+                errors.append("unexpected business_items field: {}".format(field))
+
+    feishu_export = payload["feishu_export"]
+    if not isinstance(feishu_export, Mapping):
+        errors.append("feishu_export must be an object")
+    else:
+        for field in FEISHU_EXPORT_REQUIRED_FIELDS:
+            if field not in feishu_export:
+                errors.append("missing required feishu_export field: {}".format(field))
+        for field in set(feishu_export) - set(FEISHU_EXPORT_REQUIRED_FIELDS):
+            errors.append("unexpected feishu_export field: {}".format(field))
+        if feishu_export.get("status") not in {"not_configured", "pending", "exported", "failed"}:
+            errors.append("invalid feishu_export.status: {}".format(feishu_export.get("status")))
 
     visibility = payload["visibility"]
     if not isinstance(visibility, Mapping):

@@ -15,6 +15,8 @@
     "canonical_key",
     "source_fingerprint",
     "source_refs",
+    "source_range",
+    "source_contexts",
     "project_key",
     "project_label",
     "generation_mode",
@@ -22,6 +24,8 @@
     "aggregation_scope",
     "evidence_window_days",
     "source_window_count",
+    "business_items",
+    "feishu_export",
     "scope",
     "sensitivity",
     "quality_score",
@@ -113,6 +117,38 @@
         }
       }
     },
+    "source_range": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["from", "to"],
+      "properties": {
+        "from": { "type": "string" },
+        "to": { "type": "string" }
+      }
+    },
+    "source_contexts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "ai_host",
+          "date",
+          "window_id",
+          "title",
+          "project_label",
+          "main_takeaway"
+        ],
+        "properties": {
+          "ai_host": { "type": "string" },
+          "date": { "type": "string" },
+          "window_id": { "type": "string" },
+          "title": { "type": "string" },
+          "project_label": { "type": "string" },
+          "main_takeaway": { "type": "string" }
+        }
+      }
+    },
     "project_key": { "type": "string" },
     "project_label": { "type": "string" },
     "generation_mode": {
@@ -122,10 +158,58 @@
     "aggregation_key": { "type": "string" },
     "aggregation_scope": {
       "type": "string",
-      "enum": ["project", "local"]
+      "enum": ["local", "window", "day", "project", "cross_day_project"]
     },
     "evidence_window_days": { "type": "integer", "minimum": 1 },
     "source_window_count": { "type": "integer", "minimum": 0 },
+    "business_items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "key",
+          "label",
+          "summary",
+          "source_window_ids",
+          "source_dates"
+        ],
+        "properties": {
+          "key": { "type": "string" },
+          "label": { "type": "string" },
+          "summary": { "type": "string" },
+          "source_window_ids": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "source_dates": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        }
+      }
+    },
+    "feishu_export": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "doc_url",
+        "doc_token",
+        "updated_at",
+        "error_hint"
+      ],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["not_configured", "pending", "exported", "failed"]
+        },
+        "doc_url": { "type": "string" },
+        "doc_token": { "type": "string" },
+        "updated_at": { "type": "string" },
+        "error_hint": { "type": "string" }
+      }
+    },
     "scope": {
       "type": "string",
       "enum": ["global", "project", "user_private"]

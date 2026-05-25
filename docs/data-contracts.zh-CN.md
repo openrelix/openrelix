@@ -301,12 +301,16 @@ published -> superseded
 | `canonical_key` | string | 稳定去重 key；MVP 默认项目级 |
 | `source_fingerprint` | string | compact input、schema、algorithm、prompt version 的 hash |
 | `source_refs` | object | 只引用 summary/window/memory/review |
+| `source_range` | object | 有界来源日期范围，包含 `from` 和 `to` |
+| `source_contexts` | array | 脱敏后的窗口上下文：host、日期、window id、标题、项目名、主要结论 |
 | `project_key` / `project_label` | string | 项目隔离键 |
 | `generation_mode` | string | `llm_rewrite`、`deterministic_fallback`、`pending_llm`、`failed` |
 | `aggregation_key` | string | 多证据合并后的稳定项目维度分组键 |
-| `aggregation_scope` | string | `project` 或 `local`；MVP 不做 global merge |
+| `aggregation_scope` | string | `window`、`day`、`project`、`cross_day_project` 或 `local`；MVP 不做 global merge |
 | `evidence_window_days` | integer | 文档覆盖的 distinct summary 日期数 |
 | `source_window_count` | integer | 文档覆盖的 distinct window 数 |
+| `business_items` | array | 文档覆盖的项目/业务子项，每项带支撑 window ids 和日期 |
+| `feishu_export` | object | 本地飞书导出状态：状态、URL/token、时间戳和脱敏错误摘要 |
 | `scope` | string | `project`、`global` 或 `user_private` |
 | `sensitivity` | string | 隐私分级 |
 | `quality_score` | number | 本地质量门禁结果 |
@@ -337,6 +341,7 @@ MVP 不写 `runtime/host-context/memory_summary.md`、`CLAUDE.md`、`registry/me
 openrelix knowledge build --date YYYY-MM-DD
 openrelix knowledge build --from YYYY-MM-DD --to YYYY-MM-DD --project PROJECT_KEY
 openrelix knowledge build --date YYYY-MM-DD --deterministic
+openrelix knowledge build --date YYYY-MM-DD --no-model
 openrelix knowledge list
 openrelix knowledge status
 openrelix knowledge review --doc-id DOC_ID
@@ -345,7 +350,7 @@ openrelix knowledge reject --doc-id DOC_ID
 openrelix index search-knowledge "query" --status draft
 ```
 
-`build` 读取 `consolidated/daily/<date>/summary.json`，或 `--from/--to` 指定的有界日期范围 daily summaries，再结合当前 memory registry。默认会把脱敏后的 compact candidates 和安全草稿交给配置好的 model runner，让 LLM 按项目维度把多窗口证据合并成业务子项；`--deterministic` 保留本地规则 fallback，供离线测试和诊断使用。命令只写入 `registry/knowledge_candidates.jsonl`、`registry/knowledge_docs.jsonl`、`knowledge/docs/**` 和 `knowledge/runs/**`。
+`build` 读取 `consolidated/daily/<date>/summary.json`，或 `--from/--to` 指定的有界日期范围 daily summaries，再结合当前 memory registry。默认会把脱敏后的 compact candidates 和安全草稿交给配置好的 model runner，让 LLM 按项目维度把多窗口证据合并成业务子项；`--deterministic`、`--no-model`、`--fallback-deterministic` 保留本地规则 fallback，供离线测试和诊断使用；fallback 文档会标记 `generation_mode=deterministic_fallback`，不能伪装成模型输出。命令只写入 `registry/knowledge_candidates.jsonl`、`registry/knowledge_docs.jsonl`、`knowledge/docs/**` 和 `knowledge/runs/**`。
 `review`、`publish`、`reject` 只更新 `knowledge_docs.jsonl` 与对应 Markdown 正文里的状态行；`published` 仍是本地可见，不进入 host context。
 
 Overview panel 可以打开本地 Markdown 正文；文档状态达到 `reviewed` 或 `published` 后，也可以请求本地 OpenRelix 服务把该 Markdown 创建成飞书文档。飞书导出只是本地便利操作：需要本机有 `lark-cli` 和用户自己的飞书授权；导出失败不会修改 knowledge registry。
