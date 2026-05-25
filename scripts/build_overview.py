@@ -13501,12 +13501,24 @@ def make_knowledge_docs_panel_body(rows):
                 )
             else:
                 body_html = '<div class="native-brief-source-label">{}</div>'.format(escape(str(body_path)))
-        actions_html = """
-          <div class="knowledge-doc-actions">
-            {body_action}
+        export_allowed = str(row.get("status") or "") in {"reviewed", "published"}
+        lark_button = (
+            """
             <button type="button" class="knowledge-doc-action" data-knowledge-lark-doc="{doc_id}">
               生成飞书文档
             </button>
+            """
+            if export_allowed
+            else """
+            <button type="button" class="knowledge-doc-action" data-knowledge-lark-doc="{doc_id}" disabled>
+              审核后可导出
+            </button>
+            """
+        ).format(doc_id=escape(str(row.get("doc_id") or ""), quote=True))
+        actions_html = """
+          <div class="knowledge-doc-actions">
+            {body_action}
+            {lark_button}
             <span class="knowledge-doc-action-status" data-knowledge-lark-status></span>
           </div>
         """.format(
@@ -13517,7 +13529,7 @@ def make_knowledge_docs_panel_body(rows):
                 if body_uri
                 else ""
             ),
-            doc_id=escape(str(row.get("doc_id") or ""), quote=True),
+            lark_button=lark_button,
         )
         return """
           <article class="native-brief-card knowledge-doc-card" data-knowledge-doc-card-href="{body_uri}" data-knowledge-doc-path="{body_abs}">

@@ -76,6 +76,11 @@ class KnowledgeDocsContractTests(unittest.TestCase):
         self.assertIn("source_refs", required)
         self.assertIn("redaction_status", required)
         self.assertIn("model_status", required)
+        self.assertIn("generation_mode", required)
+        self.assertIn("aggregation_key", required)
+        self.assertIn("aggregation_scope", required)
+        self.assertIn("evidence_window_days", required)
+        self.assertIn("source_window_count", required)
         self.assertIn("reviewer_state", required)
         self.assertIn("visibility", required)
         self.assertIn("body_sections", required)
@@ -91,6 +96,10 @@ class KnowledgeDocsContractTests(unittest.TestCase):
         self.assertEqual(
             schema["properties"]["model_status"]["enum"],
             ["success", "retryable", "poisoned", "not_run"],
+        )
+        self.assertEqual(
+            schema["properties"]["generation_mode"]["enum"],
+            ["llm_rewrite", "deterministic_fallback", "pending_llm", "failed"],
         )
 
     def test_canonical_key_is_deterministic_and_project_scoped(self):
@@ -193,6 +202,8 @@ class KnowledgeDocsContractTests(unittest.TestCase):
 
             doc = docs[0]
             self.assertEqual(doc["status"], "draft")
+            self.assertEqual(doc["generation_mode"], "llm_rewrite")
+            self.assertEqual(doc["aggregation_scope"], "project")
             self.assertEqual(doc["visibility"]["host_context"], False)
             self.assertEqual(doc["redaction_status"], "publish_safe")
             self.assertEqual(

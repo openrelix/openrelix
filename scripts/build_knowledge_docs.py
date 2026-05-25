@@ -40,6 +40,11 @@ DOC_REQUIRED_FIELDS = (
     "source_refs",
     "project_key",
     "project_label",
+    "generation_mode",
+    "aggregation_key",
+    "aggregation_scope",
+    "evidence_window_days",
+    "source_window_count",
     "scope",
     "sensitivity",
     "quality_score",
@@ -59,7 +64,7 @@ BODY_SECTION_REQUIRED_FIELDS = (
     "limits",
     "next_actions",
 )
-SOURCE_REF_REQUIRED_FIELDS = ("summary_dates", "window_ids", "memory_ids", "review_paths")
+SOURCE_REF_REQUIRED_FIELDS = ("summary_dates", "window_ids", "memory_ids", "review_paths", "project_keys")
 VISIBILITY_REQUIRED_FIELDS = ("panel", "default_search", "host_context", "trust_level")
 QUALITY_THRESHOLD = 0.50
 
@@ -251,11 +256,17 @@ def source_refs_for(target_date: str, window: Mapping[str, Any], memories: list[
         compact_text(row.get("memory_id") or row.get("memory_key") or row.get("id"))
         for row in memories
     ]
+    project_keys = sorted({
+        compact_text(row.get("project_key"))
+        for row in memories
+        if compact_text(row.get("project_key"))
+    })
     return {
         "summary_dates": [target_date],
         "window_ids": [window_id] if window_id else [],
         "memory_ids": [item for item in memory_ids if item],
         "review_paths": [],
+        "project_keys": project_keys,
     }
 
 
@@ -283,6 +294,8 @@ def extract_candidates(summary: Mapping[str, Any], memory_rows: list[dict], targ
         project_key = memory_project_value(memories, "project_key", "openrelix")
         project_label = memory_project_value(memories, "project_label", "OpenRelix")
         refs = source_refs_for(target_date, window, memories)
+        if project_key and project_key not in refs["project_keys"]:
+            refs["project_keys"].append(project_key)
         fingerprint_payload = {
             "schema_version": knowledge_docs.KNOWLEDGE_DOC_SCHEMA_VERSION,
             "algorithm_version": knowledge_docs.KNOWLEDGE_DOC_ALGORITHM_VERSION,
@@ -386,6 +399,8 @@ def render_markdown(doc: Mapping[str, Any]) -> str:
 def deterministic_doc_from_candidate(candidate: Mapping[str, Any], created_at: str) -> dict:
     source_window = candidate.get("_source_window") or {}
     source_refs = candidate["source_refs"]
+    summary_dates = source_refs.get("summary_dates") or []
+    window_ids = source_refs.get("window_ids") or []
     title = compact_text(candidate["title"])
     body_sections = {
         "context": compact_text(source_window.get("question_summary"))
@@ -419,6 +434,11 @@ def deterministic_doc_from_candidate(candidate: Mapping[str, Any], created_at: s
         "source_refs": source_refs,
         "project_key": compact_text(candidate.get("project_key")),
         "project_label": compact_text(candidate.get("project_label")),
+        "generation_mode": "deterministic_fallback",
+        "aggregation_key": candidate["canonical_key"],
+        "aggregation_scope": "project" if compact_text(candidate.get("project_key")) else "local",
+        "evidence_window_days": max(1, len({compact_text(item) for item in summary_dates if compact_text(item)})),
+        "source_window_count": len({compact_text(item) for item in window_ids if compact_text(item)}),
         "scope": candidate.get("scope") or "project",
         "sensitivity": candidate.get("sensitivity") or "internal",
         "quality_score": candidate["quality_score"],
@@ -457,6 +477,14 @@ def validate_doc_payload(payload: Mapping[str, Any]) -> list[str]:
         errors.append("invalid knowledge_type: {}".format(payload["knowledge_type"]))
     if payload["model_status"] not in openrelix_model_runner.MODEL_STATUSES:
         errors.append("invalid model_status: {}".format(payload["model_status"]))
+    if payload["generation_mode"] not in {"llm_rewrite", "deterministic_fallback", "pending_llm", "failed"}:
+        errors.append("invalid generation_mode: {}".format(payload["generation_mode"]))
+    if payload["aggregation_scope"] not in {"project", "local"}:
+        errors.append("invalid aggregation_scope: {}".format(payload["aggregation_scope"]))
+    if not isinstance(payload["evidence_window_days"], int) or payload["evidence_window_days"] < 1:
+        errors.append("evidence_window_days must be a positive integer")
+    if not isinstance(payload["source_window_count"], int) or payload["source_window_count"] < 0:
+        errors.append("source_window_count must be a non-negative integer")
     if not isinstance(payload["quality_score"], (int, float)) or not 0 <= float(payload["quality_score"]) <= 1:
         errors.append("quality_score must be between 0 and 1")
 
@@ -629,6 +657,7 @@ def build_knowledge_docs(
         docs = normalize_model_docs(openrelix_model_runner.sanitize_model_input(model_result.payload or {}))
         for doc in docs:
             doc["model_status"] = model_status
+            doc.setdefault("generation_mode", "llm_rewrite")
 
     validation_errors = []
     for doc in docs:

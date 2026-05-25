@@ -24,6 +24,10 @@ Rules:
   `source_refs`, `visibility.host_context=false`, privacy fields, and stable ids
   unless you intentionally merge multiple drafts; merged docs must carry the
   union of source refs and a stable project-scoped `canonical_key`.
+- Set `generation_mode=llm_rewrite` for model-authored docs. Keep
+  `aggregation_scope=project` for project builds, set `aggregation_key` to a
+  stable project/subtopic key, and update `evidence_window_days` plus
+  `source_window_count` from the merged source refs.
 - Preserve evidence in `source_refs`; never include raw transcript text.
 - If evidence is weak, output a rejected document with `model_status=not_run`
   or let the caller keep only a rejected candidate.

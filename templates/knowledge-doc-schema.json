@@ -17,6 +17,11 @@
     "source_refs",
     "project_key",
     "project_label",
+    "generation_mode",
+    "aggregation_key",
+    "aggregation_scope",
+    "evidence_window_days",
+    "source_window_count",
     "scope",
     "sensitivity",
     "quality_score",
@@ -82,7 +87,8 @@
         "summary_dates",
         "window_ids",
         "memory_ids",
-        "review_paths"
+        "review_paths",
+        "project_keys"
       ],
       "properties": {
         "summary_dates": {
@@ -100,11 +106,26 @@
         "review_paths": {
           "type": "array",
           "items": { "type": "string" }
+        },
+        "project_keys": {
+          "type": "array",
+          "items": { "type": "string" }
         }
       }
     },
     "project_key": { "type": "string" },
     "project_label": { "type": "string" },
+    "generation_mode": {
+      "type": "string",
+      "enum": ["llm_rewrite", "deterministic_fallback", "pending_llm", "failed"]
+    },
+    "aggregation_key": { "type": "string" },
+    "aggregation_scope": {
+      "type": "string",
+      "enum": ["project", "local"]
+    },
+    "evidence_window_days": { "type": "integer", "minimum": 1 },
+    "source_window_count": { "type": "integer", "minimum": 0 },
     "scope": {
       "type": "string",
       "enum": ["global", "project", "user_private"]

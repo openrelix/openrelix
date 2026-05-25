@@ -297,7 +297,7 @@ Minimum recommended row fields:
 | `summary` | string | Source-safe summary, not raw transcript |
 | `canonical_key` | string | `slug(project_key or scope):knowledge_type:slug(title)` |
 | `source_fingerprint` | string | Hash of the compact source input used for idempotency |
-| `source_refs` | object | `summary_dates`, `window_ids`, `memory_ids`, and `review_paths` arrays |
+| `source_refs` | object | `summary_dates`, `window_ids`, `memory_ids`, `review_paths`, and `project_keys` arrays |
 | `project_key` / `project_label` | string | Project-scoped by default; global should be rare and explicit |
 | `scope` | string | `project`, `global`, or `user_private` |
 | `sensitivity` | string | `public`, `internal`, `private`, or `restricted` |
@@ -374,6 +374,11 @@ Recommended row fields:
 | `source_fingerprint` | string | Hash of compact input, schema, algorithm, and prompt version |
 | `source_refs` | object | Summary/window/memory/review references only |
 | `project_key` / `project_label` | string | Project isolation keys |
+| `generation_mode` | string | `llm_rewrite`, `deterministic_fallback`, `pending_llm`, or `failed` |
+| `aggregation_key` | string | Stable project-scoped grouping key for merged evidence |
+| `aggregation_scope` | string | `project` or `local`; MVP does not do global merge |
+| `evidence_window_days` | integer | Distinct source summary dates represented by the doc |
+| `source_window_count` | integer | Distinct source windows represented by the doc |
 | `scope` | string | `project`, `global`, or `user_private` |
 | `sensitivity` | string | Privacy classification |
 | `quality_score` | number | Local quality gate result |
@@ -435,9 +440,10 @@ corresponding Markdown body status line; `published` remains local-only and does
 not enter host context.
 
 The overview panel can open the local Markdown body and can ask the local
-OpenRelix service to create a Lark document from that Markdown. Lark export is
-a local convenience action: it requires `lark-cli` plus the user's own Lark
-authorization and does not change the knowledge registry when export fails.
+OpenRelix service to create a Lark document from that Markdown once a document
+is `reviewed` or `published`. Lark export is a local convenience action: it
+requires `lark-cli` plus the user's own Lark authorization and does not change
+the knowledge registry when export fails.
 
 ## Memory Registry Contract
 

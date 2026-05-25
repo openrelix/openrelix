@@ -179,6 +179,8 @@ def create_lark_doc_from_knowledge(doc_id):
     doc = _find_knowledge_doc(doc_id)
     if not doc:
         return {"ok": False, "error": "knowledge_doc_not_found"}
+    if str(doc.get("status") or "") not in {"reviewed", "published"}:
+        return {"ok": False, "error": "knowledge_doc_not_reviewed"}
     body_path = PATHS.state_root / str(doc.get("body_path") or "")
     if not body_path.exists() or not body_path.is_file():
         return {"ok": False, "error": "knowledge_doc_body_not_found", "path": str(body_path)}

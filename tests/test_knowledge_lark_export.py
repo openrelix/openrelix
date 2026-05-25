@@ -39,6 +39,7 @@ class KnowledgeLarkExportTests(unittest.TestCase):
             body_path.write_text("# Route\n", encoding="utf-8")
             row = {
                 "doc_id": "kdoc-route",
+                "status": "published",
                 "title": "Route Knowledge",
                 "body_path": "knowledge/docs/2026/route.md",
             }
@@ -70,6 +71,27 @@ class KnowledgeLarkExportTests(unittest.TestCase):
             self.assertIn("--doc-format", captured["cmd"])
             self.assertIn("markdown", captured["cmd"])
             self.assertIn("@{}".format(body_path), captured["cmd"])
+
+    def test_create_lark_doc_rejects_unreviewed_draft(self):
+        with TemporaryDirectory() as tmpdir:
+            paths = runtime_paths_for_state(Path(tmpdir) / "state")
+            asset_runtime.ensure_state_layout(paths)
+            row = {
+                "doc_id": "kdoc-draft",
+                "status": "draft",
+                "title": "Draft Knowledge",
+                "body_path": "knowledge/docs/2026/draft.md",
+            }
+            (paths.registry_dir / "knowledge_docs.jsonl").write_text(
+                json.dumps(row, ensure_ascii=False) + "\n",
+                encoding="utf-8",
+            )
+
+            with mock.patch.object(token_live_server, "PATHS", paths):
+                result = token_live_server.create_lark_doc_from_knowledge("kdoc-draft")
+
+            self.assertFalse(result["ok"])
+            self.assertEqual(result["error"], "knowledge_doc_not_reviewed")
 
 
 if __name__ == "__main__":
