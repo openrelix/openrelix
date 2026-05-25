@@ -2016,6 +2016,35 @@ def load_jsonl(path: Path):
     return rows
 
 
+def knowledge_doc_body_path_label(body_path):
+    text = str(body_path or "").strip()
+    if not text:
+        return ""
+    path = Path(text)
+    if path.is_absolute():
+        return render_path(path)
+    return text
+
+
+def load_knowledge_docs(limit=25):
+    rows = []
+    for row in load_jsonl(REGISTRY_DIR / "knowledge_docs.jsonl"):
+        if not isinstance(row, dict):
+            continue
+        current = dict(row)
+        current["body_path_label"] = knowledge_doc_body_path_label(current.get("body_path"))
+        rows.append(current)
+    rows.sort(
+        key=lambda item: (
+            str(item.get("status") or ""),
+            str(item.get("updated_at") or ""),
+            str(item.get("doc_id") or ""),
+        ),
+        reverse=True,
+    )
+    return rows[: max(0, int(limit or 0))]
+
+
 def normalize_loaded_memory_item_quality(item):
     stage = str(item.get("stage") or item.get("summary_stage") or "").strip().lower()
     generation = str(item.get("summary_generation") or item.get("model_status") or "").strip().lower()
@@ -9281,6 +9310,7 @@ def build_data(assets, usage_events, reviews, language=None):
         token_usage=personal_memory_token_usage,
     )
     curated_memory_pack = build_curated_memory_pack_preview(memory_registry["rows"])
+    knowledge_docs = load_knowledge_docs()
     known_project_names = collect_known_project_names(window_overview)
     codex_memory_summary_path_label = render_path(codex_memory_summary_path)
     codex_memory_index_path_label = render_path(codex_memory_index_path)
@@ -9837,6 +9867,7 @@ def build_data(assets, usage_events, reviews, language=None):
         "memory_registry": memory_registry["rows"],
         "memory_policy_views": memory_policy_views,
         "curated_memory_pack": curated_memory_pack,
+        "knowledge_docs": knowledge_docs,
         "personal_memory_token_usage": personal_memory_token_usage,
         "context_memory_preview": context_memory_preview,
         "codex_native_memory": codex_native_memory["rows"],
@@ -13390,6 +13421,94 @@ def make_curated_memory_panel_body(pack):
     )
 
 
+def make_knowledge_docs_panel_body(rows):
+    rows = [row for row in (rows or []) if (row.get("visibility") or {}).get("panel", True)]
+    if not rows:
+        return """
+          <div class="memory-compiler-body curated-memory-body">
+            <div class="curated-memory-empty">{empty}</div>
+          </div>
+        """.format(
+            empty=panel_language_text_html("暂无知识文档草稿", "No knowledge docs yet")
+        )
+
+    def render_row(row):
+        source_refs = row.get("source_refs") or {}
+        window_ids = [str(item) for item in (source_refs.get("window_ids") or []) if str(item)]
+        memory_ids = [str(item) for item in (source_refs.get("memory_ids") or []) if str(item)]
+        source_bits = []
+        if window_ids:
+            source_bits.append("windows: {}".format(", ".join(window_ids[:4])))
+        if memory_ids:
+            source_bits.append("memories: {}".format(", ".join(memory_ids[:4])))
+        source_html = ""
+        if source_bits:
+            source_html = '<p class="knowledge-doc-source">{}</p>'.format(escape(" · ".join(source_bits)))
+        body_path = row.get("body_path_label") or row.get("body_path") or ""
+        body_html = ""
+        if body_path:
+            body_html = '<div class="native-brief-source-label">{}</div>'.format(escape(str(body_path)))
+        return """
+          <article class="native-brief-card knowledge-doc-card">
+            <div class="native-brief-topline">
+              <span>{status}</span>
+              <span class="native-brief-source-label">{kind}</span>
+            </div>
+            <div class="native-brief-title">{title}</div>
+            <p>{summary}</p>
+            <div class="memory-card-tags">
+              <span class="memory-card-tag">{reviewer_state}</span>
+              <span class="memory-card-tag">{project}</span>
+              <span class="memory-card-tag">{trust_level}</span>
+            </div>
+            {source_html}
+            {body_html}
+          </article>
+        """.format(
+            status=escape(str(row.get("status") or "draft")),
+            kind=escape(str(row.get("knowledge_type") or "knowledge")),
+            title=escape(str(row.get("title") or row.get("doc_id") or "Untitled knowledge doc")),
+            summary=escape(str(row.get("summary") or "")),
+            reviewer_state=escape(str(row.get("reviewer_state") or "needs_review")),
+            project=escape(str(row.get("project_label") or row.get("project_key") or row.get("scope") or "local")),
+            trust_level=escape(str((row.get("visibility") or {}).get("trust_level") or "draft")),
+            source_html=source_html,
+            body_html=body_html,
+        )
+
+    grouped = defaultdict(list)
+    for row in rows:
+        grouped[str(row.get("status") or "draft")].append(row)
+    status_order = ["published", "reviewed", "draft", "rejected", "superseded"]
+    sections = []
+    for status in status_order:
+        items = grouped.get(status) or []
+        if not items:
+            continue
+        sections.append(
+            """
+              <div class="knowledge-doc-status-group">
+                <div class="native-brief-topline">
+                  <span>{status}</span>
+                  <span class="native-brief-source-label">{count}</span>
+                </div>
+                <div class="native-brief-grid memory-grid">
+                  {cards}
+                </div>
+              </div>
+            """.format(
+                status=escape(status),
+                count=len(items),
+                cards="".join(render_row(row) for row in items[:6]),
+            )
+        )
+    return """
+      <div class="memory-compiler-body curated-memory-body">
+        {sections}
+      </div>
+    """.format(sections="\n".join(sections))
+
+
 def make_memory_family_header(title_zh, title_en, note_zh, note_en, extra_html=""):
     extra_class = " has-extra" if extra_html else ""
     return """
@@ -16734,6 +16853,7 @@ def build_html(data):
         token_usage=data.get("personal_memory_token_usage", {}),
     )
     curated_memory_pack = data.get("curated_memory_pack") or empty_curated_memory_pack()
+    knowledge_docs = data.get("knowledge_docs") or load_knowledge_docs()
     codex_native_memory = data.get("codex_native_memory") or []
     codex_native_profile_rows = data.get("codex_native_profile_rows") or []
     codex_native_preference_rows = data.get("codex_native_preference_rows") or []
@@ -24290,6 +24410,11 @@ def build_html(data):
         {curated_memory_body}
       </section>
 
+      <section class="panel memory-compiler-panel" id="knowledge-docs-section">
+        {knowledge_docs_header}
+        {knowledge_docs_body}
+      </section>
+
     </section>
 
     <section class="memory-family" id="codex-native-section">
@@ -30955,6 +31080,11 @@ def build_html(data):
             curated_memory_help,
         ),
         curated_memory_body=make_curated_memory_panel_body(curated_memory_pack),
+        knowledge_docs_header=make_panel_header(
+            "知识文档",
+            "基于 consolidated/candidate 层生成的本地草稿；MVP 不注入 host context",
+        ),
+        knowledge_docs_body=make_knowledge_docs_panel_body(knowledge_docs),
         global_memory_header=make_panel_header(
             "通用上下文",
             "会进入 host context 的通用个人资产记忆",

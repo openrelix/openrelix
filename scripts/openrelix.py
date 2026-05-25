@@ -952,7 +952,7 @@ def build_parser():
     )
     index.add_argument(
         "action",
-        choices=["status", "rebuild", "search-memory", "search-window"],
+        choices=["status", "rebuild", "search-memory", "search-window", "search-knowledge"],
         help=localized(
             "索引操作。",
             "Index action.",
@@ -963,8 +963,8 @@ def build_parser():
         nargs="?",
         default="",
         help=localized(
-            "search-memory / search-window 的查询文本。",
-            "Query text for search-memory / search-window.",
+            "search-memory / search-window / search-knowledge 的查询文本。",
+            "Query text for search-memory / search-window / search-knowledge.",
         ),
     )
     index.add_argument("--bucket", help=localized("按 memory bucket 过滤。", "Filter by memory bucket."))
@@ -975,10 +975,57 @@ def build_parser():
         help=localized("按 memory injection_policy 过滤。", "Filter by memory injection_policy."),
     )
     index.add_argument("--project", help=localized("按窗口项目名或 cwd 过滤。", "Filter windows by project label or cwd."))
+    index.add_argument("--status", help=localized("按 knowledge doc status 过滤。", "Filter by knowledge doc status."))
+    index.add_argument(
+        "--knowledge-type",
+        help=localized("按 knowledge_type 过滤知识文档。", "Filter knowledge docs by knowledge_type."),
+    )
     index.add_argument("--date-from", help=localized("起始日期 YYYY-MM-DD。", "Start date YYYY-MM-DD."))
     index.add_argument("--date-to", help=localized("结束日期 YYYY-MM-DD。", "End date YYYY-MM-DD."))
     index.add_argument("--limit", type=int, default=20, help=localized("最多返回条数。", "Maximum result count."))
     index.add_argument(
+        "--json",
+        action="store_true",
+        help=localized("以 JSON 打印结果。", "Print results as JSON."),
+    )
+
+    knowledge = subparsers.add_parser(
+        "knowledge",
+        help=localized(
+            "构建和查看本地知识文档草稿。",
+            "Build and inspect local knowledge document drafts.",
+        ),
+    )
+    knowledge.add_argument(
+        "action",
+        choices=["build", "list", "status", "review", "publish", "reject"],
+        help=localized("知识文档操作。", "Knowledge document action."),
+    )
+    knowledge.add_argument("--doc-id", help=localized("目标知识文档 doc_id。", "Target knowledge document doc_id."))
+    knowledge.add_argument("--version", type=int, help=localized("目标知识文档版本。", "Target knowledge document version."))
+    knowledge.add_argument(
+        "--date",
+        default=current_date_str(),
+        help=localized(
+            "build 使用的目标日期，格式 YYYY-MM-DD。默认今天。",
+            "Target date for build in YYYY-MM-DD. Default: today.",
+        ),
+    )
+    knowledge.add_argument(
+        "--dry-run",
+        action="store_true",
+        help=localized("只计算，不写入 registry 或文档。", "Compute without writing registries or docs."),
+    )
+    knowledge.add_argument(
+        "--auto-confirm",
+        action="store_true",
+        help=localized(
+            "预留参数；MVP 仍保持 draft/needs_review。",
+            "Reserved; MVP still keeps draft/needs_review.",
+        ),
+    )
+    knowledge.add_argument("--limit", type=int, default=20, help=localized("最多返回条数。", "Maximum result count."))
+    knowledge.add_argument(
         "--json",
         action="store_true",
         help=localized("以 JSON 打印结果。", "Print results as JSON."),
@@ -4676,7 +4723,7 @@ def print_index_results(kind, rows):
                 print("  keywords: {}".format(", ".join(str(item) for item in row["keywords"])))
             if row.get("source_window_ids"):
                 print("  windows: {}".format(", ".join(str(item) for item in row["source_window_ids"])))
-        else:
+        elif kind == "window":
             title = row.get("question_summary") or row.get("main_takeaway") or row.get("window_id") or "(window)"
             print("- {} [{}]".format(title, row.get("window_id") or "-"))
             print("  date: {} cwd: {}".format(row.get("date") or "-", row.get("cwd") or "-"))
@@ -4684,6 +4731,19 @@ def print_index_results(kind, rows):
                 print("  takeaway: {}".format(row["main_takeaway"]))
             if row.get("keywords"):
                 print("  keywords: {}".format(", ".join(str(item) for item in row["keywords"])))
+        else:
+            title = row.get("title") or row.get("doc_id") or "(knowledge doc)"
+            print("- {} [{} / {}]".format(
+                title,
+                row.get("status") or "-",
+                row.get("knowledge_type") or "-",
+            ))
+            print("  doc_id: {}".format(row.get("doc_id") or "-"))
+            if row.get("summary"):
+                print("  summary: {}".format(row["summary"]))
+            source_refs = row.get("source_refs") or {}
+            if source_refs.get("window_ids"):
+                print("  windows: {}".format(", ".join(str(item) for item in source_refs["window_ids"])))
 
 
 def command_index(args):
@@ -4704,6 +4764,7 @@ def command_index(args):
         print("- memory_rows: {}".format(payload["memory_rows"]))
         print("- window_rows: {}".format(payload["window_rows"]))
         print("- daily_summary_rows: {}".format(payload["daily_summary_rows"]))
+        print("- knowledge_doc_rows: {}".format(payload.get("knowledge_doc_rows", 0)))
         print("- rebuilt_at: {}".format(payload["rebuilt_at"] or "-"))
         if payload.get("error"):
             print("- error: {}".format(payload["error"]))
@@ -4720,6 +4781,7 @@ def command_index(args):
         print("- memory_rows: {}".format(payload["memory_rows"]))
         print("- window_rows: {}".format(payload["window_rows"]))
         print("- daily_summary_rows: {}".format(payload["daily_summary_rows"]))
+        print("- knowledge_doc_rows: {}".format(payload.get("knowledge_doc_rows", 0)))
         print("- source_file_rows: {}".format(payload["source_file_rows"]))
         return
 
@@ -4759,9 +4821,108 @@ def command_index(args):
         print_index_results("window", rows)
         return
 
+    if args.action == "search-knowledge":
+        rows = openrelix_index.search_knowledge(
+            args.query,
+            status=getattr(args, "status", None),
+            knowledge_type=getattr(args, "knowledge_type", None),
+            project=args.project,
+            limit=args.limit,
+            paths=PATHS,
+        )
+        if args.json:
+            print_json({"results": rows})
+            return
+        print_index_results("knowledge", rows)
+        return
+
     raise SystemExit(localized(
         "不支持的索引操作: {}".format(args.action),
         "unsupported index action: {}".format(args.action),
+    ))
+
+
+def command_knowledge(args):
+    import build_knowledge_docs
+
+    if getattr(args, "limit", 20) <= 0:
+        raise SystemExit(localized("--limit 必须大于 0。", "--limit must be greater than 0."))
+
+    if args.action == "build":
+        payload = build_knowledge_docs.build_knowledge_docs(
+            paths=PATHS,
+            date=args.date,
+            dry_run=args.dry_run,
+            auto_confirm=args.auto_confirm,
+        )
+        if args.json:
+            print_json(payload)
+            return
+        print(localized("知识文档构建结果", "Knowledge document build result"))
+        print("- date: {}".format(payload["date"]))
+        print("- created_candidates: {}".format(payload["created_candidates"]))
+        print("- created_docs: {}".format(payload["created_docs"]))
+        print("- failed_runs: {}".format(payload["failed_runs"]))
+        print("- run_artifact: {}".format(payload["run_artifact"]))
+        return
+
+    if args.action == "list":
+        docs = build_knowledge_docs.list_knowledge_docs(paths=PATHS, limit=args.limit)
+        if args.json:
+            print_json({"docs": docs})
+            return
+        for doc in docs:
+            print("- {} [{} / {}]".format(
+                doc.get("title") or doc.get("doc_id") or "(untitled)",
+                doc.get("status") or "-",
+                doc.get("knowledge_type") or "-",
+            ))
+            source_refs = doc.get("source_refs") or {}
+            print("  doc_id: {}".format(doc.get("doc_id") or "-"))
+            print("  source: {}".format(", ".join(source_refs.get("window_ids") or []) or "-"))
+        return
+
+    if args.action == "status":
+        payload = build_knowledge_docs.knowledge_status(paths=PATHS)
+        if args.json:
+            print_json(payload)
+            return
+        print(localized("知识文档状态", "Knowledge document status"))
+        print("- state_root: {}".format(payload["state_root"]))
+        print("- candidate_rows: {}".format(payload["candidate_rows"]))
+        print("- doc_rows: {}".format(payload["doc_rows"]))
+        print("- run_count: {}".format(payload["run_count"]))
+        print("- host_context_enabled: {}".format(payload["host_context_enabled"]))
+        return
+
+    status_by_action = {
+        "review": "reviewed",
+        "publish": "published",
+        "reject": "rejected",
+    }
+    if args.action in status_by_action:
+        try:
+            doc = build_knowledge_docs.update_knowledge_doc_status(
+                paths=PATHS,
+                doc_id=args.doc_id,
+                status=status_by_action[args.action],
+                version=args.version,
+            )
+        except ValueError as exc:
+            raise SystemExit(str(exc))
+        if args.json:
+            print_json({"doc": doc})
+            return
+        print(localized("知识文档状态已更新", "Knowledge document status updated"))
+        print("- doc_id: {}".format(doc.get("doc_id") or "-"))
+        print("- version: {}".format(doc.get("version") or "-"))
+        print("- status: {}".format(doc.get("status") or "-"))
+        print("- reviewer_state: {}".format(doc.get("reviewer_state") or "-"))
+        return
+
+    raise SystemExit(localized(
+        "不支持的知识文档操作: {}".format(args.action),
+        "unsupported knowledge action: {}".format(args.action),
     ))
 
 
@@ -5488,6 +5649,9 @@ def main():
         return
     if args.command == "index":
         command_index(args)
+        return
+    if args.command == "knowledge":
+        command_knowledge(args)
         return
     if args.command == "recall":
         command_recall(args)

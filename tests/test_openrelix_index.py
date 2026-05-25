@@ -225,6 +225,89 @@ class OpenRelixIndexTests(unittest.TestCase):
                 [{"question": "add search command", "conclusion": "search command is next"}],
             )
 
+    def test_rebuild_indexes_knowledge_docs_and_searches_explicitly(self):
+        with TemporaryDirectory() as tmpdir:
+            paths = runtime_paths_for_state(tmpdir)
+            asset_runtime.ensure_state_layout(paths)
+            body_path = paths.state_root / "knowledge" / "docs" / "2026" / "route-drift.md"
+            body_path.parent.mkdir(parents=True, exist_ok=True)
+            body_path.write_text(
+                "# Route Drift\n\nKeep route drift drafts out of host context.\n",
+                encoding="utf-8",
+            )
+            doc_row = {
+                "schema_version": 1,
+                "algorithm_version": 1,
+                "doc_id": "kdoc-route-drift",
+                "version": 1,
+                "status": "draft",
+                "knowledge_type": "troubleshooting",
+                "title": "Route drift troubleshooting",
+                "summary": "Keep route drift evidence project-scoped.",
+                "body_path": "knowledge/docs/2026/route-drift.md",
+                "body_sections": {
+                    "context": "Synthetic route drift",
+                    "decision": "Do not inject this draft into host context.",
+                    "procedure": ["Review source refs before publishing."],
+                    "evidence": ["window:w-route"],
+                    "limits": "Synthetic fixture only.",
+                    "next_actions": ["Review"],
+                },
+                "canonical_key": "openrelix:troubleshooting:route-drift-troubleshooting",
+                "source_fingerprint": "sha256:route-drift",
+                "source_refs": {
+                    "summary_dates": ["2026-04-28"],
+                    "window_ids": ["w-route"],
+                    "memory_ids": ["mem-route"],
+                    "review_paths": [],
+                },
+                "project_key": "openrelix",
+                "project_label": "OpenRelix",
+                "scope": "project",
+                "sensitivity": "internal",
+                "quality_score": 0.87,
+                "reviewer_state": "needs_review",
+                "redaction_status": "publish_safe",
+                "model_status": "not_run",
+                "visibility": {
+                    "panel": True,
+                    "default_search": False,
+                    "host_context": False,
+                    "trust_level": "draft",
+                },
+                "conflict_of_doc_ids": [],
+                "created_at": "2026-04-28T10:20:00Z",
+                "updated_at": "2026-04-28T10:20:00Z",
+            }
+            (paths.registry_dir / "knowledge_docs.jsonl").write_text(
+                json.dumps(doc_row, ensure_ascii=False) + "\n",
+                encoding="utf-8",
+            )
+            db_path = Path(tmpdir) / "runtime" / "test-index.sqlite3"
+
+            stats = openrelix_index.rebuild_index(paths, db_path)
+            results = openrelix_index.search_knowledge(
+                "route drift",
+                status="draft",
+                paths=paths,
+                db_path=db_path,
+            )
+
+            self.assertEqual(stats["knowledge_doc_rows"], 1)
+            self.assertEqual(openrelix_index.index_status(paths, db_path)["knowledge_doc_rows"], 1)
+            self.assertEqual([row["doc_id"] for row in results], ["kdoc-route-drift"])
+            self.assertEqual(results[0]["source_refs"]["window_ids"], ["w-route"])
+            self.assertFalse(results[0]["visibility"]["host_context"])
+            self.assertEqual(
+                openrelix_index.search_knowledge(
+                    "route drift",
+                    status="published",
+                    paths=paths,
+                    db_path=db_path,
+                ),
+                [],
+            )
+
     def test_rebuild_indexes_canonical_memory_entries(self):
         with TemporaryDirectory() as tmpdir:
             paths = runtime_paths_for_state(tmpdir)

@@ -30,11 +30,16 @@ All paths in reusable code should be resolved through `scripts/asset_runtime.py`
     daily/<date>/summary.json
     daily/<date>/summary.md
     daily/<date>/runs/
+  knowledge/
+    docs/<year>/<slug>.md
+    runs/<run_id>/
   registry/
     assets.jsonl
     usage_events.jsonl
     memory_entries.jsonl
     memory_items.jsonl
+    knowledge_candidates.jsonl
+    knowledge_docs.jsonl
     curated_memory_pack.json
   reports/
     overview-data.json
@@ -254,6 +259,174 @@ Task cluster fields:
 | `source_window_ids` | array | Window ids from `window_summaries`; invalid ids are dropped |
 | `status_tags` | array | Process state such as compile, verification, or commit |
 | `confidence` | string | `high`, `medium`, or `low`; panel grouping uses high/medium and falls back for low |
+
+## Knowledge Candidate Contract
+
+Canonical path:
+
+```text
+registry/knowledge_candidates.jsonl
+```
+
+Purpose: a local-only review queue for reusable knowledge that was detected
+from consolidated summaries or curated memory, before it becomes a knowledge
+document. This layer does not read or store raw chat transcripts.
+
+Candidate state machine:
+
+```text
+candidate -> draft
+candidate -> deferred
+candidate -> rejected
+deferred -> candidate
+deferred -> draft
+deferred -> rejected
+```
+
+Minimum recommended row fields:
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `schema_version` | integer | Contract version, currently `1` |
+| `algorithm_version` | integer | Candidate extraction algorithm version |
+| `candidate_id` | string | Stable local candidate id |
+| `date` | string | Candidate creation date |
+| `decision` | string | `candidate`, `draft`, `deferred`, or `rejected` |
+| `knowledge_type` | string | `troubleshooting`, `decision`, `procedure`, or `project_context` |
+| `title` | string | Short proposed title |
+| `summary` | string | Source-safe summary, not raw transcript |
+| `canonical_key` | string | `slug(project_key or scope):knowledge_type:slug(title)` |
+| `source_fingerprint` | string | Hash of the compact source input used for idempotency |
+| `source_refs` | object | `summary_dates`, `window_ids`, `memory_ids`, and `review_paths` arrays |
+| `project_key` / `project_label` | string | Project-scoped by default; global should be rare and explicit |
+| `scope` | string | `project`, `global`, or `user_private` |
+| `sensitivity` | string | `public`, `internal`, `private`, or `restricted` |
+| `quality_score` | number | Local quality gate from `0` to `1` |
+| `redaction_status` | string | Normally `source_safe` at candidate time |
+| `model_status` | string | `not_run`, `success`, `retryable`, or `poisoned` |
+| `reason` | string | Why the candidate should advance, defer, or reject |
+
+Candidates should not enter host context, `memory_entries.jsonl`, or
+`assets.jsonl` automatically. The MVP quality gate should prefer rejection or
+deferral when evidence is weak, cross-project, privacy-sensitive, or only a
+temporary task status.
+
+Candidate writers should use the same registry discipline expected for
+knowledge documents: lock the registry, write a temporary file, validate JSONL,
+and then rename atomically. Bad rows should be quarantined in a run artifact
+rather than breaking the existing registry.
+
+## Knowledge Doc Registry Contract
+
+Canonical registry path:
+
+```text
+registry/knowledge_docs.jsonl
+```
+
+Document body path:
+
+```text
+knowledge/docs/<year>/<slug>.md
+```
+
+Run artifact path:
+
+```text
+knowledge/runs/<run_id>/
+```
+
+Purpose: reviewed or reviewable local knowledge documents derived from compact
+OpenRelix state. The schema for each registry row lives at
+`templates/knowledge-doc-schema.json`. The LLM rewrite prompt lives at
+`templates/knowledge-doc-rewrite-prompt.md`, and callers must pass only
+sanitized compact JSON to the model runner.
+
+Document state machine:
+
+```text
+draft -> reviewed
+draft -> rejected
+reviewed -> published
+reviewed -> draft
+reviewed -> rejected
+published -> superseded
+```
+
+Human review is authoritative. A later model run must not silently turn a
+human-rejected or human-reviewed document into a different state; it should
+create a new draft or conflict draft with explicit `conflict_of_doc_ids`.
+
+Recommended row fields:
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `schema_version` | integer | Knowledge doc schema version |
+| `algorithm_version` | integer | Rewrite/dedupe algorithm version |
+| `doc_id` | string | Stable local id |
+| `version` | integer | Monotonic integer for one `canonical_key` |
+| `status` | string | `draft`, `reviewed`, `published`, `superseded`, or `rejected` |
+| `knowledge_type` | string | MVP types are `troubleshooting`, `decision`, `procedure`, `project_context` |
+| `title` / `summary` | string | Human display fields |
+| `body_path` | string | State-root relative Markdown body path |
+| `body_sections` | object | Structured source for rendering Markdown |
+| `canonical_key` | string | Stable dedupe key; MVP is project-scoped |
+| `source_fingerprint` | string | Hash of compact input, schema, algorithm, and prompt version |
+| `source_refs` | object | Summary/window/memory/review references only |
+| `project_key` / `project_label` | string | Project isolation keys |
+| `scope` | string | `project`, `global`, or `user_private` |
+| `sensitivity` | string | Privacy classification |
+| `quality_score` | number | Local quality gate result |
+| `reviewer_state` | string | `needs_review`, `reviewed`, or `rejected` |
+| `redaction_status` | string | `source_safe`, `prompt_safe`, `publish_safe`, or `failed` |
+| `model_status` | string | `success`, `retryable`, `poisoned`, or `not_run` |
+| `visibility` | object | `panel`, `default_search`, `host_context`, and `trust_level` |
+| `conflict_of_doc_ids` | array | Documents this draft conflicts with |
+| `created_at` / `updated_at` | string | ISO timestamps |
+
+Visibility policy:
+
+| Status | Panel | Default search | Host context |
+| --- | --- | --- | --- |
+| `draft` | Yes | No | No |
+| `reviewed` | Yes | No | No |
+| `published` | Yes | Yes | No in MVP |
+| `superseded` | No | No | No |
+| `rejected` | No | No | No |
+
+Knowledge generation has three redaction gates: source-safe trimming before a
+candidate is created, prompt-safe sanitization in the model runner, and
+publish-safe redaction before Markdown or index rows are exposed. Registry
+writers must lock and update atomically; if a model call times out, fails schema
+validation, or returns unusable output, the failed run is recorded under
+`knowledge/runs/<run_id>/` and the active `knowledge_docs.jsonl` file is left
+unchanged.
+
+MVP does not write `runtime/host-context/memory_summary.md`,
+`CLAUDE.md`, `registry/memory_entries.jsonl`, or raw collection files. It does
+not guarantee truth; it creates traceable local drafts with evidence references.
+It also does not promise historical backfill, cross-project merging, vector
+search, or automatic publishing.
+
+Current MVP CLI entrypoint:
+
+```bash
+openrelix knowledge build --date YYYY-MM-DD
+openrelix knowledge list
+openrelix knowledge status
+openrelix knowledge review --doc-id DOC_ID
+openrelix knowledge publish --doc-id DOC_ID
+openrelix knowledge reject --doc-id DOC_ID
+openrelix index search-knowledge "query" --status draft
+```
+
+`build` reads `consolidated/daily/<date>/summary.json` plus the active memory
+registry and writes only `registry/knowledge_candidates.jsonl`,
+`registry/knowledge_docs.jsonl`, `knowledge/docs/**`, and
+`knowledge/runs/**`.
+`review`, `publish`, and `reject` update only `knowledge_docs.jsonl` plus the
+corresponding Markdown body status line; `published` remains local-only and does
+not enter host context.
 
 ## Memory Registry Contract
 

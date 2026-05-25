@@ -1059,6 +1059,8 @@ def ensure_state_layout(paths: Optional[RuntimePaths] = None) -> RuntimePaths:
     for directory in (
         paths.raw_daily_dir,
         paths.raw_windows_dir,
+        paths.state_root / "knowledge" / "docs",
+        paths.state_root / "knowledge" / "runs",
         paths.registry_dir,
         paths.reviews_dir,
         paths.reports_dir,
@@ -1076,6 +1078,8 @@ def ensure_state_layout(paths: Optional[RuntimePaths] = None) -> RuntimePaths:
         paths.registry_dir / "usage_events.jsonl",
         paths.registry_dir / "memory_entries.jsonl",
         paths.registry_dir / "memory_items.jsonl",
+        paths.registry_dir / "knowledge_candidates.jsonl",
+        paths.registry_dir / "knowledge_docs.jsonl",
     ):
         file_path.touch(exist_ok=True)
 

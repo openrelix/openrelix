@@ -29,11 +29,16 @@ OpenRelix 有三类存储区：
     daily/<date>/summary.json
     daily/<date>/summary.md
     daily/<date>/runs/
+  knowledge/
+    docs/<year>/<slug>.md
+    runs/<run_id>/
   registry/
     assets.jsonl
     usage_events.jsonl
     memory_entries.jsonl
     memory_items.jsonl
+    knowledge_candidates.jsonl
+    knowledge_docs.jsonl
     curated_memory_pack.json
   reports/
     overview-data.json
@@ -196,6 +201,145 @@ consolidated/daily/<date>/summary.json
 ```
 
 运行诊断字段可以分组描述：`language`、`stage`、`generated_at`、`model_status`、`summary_generation`、`personal_memory_algorithm_version`、`compact_payload_source`、`learning_input_fingerprint`、`quality`、`selection_decision`、`last_run_model_status`。
+
+## 知识候选契约
+
+Canonical 路径：
+
+```text
+registry/knowledge_candidates.jsonl
+```
+
+用途：保存从 consolidated summary 或 curated memory 中发现的可复用知识候选，作为本地 review queue。它不读取、不保存 raw chat transcript。
+
+候选状态机：
+
+```text
+candidate -> draft
+candidate -> deferred
+candidate -> rejected
+deferred -> candidate
+deferred -> draft
+deferred -> rejected
+```
+
+建议字段：
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `schema_version` | integer | 契约版本，当前为 `1` |
+| `algorithm_version` | integer | 候选抽取算法版本 |
+| `candidate_id` | string | 稳定本地候选 id |
+| `date` | string | 候选创建日期 |
+| `decision` | string | `candidate`、`draft`、`deferred` 或 `rejected` |
+| `knowledge_type` | string | `troubleshooting`、`decision`、`procedure`、`project_context` |
+| `title` | string | 候选标题 |
+| `summary` | string | source-safe 摘要，不是 raw transcript |
+| `canonical_key` | string | `slug(project_key or scope):knowledge_type:slug(title)` |
+| `source_fingerprint` | string | compact source input 的幂等 hash |
+| `source_refs` | object | `summary_dates`、`window_ids`、`memory_ids`、`review_paths` |
+| `project_key` / `project_label` | string | 默认项目级隔离；global 必须显式且少用 |
+| `scope` | string | `project`、`global` 或 `user_private` |
+| `sensitivity` | string | `public`、`internal`、`private` 或 `restricted` |
+| `quality_score` | number | `0` 到 `1` 的质量门禁分 |
+| `redaction_status` | string | 候选阶段通常是 `source_safe` |
+| `model_status` | string | `not_run`、`success`、`retryable` 或 `poisoned` |
+| `reason` | string | 晋升、延后或拒绝原因 |
+
+候选不应自动进入 host context、`memory_entries.jsonl` 或 `assets.jsonl`。MVP 遇到证据弱、跨项目、隐私敏感、或只是临时任务状态时，应优先 defer 或 reject。
+
+候选写入应遵循和知识文档 registry 一样的纪律：先加锁，写临时文件，校验 JSONL，再原子 rename。坏行应隔离到 run artifact，而不是破坏现有 registry。
+
+## 知识文档 Registry 契约
+
+Canonical registry 路径：
+
+```text
+registry/knowledge_docs.jsonl
+```
+
+文档正文路径：
+
+```text
+knowledge/docs/<year>/<slug>.md
+```
+
+运行产物路径：
+
+```text
+knowledge/runs/<run_id>/
+```
+
+用途：保存从 compact OpenRelix state 派生出来的本地知识文档草稿或已审核文档。每条 registry row 的 schema 在 `templates/knowledge-doc-schema.json`；LLM 改写 prompt 在 `templates/knowledge-doc-rewrite-prompt.md`；调用方只能把脱敏后的 compact JSON 交给 model runner。
+
+文档状态机：
+
+```text
+draft -> reviewed
+draft -> rejected
+reviewed -> published
+reviewed -> draft
+reviewed -> rejected
+published -> superseded
+```
+
+人工审核具有更高优先级。后续模型运行不能静默覆盖人工 rejected/reviewed 结果；如果新证据冲突，应创建新的 draft 或 conflict draft，并写明 `conflict_of_doc_ids`。
+
+建议字段：
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `schema_version` | integer | 知识文档 schema 版本 |
+| `algorithm_version` | integer | 改写/去重算法版本 |
+| `doc_id` | string | 稳定本地 id |
+| `version` | integer | 同一 `canonical_key` 下单调递增 |
+| `status` | string | `draft`、`reviewed`、`published`、`superseded` 或 `rejected` |
+| `knowledge_type` | string | MVP 类型：`troubleshooting`、`decision`、`procedure`、`project_context` |
+| `title` / `summary` | string | 展示字段 |
+| `body_path` | string | state-root 相对 Markdown 正文路径 |
+| `body_sections` | object | Markdown 渲染的结构化来源 |
+| `canonical_key` | string | 稳定去重 key；MVP 默认项目级 |
+| `source_fingerprint` | string | compact input、schema、algorithm、prompt version 的 hash |
+| `source_refs` | object | 只引用 summary/window/memory/review |
+| `project_key` / `project_label` | string | 项目隔离键 |
+| `scope` | string | `project`、`global` 或 `user_private` |
+| `sensitivity` | string | 隐私分级 |
+| `quality_score` | number | 本地质量门禁结果 |
+| `reviewer_state` | string | `needs_review`、`reviewed` 或 `rejected` |
+| `redaction_status` | string | `source_safe`、`prompt_safe`、`publish_safe` 或 `failed` |
+| `model_status` | string | `success`、`retryable`、`poisoned` 或 `not_run` |
+| `visibility` | object | `panel`、`default_search`、`host_context`、`trust_level` |
+| `conflict_of_doc_ids` | array | 当前 draft 冲突的文档 |
+| `created_at` / `updated_at` | string | ISO timestamp |
+
+可见性策略：
+
+| 状态 | Panel | 默认检索 | Host context |
+| --- | --- | --- | --- |
+| `draft` | 是 | 否 | 否 |
+| `reviewed` | 是 | 否 | 否 |
+| `published` | 是 | 是 | MVP 中仍为否 |
+| `superseded` | 否 | 否 | 否 |
+| `rejected` | 否 | 否 | 否 |
+
+知识生成有三层脱敏门禁：candidate 创建前做 source-safe 裁剪，model runner 内做 prompt-safe sanitization，Markdown 或 index 暴露前做 publish-safe redaction。Registry writer 必须加锁并原子更新；模型超时、schema 校验失败或输出不可用时，只在 `knowledge/runs/<run_id>/` 记录失败产物，不更新 active `knowledge_docs.jsonl`。
+
+MVP 不写 `runtime/host-context/memory_summary.md`、`CLAUDE.md`、`registry/memory_entries.jsonl` 或 raw collection 文件。它不承诺知识真值，只产出可追溯的本地草稿和证据引用。它也不承诺历史回填、跨项目合并、向量检索或自动发布。
+
+当前 MVP CLI 入口：
+
+```bash
+openrelix knowledge build --date YYYY-MM-DD
+openrelix knowledge list
+openrelix knowledge status
+openrelix knowledge review --doc-id DOC_ID
+openrelix knowledge publish --doc-id DOC_ID
+openrelix knowledge reject --doc-id DOC_ID
+openrelix index search-knowledge "query" --status draft
+```
+
+`build` 读取 `consolidated/daily/<date>/summary.json` 和当前 memory registry，只写入 `registry/knowledge_candidates.jsonl`、`registry/knowledge_docs.jsonl`、`knowledge/docs/**` 和 `knowledge/runs/**`。
+`review`、`publish`、`reject` 只更新 `knowledge_docs.jsonl` 与对应 Markdown 正文里的状态行；`published` 仍是本地可见，不进入 host context。
 
 ## Memory Registry Contract
 

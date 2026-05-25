@@ -14,7 +14,7 @@ from urllib.parse import quote
 from asset_runtime import ensure_state_layout, get_runtime_paths
 
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 DEFAULT_LIMIT = 20
 
 
@@ -30,6 +30,7 @@ class IndexStats:
     skipped_window_files: int
     skipped_summary_files: int
     daily_summary_rows: int
+    knowledge_doc_rows: int
     source_file_rows: int
     source_fingerprint: str
 
@@ -45,6 +46,7 @@ class IndexStats:
             "skipped_window_files": self.skipped_window_files,
             "skipped_summary_files": self.skipped_summary_files,
             "daily_summary_rows": self.daily_summary_rows,
+            "knowledge_doc_rows": self.knowledge_doc_rows,
             "source_file_rows": self.source_file_rows,
             "source_fingerprint": self.source_fingerprint,
         }
@@ -268,6 +270,13 @@ def source_file_kind(paths, path):
         return "memory_entries"
     if path == paths.registry_dir / "memory_items.jsonl":
         return "memory_items"
+    if path == paths.registry_dir / "knowledge_docs.jsonl":
+        return "knowledge_docs"
+    try:
+        path.relative_to(paths.state_root / "knowledge" / "docs")
+        return "knowledge_doc_body"
+    except ValueError:
+        pass
     try:
         path.relative_to(paths.raw_daily_dir)
         return "raw_daily"
@@ -298,6 +307,12 @@ def collect_source_files(paths):
         candidates.extend(sorted(paths.raw_windows_dir.glob("*/*.json")))
     if paths.consolidated_daily_dir.exists():
         candidates.extend(sorted(paths.consolidated_daily_dir.glob("*/summary.json")))
+    knowledge_docs_registry = paths.registry_dir / "knowledge_docs.jsonl"
+    if knowledge_docs_registry.exists() and knowledge_docs_registry.stat().st_size > 0:
+        candidates.append(knowledge_docs_registry)
+    knowledge_docs_dir = paths.state_root / "knowledge" / "docs"
+    if knowledge_docs_dir.exists():
+        candidates.extend(sorted(knowledge_docs_dir.glob("*/*.md")))
 
     rows = []
     for path in candidates:
@@ -592,6 +607,105 @@ def normalize_memory_item(item, source_file, source_line):
     }
 
 
+def normalize_json_list(value):
+    if isinstance(value, list):
+        return value
+    if isinstance(value, str):
+        try:
+            payload = json.loads(value)
+        except json.JSONDecodeError:
+            return []
+        return payload if isinstance(payload, list) else []
+    return []
+
+
+def normalize_json_object(value):
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str):
+        try:
+            payload = json.loads(value)
+        except json.JSONDecodeError:
+            return {}
+        return payload if isinstance(payload, dict) else {}
+    return {}
+
+
+def knowledge_doc_body_text(paths, body_path):
+    text = compact_text(body_path)
+    if not text:
+        return ""
+    path = Path(text)
+    if not path.is_absolute():
+        path = paths.state_root / text
+    try:
+        return path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return ""
+
+
+def normalize_knowledge_doc(item, paths, source_file, source_line):
+    source_refs = normalize_json_object(item.get("source_refs", {}))
+    visibility = normalize_json_object(item.get("visibility", {}))
+    conflict_of_doc_ids = normalize_json_list(item.get("conflict_of_doc_ids", []))
+    body_sections = normalize_json_object(item.get("body_sections", {}))
+    body_text = knowledge_doc_body_text(paths, item.get("body_path", ""))
+    source_ref_text = compact_text(
+        " ".join(
+            str(value)
+            for values in source_refs.values()
+            for value in (values if isinstance(values, list) else [values])
+        )
+    )
+    search_text = compact_text(
+        " ".join(
+            [
+                item.get("doc_id", ""),
+                item.get("status", ""),
+                item.get("knowledge_type", ""),
+                item.get("title", ""),
+                item.get("summary", ""),
+                item.get("canonical_key", ""),
+                item.get("project_key", ""),
+                item.get("project_label", ""),
+                item.get("scope", ""),
+                item.get("reviewer_state", ""),
+                source_ref_text,
+                compact_text(json_dumps(body_sections)),
+                body_text,
+            ]
+        )
+    )
+    return {
+        "doc_id": compact_text(item.get("doc_id", "")),
+        "version": safe_int(item.get("version", 1)) or 1,
+        "status": compact_text(item.get("status", "")),
+        "knowledge_type": compact_text(item.get("knowledge_type", "")),
+        "title": compact_text(item.get("title", "")),
+        "summary": compact_text(item.get("summary", "")),
+        "body_path": compact_text(item.get("body_path", "")),
+        "body_text": body_text,
+        "canonical_key": compact_text(item.get("canonical_key", "")),
+        "source_fingerprint": compact_text(item.get("source_fingerprint", "")),
+        "source_refs_json": json_dumps(source_refs),
+        "project_key": compact_text(item.get("project_key", "")),
+        "project_label": compact_text(item.get("project_label", "")),
+        "scope": compact_text(item.get("scope", "")),
+        "sensitivity": compact_text(item.get("sensitivity", "")),
+        "quality_score": float(item.get("quality_score", 0) or 0),
+        "reviewer_state": compact_text(item.get("reviewer_state", "")),
+        "redaction_status": compact_text(item.get("redaction_status", "")),
+        "model_status": compact_text(item.get("model_status", "")),
+        "visibility_json": json_dumps(visibility),
+        "conflict_of_doc_ids_json": json_dumps(conflict_of_doc_ids),
+        "created_at": compact_text(item.get("created_at", "")),
+        "updated_at": compact_text(item.get("updated_at", "")),
+        "source_file": str(source_file),
+        "source_line": int(source_line),
+        "search_text": search_text,
+    }
+
+
 def memory_item_is_obsolete_lightweight(item):
     stage = compact_text(item.get("stage", "") or item.get("summary_stage", "")).lower()
     generation = compact_text(
@@ -748,6 +862,37 @@ def create_schema(conn, fts_enabled):
           PRIMARY KEY(window_row_id, kind, ordinal)
         );
 
+        CREATE TABLE knowledge_docs (
+          id INTEGER PRIMARY KEY,
+          doc_id TEXT NOT NULL,
+          version INTEGER NOT NULL DEFAULT 1,
+          status TEXT,
+          knowledge_type TEXT,
+          title TEXT,
+          summary TEXT,
+          body_path TEXT,
+          body_text TEXT,
+          canonical_key TEXT,
+          source_fingerprint TEXT,
+          source_refs_json TEXT NOT NULL DEFAULT '{}',
+          project_key TEXT,
+          project_label TEXT,
+          scope TEXT,
+          sensitivity TEXT,
+          quality_score REAL NOT NULL DEFAULT 0,
+          reviewer_state TEXT,
+          redaction_status TEXT,
+          model_status TEXT,
+          visibility_json TEXT NOT NULL DEFAULT '{}',
+          conflict_of_doc_ids_json TEXT NOT NULL DEFAULT '[]',
+          created_at TEXT,
+          updated_at TEXT,
+          source_file TEXT NOT NULL,
+          source_line INTEGER NOT NULL,
+          search_text TEXT,
+          UNIQUE(doc_id, version)
+        );
+
         CREATE INDEX idx_memory_items_date ON memory_items(date);
         CREATE INDEX idx_memory_items_bucket_priority ON memory_items(bucket, priority);
         CREATE INDEX idx_memory_items_key ON memory_items(memory_key);
@@ -758,6 +903,10 @@ def create_schema(conn, fts_enabled):
         CREATE INDEX idx_windows_latest_activity ON windows(latest_activity_at);
         CREATE INDEX idx_window_messages_kind_time ON window_messages(kind, event_time);
         CREATE INDEX idx_daily_summaries_stage_date ON daily_summaries(stage, date);
+        CREATE INDEX idx_knowledge_docs_status ON knowledge_docs(status);
+        CREATE INDEX idx_knowledge_docs_project ON knowledge_docs(project_key, project_label);
+        CREATE INDEX idx_knowledge_docs_type ON knowledge_docs(knowledge_type);
+        CREATE INDEX idx_knowledge_docs_updated ON knowledge_docs(updated_at);
         """
     )
     if fts_enabled:
@@ -785,6 +934,14 @@ def create_schema(conn, fts_enabled):
               keywords,
               next_actions
             );
+
+            CREATE VIRTUAL TABLE knowledge_doc_fts USING fts5(
+              title,
+              summary,
+              body_text,
+              project_label,
+              source_refs
+            );
             """
         )
 
@@ -795,7 +952,9 @@ def reset_schema(conn):
         DROP TABLE IF EXISTS memory_fts;
         DROP TABLE IF EXISTS window_fts;
         DROP TABLE IF EXISTS daily_summary_fts;
+        DROP TABLE IF EXISTS knowledge_doc_fts;
         DROP TABLE IF EXISTS window_messages;
+        DROP TABLE IF EXISTS knowledge_docs;
         DROP TABLE IF EXISTS memory_source_windows;
         DROP TABLE IF EXISTS memory_items;
         DROP TABLE IF EXISTS windows;
@@ -1019,6 +1178,46 @@ def insert_window(conn, row, fts_enabled):
         )
 
 
+def insert_knowledge_doc(conn, row, fts_enabled):
+    cursor = conn.execute(
+        """
+        INSERT INTO knowledge_docs(
+          doc_id, version, status, knowledge_type, title, summary, body_path,
+          body_text, canonical_key, source_fingerprint, source_refs_json,
+          project_key, project_label, scope, sensitivity, quality_score,
+          reviewer_state, redaction_status, model_status, visibility_json,
+          conflict_of_doc_ids_json, created_at, updated_at, source_file,
+          source_line, search_text
+        )
+        VALUES (
+          :doc_id, :version, :status, :knowledge_type, :title, :summary, :body_path,
+          :body_text, :canonical_key, :source_fingerprint, :source_refs_json,
+          :project_key, :project_label, :scope, :sensitivity, :quality_score,
+          :reviewer_state, :redaction_status, :model_status, :visibility_json,
+          :conflict_of_doc_ids_json, :created_at, :updated_at, :source_file,
+          :source_line, :search_text
+        )
+        """,
+        row,
+    )
+    row_id = cursor.lastrowid
+    if fts_enabled:
+        conn.execute(
+            """
+            INSERT INTO knowledge_doc_fts(rowid, title, summary, body_text, project_label, source_refs)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                row_id,
+                row["title"],
+                row["summary"],
+                row["body_text"],
+                row["project_label"],
+                compact_text(row["source_refs_json"]),
+            ),
+        )
+
+
 def load_daily_window_rows(paths, summaries):
     rows = []
     skipped = 0
@@ -1112,12 +1311,24 @@ def rebuild_index(paths=None, db_path=None):
                 insert_window(conn, row, fts_enabled)
                 window_rows += 1
 
+            knowledge_doc_rows = 0
+            knowledge_docs_path = paths.registry_dir / "knowledge_docs.jsonl"
+            for line_no, item in iter_jsonl(knowledge_docs_path) or []:
+                if not isinstance(item, dict):
+                    continue
+                if not compact_text(item.get("doc_id", "")):
+                    continue
+                row = normalize_knowledge_doc(item, paths, knowledge_docs_path, line_no)
+                insert_knowledge_doc(conn, row, fts_enabled)
+                knowledge_doc_rows += 1
+
             insert_metadata(conn, "schema_version", SCHEMA_VERSION)
             insert_metadata(conn, "rebuilt_at", rebuilt_at)
             insert_metadata(conn, "fts_enabled", "1" if fts_enabled else "0")
             insert_metadata(conn, "memory_rows", memory_rows)
             insert_metadata(conn, "window_rows", window_rows)
             insert_metadata(conn, "daily_summary_rows", len(daily_summary_rows))
+            insert_metadata(conn, "knowledge_doc_rows", knowledge_doc_rows)
             insert_metadata(conn, "source_file_rows", len(source_files))
             insert_metadata(conn, "source_fingerprint", fingerprint)
             insert_metadata(conn, "skipped_memory_rows", skipped_memory_rows)
@@ -1144,6 +1355,7 @@ def rebuild_index(paths=None, db_path=None):
         skipped_window_files=skipped_window_files,
         skipped_summary_files=skipped_summary_files,
         daily_summary_rows=len(daily_summary_rows),
+        knowledge_doc_rows=knowledge_doc_rows,
         source_file_rows=len(source_files),
         source_fingerprint=fingerprint,
     ).to_dict()
@@ -1169,6 +1381,7 @@ def index_status(paths=None, db_path=None):
         "memory_rows": 0,
         "window_rows": 0,
         "daily_summary_rows": 0,
+        "knowledge_doc_rows": 0,
         "source_file_rows": 0,
         "rebuilt_at": "",
         "source_fingerprint": "",
@@ -1179,7 +1392,8 @@ def index_status(paths=None, db_path=None):
     if not db_path.exists():
         return payload
     try:
-        with connect_readonly(db_path) as conn:
+        conn = connect_readonly(db_path)
+        try:
             metadata = load_metadata(conn)
             payload.update(
                 {
@@ -1188,6 +1402,7 @@ def index_status(paths=None, db_path=None):
                     "memory_rows": safe_int(metadata.get("memory_rows")),
                     "window_rows": safe_int(metadata.get("window_rows")),
                     "daily_summary_rows": safe_int(metadata.get("daily_summary_rows")),
+                    "knowledge_doc_rows": safe_int(metadata.get("knowledge_doc_rows")),
                     "source_file_rows": safe_int(metadata.get("source_file_rows")),
                     "rebuilt_at": metadata.get("rebuilt_at", ""),
                     "source_fingerprint": metadata.get("source_fingerprint", ""),
@@ -1195,6 +1410,8 @@ def index_status(paths=None, db_path=None):
                 }
             )
             payload["stale"] = payload["source_fingerprint"] != payload["current_source_fingerprint"]
+        finally:
+            conn.close()
     except sqlite3.DatabaseError as exc:
         payload["error"] = str(exc)
     return payload
@@ -1272,6 +1489,44 @@ def row_to_window(row):
     }
 
 
+def decode_json_object(value):
+    try:
+        payload = json.loads(value or "{}")
+    except json.JSONDecodeError:
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def row_to_knowledge(row):
+    return {
+        "id": row["id"],
+        "doc_id": row["doc_id"],
+        "version": row["version"],
+        "status": row["status"],
+        "knowledge_type": row["knowledge_type"],
+        "title": row["title"],
+        "summary": row["summary"],
+        "body_path": row["body_path"],
+        "canonical_key": row["canonical_key"],
+        "source_fingerprint": row["source_fingerprint"],
+        "source_refs": decode_json_object(row["source_refs_json"]),
+        "project_key": row["project_key"],
+        "project_label": row["project_label"],
+        "scope": row["scope"],
+        "sensitivity": row["sensitivity"],
+        "quality_score": row["quality_score"],
+        "reviewer_state": row["reviewer_state"],
+        "redaction_status": row["redaction_status"],
+        "model_status": row["model_status"],
+        "visibility": decode_json_object(row["visibility_json"]),
+        "conflict_of_doc_ids": decode_json_list(row["conflict_of_doc_ids_json"]),
+        "created_at": row["created_at"],
+        "updated_at": row["updated_at"],
+        "source_file": row["source_file"],
+        "source_line": row["source_line"],
+    }
+
+
 def like_pattern(query):
     escaped = str(query or "").replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
     return "%{}%".format(escaped)
@@ -1315,6 +1570,20 @@ def execute_window_like(conn, query, clauses, params, limit):
     return conn.execute(sql, like_params).fetchall()
 
 
+def execute_knowledge_like(conn, query, clauses, params, limit):
+    like_clauses = list(clauses)
+    like_params = list(params)
+    sql = "SELECT k.* FROM knowledge_docs k"
+    if query:
+        like_clauses.append("k.search_text LIKE ? ESCAPE '\\'")
+        like_params.append(like_pattern(query))
+    if like_clauses:
+        sql += " WHERE " + " AND ".join(like_clauses)
+    sql += " ORDER BY k.updated_at DESC, k.id DESC LIMIT ?"
+    like_params.append(limit)
+    return conn.execute(sql, like_params).fetchall()
+
+
 def search_memories(
     query="",
     *,
@@ -1332,7 +1601,8 @@ def search_memories(
     ensure_index(paths, db_path)
     db_path = Path(db_path or default_db_path(paths)).expanduser()
     limit = max(1, min(int(limit or DEFAULT_LIMIT), 200))
-    with connect(db_path) as conn:
+    conn = connect(db_path)
+    try:
         metadata = load_metadata(conn)
         params = []
         clauses = build_filter_clause(
@@ -1377,6 +1647,8 @@ def search_memories(
             return [row_to_memory(row) for row in rows]
         else:
             return [row_to_memory(row) for row in execute_memory_like(conn, query, clauses, params, limit)]
+    finally:
+        conn.close()
 
 
 def search_windows(query="", *, project=None, date_from=None, date_to=None, limit=DEFAULT_LIMIT, paths=None, db_path=None):
@@ -1384,7 +1656,8 @@ def search_windows(query="", *, project=None, date_from=None, date_to=None, limi
     ensure_index(paths, db_path)
     db_path = Path(db_path or default_db_path(paths)).expanduser()
     limit = max(1, min(int(limit or DEFAULT_LIMIT), 200))
-    with connect(db_path) as conn:
+    conn = connect(db_path)
+    try:
         metadata = load_metadata(conn)
         params = []
         clauses = []
@@ -1424,6 +1697,66 @@ def search_windows(query="", *, project=None, date_from=None, date_to=None, limi
             return [row_to_window(row) for row in rows]
         else:
             return [row_to_window(row) for row in execute_window_like(conn, query, clauses, params, limit)]
+    finally:
+        conn.close()
+
+
+def search_knowledge(
+    query="",
+    *,
+    status=None,
+    knowledge_type=None,
+    project=None,
+    limit=DEFAULT_LIMIT,
+    paths=None,
+    db_path=None,
+):
+    paths = paths or get_runtime_paths()
+    ensure_index(paths, db_path)
+    db_path = Path(db_path or default_db_path(paths)).expanduser()
+    limit = max(1, min(int(limit or DEFAULT_LIMIT), 200))
+    conn = connect(db_path)
+    try:
+        metadata = load_metadata(conn)
+        params = []
+        clauses = build_filter_clause(
+            (
+                ("k.status", status),
+                ("k.knowledge_type", knowledge_type),
+            ),
+            params,
+        )
+        if project:
+            clauses.append("(k.project_key = ? OR k.project_label = ?)")
+            params.extend([project, project])
+        if query and metadata.get("fts_enabled") == "1":
+            sql = "SELECT k.* FROM knowledge_doc_fts f JOIN knowledge_docs k ON k.id = f.rowid"
+            clauses.append("knowledge_doc_fts MATCH ?")
+            params.append(query)
+            if clauses:
+                sql += " WHERE " + " AND ".join(clauses)
+            sql += " ORDER BY bm25(knowledge_doc_fts), k.updated_at DESC, k.id DESC LIMIT ?"
+            try:
+                fts_rows = conn.execute(sql, [*params, limit]).fetchall()
+            except sqlite3.DatabaseError:
+                fts_rows = []
+            params.pop()
+            clauses.pop()
+            like_rows = execute_knowledge_like(conn, query, clauses, params, limit)
+            rows = []
+            seen = set()
+            for row in list(fts_rows) + list(like_rows):
+                row_id = row["id"]
+                if row_id in seen:
+                    continue
+                seen.add(row_id)
+                rows.append(row)
+                if len(rows) >= limit:
+                    break
+            return [row_to_knowledge(row) for row in rows]
+        return [row_to_knowledge(row) for row in execute_knowledge_like(conn, query, clauses, params, limit)]
+    finally:
+        conn.close()
 
 
 def parse_args():
@@ -1446,6 +1779,12 @@ def parse_args():
     window.add_argument("--date-from")
     window.add_argument("--date-to")
     window.add_argument("--limit", type=int, default=DEFAULT_LIMIT)
+    knowledge = subparsers.add_parser("search-knowledge")
+    knowledge.add_argument("query", nargs="?", default="")
+    knowledge.add_argument("--status")
+    knowledge.add_argument("--knowledge-type")
+    knowledge.add_argument("--project")
+    knowledge.add_argument("--limit", type=int, default=DEFAULT_LIMIT)
     return parser.parse_args()
 
 
@@ -1483,6 +1822,21 @@ def main():
                     project=args.project,
                     date_from=args.date_from,
                     date_to=args.date_to,
+                    limit=args.limit,
+                ),
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+        return
+    if args.command == "search-knowledge":
+        print(
+            json.dumps(
+                search_knowledge(
+                    args.query,
+                    status=args.status,
+                    knowledge_type=args.knowledge_type,
+                    project=args.project,
                     limit=args.limit,
                 ),
                 ensure_ascii=False,

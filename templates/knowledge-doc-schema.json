@@ -1,0 +1,155 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "algorithm_version",
+    "doc_id",
+    "version",
+    "status",
+    "knowledge_type",
+    "title",
+    "summary",
+    "body_path",
+    "body_sections",
+    "canonical_key",
+    "source_fingerprint",
+    "source_refs",
+    "project_key",
+    "project_label",
+    "scope",
+    "sensitivity",
+    "quality_score",
+    "reviewer_state",
+    "redaction_status",
+    "model_status",
+    "visibility",
+    "conflict_of_doc_ids",
+    "created_at",
+    "updated_at"
+  ],
+  "properties": {
+    "schema_version": { "type": "integer" },
+    "algorithm_version": { "type": "integer" },
+    "doc_id": { "type": "string", "minLength": 1 },
+    "version": { "type": "integer", "minimum": 1 },
+    "status": {
+      "type": "string",
+      "enum": ["draft", "reviewed", "published", "superseded", "rejected"]
+    },
+    "knowledge_type": {
+      "type": "string",
+      "enum": ["troubleshooting", "decision", "procedure", "project_context"]
+    },
+    "title": { "type": "string", "minLength": 1 },
+    "summary": { "type": "string" },
+    "body_path": { "type": "string" },
+    "body_sections": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "context",
+        "decision",
+        "procedure",
+        "evidence",
+        "limits",
+        "next_actions"
+      ],
+      "properties": {
+        "context": { "type": "string" },
+        "decision": { "type": "string" },
+        "procedure": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "evidence": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "limits": { "type": "string" },
+        "next_actions": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "canonical_key": { "type": "string", "minLength": 1 },
+    "source_fingerprint": { "type": "string", "minLength": 1 },
+    "source_refs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "summary_dates",
+        "window_ids",
+        "memory_ids",
+        "review_paths"
+      ],
+      "properties": {
+        "summary_dates": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "window_ids": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "memory_ids": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "review_paths": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "project_key": { "type": "string" },
+    "project_label": { "type": "string" },
+    "scope": {
+      "type": "string",
+      "enum": ["global", "project", "user_private"]
+    },
+    "sensitivity": {
+      "type": "string",
+      "enum": ["public", "internal", "private", "restricted"]
+    },
+    "quality_score": { "type": "number", "minimum": 0, "maximum": 1 },
+    "reviewer_state": {
+      "type": "string",
+      "enum": ["needs_review", "reviewed", "rejected"]
+    },
+    "redaction_status": {
+      "type": "string",
+      "enum": ["source_safe", "prompt_safe", "publish_safe", "failed"]
+    },
+    "model_status": {
+      "type": "string",
+      "enum": ["success", "retryable", "poisoned", "not_run"]
+    },
+    "visibility": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "panel",
+        "default_search",
+        "host_context",
+        "trust_level"
+      ],
+      "properties": {
+        "panel": { "type": "boolean" },
+        "default_search": { "type": "boolean" },
+        "host_context": { "type": "boolean" },
+        "trust_level": {
+          "type": "string",
+          "enum": ["draft", "reviewed", "archived", "rejected"]
+        }
+      }
+    },
+    "conflict_of_doc_ids": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "created_at": { "type": "string" },
+    "updated_at": { "type": "string" }
+  }
+}

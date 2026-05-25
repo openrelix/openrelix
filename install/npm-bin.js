@@ -30,7 +30,8 @@ function printHelp() {
   npx openrelix memory-migration status|ensure|run|complete
   npx openrelix task-summary-migration status|ensure|run
   npx openrelix context sync
-  npx openrelix index status|rebuild|search-memory|search-window
+  npx openrelix index status|rebuild|search-memory|search-window|search-knowledge
+  npx openrelix knowledge build|list|status|review|publish|reject
   npx openrelix recall <query>
   npx openrelix open panel
   openrelix install [install-options]
@@ -61,7 +62,11 @@ Examples:
   npx openrelix task-summary-migration status
   npx openrelix context sync
   npx openrelix index status
+  npx openrelix knowledge build --date <YYYY-MM-DD>
+  npx openrelix knowledge review --doc-id <doc_id>
+  npx openrelix knowledge publish --doc-id <doc_id>
   npx openrelix index search-memory sqlite
+  npx openrelix index search-knowledge routing
   npx openrelix recall worktree
   npx openrelix install --nightly-organize-time 22:30 --nightly-finalize-time 01:00
   npx openrelix install --overview-refresh-interval-minutes 30
