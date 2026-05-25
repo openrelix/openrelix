@@ -13508,6 +13508,9 @@ def make_knowledge_docs_panel_body(rows):
         body_path = row.get("body_path_label") or row.get("body_path") or ""
         body_uri = row.get("body_path_uri") or ""
         body_abs = row.get("body_path_abs") or ""
+        feishu_export = row.get("feishu_export") or {}
+        feishu_status = str(feishu_export.get("status") or "").strip()
+        feishu_url = str(feishu_export.get("doc_url") or "").strip()
         body_html = ""
         if body_path:
             if body_uri:
@@ -13520,20 +13523,26 @@ def make_knowledge_docs_panel_body(rows):
                 )
             else:
                 body_html = '<div class="native-brief-source-label">{}</div>'.format(escape(str(body_path)))
-        export_allowed = str(row.get("status") or "") in {"reviewed", "published"}
-        lark_button = (
+        if feishu_status == "exported" and feishu_url:
+            lark_button = """
+            <a class="knowledge-doc-action" href="{url}" target="_blank" rel="noopener noreferrer">
+              打开飞书文档
+            </a>
+            <button type="button" class="knowledge-doc-action" data-knowledge-lark-doc="{doc_id}" disabled>
+              已导出飞书文档
+            </button>
+            """.format(
+                url=escape(feishu_url, quote=True),
+                doc_id=escape(str(row.get("doc_id") or ""), quote=True),
+            )
+        else:
+            lark_button = (
             """
             <button type="button" class="knowledge-doc-action" data-knowledge-lark-doc="{doc_id}">
-              生成飞书文档
+              导出飞书文档
             </button>
             """
-            if export_allowed
-            else """
-            <button type="button" class="knowledge-doc-action" data-knowledge-lark-doc="{doc_id}" disabled>
-              审核后可导出
-            </button>
-            """
-        ).format(doc_id=escape(str(row.get("doc_id") or ""), quote=True))
+            ).format(doc_id=escape(str(row.get("doc_id") or ""), quote=True))
         actions_html = """
           <div class="knowledge-doc-actions">
             {body_action}
@@ -27772,7 +27781,7 @@ def build_html(data):
       function openKnowledgeDocCard(card) {{
         const href = (card.getAttribute("data-knowledge-doc-card-href") || "").trim();
         if (href) {{
-          window.location.href = href;
+          window.open(href, "_blank", "noopener,noreferrer");
         }}
       }}
 
@@ -27783,6 +27792,7 @@ def build_html(data):
         const card = button.closest(".knowledge-doc-card");
         const status = card ? card.querySelector("[data-knowledge-lark-status]") : null;
         const originalLabel = button.textContent;
+        let keepDisabled = false;
         function setStatus(message) {{
           if (status) {{
             status.textContent = message || "";
@@ -27813,12 +27823,16 @@ def build_html(data):
             }});
           }})
           .then(function (payload) {{
-            button.textContent = currentLanguage === "en" ? "Created" : "已生成";
+            button.textContent = currentLanguage === "en" ? "Exported" : "已导出";
+            keepDisabled = true;
+            button.disabled = true;
             if (payload && payload.url) {{
               setStatus(payload.url);
               window.open(payload.url, "_blank", "noopener,noreferrer");
+            }} else if (payload && payload.already_exported) {{
+              setStatus(currentLanguage === "en" ? "Already exported; no duplicate created." : "已导出，未重复生成。");
             }} else {{
-              setStatus(currentLanguage === "en" ? "Created in Lark" : "已创建飞书文档");
+              setStatus(currentLanguage === "en" ? "Exported to Lark" : "已导出飞书文档");
             }}
           }})
           .catch(function (error) {{
@@ -27827,8 +27841,10 @@ def build_html(data):
           }})
           .finally(function () {{
             window.setTimeout(function () {{
-              button.textContent = originalLabel;
-              button.disabled = false;
+              if (!keepDisabled) {{
+                button.textContent = originalLabel;
+                button.disabled = false;
+              }}
             }}, 1800);
           }});
       }}

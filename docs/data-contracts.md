@@ -422,6 +422,7 @@ Current MVP CLI entrypoint:
 ```bash
 openrelix knowledge build --date YYYY-MM-DD
 openrelix knowledge build --from YYYY-MM-DD --to YYYY-MM-DD --project PROJECT_KEY
+openrelix knowledge build --from YYYY-MM-DD --to YYYY-MM-DD --project-dir /path/to/project
 openrelix knowledge build --date YYYY-MM-DD --deterministic
 openrelix knowledge build --date YYYY-MM-DD --no-model
 openrelix knowledge list
@@ -433,10 +434,12 @@ openrelix index search-knowledge "query" --status draft
 ```
 
 `build` reads `consolidated/daily/<date>/summary.json`, or a bounded
-`--from/--to` range of daily summaries, plus the active memory registry. By
-default it sends sanitized compact candidates and safe draft docs through the
-configured model runner so the LLM can merge project-scoped evidence into
-business subtopics. `--deterministic`, `--no-model`, and
+`--from/--to` range of daily summaries, plus the active memory registry.
+`--project-dir` filters source windows by their recorded `cwd`/workspace path and
+infers `project_key` plus `project_label` from the directory name; registry rows
+still store state-root relative knowledge paths. By default it sends sanitized
+compact candidates and safe draft docs through the configured model runner so
+the LLM can merge project-scoped evidence into business subtopics. `--deterministic`, `--no-model`, and
 `--fallback-deterministic` keep the local rule-based fallback for offline tests
 and diagnostics; fallback docs are marked `generation_mode=deterministic_fallback`
 and do not masquerade as model output. The command writes only `registry/knowledge_candidates.jsonl`,
@@ -446,11 +449,14 @@ and do not masquerade as model output. The command writes only `registry/knowled
 corresponding Markdown body status line; `published` remains local-only and does
 not enter host context.
 
-The overview panel can open the local Markdown body and can ask the local
-OpenRelix service to create a Lark document from that Markdown once a document
-is `reviewed` or `published`. Lark export is a local convenience action: it
-requires `lark-cli` plus the user's own Lark authorization and does not change
-the knowledge registry when export fails.
+The overview panel opens the local Markdown body in a new tab/window and can ask
+the local OpenRelix service to create a Lark/Feishu document from that Markdown.
+Lark export is a user-triggered local convenience action: it requires
+`feishu-cli`, `lark-cli`, or compatible `lark` CLI plus the user's own
+authorization. Successful exports write `feishu_export.status=exported` and the
+returned URL/token back to the knowledge registry; repeated clicks return the
+existing export instead of creating a duplicate document. Failed exports record a
+sanitized error hint and do not change host context.
 
 ## Memory Registry Contract
 

@@ -340,6 +340,7 @@ MVP 不写 `runtime/host-context/memory_summary.md`、`CLAUDE.md`、`registry/me
 ```bash
 openrelix knowledge build --date YYYY-MM-DD
 openrelix knowledge build --from YYYY-MM-DD --to YYYY-MM-DD --project PROJECT_KEY
+openrelix knowledge build --from YYYY-MM-DD --to YYYY-MM-DD --project-dir /path/to/project
 openrelix knowledge build --date YYYY-MM-DD --deterministic
 openrelix knowledge build --date YYYY-MM-DD --no-model
 openrelix knowledge list
@@ -350,10 +351,10 @@ openrelix knowledge reject --doc-id DOC_ID
 openrelix index search-knowledge "query" --status draft
 ```
 
-`build` 读取 `consolidated/daily/<date>/summary.json`，或 `--from/--to` 指定的有界日期范围 daily summaries，再结合当前 memory registry。默认会把脱敏后的 compact candidates 和安全草稿交给配置好的 model runner，让 LLM 按项目维度把多窗口证据合并成业务子项；`--deterministic`、`--no-model`、`--fallback-deterministic` 保留本地规则 fallback，供离线测试和诊断使用；fallback 文档会标记 `generation_mode=deterministic_fallback`，不能伪装成模型输出。命令只写入 `registry/knowledge_candidates.jsonl`、`registry/knowledge_docs.jsonl`、`knowledge/docs/**` 和 `knowledge/runs/**`。
+`build` 读取 `consolidated/daily/<date>/summary.json`，或 `--from/--to` 指定的有界日期范围 daily summaries，再结合当前 memory registry。`--project-dir` 会按窗口记录的 `cwd`/workspace 路径过滤来源，并从目录名推断 `project_key` 与 `project_label`；registry 里的知识文档路径仍保持 state-root 相对路径。默认会把脱敏后的 compact candidates 和安全草稿交给配置好的 model runner，让 LLM 按项目维度把多窗口证据合并成业务子项；`--deterministic`、`--no-model`、`--fallback-deterministic` 保留本地规则 fallback，供离线测试和诊断使用；fallback 文档会标记 `generation_mode=deterministic_fallback`，不能伪装成模型输出。命令只写入 `registry/knowledge_candidates.jsonl`、`registry/knowledge_docs.jsonl`、`knowledge/docs/**` 和 `knowledge/runs/**`。
 `review`、`publish`、`reject` 只更新 `knowledge_docs.jsonl` 与对应 Markdown 正文里的状态行；`published` 仍是本地可见，不进入 host context。
 
-Overview panel 可以打开本地 Markdown 正文；文档状态达到 `reviewed` 或 `published` 后，也可以请求本地 OpenRelix 服务把该 Markdown 创建成飞书文档。飞书导出只是本地便利操作：需要本机有 `lark-cli` 和用户自己的飞书授权；导出失败不会修改 knowledge registry。
+Overview panel 会用新窗口/新标签打开本地 Markdown 正文，也可以请求本地 OpenRelix 服务把该 Markdown 创建成飞书文档。飞书导出是用户显式触发的本地便利操作：需要本机有 `feishu-cli`、`lark-cli` 或兼容的 `lark` CLI，以及用户自己的飞书授权。导出成功会把 `feishu_export.status=exported` 和返回的 URL/token 写回 knowledge registry；重复点击会返回已有导出结果，不会重复创建飞书文档。导出失败只记录脱敏错误摘要，不会改变 host context。
 
 ## Memory Registry Contract
 

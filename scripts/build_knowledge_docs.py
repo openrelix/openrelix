@@ -112,6 +112,36 @@ def compact_text(value: Any) -> str:
     return knowledge_docs.compact_text(value)
 
 
+def project_identity_from_dir(project_dir: str) -> tuple[Optional[Path], str, str]:
+    text = compact_text(project_dir)
+    if not text:
+        return None, "", ""
+    path = Path(text).expanduser()
+    try:
+        resolved = path.resolve(strict=False)
+    except OSError:
+        resolved = path.absolute()
+    label = resolved.name or compact_text(resolved)
+    key = knowledge_docs.slug_component(label) or "project"
+    return resolved, key, label
+
+
+def window_matches_project_dir(window: Mapping[str, Any], project_dir: Optional[Path]) -> bool:
+    if not project_dir:
+        return True
+    for field in ("cwd", "project_dir", "workspace", "workspace_path"):
+        value = compact_text(window.get(field))
+        if not value:
+            continue
+        try:
+            candidate = Path(value).expanduser().resolve(strict=False)
+        except OSError:
+            candidate = Path(value).expanduser().absolute()
+        if candidate == project_dir or project_dir in candidate.parents:
+            return True
+    return False
+
+
 def safe_int(value: Any) -> int:
     try:
         return int(value)
@@ -340,13 +370,22 @@ def default_feishu_export() -> dict:
     }
 
 
-def extract_candidates(summary: Mapping[str, Any], memory_rows: list[dict], target_date: str) -> list[dict]:
-    sanitized_summary = openrelix_model_runner.sanitize_model_input(summary)
+def extract_candidates(
+    summary: Mapping[str, Any],
+    memory_rows: list[dict],
+    target_date: str,
+    project_dir_path: Optional[Path] = None,
+    project_key_override: str = "",
+    project_label_override: str = "",
+) -> list[dict]:
     sanitized_memories = openrelix_model_runner.sanitize_model_input(memory_rows)
     candidates = []
-    for window in sanitized_summary.get("window_summaries") or []:
-        if not isinstance(window, Mapping):
+    for raw_window in summary.get("window_summaries") or []:
+        if not isinstance(raw_window, Mapping):
             continue
+        if not window_matches_project_dir(raw_window, project_dir_path):
+            continue
+        window = openrelix_model_runner.sanitize_model_input(raw_window)
         memories = matching_memory_rows(window, sanitized_memories)
         quality = candidate_quality(window, memories)
         title = compact_text(window.get("window_title")) or compact_text(window.get("question_summary")) or "Knowledge draft"
@@ -361,8 +400,8 @@ def extract_candidates(summary: Mapping[str, Any], memory_rows: list[dict], targ
                 )
             )
         )
-        project_key = memory_project_value(memories, "project_key", "openrelix")
-        project_label = memory_project_value(memories, "project_label", "OpenRelix")
+        project_key = compact_text(project_key_override) or memory_project_value(memories, "project_key", "openrelix")
+        project_label = compact_text(project_label_override) or memory_project_value(memories, "project_label", "OpenRelix")
         refs = source_refs_for(target_date, window, memories)
         if project_key and project_key not in refs["project_keys"]:
             refs["project_keys"].append(project_key)
@@ -414,13 +453,22 @@ def extract_candidates_for_summaries(
     memory_rows: list[dict],
     target_dates: list[str],
     project_key: str = "",
+    project_dir: str = "",
 ) -> list[dict]:
     candidates = []
-    wanted_project = compact_text(project_key)
+    project_dir_path, inferred_project_key, inferred_project_label = project_identity_from_dir(project_dir)
+    wanted_project = compact_text(project_key) or inferred_project_key
     range_from = target_dates[0] if target_dates else today_str()
     range_to = target_dates[-1] if target_dates else range_from
     for target_date, summary in zip(target_dates, summaries):
-        for candidate in extract_candidates(summary, memory_rows, target_date):
+        for candidate in extract_candidates(
+            summary,
+            memory_rows,
+            target_date,
+            project_dir_path=project_dir_path,
+            project_key_override=wanted_project if project_dir_path else "",
+            project_label_override=inferred_project_label if project_dir_path else "",
+        ):
             if wanted_project and compact_text(candidate.get("project_key")) != wanted_project:
                 continue
             candidate["source_range"] = default_source_range(range_from, range_to)
@@ -699,6 +747,7 @@ def build_knowledge_docs(
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
     project_key: str = "",
+    project_dir: str = "",
     dry_run: bool = False,
     auto_confirm: bool = False,
     model_runner: Optional[Callable[[openrelix_model_runner.ModelRunRequest], openrelix_model_runner.ModelRunResult]] = None,
@@ -726,6 +775,7 @@ def build_knowledge_docs(
             memory_rows,
             target_dates,
             project_key=project_key,
+            project_dir=project_dir,
         )
         if candidate["decision"] == "draft"
     ]
@@ -938,6 +988,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--from", dest="date_from", help="Start date in YYYY-MM-DD for project/range builds.")
     parser.add_argument("--to", dest="date_to", help="End date in YYYY-MM-DD for project/range builds.")
     parser.add_argument("--project", dest="project_key", default="", help="Optional project_key filter.")
+    parser.add_argument("--project-dir", dest="project_dir", default="", help="Optional project directory filter.")
     parser.add_argument("--dry-run", action="store_true", help="Compute without writing registries or docs.")
     parser.add_argument("--auto-confirm", action="store_true", help="Reserved for future review promotion.")
     parser.add_argument("--deterministic", action="store_true", help="Use deterministic local draft rendering without LLM.")
@@ -953,6 +1004,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         date_from=args.date_from,
         date_to=args.date_to,
         project_key=args.project_key,
+        project_dir=args.project_dir,
         dry_run=args.dry_run,
         auto_confirm=args.auto_confirm,
         model_runner=model_runner,

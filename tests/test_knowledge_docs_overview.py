@@ -150,6 +150,8 @@ class KnowledgeDocsOverviewTests(unittest.TestCase):
             self.assertIn("Keep route refs project-scoped.", html)
             self.assertIn("data-knowledge-doc-card-href", html)
             self.assertIn("data-knowledge-lark-doc", html)
+            self.assertIn("导出飞书文档", html)
+            self.assertNotIn("审核后可导出", html)
             self.assertIn("w-route", html)
 
     def test_overview_source_contains_knowledge_docs_section(self):
@@ -157,6 +159,8 @@ class KnowledgeDocsOverviewTests(unittest.TestCase):
 
         self.assertIn("{knowledge_docs_header}", source)
         self.assertIn("{knowledge_docs_body}", source)
+        self.assertIn('window.open(href, "_blank"', source)
+        self.assertNotIn("window.location.href = href", source)
 
 
 if __name__ == "__main__":

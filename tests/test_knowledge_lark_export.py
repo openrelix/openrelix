@@ -39,9 +39,16 @@ class KnowledgeLarkExportTests(unittest.TestCase):
             body_path.write_text("# Route\n", encoding="utf-8")
             row = {
                 "doc_id": "kdoc-route",
-                "status": "published",
+                "status": "draft",
                 "title": "Route Knowledge",
                 "body_path": "knowledge/docs/2026/route.md",
+                "feishu_export": {
+                    "status": "not_configured",
+                    "doc_url": "",
+                    "doc_token": "",
+                    "updated_at": "",
+                    "error_hint": "",
+                },
             }
             (paths.registry_dir / "knowledge_docs.jsonl").write_text(
                 json.dumps(row, ensure_ascii=False) + "\n",
@@ -62,7 +69,7 @@ class KnowledgeLarkExportTests(unittest.TestCase):
                 )()
 
             with mock.patch.object(token_live_server, "PATHS", paths):
-                with mock.patch.object(token_live_server.shutil, "which", return_value="lark-cli"):
+                with mock.patch.object(token_live_server.shutil, "which", return_value="feishu-cli"):
                     with mock.patch.object(token_live_server.subprocess, "run", side_effect=fake_run):
                         result = token_live_server.create_lark_doc_from_knowledge("kdoc-route")
 
@@ -71,16 +78,29 @@ class KnowledgeLarkExportTests(unittest.TestCase):
             self.assertIn("--doc-format", captured["cmd"])
             self.assertIn("markdown", captured["cmd"])
             self.assertIn("@{}".format(body_path), captured["cmd"])
+            updated = json.loads((paths.registry_dir / "knowledge_docs.jsonl").read_text(encoding="utf-8"))
+            self.assertEqual(updated["feishu_export"]["status"], "exported")
+            self.assertEqual(updated["feishu_export"]["doc_url"], "https://example.feishu.cn/docx/abc")
 
-    def test_create_lark_doc_rejects_unreviewed_draft(self):
+    def test_create_lark_doc_returns_existing_export_without_duplicate(self):
         with TemporaryDirectory() as tmpdir:
             paths = runtime_paths_for_state(Path(tmpdir) / "state")
             asset_runtime.ensure_state_layout(paths)
+            body_path = paths.state_root / "knowledge/docs/2026/draft.md"
+            body_path.parent.mkdir(parents=True, exist_ok=True)
+            body_path.write_text("# Draft\n", encoding="utf-8")
             row = {
                 "doc_id": "kdoc-draft",
                 "status": "draft",
                 "title": "Draft Knowledge",
                 "body_path": "knowledge/docs/2026/draft.md",
+                "feishu_export": {
+                    "status": "exported",
+                    "doc_url": "https://example.feishu.cn/docx/existing",
+                    "doc_token": "",
+                    "updated_at": "2026-05-25T10:00:00Z",
+                    "error_hint": "",
+                },
             }
             (paths.registry_dir / "knowledge_docs.jsonl").write_text(
                 json.dumps(row, ensure_ascii=False) + "\n",
@@ -88,10 +108,13 @@ class KnowledgeLarkExportTests(unittest.TestCase):
             )
 
             with mock.patch.object(token_live_server, "PATHS", paths):
-                result = token_live_server.create_lark_doc_from_knowledge("kdoc-draft")
+                with mock.patch.object(token_live_server.subprocess, "run") as run:
+                    result = token_live_server.create_lark_doc_from_knowledge("kdoc-draft")
 
-            self.assertFalse(result["ok"])
-            self.assertEqual(result["error"], "knowledge_doc_not_reviewed")
+            self.assertTrue(result["ok"])
+            self.assertTrue(result["already_exported"])
+            self.assertEqual(result["url"], "https://example.feishu.cn/docx/existing")
+            run.assert_not_called()
 
 
 if __name__ == "__main__":

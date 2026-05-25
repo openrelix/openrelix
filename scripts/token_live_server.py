@@ -12,7 +12,7 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
-from asset_runtime import atomic_write_json, ensure_state_layout, get_project_version, get_runtime_language, get_runtime_paths
+from asset_runtime import atomic_write_json, atomic_write_text, ensure_state_layout, get_project_version, get_runtime_language, get_runtime_paths
 from openrelix_overview.common import current_local_datetime
 from openrelix_overview.claude_desktop import (
     CLAUDE_DESKTOP_OPEN_PATH,
@@ -157,6 +157,36 @@ def _find_knowledge_doc(doc_id):
     return None
 
 
+def _write_jsonl(path, rows):
+    text = "".join(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n" for row in rows)
+    atomic_write_text(path, text)
+
+
+def _update_knowledge_doc_feishu_export(doc_id, export_state):
+    target = str(doc_id or "").strip()
+    registry_path = PATHS.registry_dir / "knowledge_docs.jsonl"
+    rows = _read_jsonl(registry_path)
+    updated_doc = None
+    for row in rows:
+        if str(row.get("doc_id") or "") != target:
+            continue
+        current = row.get("feishu_export") if isinstance(row.get("feishu_export"), dict) else {}
+        merged = {
+            "status": str(current.get("status") or "not_configured"),
+            "doc_url": str(current.get("doc_url") or ""),
+            "doc_token": str(current.get("doc_token") or ""),
+            "updated_at": str(current.get("updated_at") or ""),
+            "error_hint": str(current.get("error_hint") or ""),
+        }
+        merged.update({key: str(value or "") for key, value in (export_state or {}).items()})
+        row["feishu_export"] = merged
+        updated_doc = row
+        break
+    if updated_doc is not None:
+        _write_jsonl(registry_path, rows)
+    return updated_doc
+
+
 def _first_url(value):
     if isinstance(value, dict):
         for key in ("url", "doc_url", "document_url", "docs_url", "web_url"):
@@ -175,17 +205,51 @@ def _first_url(value):
     return ""
 
 
+def _first_value(value, keys):
+    if isinstance(value, dict):
+        for key in keys:
+            candidate = value.get(key)
+            if isinstance(candidate, str) and candidate.strip():
+                return candidate.strip()
+        for item in value.values():
+            found = _first_value(item, keys)
+            if found:
+                return found
+    if isinstance(value, list):
+        for item in value:
+            found = _first_value(item, keys)
+            if found:
+                return found
+    return ""
+
+
 def create_lark_doc_from_knowledge(doc_id):
     doc = _find_knowledge_doc(doc_id)
     if not doc:
         return {"ok": False, "error": "knowledge_doc_not_found"}
-    if str(doc.get("status") or "") not in {"reviewed", "published"}:
-        return {"ok": False, "error": "knowledge_doc_not_reviewed"}
+    feishu_export = doc.get("feishu_export") if isinstance(doc.get("feishu_export"), dict) else {}
+    existing_url = str(feishu_export.get("doc_url") or "").strip()
+    if str(feishu_export.get("status") or "") == "exported":
+        return {
+            "ok": True,
+            "already_exported": True,
+            "doc_id": doc.get("doc_id"),
+            "title": str(doc.get("title") or doc.get("doc_id") or "OpenRelix Knowledge Doc").strip(),
+            "url": existing_url,
+        }
     body_path = PATHS.state_root / str(doc.get("body_path") or "")
     if not body_path.exists() or not body_path.is_file():
         return {"ok": False, "error": "knowledge_doc_body_not_found", "path": str(body_path)}
-    lark_bin = shutil.which("lark-cli") or shutil.which("lark")
+    lark_bin = shutil.which("feishu-cli") or shutil.which("lark-cli") or shutil.which("lark")
     if not lark_bin:
+        _update_knowledge_doc_feishu_export(
+            doc.get("doc_id"),
+            {
+                "status": "failed",
+                "updated_at": current_local_datetime().isoformat(),
+                "error_hint": "feishu_cli_not_found",
+            },
+        )
         return {"ok": False, "error": "lark_cli_not_found"}
     title = str(doc.get("title") or doc.get("doc_id") or "OpenRelix Knowledge Doc").strip()
     command_variants = [
@@ -223,6 +287,14 @@ def create_lark_doc_from_knowledge(doc_id):
         try:
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=90)
         except subprocess.TimeoutExpired:
+            _update_knowledge_doc_feishu_export(
+                doc.get("doc_id"),
+                {
+                    "status": "failed",
+                    "updated_at": current_local_datetime().isoformat(),
+                    "error_hint": "feishu_cli_timeout",
+                },
+            )
             return {"ok": False, "error": "lark_cli_timeout"}
         if result.returncode != 0:
             last_error = (result.stderr or result.stdout or "lark-cli failed")[-1200:]
@@ -231,13 +303,34 @@ def create_lark_doc_from_knowledge(doc_id):
             payload = json.loads(result.stdout or "{}")
         except json.JSONDecodeError:
             payload = {"stdout": result.stdout.strip()}
+        url = _first_url(payload)
+        token = _first_value(payload, ("doc_token", "document_token", "token"))
+        _update_knowledge_doc_feishu_export(
+            doc.get("doc_id"),
+            {
+                "status": "exported",
+                "doc_url": url,
+                "doc_token": token,
+                "updated_at": current_local_datetime().isoformat(),
+                "error_hint": "",
+            },
+        )
         return {
             "ok": True,
+            "already_exported": False,
             "doc_id": doc.get("doc_id"),
             "title": title,
-            "url": _first_url(payload),
+            "url": url,
             "payload": payload,
         }
+    _update_knowledge_doc_feishu_export(
+        doc.get("doc_id"),
+        {
+            "status": "failed",
+            "updated_at": current_local_datetime().isoformat(),
+            "error_hint": last_error[-400:],
+        },
+    )
     return {"ok": False, "error": "lark_cli_failed", "detail": last_error}
 
 

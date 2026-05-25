@@ -1029,6 +1029,15 @@ def build_parser():
         help=localized("按 project_key 过滤并做项目维度构建。", "Filter by project_key for project-scoped builds."),
     )
     knowledge.add_argument(
+        "--project-dir",
+        dest="project_dir",
+        default="",
+        help=localized(
+            "按项目目录过滤窗口，并从目录名推断 project_key。",
+            "Filter windows by project directory and infer project_key from the directory name.",
+        ),
+    )
+    knowledge.add_argument(
         "--dry-run",
         action="store_true",
         help=localized("只计算，不写入 registry 或文档。", "Compute without writing registries or docs."),
@@ -4892,6 +4901,7 @@ def command_knowledge(args):
             date_from=getattr(args, "date_from", None),
             date_to=getattr(args, "date_to", None),
             project_key=getattr(args, "project_key", ""),
+            project_dir=getattr(args, "project_dir", ""),
             dry_run=args.dry_run,
             auto_confirm=args.auto_confirm,
             model_runner=model_runner,

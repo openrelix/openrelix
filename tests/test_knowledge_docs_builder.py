@@ -48,9 +48,9 @@ def read_jsonl(path):
     ]
 
 
-def write_sample_inputs(paths, target_date="2026-04-28"):
+def write_sample_inputs(paths, target_date="2026-04-28", cwd=None):
     asset_runtime.ensure_state_layout(paths)
-    private_path = "/" + "Users/alice/private-openrelix"
+    private_path = cwd or "/" + "Users/alice/private-openrelix"
     private_email = "user" + "@example.com"
     private_secret = "super-" + "secret-value"
     summary_dir = paths.consolidated_daily_dir / target_date
@@ -253,6 +253,27 @@ class KnowledgeDocsBuilderTests(unittest.TestCase):
                 ["2026-04-28", "2026-04-29"],
             )
 
+    def test_project_dir_filters_and_infers_project_identity(self):
+        import build_knowledge_docs
+
+        with TemporaryDirectory() as tmpdir:
+            paths = runtime_paths_for_state(Path(tmpdir) / "state")
+            project_dir = Path(tmpdir) / "My Project"
+            project_dir.mkdir()
+            write_sample_inputs(paths, cwd=str(project_dir))
+
+            result = build_knowledge_docs.build_knowledge_docs(
+                paths=paths,
+                date="2026-04-28",
+                project_dir=str(project_dir),
+            )
+
+            self.assertEqual(result["created_docs"], 1)
+            docs = read_jsonl(paths.registry_dir / "knowledge_docs.jsonl")
+            self.assertEqual(docs[0]["project_key"], "my-project")
+            self.assertEqual(docs[0]["project_label"], "My Project")
+            self.assertEqual(docs[0]["aggregation_scope"], "project")
+
     def test_openrelix_cli_build_uses_model_runner_by_default(self):
         import openrelix
 
@@ -284,6 +305,7 @@ class KnowledgeDocsBuilderTests(unittest.TestCase):
                 "date_from": None,
                 "date_to": None,
                 "project_key": "",
+                "project_dir": "",
                 "dry_run": False,
                 "auto_confirm": False,
                 "deterministic": False,
@@ -296,6 +318,51 @@ class KnowledgeDocsBuilderTests(unittest.TestCase):
                 openrelix.command_knowledge(args)
 
         self.assertIs(captured["model_runner"], openrelix.openrelix_model_runner.run_model_request)
+
+    def test_openrelix_cli_passes_project_dir_to_builder(self):
+        import openrelix
+
+        captured = {}
+
+        def fake_build_knowledge_docs(**kwargs):
+            captured.update(kwargs)
+            return {
+                "date": "2026-04-28",
+                "date_range": {"from": "2026-04-28", "to": "2026-04-28"},
+                "run_id": "run",
+                "run_artifact": "",
+                "dry_run": False,
+                "auto_confirm": False,
+                "created_candidates": 0,
+                "created_docs": 0,
+                "failed_runs": 0,
+                "candidate_ids": [],
+                "doc_ids": [],
+                "status": "success",
+            }
+
+        args = type(
+            "Args",
+            (),
+            {
+                "action": "build",
+                "date": "2026-04-28",
+                "date_from": None,
+                "date_to": None,
+                "project_key": "",
+                "project_dir": "/tmp/my-project",
+                "dry_run": False,
+                "auto_confirm": False,
+                "deterministic": True,
+                "json": True,
+                "limit": 20,
+            },
+        )()
+        with mock.patch("build_knowledge_docs.build_knowledge_docs", side_effect=fake_build_knowledge_docs):
+            with mock.patch("sys.stdout"):
+                openrelix.command_knowledge(args)
+
+        self.assertEqual(captured["project_dir"], "/tmp/my-project")
 
     def test_cli_exposes_knowledge_build_list_and_status(self):
         with TemporaryDirectory() as tmpdir:
