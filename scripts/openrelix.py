@@ -134,6 +134,11 @@ UPDATE_CHECK_LABEL = "io.github.openrelix.update-check"
 UPDATE_CHECK_PLIST_NAME = "{}.plist".format(UPDATE_CHECK_LABEL)
 TOKEN_LIVE_HEALTH_URL = "http://127.0.0.1:8765/healthz"
 TOKEN_LIVE_STARTUP_TIMEOUT_SECONDS = 8.0
+TOKEN_LIVE_REQUIRED_CAPABILITIES = {
+    "knowledge-lark-doc",
+    "lark-cli-safe-path",
+    "lark-cli-relative-markdown-file",
+}
 STAGE_PRIORITY = {"manual": 0, "preliminary": 1, "final": 2}
 MAX_BACKFILL_JOBS = 2
 
@@ -1807,6 +1812,9 @@ def token_live_health_matches_current(payload):
         if Path(service_script_path).expanduser().resolve() != expected_script_path:
             return False
     except OSError:
+        return False
+    capabilities = payload.get("capabilities")
+    if not isinstance(capabilities, list) or not TOKEN_LIVE_REQUIRED_CAPABILITIES.issubset(set(capabilities)):
         return False
     return True
 

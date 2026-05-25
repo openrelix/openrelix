@@ -9319,6 +9319,11 @@ Native Codex profile.
                     "service": "token-live",
                     "version": openrelix.read_local_package_version(),
                     "script_path": str(expected_script),
+                    "capabilities": [
+                        "knowledge-lark-doc",
+                        "lark-cli-safe-path",
+                        "lark-cli-relative-markdown-file",
+                    ],
                 }
             )
         )
@@ -9330,6 +9335,11 @@ Native Codex profile.
                     "service": "token-live",
                     "version": "0.0.1",
                     "script_path": str(expected_script),
+                    "capabilities": [
+                        "knowledge-lark-doc",
+                        "lark-cli-safe-path",
+                        "lark-cli-relative-markdown-file",
+                    ],
                 }
             )
         )
@@ -9340,6 +9350,21 @@ Native Codex profile.
                     "service": "token-live",
                     "version": openrelix.read_local_package_version(),
                     "script_path": "/tmp/old-openrelix/scripts/token_live_server.py",
+                    "capabilities": [
+                        "knowledge-lark-doc",
+                        "lark-cli-safe-path",
+                        "lark-cli-relative-markdown-file",
+                    ],
+                }
+            )
+        )
+        self.assertFalse(
+            openrelix.token_live_health_matches_current(
+                {
+                    "ok": True,
+                    "service": "token-live",
+                    "version": openrelix.read_local_package_version(),
+                    "script_path": str(expected_script),
                 }
             )
         )
@@ -9364,6 +9389,9 @@ Native Codex profile.
         self.assertEqual(payload["version"], token_live_server.SERVICE_VERSION)
         self.assertEqual(payload["repo_root"], str(token_live_server.PATHS.repo_root))
         self.assertEqual(payload["script_path"], token_live_server.SERVICE_SCRIPT_PATH)
+        self.assertIn("knowledge-lark-doc", payload["capabilities"])
+        self.assertIn("lark-cli-safe-path", payload["capabilities"])
+        self.assertIn("lark-cli-relative-markdown-file", payload["capabilities"])
 
     def test_ensure_token_live_service_bootstraps_when_health_check_fails(self):
         with TemporaryDirectory() as tmpdir:

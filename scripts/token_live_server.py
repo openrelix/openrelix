@@ -48,6 +48,7 @@ from openrelix_overview.update_secret import read_or_create_update_token
 
 PATHS = get_runtime_paths()
 LANGUAGE = get_runtime_language(PATHS)
+SAFE_CLI_PATH = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 RUNTIME_DIR = PATHS.runtime_dir
 SERVICE_VERSION = get_project_version(PATHS.repo_root, fallback="")
 SERVICE_SCRIPT_PATH = os.path.realpath(__file__)
@@ -71,6 +72,11 @@ PANEL_REFRESH_TIMEOUT_SECONDS = 180
 PANEL_REFRESH_LOG_TAIL_LINES = 20
 MEMORY_FEEDBACK_PATH = "/memory-feedback"
 KNOWLEDGE_LARK_DOC_PATH = "/knowledge-lark-doc"
+SERVICE_CAPABILITIES = [
+    "knowledge-lark-doc",
+    "lark-cli-safe-path",
+    "lark-cli-relative-markdown-file",
+]
 MEMORY_FEEDBACK_REFRESH_TIMEOUT_SECONDS = 120
 MEMORY_FEEDBACK_REFRESH_LOCK = threading.RLock()
 MEMORY_FEEDBACK_REFRESH_STATE = {
@@ -223,6 +229,35 @@ def _first_value(value, keys):
     return ""
 
 
+def _payload_error_hint(payload):
+    if not isinstance(payload, dict):
+        return ""
+    if payload.get("ok") is not False:
+        return ""
+    error = payload.get("error")
+    if isinstance(error, dict):
+        return str(error.get("message") or error.get("type") or "lark-cli returned ok=false")
+    if error:
+        return str(error)
+    return "lark-cli returned ok=false"
+
+
+def _cli_env():
+    env = os.environ.copy()
+    current_path = str(env.get("PATH") or "")
+    env["PATH"] = SAFE_CLI_PATH if not current_path else SAFE_CLI_PATH + os.pathsep + current_path
+    return env
+
+
+def _resolve_lark_cli():
+    search_path = SAFE_CLI_PATH + os.pathsep + str(os.environ.get("PATH") or "")
+    return (
+        shutil.which("feishu-cli", path=search_path)
+        or shutil.which("lark-cli", path=search_path)
+        or shutil.which("lark", path=search_path)
+    )
+
+
 def create_lark_doc_from_knowledge(doc_id):
     doc = _find_knowledge_doc(doc_id)
     if not doc:
@@ -240,7 +275,7 @@ def create_lark_doc_from_knowledge(doc_id):
     body_path = PATHS.state_root / str(doc.get("body_path") or "")
     if not body_path.exists() or not body_path.is_file():
         return {"ok": False, "error": "knowledge_doc_body_not_found", "path": str(body_path)}
-    lark_bin = shutil.which("feishu-cli") or shutil.which("lark-cli") or shutil.which("lark")
+    lark_bin = _resolve_lark_cli()
     if not lark_bin:
         _update_knowledge_doc_feishu_export(
             doc.get("doc_id"),
@@ -252,40 +287,40 @@ def create_lark_doc_from_knowledge(doc_id):
         )
         return {"ok": False, "error": "lark_cli_not_found"}
     title = str(doc.get("title") or doc.get("doc_id") or "OpenRelix Knowledge Doc").strip()
+    body_arg = "@{}".format(body_path.name)
     command_variants = [
         [
             lark_bin,
-            "--json",
             "docs",
-            "create",
-            "--api-version",
-            "v2",
-            "--doc-format",
-            "markdown",
+            "+create",
             "--title",
             title,
-            "--content",
-            "@{}".format(body_path),
+            "--markdown",
+            body_arg,
         ],
         [
             lark_bin,
-            "--json",
             "docs",
             "+create",
             "--api-version",
             "v2",
-            "--doc-format",
-            "markdown",
             "--title",
             title,
-            "--content",
-            "@{}".format(body_path),
+            "--markdown",
+            body_arg,
         ],
     ]
     last_error = ""
     for cmd in command_variants:
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=90)
+            result = subprocess.run(
+                cmd,
+                cwd=str(body_path.parent),
+                capture_output=True,
+                text=True,
+                timeout=90,
+                env=_cli_env(),
+            )
         except subprocess.TimeoutExpired:
             _update_knowledge_doc_feishu_export(
                 doc.get("doc_id"),
@@ -303,6 +338,10 @@ def create_lark_doc_from_knowledge(doc_id):
             payload = json.loads(result.stdout or "{}")
         except json.JSONDecodeError:
             payload = {"stdout": result.stdout.strip()}
+        payload_error = _payload_error_hint(payload)
+        if payload_error:
+            last_error = payload_error[-1200:]
+            continue
         url = _first_url(payload)
         token = _first_value(payload, ("doc_token", "document_token", "token"))
         _update_knowledge_doc_feishu_export(
@@ -1265,6 +1304,7 @@ class TokenLiveHandler(BaseHTTPRequestHandler):
                     "repo_root": str(PATHS.repo_root),
                     "script_path": SERVICE_SCRIPT_PATH,
                     "endpoint": LIVE_TOKEN_ENDPOINT,
+                    "capabilities": SERVICE_CAPABILITIES,
                 },
             )
             return

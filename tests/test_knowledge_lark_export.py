@@ -56,8 +56,9 @@ class KnowledgeLarkExportTests(unittest.TestCase):
             )
             captured = {}
 
-            def fake_run(cmd, **_kwargs):
+            def fake_run(cmd, **kwargs):
                 captured["cmd"] = cmd
+                captured["cwd"] = kwargs.get("cwd")
                 return type(
                     "Result",
                     (),
@@ -69,18 +70,65 @@ class KnowledgeLarkExportTests(unittest.TestCase):
                 )()
 
             with mock.patch.object(token_live_server, "PATHS", paths):
-                with mock.patch.object(token_live_server.shutil, "which", return_value="feishu-cli"):
+                with mock.patch.object(token_live_server, "_resolve_lark_cli", return_value="feishu-cli"):
                     with mock.patch.object(token_live_server.subprocess, "run", side_effect=fake_run):
                         result = token_live_server.create_lark_doc_from_knowledge("kdoc-route")
 
             self.assertTrue(result["ok"])
             self.assertEqual(result["url"], "https://example.feishu.cn/docx/abc")
-            self.assertIn("--doc-format", captured["cmd"])
-            self.assertIn("markdown", captured["cmd"])
-            self.assertIn("@{}".format(body_path), captured["cmd"])
+            self.assertIn("--markdown", captured["cmd"])
+            self.assertIn("@{}".format(body_path.name), captured["cmd"])
+            self.assertEqual(captured["cwd"], str(body_path.parent))
             updated = json.loads((paths.registry_dir / "knowledge_docs.jsonl").read_text(encoding="utf-8"))
             self.assertEqual(updated["feishu_export"]["status"], "exported")
             self.assertEqual(updated["feishu_export"]["doc_url"], "https://example.feishu.cn/docx/abc")
+
+    def test_create_lark_doc_treats_ok_false_json_as_failure(self):
+        with TemporaryDirectory() as tmpdir:
+            paths = runtime_paths_for_state(Path(tmpdir) / "state")
+            asset_runtime.ensure_state_layout(paths)
+            body_path = paths.state_root / "knowledge/docs/2026/route.md"
+            body_path.parent.mkdir(parents=True, exist_ok=True)
+            body_path.write_text("# Route\n", encoding="utf-8")
+            row = {
+                "doc_id": "kdoc-route",
+                "status": "draft",
+                "title": "Route Knowledge",
+                "body_path": "knowledge/docs/2026/route.md",
+                "feishu_export": {
+                    "status": "not_configured",
+                    "doc_url": "",
+                    "doc_token": "",
+                    "updated_at": "",
+                    "error_hint": "",
+                },
+            }
+            (paths.registry_dir / "knowledge_docs.jsonl").write_text(
+                json.dumps(row, ensure_ascii=False) + "\n",
+                encoding="utf-8",
+            )
+
+            def fake_run(_cmd, **_kwargs):
+                return type(
+                    "Result",
+                    (),
+                    {
+                        "returncode": 0,
+                        "stdout": json.dumps({"ok": False, "error": {"message": "keychain not initialized"}}),
+                        "stderr": "",
+                    },
+                )()
+
+            with mock.patch.object(token_live_server, "PATHS", paths):
+                with mock.patch.object(token_live_server, "_resolve_lark_cli", return_value="lark-cli"):
+                    with mock.patch.object(token_live_server.subprocess, "run", side_effect=fake_run):
+                        result = token_live_server.create_lark_doc_from_knowledge("kdoc-route")
+
+            self.assertFalse(result["ok"])
+            self.assertEqual(result["error"], "lark_cli_failed")
+            updated = json.loads((paths.registry_dir / "knowledge_docs.jsonl").read_text(encoding="utf-8"))
+            self.assertEqual(updated["feishu_export"]["status"], "failed")
+            self.assertIn("keychain not initialized", updated["feishu_export"]["error_hint"])
 
     def test_create_lark_doc_returns_existing_export_without_duplicate(self):
         with TemporaryDirectory() as tmpdir:
