@@ -6,7 +6,7 @@ from __future__ import annotations
 import argparse
 import contextlib
 from datetime import date as date_cls
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import fcntl
 import hashlib
 import json
@@ -70,6 +70,29 @@ def utc_now() -> str:
 
 def today_str() -> str:
     return date_cls.today().isoformat()
+
+
+def parse_date(value: str, label: str = "date") -> date_cls:
+    try:
+        return date_cls.fromisoformat(str(value))
+    except (TypeError, ValueError) as exc:
+        raise ValueError("{} must use YYYY-MM-DD: {}".format(label, value)) from exc
+
+
+def resolve_date_range(date: Optional[str] = None, date_from: Optional[str] = None, date_to: Optional[str] = None) -> tuple[str, str, list[str]]:
+    if date_from or date_to:
+        start = parse_date(date_from or date or today_str(), "--from")
+        end = parse_date(date_to or date or date_from or today_str(), "--to")
+    else:
+        start = parse_date(date or today_str(), "--date")
+        end = start
+    if start > end:
+        raise ValueError("--from cannot be later than --to")
+    days = [
+        (start + timedelta(days=offset)).isoformat()
+        for offset in range((end - start).days + 1)
+    ]
+    return start.isoformat(), end.isoformat(), days
 
 
 def compact_text(value: Any) -> str:
@@ -159,6 +182,10 @@ def load_daily_summary(paths, target_date: str) -> Mapping[str, Any]:
     if not path.exists():
         return {"date": target_date, "window_summaries": [], "day_summary": ""}
     return read_json(path)
+
+
+def load_daily_summaries(paths, target_dates: list[str]) -> list[Mapping[str, Any]]:
+    return [load_daily_summary(paths, target_date) for target_date in target_dates]
 
 
 def load_memory_rows(paths) -> list[dict]:
@@ -293,6 +320,22 @@ def extract_candidates(summary: Mapping[str, Any], memory_rows: list[dict], targ
         candidate["canonical_key"] = knowledge_docs.canonical_key(candidate)
         candidate["candidate_id"] = candidate_id_for(candidate["canonical_key"], source_fingerprint)
         candidates.append(candidate)
+    return candidates
+
+
+def extract_candidates_for_summaries(
+    summaries: list[Mapping[str, Any]],
+    memory_rows: list[dict],
+    target_dates: list[str],
+    project_key: str = "",
+) -> list[dict]:
+    candidates = []
+    wanted_project = compact_text(project_key)
+    for target_date, summary in zip(target_dates, summaries):
+        for candidate in extract_candidates(summary, memory_rows, target_date):
+            if wanted_project and compact_text(candidate.get("project_key")) != wanted_project:
+                continue
+            candidates.append(candidate)
     return candidates
 
 
@@ -452,10 +495,13 @@ def validate_doc_payload(payload: Mapping[str, Any]) -> list[str]:
 
 
 def build_model_request(paths, candidates: list[dict], summary: Mapping[str, Any]) -> openrelix_model_runner.ModelRunRequest:
+    created_at = utc_now()
+    draft_docs = [deterministic_doc_from_candidate(candidate, created_at) for candidate in candidates]
     payload = {
         "schema_version": knowledge_docs.KNOWLEDGE_DOC_SCHEMA_VERSION,
         "algorithm_version": knowledge_docs.KNOWLEDGE_DOC_ALGORITHM_VERSION,
         "candidates": [public_candidate(candidate) for candidate in candidates],
+        "draft_docs": draft_docs,
         "summary": summary,
     }
     return openrelix_model_runner.ModelRunRequest(
@@ -489,19 +535,44 @@ def write_run_artifact(paths, run_id: str, payload: Mapping[str, Any], *, dry_ru
 def build_knowledge_docs(
     paths=None,
     date: Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    project_key: str = "",
     dry_run: bool = False,
     auto_confirm: bool = False,
     model_runner: Optional[Callable[[openrelix_model_runner.ModelRunRequest], openrelix_model_runner.ModelRunResult]] = None,
 ) -> dict:
     paths = ensure_state_layout(paths or get_runtime_paths())
-    target_date = date or today_str()
-    summary = load_daily_summary(paths, target_date)
+    range_from, range_to, target_dates = resolve_date_range(date=date, date_from=date_from, date_to=date_to)
+    target_date = range_to
+    summaries = load_daily_summaries(paths, target_dates)
+    summary = {
+        "date": target_date,
+        "date_range": {"from": range_from, "to": range_to},
+        "summaries": summaries,
+        "window_summaries": [
+            window
+            for daily_summary in summaries
+            for window in (daily_summary.get("window_summaries") or [])
+            if isinstance(window, Mapping)
+        ],
+    }
     memory_rows = load_memory_rows(paths)
-    candidates = [candidate for candidate in extract_candidates(summary, memory_rows, target_date) if candidate["decision"] == "draft"]
+    candidates = [
+        candidate
+        for candidate in extract_candidates_for_summaries(
+            summaries,
+            memory_rows,
+            target_dates,
+            project_key=project_key,
+        )
+        if candidate["decision"] == "draft"
+    ]
     run_id = run_id_for(target_date, summary)
     created_at = utc_now()
     result = {
         "date": target_date,
+        "date_range": {"from": range_from, "to": range_to},
         "run_id": run_id,
         "run_artifact": "",
         "dry_run": bool(dry_run),
@@ -556,6 +627,8 @@ def build_knowledge_docs(
             )
             return result
         docs = normalize_model_docs(openrelix_model_runner.sanitize_model_input(model_result.payload or {}))
+        for doc in docs:
+            doc["model_status"] = model_status
 
     validation_errors = []
     for doc in docs:
@@ -700,15 +773,28 @@ def knowledge_status(paths=None) -> dict:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Build local OpenRelix knowledge document drafts.")
     parser.add_argument("--date", default=today_str(), help="Target date in YYYY-MM-DD.")
+    parser.add_argument("--from", dest="date_from", help="Start date in YYYY-MM-DD for project/range builds.")
+    parser.add_argument("--to", dest="date_to", help="End date in YYYY-MM-DD for project/range builds.")
+    parser.add_argument("--project", dest="project_key", default="", help="Optional project_key filter.")
     parser.add_argument("--dry-run", action="store_true", help="Compute without writing registries or docs.")
     parser.add_argument("--auto-confirm", action="store_true", help="Reserved for future review promotion.")
+    parser.add_argument("--deterministic", action="store_true", help="Use deterministic local draft rendering without LLM.")
     parser.add_argument("--json", action="store_true", help="Print JSON output.")
     return parser
 
 
 def main(argv: Optional[list[str]] = None) -> int:
     args = build_parser().parse_args(argv)
-    result = build_knowledge_docs(date=args.date, dry_run=args.dry_run, auto_confirm=args.auto_confirm)
+    model_runner = None if args.deterministic else openrelix_model_runner.run_model_request
+    result = build_knowledge_docs(
+        date=args.date,
+        date_from=args.date_from,
+        date_to=args.date_to,
+        project_key=args.project_key,
+        dry_run=args.dry_run,
+        auto_confirm=args.auto_confirm,
+        model_runner=model_runner,
+    )
     if args.json:
         print(json.dumps(result, ensure_ascii=False, indent=2))
     else:

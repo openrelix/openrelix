@@ -2026,6 +2026,26 @@ def knowledge_doc_body_path_label(body_path):
     return text
 
 
+def knowledge_doc_body_path_abs(body_path):
+    text = str(body_path or "").strip()
+    if not text:
+        return ""
+    path = Path(text)
+    if not path.is_absolute():
+        path = PATHS.state_root / path
+    return str(path)
+
+
+def knowledge_doc_body_path_uri(body_path):
+    path_text = knowledge_doc_body_path_abs(body_path)
+    if not path_text:
+        return ""
+    try:
+        return Path(path_text).resolve().as_uri()
+    except ValueError:
+        return ""
+
+
 def load_knowledge_docs(limit=25):
     rows = []
     for row in load_jsonl(REGISTRY_DIR / "knowledge_docs.jsonl"):
@@ -2033,6 +2053,8 @@ def load_knowledge_docs(limit=25):
             continue
         current = dict(row)
         current["body_path_label"] = knowledge_doc_body_path_label(current.get("body_path"))
+        current["body_path_abs"] = knowledge_doc_body_path_abs(current.get("body_path"))
+        current["body_path_uri"] = knowledge_doc_body_path_uri(current.get("body_path"))
         rows.append(current)
     rows.sort(
         key=lambda item: (
@@ -13434,22 +13456,71 @@ def make_knowledge_docs_panel_body(rows):
 
     def render_row(row):
         source_refs = row.get("source_refs") or {}
+        summary_dates = [str(item) for item in (source_refs.get("summary_dates") or []) if str(item)]
         window_ids = [str(item) for item in (source_refs.get("window_ids") or []) if str(item)]
         memory_ids = [str(item) for item in (source_refs.get("memory_ids") or []) if str(item)]
-        source_bits = []
+        review_paths = [str(item) for item in (source_refs.get("review_paths") or []) if str(item)]
+        source_rows = []
+        if summary_dates:
+            source_rows.append(("summary_dates", summary_dates))
         if window_ids:
-            source_bits.append("windows: {}".format(", ".join(window_ids[:4])))
+            source_rows.append(("windows", window_ids))
         if memory_ids:
-            source_bits.append("memories: {}".format(", ".join(memory_ids[:4])))
-        source_html = ""
-        if source_bits:
-            source_html = '<p class="knowledge-doc-source">{}</p>'.format(escape(" · ".join(source_bits)))
+            source_rows.append(("memories", memory_ids))
+        if review_paths:
+            source_rows.append(("reviews", review_paths))
+        source_html = """
+          <details class="knowledge-doc-source-detail">
+            <summary>查看来源与上下文</summary>
+            <dl>
+              {rows}
+            </dl>
+          </details>
+        """.format(
+            rows="\n".join(
+                "<dt>{}</dt><dd>{}</dd>".format(
+                    escape(label),
+                    escape(", ".join(values[:12])),
+                )
+                for label, values in source_rows
+            )
+            or "<dt>source</dt><dd>-</dd>"
+        )
         body_path = row.get("body_path_label") or row.get("body_path") or ""
+        body_uri = row.get("body_path_uri") or ""
+        body_abs = row.get("body_path_abs") or ""
         body_html = ""
         if body_path:
-            body_html = '<div class="native-brief-source-label">{}</div>'.format(escape(str(body_path)))
+            if body_uri:
+                body_html = (
+                    '<a class="native-brief-source-label knowledge-doc-body-link" '
+                    'href="{href}" target="_blank" rel="noopener noreferrer">{label}</a>'
+                ).format(
+                    href=escape(str(body_uri), quote=True),
+                    label=escape(str(body_path)),
+                )
+            else:
+                body_html = '<div class="native-brief-source-label">{}</div>'.format(escape(str(body_path)))
+        actions_html = """
+          <div class="knowledge-doc-actions">
+            {body_action}
+            <button type="button" class="knowledge-doc-action" data-knowledge-lark-doc="{doc_id}">
+              生成飞书文档
+            </button>
+            <span class="knowledge-doc-action-status" data-knowledge-lark-status></span>
+          </div>
+        """.format(
+            body_action=(
+                '<a class="knowledge-doc-action" href="{href}" target="_blank" rel="noopener noreferrer">打开本地 Markdown</a>'.format(
+                    href=escape(str(body_uri), quote=True)
+                )
+                if body_uri
+                else ""
+            ),
+            doc_id=escape(str(row.get("doc_id") or ""), quote=True),
+        )
         return """
-          <article class="native-brief-card knowledge-doc-card">
+          <article class="native-brief-card knowledge-doc-card" data-knowledge-doc-card-href="{body_uri}" data-knowledge-doc-path="{body_abs}">
             <div class="native-brief-topline">
               <span>{status}</span>
               <span class="native-brief-source-label">{kind}</span>
@@ -13463,8 +13534,11 @@ def make_knowledge_docs_panel_body(rows):
             </div>
             {source_html}
             {body_html}
+            {actions_html}
           </article>
         """.format(
+            body_uri=escape(str(body_uri), quote=True),
+            body_abs=escape(str(body_abs), quote=True),
             status=escape(str(row.get("status") or "draft")),
             kind=escape(str(row.get("knowledge_type") or "knowledge")),
             title=escape(str(row.get("title") or row.get("doc_id") or "Untitled knowledge doc")),
@@ -13474,6 +13548,7 @@ def make_knowledge_docs_panel_body(rows):
             trust_level=escape(str((row.get("visibility") or {}).get("trust_level") or "draft")),
             source_html=source_html,
             body_html=body_html,
+            actions_html=actions_html,
         )
 
     grouped = defaultdict(list)
@@ -17571,7 +17646,7 @@ def build_html(data):
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="openrelix:version" content="{current_version}" data-pkg="{npm_package}" data-update-endpoint="{update_endpoint}" data-update-status-endpoint="{update_status_endpoint}" data-asset-refresh-endpoint="{asset_refresh_endpoint}" data-codex-desktop-endpoint="{codex_desktop_endpoint}" data-memory-feedback-endpoint="{memory_feedback_endpoint}" data-claude-desktop-endpoint="{claude_desktop_endpoint}" data-finder-open-endpoint="{finder_open_endpoint}" data-update-token="{update_token}">
+  <meta name="openrelix:version" content="{current_version}" data-pkg="{npm_package}" data-update-endpoint="{update_endpoint}" data-update-status-endpoint="{update_status_endpoint}" data-asset-refresh-endpoint="{asset_refresh_endpoint}" data-codex-desktop-endpoint="{codex_desktop_endpoint}" data-memory-feedback-endpoint="{memory_feedback_endpoint}" data-knowledge-lark-doc-endpoint="{knowledge_lark_doc_endpoint}" data-claude-desktop-endpoint="{claude_desktop_endpoint}" data-finder-open-endpoint="{finder_open_endpoint}" data-update-token="{update_token}">
   <title>{document_title}</title>
   <script>
     (function () {{
@@ -21394,6 +21469,64 @@ def build_html(data):
       border-radius: 16px;
       background: var(--card);
       overflow: hidden;
+    }}
+
+    .knowledge-doc-card[data-knowledge-doc-card-href] {{
+      cursor: pointer;
+    }}
+
+    .knowledge-doc-source-detail {{
+      min-width: 0;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+    }}
+
+    .knowledge-doc-source-detail > summary {{
+      cursor: pointer;
+      color: var(--ink);
+      font-weight: 650;
+    }}
+
+    .knowledge-doc-source-detail dl {{
+      display: grid;
+      gap: 4px 10px;
+      grid-template-columns: max-content minmax(0, 1fr);
+      margin: 8px 0 0;
+    }}
+
+    .knowledge-doc-source-detail dt,
+    .knowledge-doc-source-detail dd {{
+      min-width: 0;
+      margin: 0;
+      overflow-wrap: anywhere;
+    }}
+
+    .knowledge-doc-actions {{
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+    }}
+
+    .knowledge-doc-action {{
+      display: inline-flex;
+      align-items: center;
+      min-height: 30px;
+      padding: 5px 9px;
+      border: 1px solid var(--line-strong);
+      border-radius: 8px;
+      background: var(--chip-muted-bg);
+      color: var(--ink);
+      font: inherit;
+      font-size: 12px;
+      text-decoration: none;
+      cursor: pointer;
+    }}
+
+    .knowledge-doc-action-status {{
+      color: var(--muted);
+      font-size: 12px;
     }}
 
     .native-brief-topline {{
@@ -27605,6 +27738,70 @@ def build_html(data):
           }});
       }}
 
+      function openKnowledgeDocCard(card) {{
+        const href = (card.getAttribute("data-knowledge-doc-card-href") || "").trim();
+        if (href) {{
+          window.location.href = href;
+        }}
+      }}
+
+      function createKnowledgeLarkDoc(button) {{
+        const docId = (button.getAttribute("data-knowledge-lark-doc") || "").trim();
+        const endpoint = openrelixMetaAttr("data-knowledge-lark-doc-endpoint");
+        const token = openrelixMetaAttr("data-update-token");
+        const card = button.closest(".knowledge-doc-card");
+        const status = card ? card.querySelector("[data-knowledge-lark-status]") : null;
+        const originalLabel = button.textContent;
+        function setStatus(message) {{
+          if (status) {{
+            status.textContent = message || "";
+          }}
+        }}
+        if (!docId || !endpoint || !token || !window.fetch) {{
+          setStatus(currentLanguage === "en" ? "Local service is not running." : "本地服务未启动。");
+          return;
+        }}
+        button.disabled = true;
+        button.textContent = currentLanguage === "en" ? "Creating..." : "正在生成…";
+        setStatus("");
+        const headers = {{ "Content-Type": "application/json" }};
+        headers["X-OpenRelix-Token"] = token;
+        fetch(endpoint, {{
+          method: "POST",
+          headers: headers,
+          body: JSON.stringify({{ doc_id: docId }})
+        }})
+          .then(function (response) {{
+            return response.json().catch(function () {{
+              return null;
+            }}).then(function (payload) {{
+              if (!response.ok || !payload || payload.ok === false) {{
+                throw new Error((payload && (payload.error || payload.detail)) || ("HTTP " + response.status));
+              }}
+              return payload;
+            }});
+          }})
+          .then(function (payload) {{
+            button.textContent = currentLanguage === "en" ? "Created" : "已生成";
+            if (payload && payload.url) {{
+              setStatus(payload.url);
+              window.open(payload.url, "_blank", "noopener,noreferrer");
+            }} else {{
+              setStatus(currentLanguage === "en" ? "Created in Lark" : "已创建飞书文档");
+            }}
+          }})
+          .catch(function (error) {{
+            button.textContent = currentLanguage === "en" ? "Failed" : "生成失败";
+            setStatus(error && error.message ? error.message : "");
+          }})
+          .finally(function () {{
+            window.setTimeout(function () {{
+              button.textContent = originalLabel;
+              button.disabled = false;
+            }}, 1800);
+          }});
+      }}
+
       function memoryFeedbackStatusMessage(feedback) {{
         const state = normalizeMemoryFeedbackValue(feedback);
         if (state === "liked") {{
@@ -27884,6 +28081,27 @@ def build_html(data):
           event.preventDefault();
           event.stopPropagation();
           openFinderPath(button);
+        }});
+      }}
+
+      function wireKnowledgeDocActions() {{
+        document.addEventListener("click", function (event) {{
+          const larkButton = event.target.closest("[data-knowledge-lark-doc]");
+          if (larkButton) {{
+            event.preventDefault();
+            event.stopPropagation();
+            createKnowledgeLarkDoc(larkButton);
+            return;
+          }}
+          const card = event.target.closest("[data-knowledge-doc-card-href]");
+          if (!card) {{
+            return;
+          }}
+          if (event.target.closest("a, button, summary, details")) {{
+            return;
+          }}
+          event.preventDefault();
+          openKnowledgeDocCard(card);
         }});
       }}
 
@@ -30319,6 +30537,7 @@ def build_html(data):
       wireNightlyDateInput();
       wireBackfillCopyButtons();
       wireFinderOpenActions();
+      wireKnowledgeDocActions();
       wireMemoryFeedbackActions();
       wireExternalPanelLinks();
       wireWindowResumeActions();
@@ -30911,6 +31130,10 @@ def build_html(data):
         ),
         memory_feedback_endpoint=escape(
             "http://{}:{}/memory-feedback".format(LIVE_TOKEN_HOST, LIVE_TOKEN_PORT),
+            quote=True,
+        ),
+        knowledge_lark_doc_endpoint=escape(
+            "http://{}:{}/knowledge-lark-doc".format(LIVE_TOKEN_HOST, LIVE_TOKEN_PORT),
             quote=True,
         ),
         claude_desktop_endpoint=escape(

@@ -412,6 +412,8 @@ Current MVP CLI entrypoint:
 
 ```bash
 openrelix knowledge build --date YYYY-MM-DD
+openrelix knowledge build --from YYYY-MM-DD --to YYYY-MM-DD --project PROJECT_KEY
+openrelix knowledge build --date YYYY-MM-DD --deterministic
 openrelix knowledge list
 openrelix knowledge status
 openrelix knowledge review --doc-id DOC_ID
@@ -420,13 +422,22 @@ openrelix knowledge reject --doc-id DOC_ID
 openrelix index search-knowledge "query" --status draft
 ```
 
-`build` reads `consolidated/daily/<date>/summary.json` plus the active memory
-registry and writes only `registry/knowledge_candidates.jsonl`,
+`build` reads `consolidated/daily/<date>/summary.json`, or a bounded
+`--from/--to` range of daily summaries, plus the active memory registry. By
+default it sends sanitized compact candidates and safe draft docs through the
+configured model runner so the LLM can merge project-scoped evidence into
+business subtopics. `--deterministic` keeps the local rule-based fallback for
+offline tests and diagnostics. The command writes only `registry/knowledge_candidates.jsonl`,
 `registry/knowledge_docs.jsonl`, `knowledge/docs/**`, and
 `knowledge/runs/**`.
 `review`, `publish`, and `reject` update only `knowledge_docs.jsonl` plus the
 corresponding Markdown body status line; `published` remains local-only and does
 not enter host context.
+
+The overview panel can open the local Markdown body and can ask the local
+OpenRelix service to create a Lark document from that Markdown. Lark export is
+a local convenience action: it requires `lark-cli` plus the user's own Lark
+authorization and does not change the knowledge registry when export fails.
 
 ## Memory Registry Contract
 

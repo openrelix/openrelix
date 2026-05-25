@@ -8,6 +8,7 @@ from dataclasses import replace
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -216,6 +217,73 @@ class KnowledgeDocsBuilderTests(unittest.TestCase):
             self.assertEqual(run_payload["model_status"], "poisoned")
             self.assertIn("missing required", run_payload["error_hint"])
 
+    def test_range_build_reads_multiple_daily_summaries(self):
+        import build_knowledge_docs
+
+        with TemporaryDirectory() as tmpdir:
+            paths = runtime_paths_for_state(Path(tmpdir) / "state")
+            write_sample_inputs(paths, target_date="2026-04-28")
+            write_sample_inputs(paths, target_date="2026-04-29")
+
+            result = build_knowledge_docs.build_knowledge_docs(
+                paths=paths,
+                date_from="2026-04-28",
+                date_to="2026-04-29",
+                project_key="openrelix",
+            )
+
+            self.assertEqual(result["date_range"], {"from": "2026-04-28", "to": "2026-04-29"})
+            self.assertEqual(result["created_candidates"], 2)
+            candidates = read_jsonl(paths.registry_dir / "knowledge_candidates.jsonl")
+            self.assertEqual(
+                sorted({date for row in candidates for date in row["source_refs"]["summary_dates"]}),
+                ["2026-04-28", "2026-04-29"],
+            )
+
+    def test_openrelix_cli_build_uses_model_runner_by_default(self):
+        import openrelix
+
+        captured = {}
+
+        def fake_build_knowledge_docs(**kwargs):
+            captured.update(kwargs)
+            return {
+                "date": "2026-04-28",
+                "date_range": {"from": "2026-04-28", "to": "2026-04-28"},
+                "run_id": "run",
+                "run_artifact": "",
+                "dry_run": False,
+                "auto_confirm": False,
+                "created_candidates": 0,
+                "created_docs": 0,
+                "failed_runs": 0,
+                "candidate_ids": [],
+                "doc_ids": [],
+                "status": "success",
+            }
+
+        args = type(
+            "Args",
+            (),
+            {
+                "action": "build",
+                "date": "2026-04-28",
+                "date_from": None,
+                "date_to": None,
+                "project_key": "",
+                "dry_run": False,
+                "auto_confirm": False,
+                "deterministic": False,
+                "json": True,
+                "limit": 20,
+            },
+        )()
+        with mock.patch("build_knowledge_docs.build_knowledge_docs", side_effect=fake_build_knowledge_docs):
+            with mock.patch("sys.stdout"):
+                openrelix.command_knowledge(args)
+
+        self.assertIs(captured["model_runner"], openrelix.openrelix_model_runner.run_model_request)
+
     def test_cli_exposes_knowledge_build_list_and_status(self):
         with TemporaryDirectory() as tmpdir:
             state_dir = Path(tmpdir) / "state"
@@ -232,6 +300,7 @@ class KnowledgeDocsBuilderTests(unittest.TestCase):
                     "build",
                     "--date",
                     "2026-04-28",
+                    "--deterministic",
                     "--json",
                 ],
                 cwd=str(ROOT),
@@ -289,6 +358,7 @@ class KnowledgeDocsBuilderTests(unittest.TestCase):
                     "build",
                     "--date",
                     "2026-04-28",
+                    "--deterministic",
                     "--json",
                 ],
                 cwd=str(ROOT),

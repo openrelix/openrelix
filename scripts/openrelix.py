@@ -85,6 +85,7 @@ from openrelix_task_summary import (
     resolve_task_summary_dates,
     run_task_summary_for_dates,
 )
+import openrelix_model_runner
 
 
 PATHS = get_runtime_paths()
@@ -1012,6 +1013,22 @@ def build_parser():
         ),
     )
     knowledge.add_argument(
+        "--from",
+        dest="date_from",
+        help=localized("build 使用的起始日期，格式 YYYY-MM-DD。", "Start date for build in YYYY-MM-DD."),
+    )
+    knowledge.add_argument(
+        "--to",
+        dest="date_to",
+        help=localized("build 使用的结束日期，格式 YYYY-MM-DD。", "End date for build in YYYY-MM-DD."),
+    )
+    knowledge.add_argument(
+        "--project",
+        dest="project_key",
+        default="",
+        help=localized("按 project_key 过滤并做项目维度构建。", "Filter by project_key for project-scoped builds."),
+    )
+    knowledge.add_argument(
         "--dry-run",
         action="store_true",
         help=localized("只计算，不写入 registry 或文档。", "Compute without writing registries or docs."),
@@ -1022,6 +1039,14 @@ def build_parser():
         help=localized(
             "预留参数；MVP 仍保持 draft/needs_review。",
             "Reserved; MVP still keeps draft/needs_review.",
+        ),
+    )
+    knowledge.add_argument(
+        "--deterministic",
+        action="store_true",
+        help=localized(
+            "使用本地确定性草稿生成，不调用 LLM。",
+            "Use deterministic local draft rendering without invoking the LLM.",
         ),
     )
     knowledge.add_argument("--limit", type=int, default=20, help=localized("最多返回条数。", "Maximum result count."))
@@ -4849,11 +4874,16 @@ def command_knowledge(args):
         raise SystemExit(localized("--limit 必须大于 0。", "--limit must be greater than 0."))
 
     if args.action == "build":
+        model_runner = None if getattr(args, "deterministic", False) else openrelix_model_runner.run_model_request
         payload = build_knowledge_docs.build_knowledge_docs(
             paths=PATHS,
             date=args.date,
+            date_from=getattr(args, "date_from", None),
+            date_to=getattr(args, "date_to", None),
+            project_key=getattr(args, "project_key", ""),
             dry_run=args.dry_run,
             auto_confirm=args.auto_confirm,
+            model_runner=model_runner,
         )
         if args.json:
             print_json(payload)

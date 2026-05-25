@@ -4,6 +4,7 @@ import json
 import os
 import plistlib
 import secrets
+import shutil
 import subprocess
 import sys
 import threading
@@ -69,6 +70,7 @@ PANEL_REFRESH_PATH = "/run-refresh"
 PANEL_REFRESH_TIMEOUT_SECONDS = 180
 PANEL_REFRESH_LOG_TAIL_LINES = 20
 MEMORY_FEEDBACK_PATH = "/memory-feedback"
+KNOWLEDGE_LARK_DOC_PATH = "/knowledge-lark-doc"
 MEMORY_FEEDBACK_REFRESH_TIMEOUT_SECONDS = 120
 MEMORY_FEEDBACK_REFRESH_LOCK = threading.RLock()
 MEMORY_FEEDBACK_REFRESH_STATE = {
@@ -99,6 +101,7 @@ TRUSTED_POST_PATHS = {
     PANEL_REFRESH_PATH,
     CODEX_DESKTOP_OPEN_PATH,
     MEMORY_FEEDBACK_PATH,
+    KNOWLEDGE_LARK_DOC_PATH,
     CLAUDE_DESKTOP_OPEN_PATH,
     FINDER_REVEAL_PATH,
 }
@@ -128,6 +131,112 @@ def update_state_snapshot():
         return persisted
     with UPDATE_LOCK:
         return dict(UPDATE_STATE)
+
+
+def _read_jsonl(path):
+    rows = []
+    if not path.exists():
+        return rows
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        try:
+            rows.append(json.loads(line))
+        except json.JSONDecodeError:
+            continue
+    return rows
+
+
+def _find_knowledge_doc(doc_id):
+    target = str(doc_id or "").strip()
+    if not target:
+        return None
+    for row in _read_jsonl(PATHS.registry_dir / "knowledge_docs.jsonl"):
+        if str(row.get("doc_id") or "") == target:
+            return row
+    return None
+
+
+def _first_url(value):
+    if isinstance(value, dict):
+        for key in ("url", "doc_url", "document_url", "docs_url", "web_url"):
+            candidate = value.get(key)
+            if isinstance(candidate, str) and candidate.startswith(("http://", "https://")):
+                return candidate
+        for item in value.values():
+            found = _first_url(item)
+            if found:
+                return found
+    if isinstance(value, list):
+        for item in value:
+            found = _first_url(item)
+            if found:
+                return found
+    return ""
+
+
+def create_lark_doc_from_knowledge(doc_id):
+    doc = _find_knowledge_doc(doc_id)
+    if not doc:
+        return {"ok": False, "error": "knowledge_doc_not_found"}
+    body_path = PATHS.state_root / str(doc.get("body_path") or "")
+    if not body_path.exists() or not body_path.is_file():
+        return {"ok": False, "error": "knowledge_doc_body_not_found", "path": str(body_path)}
+    lark_bin = shutil.which("lark-cli") or shutil.which("lark")
+    if not lark_bin:
+        return {"ok": False, "error": "lark_cli_not_found"}
+    title = str(doc.get("title") or doc.get("doc_id") or "OpenRelix Knowledge Doc").strip()
+    command_variants = [
+        [
+            lark_bin,
+            "--json",
+            "docs",
+            "create",
+            "--api-version",
+            "v2",
+            "--doc-format",
+            "markdown",
+            "--title",
+            title,
+            "--content",
+            "@{}".format(body_path),
+        ],
+        [
+            lark_bin,
+            "--json",
+            "docs",
+            "+create",
+            "--api-version",
+            "v2",
+            "--doc-format",
+            "markdown",
+            "--title",
+            title,
+            "--content",
+            "@{}".format(body_path),
+        ],
+    ]
+    last_error = ""
+    for cmd in command_variants:
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=90)
+        except subprocess.TimeoutExpired:
+            return {"ok": False, "error": "lark_cli_timeout"}
+        if result.returncode != 0:
+            last_error = (result.stderr or result.stdout or "lark-cli failed")[-1200:]
+            continue
+        try:
+            payload = json.loads(result.stdout or "{}")
+        except json.JSONDecodeError:
+            payload = {"stdout": result.stdout.strip()}
+        return {
+            "ok": True,
+            "doc_id": doc.get("doc_id"),
+            "title": title,
+            "url": _first_url(payload),
+            "payload": payload,
+        }
+    return {"ok": False, "error": "lark_cli_failed", "detail": last_error}
 
 
 def process_is_alive(pid):
@@ -1168,6 +1277,17 @@ class TokenLiveHandler(BaseHTTPRequestHandler):
             snapshot = reveal_path_in_finder(payload.get("path", ""))
             status_code = 200 if snapshot.get("ok") else 400
             if snapshot.get("error") in {"finder_unsupported_platform", "finder_open_failed"}:
+                status_code = 503
+            self._send_json(status_code, snapshot, allow_origin=origin or None)
+            return
+        if parsed.path == KNOWLEDGE_LARK_DOC_PATH:
+            try:
+                payload = json.loads(body.decode("utf-8")) if body else {}
+            except (UnicodeDecodeError, json.JSONDecodeError):
+                payload = {}
+            snapshot = create_lark_doc_from_knowledge(payload.get("doc_id", ""))
+            status_code = 200 if snapshot.get("ok") else 400
+            if snapshot.get("error") in {"lark_cli_not_found", "lark_cli_timeout", "lark_cli_failed"}:
                 status_code = 503
             self._send_json(status_code, snapshot, allow_origin=origin or None)
             return

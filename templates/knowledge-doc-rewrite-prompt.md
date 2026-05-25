@@ -16,6 +16,14 @@ Rules:
 - Use only these knowledge types: `troubleshooting`, `decision`, `procedure`,
   `project_context`.
 - Write reusable business or engineering knowledge, not one-off task progress.
+- Prefer project-scoped synthesis over one document per window. When several
+  candidates belong to the same `project_key`, group them into stable business
+  subtopics and merge evidence across dates/windows when the sources support
+  one coherent document.
+- Use the provided `draft_docs` as safe starting points. Preserve their
+  `source_refs`, `visibility.host_context=false`, privacy fields, and stable ids
+  unless you intentionally merge multiple drafts; merged docs must carry the
+  union of source refs and a stable project-scoped `canonical_key`.
 - Preserve evidence in `source_refs`; never include raw transcript text.
 - If evidence is weak, output a rejected document with `model_status=not_run`
   or let the caller keep only a rejected candidate.

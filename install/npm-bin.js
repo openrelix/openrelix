@@ -63,6 +63,7 @@ Examples:
   npx openrelix context sync
   npx openrelix index status
   npx openrelix knowledge build --date <YYYY-MM-DD>
+  npx openrelix knowledge build --from <YYYY-MM-DD> --to <YYYY-MM-DD> --project <project_key>
   npx openrelix knowledge review --doc-id <doc_id>
   npx openrelix knowledge publish --doc-id <doc_id>
   npx openrelix index search-memory sqlite

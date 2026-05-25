@@ -109,8 +109,12 @@ class KnowledgeDocsOverviewTests(unittest.TestCase):
 
             self.assertEqual([row["doc_id"] for row in rows], ["kdoc-route-drift"])
             self.assertEqual(rows[0]["body_path_label"], "knowledge/docs/2026/route-drift.md")
+            self.assertTrue(rows[0]["body_path_uri"].startswith("file://"))
             self.assertIn("Route drift troubleshooting", html)
             self.assertIn("needs_review", html)
+            self.assertIn("查看来源与上下文", html)
+            self.assertIn("data-knowledge-doc-card-href", html)
+            self.assertIn("data-knowledge-lark-doc", html)
             self.assertIn("w-route", html)
 
     def test_overview_source_contains_knowledge_docs_section(self):
