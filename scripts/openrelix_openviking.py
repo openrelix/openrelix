@@ -352,6 +352,114 @@ def _subprocess_step(
     return payload
 
 
+def is_missing_batch_messages_api_error(exc: Exception) -> bool:
+    text = str(exc or "")
+    return "HTTP 404" in text and "/messages/batch" in text
+
+
+def cli_connection_args(connection: OpenVikingConnection) -> list[str]:
+    args: list[str] = []
+    if connection.account:
+        args.extend(["--account", connection.account])
+    if connection.user:
+        args.extend(["--user", connection.user])
+    if connection.agent_id:
+        args.extend(["--agent-id", connection.agent_id])
+    return args
+
+
+def parse_ov_cli_json(stdout: str) -> dict:
+    text = str(stdout or "").strip()
+    if not text:
+        return {}
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError:
+        return {"raw_output": text}
+    if isinstance(payload, Mapping) and isinstance(payload.get("result"), Mapping):
+        result = dict(payload.get("result") or {})
+        result.setdefault("status", payload.get("status", ""))
+        return result
+    return dict(payload) if isinstance(payload, Mapping) else {"raw_output": text}
+
+
+def run_ov_json(command: list[str]) -> dict:
+    env = os.environ.copy()
+    env.setdefault(OPENVIKING_CLI_CONFIG_ENV, str(OPENVIKING_CLI_CONFIG_PATH))
+    result = subprocess.run(command, text=True, capture_output=True, check=False, env=env)
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout or "ov command failed")[-1200:]
+        raise OpenVikingError("OpenViking CLI fallback failed: {}".format(detail))
+    return parse_ov_cli_json(result.stdout)
+
+
+def run_ov_session_fallback(
+    *,
+    connection: OpenVikingConnection,
+    session_id: str,
+    messages: list[dict],
+) -> tuple[dict, dict, dict]:
+    ov_bin = shutil.which("ov")
+    if not ov_bin:
+        raise OpenVikingError("OpenViking batch API is unavailable and `ov` CLI was not found.")
+    base_command = [ov_bin, *cli_connection_args(connection)]
+    added = 0
+    for message in messages:
+        role = compact_text(message.get("role")) or "user"
+        content = compact_text(message.get("content"))
+        if not content:
+            continue
+        run_ov_json([
+            *base_command,
+            "session",
+            "add-message",
+            "-o",
+            "json",
+            "--role",
+            role,
+            "--content",
+            content,
+            session_id,
+        ])
+        added += 1
+    commit_result = run_ov_json([*base_command, "session", "commit", "-o", "json", session_id])
+    archive_uri = compact_text(first_from_mappings((commit_result,), "archive_uri", "uri"))
+    archive_id = compact_text(first_from_mappings((commit_result,), "archive_id")) or archive_id_from_uri(archive_uri)
+    archive: dict = {}
+    if archive_id:
+        try:
+            archive = run_ov_json([*base_command, "session", "get-session-archive", "-o", "json", session_id, archive_id])
+        except OpenVikingError:
+            archive = {}
+    overview = compact_text(first_from_mappings((archive, commit_result), "overview", "content", "text"))
+    abstract = compact_text(first_from_mappings((archive, commit_result), "abstract", "summary")) or overview[:360]
+    add_result = {
+        "transport": "ov_cli",
+        "session_id": session_id,
+        "message_count": added,
+        "archive_uri": archive_uri,
+        "archive_id": archive_id,
+        "memories_extracted": commit_result.get("memories_extracted", ""),
+    }
+    normalized_commit = {
+        "transport": "ov_cli",
+        "status": commit_result.get("status") or "completed",
+        "task_id": commit_result.get("task_id", ""),
+        "archive_uri": archive_uri,
+        "archive_id": archive_id,
+        "memories_extracted": commit_result.get("memories_extracted", ""),
+    }
+    normalized_archive = {
+        **archive,
+        "archive_id": compact_text(archive.get("archive_id")) or archive_id,
+        "uri": compact_text(archive.get("uri")) or archive_uri,
+        "overview": overview,
+        "abstract": abstract,
+        "raw_result": openrelix_model_runner.sanitize_model_input(archive or commit_result),
+    }
+    return add_result, normalized_commit, normalized_archive
+
+
 def install_openviking(
     *,
     package: str = "openviking",
@@ -894,19 +1002,28 @@ def summarize_openrelix_memory(
     connection = connection or load_openviking_connection(paths)
     client = OpenVikingHTTPClient(connection)
     create_result = client.create_session(resolved_session_id)
-    add_result = client.batch_add_messages(resolved_session_id, messages)
-    commit_result = client.commit_session(resolved_session_id)
-    task_id = compact_text(commit_result.get("task_id"))
     task: dict = {}
-    if wait and task_id:
-        task = poll_task(client, task_id, timeout=task_timeout, interval=poll_interval)
-    archive_uri = compact_text(first_from_mappings((commit_result, task.get("result") or {}), "archive_uri"))
-    archive_id = compact_text(first_from_mappings((commit_result, task.get("result") or {}), "archive_id"))
-    if not archive_id:
-        archive_id = archive_id_from_uri(archive_uri)
     archive: dict = {}
-    if archive_id:
-        archive = client.get_archive(resolved_session_id, archive_id)
+    try:
+        add_result = client.batch_add_messages(resolved_session_id, messages)
+        commit_result = client.commit_session(resolved_session_id)
+        task_id = compact_text(commit_result.get("task_id"))
+        if wait and task_id:
+            task = poll_task(client, task_id, timeout=task_timeout, interval=poll_interval)
+        archive_uri = compact_text(first_from_mappings((commit_result, task.get("result") or {}), "archive_uri"))
+        archive_id = compact_text(first_from_mappings((commit_result, task.get("result") or {}), "archive_id"))
+        if not archive_id:
+            archive_id = archive_id_from_uri(archive_uri)
+        if archive_id:
+            archive = client.get_archive(resolved_session_id, archive_id)
+    except OpenVikingError as exc:
+        if not is_missing_batch_messages_api_error(exc):
+            raise
+        add_result, commit_result, archive = run_ov_session_fallback(
+            connection=connection,
+            session_id=resolved_session_id,
+            messages=messages,
+        )
 
     export_row = openviking_export_row(
         packet=packet,

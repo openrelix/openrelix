@@ -430,6 +430,60 @@ def render_daily_markdown(date_str: str, rows: list[Mapping], profiles: list[Map
     return "\n".join(lines).rstrip() + "\n"
 
 
+def slug_text(value: str) -> str:
+    text = re.sub(r"[^A-Za-z0-9._-]+", "-", str(value or "").strip().lower()).strip("-._")
+    return text or "codex"
+
+
+def project_label_from_cwd(cwd: str) -> str:
+    return Path(str(cwd or "")).name or "Codex"
+
+
+def project_key_from_cwd(cwd: str) -> str:
+    return slug_text(project_label_from_cwd(cwd))
+
+
+def rows_by_project(rows: Iterable[Mapping]) -> dict[str, list[Mapping]]:
+    grouped: dict[str, list[Mapping]] = {}
+    for row in rows:
+        project_key = project_key_from_cwd(str(row.get("cwd") or ""))
+        grouped.setdefault(project_key, []).append(row)
+    return grouped
+
+
+def render_project_markdown(date_str: str, project_key: str, rows: list[Mapping], generated_at: str) -> str:
+    project_label = project_label_from_cwd(str(rows[0].get("cwd") or project_key)) if rows else project_key
+    lines = [
+        "# Codex project memory {} · {}".format(date_str, project_label),
+        "",
+        "Generated at: {}".format(generated_at),
+        "",
+        "## Project summary",
+        "",
+        "- Project: `{}`".format(project_label),
+        "- Project key: `{}`".format(project_key),
+        "- Windows: {}".format(len(rows)),
+        "- Prompts: {}".format(sum(int(row.get("prompt_count") or 0) for row in rows)),
+        "- Conclusions: {}".format(sum(int(row.get("conclusion_count") or 0) for row in rows)),
+        "",
+        "## LLM-ready evidence",
+        "",
+    ]
+    for index, row in enumerate(rows, start=1):
+        lines.extend([
+            "### {}. {}".format(index, row.get("title") or row.get("window_id") or "Window"),
+            "",
+            "- Window: `{}`".format(row.get("window_id", "")),
+            "- CWD: `{}`".format(row.get("cwd", "") or "-"),
+        ])
+        if row.get("prompt_preview"):
+            lines.extend(["", "Prompt:", "", "> {}".format(row["prompt_preview"])])
+        if row.get("conclusion_preview"):
+            lines.extend(["", "Conclusion:", "", "> {}".format(row["conclusion_preview"])])
+        lines.append("")
+    return "\n".join(lines).rstrip() + "\n"
+
+
 def daily_doc_row(paths, date_str: str, rows: list[Mapping], profiles: list[Mapping], body_path: Path, generated_at: str) -> dict:
     window_ids = [str(row.get("window_id") or "") for row in rows if row.get("window_id")]
     archive_ids = [str(row.get("archive_id") or "") for row in rows if row.get("archive_id")]
@@ -474,6 +528,49 @@ def daily_doc_row(paths, date_str: str, rows: list[Mapping], profiles: list[Mapp
     }
 
 
+def project_doc_row(paths, date_str: str, project_key: str, rows: list[Mapping], body_path: Path, generated_at: str) -> dict:
+    project_label = project_label_from_cwd(str(rows[0].get("cwd") or project_key)) if rows else project_key
+    window_ids = [str(row.get("window_id") or "") for row in rows if row.get("window_id")]
+    archive_ids = [str(row.get("archive_id") or "") for row in rows if row.get("archive_id")]
+    source_contexts = []
+    for row in rows[:12]:
+        source_contexts.append({
+            "source": "codex_memory_project_summary",
+            "ai_host": row.get("ai_host", "codex"),
+            "date": row.get("date", date_str),
+            "window_id": row.get("window_id", ""),
+            "title": row.get("title", ""),
+            "project_label": project_label,
+            "main_takeaway": row.get("conclusion_preview") or row.get("prompt_preview") or "",
+        })
+    return {
+        "schema_version": 1,
+        "algorithm_version": 1,
+        "doc_id": "codex-memory-{}-project-{}".format(date_str, project_key),
+        "version": 1,
+        "status": "draft",
+        "summary_type": "codex_memory_project_summary",
+        "knowledge_type": "codex_memory_project_summary",
+        "title": "Codex project memory {} · {}".format(date_str, project_label),
+        "summary": "{} Codex windows summarized for project {}.".format(len(rows), project_label),
+        "body_path": state_relative_path(paths, body_path),
+        "source_refs": {
+            "summary_dates": [date_str],
+            "window_ids": window_ids,
+            "archive_ids": archive_ids,
+            "project_keys": [project_key],
+        },
+        "source_contexts": source_contexts,
+        "source_range": {"from": date_str, "to": date_str},
+        "project_key": project_key,
+        "project_label": project_label,
+        "scope": "project",
+        "reviewer_state": "needs_review",
+        "visibility": {"panel": True, "trust_level": "draft"},
+        "updated_at": generated_at,
+    }
+
+
 def write_daily_outputs(paths, date_str: str, windows: list[Mapping], rows: list[Mapping], profiles: list[Mapping], generated_at: str) -> dict:
     root = get_codex_memory_root(paths)
     daily_path = root / "daily" / "{}.json".format(date_str)
@@ -492,6 +589,16 @@ def write_daily_outputs(paths, date_str: str, windows: list[Mapping], rows: list
     atomic_write_json(daily_path, daily_payload)
     atomic_write_text(body_path, render_daily_markdown(date_str, rows, profiles, generated_at))
     return daily_doc_row(paths, date_str, rows, profiles, body_path, generated_at)
+
+
+def write_project_outputs(paths, date_str: str, rows: list[Mapping], generated_at: str) -> list[dict]:
+    root = get_codex_memory_root(paths)
+    docs = []
+    for project_key, project_rows in sorted(rows_by_project(rows).items()):
+        body_path = root / "docs" / "projects" / project_key / "{}.md".format(date_str)
+        atomic_write_text(body_path, render_project_markdown(date_str, project_key, list(project_rows), generated_at))
+        docs.append(project_doc_row(paths, date_str, project_key, list(project_rows), body_path, generated_at))
+    return docs
 
 
 def sync_codex_memory_archive(
@@ -521,6 +628,7 @@ def sync_codex_memory_archive(
         all_new_rows.extend(rows)
         doc = write_daily_outputs(paths, date_str, windows, rows, profile_rows, generated_at)
         daily_docs.append(doc)
+        daily_docs.extend(write_project_outputs(paths, date_str, rows, generated_at))
         daily_results.append(
             {
                 "date": date_str,

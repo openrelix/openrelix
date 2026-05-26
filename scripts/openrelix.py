@@ -142,6 +142,11 @@ TOKEN_LIVE_REQUIRED_CAPABILITIES = {
 }
 STAGE_PRIORITY = {"manual": 0, "preliminary": 1, "final": 2}
 MAX_BACKFILL_JOBS = 2
+OPENVIKING_OPEN_REFRESH_STATE = "openviking-open-refresh.json"
+OPENVIKING_OPEN_REFRESH_MIN_INTERVAL_SECONDS = 600
+OPENVIKING_OPEN_REFRESH_DAYS = 3
+OPENVIKING_OPEN_REFRESH_LOOKBACK_DAYS = 1
+OPENVIKING_OPEN_REFRESH_LIMIT = 50
 
 _ACTIVE_CHILD_PROCESSES = set()
 _ACTIVE_CHILD_PROCESSES_LOCK = threading.Lock()
@@ -1359,6 +1364,33 @@ def build_parser():
             "Target date for 'open review'. Default: today.",
         ),
     )
+    open_cmd.add_argument(
+        "--skip-openviking-refresh",
+        action="store_true",
+        help=localized(
+            "打开 panel/app 时不静默触发 OpenViking 记忆总结。",
+            "Do not silently trigger OpenViking memory summarization when opening panel/app.",
+        ),
+    )
+
+    openviking_open_refresh = subparsers.add_parser(
+        "openviking-open-refresh",
+        help=argparse.SUPPRESS,
+    )
+    openviking_open_refresh.add_argument("--days", type=int, default=OPENVIKING_OPEN_REFRESH_DAYS)
+    openviking_open_refresh.add_argument("--lookback-days", type=int, default=OPENVIKING_OPEN_REFRESH_LOOKBACK_DAYS)
+    openviking_open_refresh.add_argument(
+        "--stage",
+        default="preliminary",
+        choices=["manual", "preliminary", "final"],
+    )
+    openviking_open_refresh.add_argument(
+        "--activity-source",
+        default="auto",
+        choices=["history", "app-server", "auto"],
+    )
+    openviking_open_refresh.add_argument("--limit", type=int, default=OPENVIKING_OPEN_REFRESH_LIMIT)
+    openviking_open_refresh.add_argument("--json", action="store_true")
 
     app_cmd = subparsers.add_parser(
         "app",
@@ -1396,6 +1428,14 @@ def build_parser():
         help=localized(
             "只打印默认客户端路径。",
             "Only print the default client path.",
+        ),
+    )
+    app_cmd.add_argument(
+        "--skip-openviking-refresh",
+        action="store_true",
+        help=localized(
+            "打开客户端时不静默触发 OpenViking 记忆总结。",
+            "Do not silently trigger OpenViking memory summarization when opening the client.",
         ),
     )
 
@@ -5700,6 +5740,168 @@ def open_path(path):
     subprocess.run([cmd, str(path)], check=True)
 
 
+def openviking_open_refresh_state_path():
+    return PATHS.runtime_dir / OPENVIKING_OPEN_REFRESH_STATE
+
+
+def load_openviking_open_refresh_state():
+    try:
+        payload = json.loads(openviking_open_refresh_state_path().read_text(encoding="utf-8"))
+    except (FileNotFoundError, OSError, json.JSONDecodeError, UnicodeDecodeError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def should_start_openviking_open_refresh(now=None, min_interval_seconds=OPENVIKING_OPEN_REFRESH_MIN_INTERVAL_SECONDS):
+    now = now or datetime.now().astimezone()
+    state = load_openviking_open_refresh_state()
+    last_started = str(state.get("started_at") or "")
+    if not last_started:
+        return True
+    try:
+        last_started_at = datetime.fromisoformat(last_started.replace("Z", "+00:00"))
+    except ValueError:
+        return True
+    return (now - last_started_at.astimezone()).total_seconds() >= max(0, int(min_interval_seconds or 0))
+
+
+def write_openviking_open_refresh_state(status, *, process=None, detail=""):
+    payload = {
+        "status": status,
+        "started_at": datetime.now().astimezone().isoformat(timespec="seconds"),
+        "pid": int(process.pid) if process is not None else 0,
+        "detail": str(detail or ""),
+    }
+    atomic_write_json(openviking_open_refresh_state_path(), payload)
+    return payload
+
+
+def openviking_open_refresh_command():
+    return [
+        sys.executable,
+        str(Path(__file__).resolve()),
+        "openviking-open-refresh",
+        "--days",
+        str(OPENVIKING_OPEN_REFRESH_DAYS),
+        "--lookback-days",
+        str(OPENVIKING_OPEN_REFRESH_LOOKBACK_DAYS),
+        "--limit",
+        str(OPENVIKING_OPEN_REFRESH_LIMIT),
+    ]
+
+
+def start_openviking_open_refresh_if_due(force=False, quiet=True):
+    ensure_state_layout(PATHS)
+    if not force and not should_start_openviking_open_refresh():
+        return {"started": False, "reason": "recently_started"}
+    log_path = PATHS.log_dir / "openviking-open-refresh.log"
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    env = os.environ.copy()
+    env.setdefault("AI_ASSET_STATE_DIR", str(PATHS.state_root))
+    command = openviking_open_refresh_command()
+    with log_path.open("a", encoding="utf-8") as log_handle:
+        log_handle.write("\n[{}] start {}\n".format(datetime.now().astimezone().isoformat(timespec="seconds"), " ".join(shlex.quote(str(item)) for item in command)))
+        process = subprocess.Popen(
+            command,
+            cwd=str(PATHS.repo_root),
+            env=env,
+            stdin=subprocess.DEVNULL,
+            stdout=log_handle,
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+        )
+    state = write_openviking_open_refresh_state("running", process=process, detail=str(log_path))
+    if not quiet:
+        print(localized(
+            "OpenViking 记忆总结已在后台启动: {}".format(log_path),
+            "OpenViking memory refresh started in the background: {}".format(log_path),
+        ))
+    return {"started": True, "pid": process.pid, "log_path": str(log_path), "state": state}
+
+
+def rebuild_panel_before_open():
+    REPORTS_DIR.mkdir(parents=True, exist_ok=True)
+    run_checked_quiet([sys.executable, str(BUILD_OVERVIEW_SCRIPT)])
+
+
+def command_openviking_open_refresh(args):
+    import codex_memory_sync
+    import openrelix_openviking
+
+    ensure_state_layout(PATHS)
+    days = max(1, int(getattr(args, "days", OPENVIKING_OPEN_REFRESH_DAYS) or OPENVIKING_OPEN_REFRESH_DAYS))
+    lookback_days = max(0, int(getattr(args, "lookback_days", OPENVIKING_OPEN_REFRESH_LOOKBACK_DAYS) or 0))
+    limit = max(1, int(getattr(args, "limit", OPENVIKING_OPEN_REFRESH_LIMIT) or OPENVIKING_OPEN_REFRESH_LIMIT))
+    stage = getattr(args, "stage", "preliminary") or "preliminary"
+    source = getattr(args, "activity_source", "auto") or "auto"
+    started_at = datetime.now().astimezone().isoformat(timespec="seconds")
+    state = {
+        "status": "running",
+        "started_at": started_at,
+        "days": days,
+        "lookback_days": lookback_days,
+        "stage": stage,
+        "activity_source": source,
+        "limit": limit,
+    }
+    atomic_write_json(openviking_open_refresh_state_path(), state)
+    try:
+        sync_payload = codex_memory_sync.sync_incremental(
+            paths=PATHS,
+            stage=stage,
+            days=days,
+            lookback_days=lookback_days,
+            source=source,
+        )
+        dates = [item.get("date", "") for item in sync_payload.get("dates", []) if item.get("date")]
+        summary_results = []
+        if dates:
+            summary_args = argparse.Namespace(
+                stage=stage,
+                learn_window_days=0,
+                force=False,
+                jobs=1,
+                json=True,
+                activity_source=source,
+            )
+            summary_results = run_codex_memory_summary_backfill(dates, summary_args)
+            finalize_codex_memory_backfill(dates, summary_results, verbose=False)
+        date_to = current_date_str()
+        date_from = (date.fromisoformat(date_to) - timedelta(days=days - 1)).isoformat()
+        openviking_payload = openrelix_openviking.summarize_openrelix_memory(
+            paths=PATHS,
+            date_from=date_from,
+            date_to=date_to,
+            limit=limit,
+            wait=True,
+        )
+        sync_review_outputs(include_index=True, include_native_display=True, verbose=False)
+        state.update({
+            "status": "completed",
+            "completed_at": datetime.now().astimezone().isoformat(timespec="seconds"),
+            "date_from": date_from,
+            "date_to": date_to,
+            "codex_dates": dates,
+            "synced_window_count": sync_payload.get("synced_window_count", 0),
+            "summary_results": summary_results,
+            "openviking": openrelix_model_runner.sanitize_model_input(openviking_payload),
+        })
+        atomic_write_json(openviking_open_refresh_state_path(), state)
+        if getattr(args, "json", False):
+            print_json(state)
+        return
+    except Exception as exc:
+        state.update({
+            "status": "failed",
+            "failed_at": datetime.now().astimezone().isoformat(timespec="seconds"),
+            "error": str(exc),
+        })
+        atomic_write_json(openviking_open_refresh_state_path(), state)
+        if getattr(args, "json", False):
+            print_json(state)
+        raise
+
+
 def staged_macos_client_app_path():
     return PATHS.runtime_dir / "mac-app" / MACOS_CLIENT_APP_NAME
 
@@ -6265,21 +6467,30 @@ def command_app(args):
 
     if not getattr(args, "no_open", False):
         ensure_token_live_service()
+        if not getattr(args, "skip_openviking_refresh", False):
+            start_openviking_open_refresh_if_due()
+        rebuild_panel_before_open()
         open_path(app_path)
     print(app_path)
 
 
 def command_open(args):
     if args.target == "app":
+        if not getattr(args, "skip_openviking_refresh", False):
+            start_openviking_open_refresh_if_due()
         command_app(argparse.Namespace(
             build=False,
             no_open=False,
             output=None,
             print_path=False,
+            skip_openviking_refresh=True,
         ))
         return
     if args.target == "panel":
         ensure_token_live_service()
+        if not getattr(args, "skip_openviking_refresh", False):
+            start_openviking_open_refresh_if_due()
+        rebuild_panel_before_open()
     target_path = resolve_open_target(args.target, args.date)
     open_path(target_path)
     print(target_path)
@@ -6378,6 +6589,9 @@ def main():
         return
     if args.command == "openviking":
         command_openviking(args)
+        return
+    if args.command == "openviking-open-refresh":
+        command_openviking_open_refresh(args)
         return
     if args.command == "codex-memory":
         command_codex_memory(args)

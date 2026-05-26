@@ -252,6 +252,92 @@ class OpenVikingClientTests(unittest.TestCase):
             body_text = (paths.state_root / docs[0]["body_path"]).read_text(encoding="utf-8")
             self.assertIn("OpenViking summarized route drift fixes", body_text)
 
+    def test_summarize_falls_back_to_ov_add_memory_when_batch_api_is_missing(self):
+        with TemporaryDirectory() as tmpdir:
+            paths = runtime_paths_for_state(Path(tmpdir) / "state")
+            asset_runtime.ensure_state_layout(paths)
+            self.seed_openrelix_sources(paths)
+            connection = openrelix_openviking.OpenVikingConnection(url="http://127.0.0.1:1933", timeout=5)
+
+            def fake_request(self, method, path, body=None, query=None):
+                if path == "/api/v1/sessions":
+                    return {"session_id": body.get("session_id")}
+                if path.endswith("/messages/batch"):
+                    raise openrelix_openviking.OpenVikingError("OpenViking HTTP 404 for {}: Not Found".format(path))
+                raise AssertionError("unexpected HTTP request: {} {}".format(method, path))
+
+            def fake_run(command, **_kwargs):
+                if command[1:3] == ["--agent-id", "openrelix"] and command[3:5] == ["session", "add-message"]:
+                    return subprocess.CompletedProcess(
+                        args=command,
+                        returncode=0,
+                        stdout=json.dumps({"ok": True, "result": {"session_id": "orx-test", "message_count": 1}}),
+                        stderr="",
+                    )
+                if command[1:3] == ["--agent-id", "openrelix"] and command[3:5] == ["session", "commit"]:
+                    return subprocess.CompletedProcess(
+                        args=command,
+                        returncode=0,
+                        stdout=json.dumps(
+                            {
+                                "ok": True,
+                                "result": {
+                                    "session_id": "orx-test",
+                                    "status": "accepted",
+                                    "task_id": "task-fallback",
+                                    "archive_uri": "viking://session/orx-test/history/archive_001",
+                                    "archived": True,
+                                },
+                            }
+                        ),
+                        stderr="",
+                    )
+                if command[1:3] == ["--agent-id", "openrelix"] and command[3:5] == ["session", "get-session-archive"]:
+                    return subprocess.CompletedProcess(
+                        args=command,
+                        returncode=0,
+                        stdout=json.dumps(
+                            {
+                                "ok": True,
+                                "result": {
+                                    "archive_id": "archive_001",
+                                    "uri": "viking://session/orx-test/history/archive_001",
+                                    "overview": "OpenViking CLI fallback summarized Codex windows.",
+                                    "abstract": "CLI fallback summary.",
+                                },
+                            },
+                            ensure_ascii=False,
+                        ),
+                        stderr="",
+                    )
+                raise AssertionError("unexpected ov command: {}".format(command))
+
+            with mock.patch.object(openrelix_openviking.OpenVikingHTTPClient, "_request", fake_request), mock.patch.object(
+                openrelix_openviking.shutil,
+                "which",
+                return_value="/usr/local/bin/ov",
+            ), mock.patch.object(openrelix_openviking.subprocess, "run", side_effect=fake_run) as run:
+                result = openrelix_openviking.summarize_openrelix_memory(
+                    paths=paths,
+                    connection=connection,
+                    date_from="2026-05-26",
+                    date_to="2026-05-26",
+                    project="openrelix",
+                    session_id="orx-test",
+                    task_timeout=5,
+                    poll_interval=0.01,
+                )
+
+            self.assertEqual(result["add_result"]["transport"], "ov_cli")
+            self.assertEqual(result["archive_id"], "archive_001")
+            self.assertIn("--agent-id", run.call_args.args[0])
+            self.assertEqual(run.call_args.args[0][0], "/usr/local/bin/ov")
+            exports = read_jsonl(paths.registry_dir / "openviking_memory_exports.jsonl")
+            self.assertEqual(exports[0]["uri"], "viking://session/orx-test/history/archive_001")
+            docs = read_jsonl(paths.registry_dir / "openviking_summary_docs.jsonl")
+            body_text = (paths.state_root / docs[0]["body_path"]).read_text(encoding="utf-8")
+            self.assertIn("OpenViking CLI fallback summarized Codex windows", body_text)
+
     def test_setup_defaults_configures_and_summarizes_when_service_ready(self):
         with TemporaryDirectory() as tmpdir, FakeOpenVikingServer() as fake:
             paths = runtime_paths_for_state(Path(tmpdir) / "state")

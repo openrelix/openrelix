@@ -186,6 +186,7 @@ class KnowledgeDocsOverviewTests(unittest.TestCase):
             self.assertIn("已导出飞书文档", html)
             self.assertIn("打开飞书文档", html)
             self.assertIn('href="https://www.feishu.cn/docx/abc"', html)
+            self.assertIn('knowledge-doc-action-tag" data-knowledge-lark-exported="true" href="https://www.feishu.cn/docx/abc"', html)
 
     def test_exported_knowledge_doc_url_survives_panel_redaction_as_open_button(self):
         doc = sample_doc()
@@ -274,6 +275,32 @@ class KnowledgeDocsOverviewTests(unittest.TestCase):
             self.assertIn("orx-openrelix-2026-05-26", html)
             self.assertIn("data-knowledge-doc-card-href", html)
             self.assertIn("data-knowledge-lark-doc", html)
+
+    def test_exported_openviking_summary_url_survives_panel_redaction_as_open_button(self):
+        doc = {
+            "doc_id": "ovdoc-route",
+            "status": "draft",
+            "summary_type": "openviking_summary",
+            "title": "OpenViking route summary",
+            "summary": "OpenViking produced a parallel summary.",
+            "body_path": "openviking/docs/2026/route.md",
+            "feishu_export": {
+                "status": "exported",
+                "doc_url": "https://www.feishu.cn/docx/ovabc",
+                "doc_token": "ovabc",
+                "updated_at": "2026-05-26T10:00:00Z",
+                "error_hint": "",
+            },
+        }
+        html = build_overview.make_openviking_summaries_panel_body([doc])
+        redacted = html.replace("https://www.feishu.cn/docx/ovabc", "<link>")
+
+        restored = build_overview.restore_knowledge_doc_export_urls(redacted, [doc])
+
+        self.assertIn(
+            '<a class="knowledge-doc-action" href="https://www.feishu.cn/docx/ovabc" target="_blank" rel="noopener noreferrer">打开飞书文档</a>',
+            restored,
+        )
 
     def test_loads_and_renders_codex_memory_docs_panel(self):
         with TemporaryDirectory() as tmpdir:

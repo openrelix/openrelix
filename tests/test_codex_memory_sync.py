@@ -101,6 +101,24 @@ def write_codex_history(codex_home, day="2026-04-28"):
     return session_id
 
 
+def write_codex_session(codex_home, *, session_id, day, cwd, prompt, conclusion, minute=0):
+    prompt_ts = int(datetime.fromisoformat(day + "T04:{:02d}:00+00:00".format(minute)).timestamp())
+    complete_ts = int(datetime.fromisoformat(day + "T04:{:02d}:00+00:00".format(minute + 1)).timestamp())
+    history_path = codex_home / "history.jsonl"
+    session_path = codex_home / "sessions" / day[:4] / day[5:7] / day[8:10] / "rollout-{}.jsonl".format(session_id)
+    history_path.parent.mkdir(parents=True, exist_ok=True)
+    session_path.parent.mkdir(parents=True, exist_ok=True)
+    with history_path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps({"session_id": session_id, "ts": prompt_ts, "text": prompt}, ensure_ascii=False) + "\n")
+    rows = [
+        {"type": "session_meta", "payload": {"cwd": cwd, "originator": "codex", "source": "cli", "timestamp": day + "T04:00:00Z"}},
+        {"type": "turn_context", "payload": {"turn_id": "turn-1"}},
+        {"type": "event_msg", "timestamp": day + "T04:00:00Z", "payload": {"type": "user_message", "message": prompt}},
+        {"type": "event_msg", "payload": {"type": "task_complete", "turn_id": "turn-1", "completed_at": complete_ts, "last_agent_message": conclusion}},
+    ]
+    session_path.write_text("\n".join(json.dumps(row, ensure_ascii=False) for row in rows) + "\n", encoding="utf-8")
+
+
 class CodexMemorySyncTests(unittest.TestCase):
     def test_sync_archives_codex_windows_docs_and_registry(self):
         with TemporaryDirectory() as tmpdir:
@@ -130,6 +148,49 @@ class CodexMemorySyncTests(unittest.TestCase):
             self.assertEqual(docs[0]["body_path"], "codex-memory/docs/2026-04-28.md")
             self.assertIn(session_id, docs[0]["source_refs"]["window_ids"])
             self.assertTrue((memory_root / "docs" / "2026-04-28.md").exists())
+
+    def test_sync_builds_project_scoped_codex_memory_docs(self):
+        with TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            codex_home = root / "codex-home"
+            write_codex_session(
+                codex_home,
+                session_id="session-openrelix",
+                day="2026-04-28",
+                cwd="/tmp/openrelix",
+                prompt="Summarize OpenRelix windows by project.",
+                conclusion="OpenRelix project memory should be grouped separately.",
+                minute=0,
+            )
+            write_codex_session(
+                codex_home,
+                session_id="session-skate",
+                day="2026-04-28",
+                cwd="/tmp/skate-cim",
+                prompt="Summarize skate customization work.",
+                conclusion="Skate project memory should remain separate.",
+                minute=10,
+            )
+            paths = runtime_paths_for_state(root / "state", codex_home)
+            profile = codex_profiles.CodexProfile(codex_home=codex_home, source="test")
+
+            codex_memory_sync.sync_codex_memory_archive(
+                paths=paths,
+                dates=["2026-04-28"],
+                profiles=[profile],
+                source="history",
+            )
+
+            docs = {row["doc_id"]: row for row in read_jsonl(paths.registry_dir / "codex_memory_docs.jsonl")}
+            self.assertIn("codex-memory-2026-04-28", docs)
+            self.assertIn("codex-memory-2026-04-28-project-openrelix", docs)
+            self.assertIn("codex-memory-2026-04-28-project-skate-cim", docs)
+            self.assertEqual(docs["codex-memory-2026-04-28-project-openrelix"]["project_key"], "openrelix")
+            self.assertEqual(docs["codex-memory-2026-04-28-project-skate-cim"]["project_key"], "skate-cim")
+            body_text = (paths.state_root / docs["codex-memory-2026-04-28-project-openrelix"]["body_path"]).read_text(encoding="utf-8")
+            self.assertIn("Project summary", body_text)
+            self.assertIn("OpenRelix project memory", body_text)
+            self.assertNotIn("Skate project memory", body_text)
 
     def test_discover_dates_and_incremental_schedule_are_low_cost(self):
         with TemporaryDirectory() as tmpdir:

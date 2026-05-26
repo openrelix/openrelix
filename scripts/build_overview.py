@@ -13640,11 +13640,17 @@ def make_document_docs_panel_body(
             else:
                 body_html = '<div class="native-brief-source-label">{}</div>'.format(escape(str(body_path)))
         if feishu_status == "exported":
-            lark_button = """
-            <span class="knowledge-doc-action knowledge-doc-action-tag" data-knowledge-lark-exported="true">
-              已导出飞书文档
-            </span>
-            """
+            if feishu_url:
+                lark_button = (
+                    '<a class="knowledge-doc-action knowledge-doc-action-tag" data-knowledge-lark-exported="true" '
+                    'href="{url}" target="_blank" rel="noopener noreferrer">已导出飞书文档</a>'
+                ).format(url=escape(feishu_url, quote=True))
+            else:
+                lark_button = """
+                <span class="knowledge-doc-action knowledge-doc-action-tag" data-knowledge-lark-exported="true">
+                  已导出飞书文档
+                </span>
+                """
         else:
             lark_button = (
             """
@@ -27985,9 +27991,19 @@ def build_html(data):
           }})
           .then(function (payload) {{
             button.textContent = currentLanguage === "en" ? "Exported" : "已导出";
+            button.classList.add("knowledge-doc-action-tag");
+            button.setAttribute("data-knowledge-lark-exported", "true");
             keepDisabled = true;
             button.disabled = true;
             if (payload && payload.url) {{
+              var link = document.createElement("a");
+              link.className = button.className;
+              link.setAttribute("data-knowledge-lark-exported", "true");
+              link.href = payload.url;
+              link.target = "_blank";
+              link.rel = "noopener noreferrer";
+              link.textContent = currentLanguage === "en" ? "Exported to Lark" : "已导出飞书文档";
+              button.replaceWith(link);
               setStatus(payload.url);
               window.open(payload.url, "_blank", "noopener,noreferrer");
             }} else if (payload && payload.already_exported) {{
@@ -31677,7 +31693,9 @@ def main():
     overview_md_content = normalize_brand_display_text(build_markdown(data))
     panel_html_content = restore_knowledge_doc_export_urls(
         normalize_brand_display_text(build_html(data)),
-        data.get("knowledge_docs") or [],
+        list(data.get("knowledge_docs") or [])
+        + list(data.get("openviking_summaries") or [])
+        + list(data.get("codex_memory_docs") or []),
     )
 
     atomic_write_text(overview_json, overview_json_content + "\n")

@@ -1,9 +1,11 @@
 import importlib.util
+import argparse
 import plistlib
 import sys
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest import mock
 
 
 def load_openrelix_module():
@@ -84,6 +86,54 @@ class OpenRelixScheduleTest(unittest.TestCase):
             self.assertIn("--enable-learning-refresh", flags)
             self.assertIn("--overview-refresh-interval-minutes", flags)
             self.assertEqual(flags[flags.index("--overview-refresh-interval-minutes") + 1], "30")
+
+    def test_open_panel_starts_openviking_refresh_unless_skipped(self):
+        args = argparse.Namespace(target="panel", date="2026-05-26", skip_openviking_refresh=False)
+        with mock.patch.object(self.openrelix, "ensure_token_live_service") as ensure_token, mock.patch.object(
+            self.openrelix,
+            "start_openviking_open_refresh_if_due",
+            return_value={"started": True},
+        ) as start_refresh, mock.patch.object(self.openrelix, "resolve_open_target", return_value=Path("/tmp/panel.html")), mock.patch.object(
+            self.openrelix,
+            "open_path",
+        ), mock.patch.object(self.openrelix, "rebuild_panel_before_open") as rebuild_panel:
+            self.openrelix.command_open(args)
+
+        ensure_token.assert_called_once()
+        start_refresh.assert_called_once()
+        rebuild_panel.assert_called_once()
+
+    def test_open_panel_can_skip_openviking_refresh(self):
+        args = argparse.Namespace(target="panel", date="2026-05-26", skip_openviking_refresh=True)
+        with mock.patch.object(self.openrelix, "ensure_token_live_service"), mock.patch.object(
+            self.openrelix,
+            "start_openviking_open_refresh_if_due",
+        ) as start_refresh, mock.patch.object(self.openrelix, "resolve_open_target", return_value=Path("/tmp/panel.html")), mock.patch.object(
+            self.openrelix,
+            "open_path",
+        ), mock.patch.object(self.openrelix, "rebuild_panel_before_open") as rebuild_panel:
+            self.openrelix.command_open(args)
+
+        start_refresh.assert_not_called()
+        rebuild_panel.assert_called_once()
+
+    def test_app_command_starts_openviking_refresh_when_opening_client(self):
+        args = argparse.Namespace(build=False, no_open=False, output=None, print_path=False, skip_openviking_refresh=False)
+        with mock.patch.object(self.openrelix, "default_macos_client_app_path", return_value=Path("/tmp/OpenRelix.app")), mock.patch.object(
+            self.openrelix,
+            "ensure_token_live_service",
+        ), mock.patch.object(self.openrelix, "start_openviking_open_refresh_if_due", return_value={"started": True}) as start_refresh, mock.patch.object(
+            self.openrelix,
+            "open_path",
+        ), mock.patch.object(self.openrelix, "rebuild_panel_before_open") as rebuild_panel, mock.patch.object(
+            Path,
+            "exists",
+            return_value=True,
+        ), mock.patch.object(sys, "platform", "darwin"):
+            self.openrelix.command_app(args)
+
+        start_refresh.assert_called_once()
+        rebuild_panel.assert_called_once()
 
 
 if __name__ == "__main__":
