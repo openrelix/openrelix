@@ -206,11 +206,143 @@ class KnowledgeDocsOverviewTests(unittest.TestCase):
             restored,
         )
 
+    def test_loads_and_renders_openviking_summary_panel(self):
+        with TemporaryDirectory() as tmpdir:
+            paths = runtime_paths_for_state(Path(tmpdir) / "state")
+            asset_runtime.ensure_state_layout(paths)
+            doc = {
+                "schema_version": 1,
+                "algorithm_version": 1,
+                "doc_id": "ovdoc-route",
+                "version": 1,
+                "status": "draft",
+                "summary_type": "openviking_summary",
+                "title": "OpenViking route summary",
+                "summary": "OpenViking produced a parallel summary.",
+                "body_path": "openviking/docs/2026/route.md",
+                "source_refs": {
+                    "openviking_uris": ["viking://agent/memories/route"],
+                    "session_ids": ["orx-openrelix-2026-05-26"],
+                },
+                "source_contexts": [
+                    {
+                        "source": "openviking",
+                        "overview": "Parallel summary evidence.",
+                    }
+                ],
+                "project_key": "openrelix",
+                "project_label": "OpenRelix",
+                "reviewer_state": "needs_review",
+                "visibility": {
+                    "panel": True,
+                    "default_search": False,
+                    "host_context": False,
+                    "trust_level": "draft",
+                },
+                "feishu_export": {
+                    "status": "not_configured",
+                    "doc_url": "",
+                    "doc_token": "",
+                    "updated_at": "",
+                    "error_hint": "",
+                },
+                "created_at": "2026-05-26T10:20:00Z",
+                "updated_at": "2026-05-26T10:20:00Z",
+            }
+            (paths.registry_dir / "openviking_summary_docs.jsonl").write_text(
+                json.dumps(doc, ensure_ascii=False) + "\n",
+                encoding="utf-8",
+            )
+            body_path = paths.state_root / doc["body_path"]
+            body_path.parent.mkdir(parents=True, exist_ok=True)
+            body_path.write_text("# Route\n", encoding="utf-8")
+
+            with mock.patch.object(build_overview, "PATHS", paths), mock.patch.object(
+                build_overview,
+                "REGISTRY_DIR",
+                paths.registry_dir,
+            ):
+                rows = build_overview.load_openviking_summary_docs()
+                html = build_overview.make_openviking_summaries_panel_body(rows)
+
+            self.assertEqual([row["doc_id"] for row in rows], ["ovdoc-route"])
+            self.assertEqual(rows[0]["body_path_label"], "openviking/docs/2026/route.md")
+            self.assertTrue(rows[0]["body_path_uri"].startswith("file://"))
+            self.assertIn("OpenViking route summary", html)
+            self.assertIn("openviking_summary", html)
+            self.assertIn("viking://agent/memories/route", html)
+            self.assertIn("orx-openrelix-2026-05-26", html)
+            self.assertIn("data-knowledge-doc-card-href", html)
+            self.assertIn("data-knowledge-lark-doc", html)
+
+    def test_loads_and_renders_codex_memory_docs_panel(self):
+        with TemporaryDirectory() as tmpdir:
+            paths = runtime_paths_for_state(Path(tmpdir) / "state")
+            asset_runtime.ensure_state_layout(paths)
+            doc = {
+                "schema_version": 1,
+                "algorithm_version": 1,
+                "doc_id": "codex-memory-2026-04-28",
+                "version": 1,
+                "status": "draft",
+                "summary_type": "codex_memory_archive",
+                "title": "Codex window memory 2026-04-28",
+                "summary": "1 Codex window archived from 1 profile.",
+                "body_path": "codex-memory/docs/2026-04-28.md",
+                "source_refs": {
+                    "summary_dates": ["2026-04-28"],
+                    "window_ids": ["w-codex"],
+                    "archive_ids": ["archive-codex"],
+                },
+                "source_contexts": [
+                    {
+                        "source": "codex_memory_archive",
+                        "date": "2026-04-28",
+                        "window_id": "w-codex",
+                        "title": "Codex archive window",
+                        "main_takeaway": "Fixed archive is visible.",
+                    }
+                ],
+                "project_key": "codex",
+                "project_label": "Codex",
+                "reviewer_state": "needs_review",
+                "visibility": {"panel": True, "trust_level": "draft"},
+                "updated_at": "2026-04-28T10:20:00Z",
+            }
+            (paths.registry_dir / "codex_memory_docs.jsonl").write_text(
+                json.dumps(doc, ensure_ascii=False) + "\n",
+                encoding="utf-8",
+            )
+            body_path = paths.state_root / doc["body_path"]
+            body_path.parent.mkdir(parents=True, exist_ok=True)
+            body_path.write_text("# Codex Memory\n", encoding="utf-8")
+
+            with mock.patch.object(build_overview, "PATHS", paths), mock.patch.object(
+                build_overview,
+                "REGISTRY_DIR",
+                paths.registry_dir,
+            ):
+                rows = build_overview.load_codex_memory_docs()
+                html = build_overview.make_codex_memory_docs_panel_body(rows)
+
+            self.assertEqual([row["doc_id"] for row in rows], ["codex-memory-2026-04-28"])
+            self.assertEqual(rows[0]["body_path_label"], "codex-memory/docs/2026-04-28.md")
+            self.assertTrue(rows[0]["body_path_uri"].startswith("file://"))
+            self.assertIn("Codex window memory 2026-04-28", html)
+            self.assertIn("codex_memory_archive", html)
+            self.assertIn("w-codex", html)
+            self.assertIn("data-knowledge-doc-card-href", html)
+            self.assertIn("data-knowledge-lark-doc", html)
+
     def test_overview_source_contains_knowledge_docs_section(self):
         source = (ROOT / "scripts" / "build_overview.py").read_text(encoding="utf-8")
 
         self.assertIn("{knowledge_docs_header}", source)
         self.assertIn("{knowledge_docs_body}", source)
+        self.assertIn("{codex_memory_docs_header}", source)
+        self.assertIn("{codex_memory_docs_body}", source)
+        self.assertIn("{openviking_summaries_header}", source)
+        self.assertIn("{openviking_summaries_body}", source)
         self.assertIn('window.open(href, "_blank"', source)
         self.assertNotIn("window.location.href = href", source)
 

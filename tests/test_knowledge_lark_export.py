@@ -164,6 +164,104 @@ class KnowledgeLarkExportTests(unittest.TestCase):
             self.assertEqual(result["url"], "https://example.feishu.cn/docx/existing")
             run.assert_not_called()
 
+    def test_create_lark_doc_from_openviking_summary_uses_same_endpoint(self):
+        with TemporaryDirectory() as tmpdir:
+            paths = runtime_paths_for_state(Path(tmpdir) / "state")
+            asset_runtime.ensure_state_layout(paths)
+            body_path = paths.state_root / "openviking/docs/2026/summary.md"
+            body_path.parent.mkdir(parents=True, exist_ok=True)
+            body_path.write_text("# OpenViking Summary\n", encoding="utf-8")
+            row = {
+                "doc_id": "ovdoc-summary",
+                "status": "draft",
+                "title": "OpenViking Summary",
+                "body_path": "openviking/docs/2026/summary.md",
+                "feishu_export": {
+                    "status": "not_configured",
+                    "doc_url": "",
+                    "doc_token": "",
+                    "updated_at": "",
+                    "error_hint": "",
+                },
+            }
+            (paths.registry_dir / "openviking_summary_docs.jsonl").write_text(
+                json.dumps(row, ensure_ascii=False) + "\n",
+                encoding="utf-8",
+            )
+
+            def fake_run(cmd, **_kwargs):
+                return type(
+                    "Result",
+                    (),
+                    {
+                        "returncode": 0,
+                        "stdout": json.dumps({"data": {"url": "https://example.feishu.cn/docx/ov"}}),
+                        "stderr": "",
+                    },
+                )()
+
+            with mock.patch.object(token_live_server, "PATHS", paths):
+                with mock.patch.object(token_live_server.shutil, "which", return_value="feishu-cli"):
+                    with mock.patch.object(token_live_server.subprocess, "run", side_effect=fake_run):
+                        result = token_live_server.create_lark_doc_from_knowledge("ovdoc-summary")
+
+            self.assertTrue(result["ok"])
+            self.assertEqual(result["url"], "https://example.feishu.cn/docx/ov")
+            updated = json.loads(
+                (paths.registry_dir / "openviking_summary_docs.jsonl").read_text(encoding="utf-8")
+            )
+            self.assertEqual(updated["feishu_export"]["status"], "exported")
+            self.assertEqual(updated["feishu_export"]["doc_url"], "https://example.feishu.cn/docx/ov")
+
+    def test_create_lark_doc_from_codex_memory_doc_uses_same_endpoint(self):
+        with TemporaryDirectory() as tmpdir:
+            paths = runtime_paths_for_state(Path(tmpdir) / "state")
+            asset_runtime.ensure_state_layout(paths)
+            body_path = paths.state_root / "codex-memory/docs/2026-04-28.md"
+            body_path.parent.mkdir(parents=True, exist_ok=True)
+            body_path.write_text("# Codex Memory\n", encoding="utf-8")
+            row = {
+                "doc_id": "codex-memory-2026-04-28",
+                "status": "draft",
+                "title": "Codex Memory",
+                "body_path": "codex-memory/docs/2026-04-28.md",
+                "feishu_export": {
+                    "status": "not_configured",
+                    "doc_url": "",
+                    "doc_token": "",
+                    "updated_at": "",
+                    "error_hint": "",
+                },
+            }
+            (paths.registry_dir / "codex_memory_docs.jsonl").write_text(
+                json.dumps(row, ensure_ascii=False) + "\n",
+                encoding="utf-8",
+            )
+
+            def fake_run(cmd, **_kwargs):
+                return type(
+                    "Result",
+                    (),
+                    {
+                        "returncode": 0,
+                        "stdout": json.dumps({"data": {"url": "https://example.feishu.cn/docx/codex"}}),
+                        "stderr": "",
+                    },
+                )()
+
+            with mock.patch.object(token_live_server, "PATHS", paths):
+                with mock.patch.object(token_live_server.shutil, "which", return_value="feishu-cli"):
+                    with mock.patch.object(token_live_server.subprocess, "run", side_effect=fake_run):
+                        result = token_live_server.create_lark_doc_from_knowledge("codex-memory-2026-04-28")
+
+            self.assertTrue(result["ok"])
+            self.assertEqual(result["url"], "https://example.feishu.cn/docx/codex")
+            updated = json.loads(
+                (paths.registry_dir / "codex_memory_docs.jsonl").read_text(encoding="utf-8")
+            )
+            self.assertEqual(updated["feishu_export"]["status"], "exported")
+            self.assertEqual(updated["feishu_export"]["doc_url"], "https://example.feishu.cn/docx/codex")
+
 
 if __name__ == "__main__":
     raise SystemExit(unittest.main())

@@ -58,6 +58,9 @@
     "scripts/build_codex_memory_summary.py",
     "scripts/build_codex_native_display_cache.py",
     "scripts/build_knowledge_docs.py",
+    "scripts/build_openviking_summaries.py",
+    "scripts/codex_memory_sync.py",
+    "scripts/openrelix_openviking.py",
     "scripts/build_overview.py",
     "scripts/cleanup_smoke_temp.sh",
     "scripts/collect_codex_activity.py",
@@ -75,6 +78,7 @@
     "scripts/run_with_optional_caffeinate.sh",
     "scripts/smoke_temp_panel.sh",
     "scripts/sync_host_memory_summary.py",
+    "scripts/setup_openviking_defaults.py",
     "scripts/token_live_server.py",
     "templates/"
   ],

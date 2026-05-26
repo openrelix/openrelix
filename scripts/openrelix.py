@@ -38,6 +38,7 @@ from asset_runtime import (
     get_claude_env_file,
     get_claude_model,
     get_claude_settings,
+    get_codex_memory_root,
     get_codex_model,
     get_model_cli,
     get_memory_mode,
@@ -764,6 +765,13 @@ def build_parser():
         ),
     )
     config.add_argument(
+        "--codex-memory-root",
+        help=localized(
+            "固定 Codex 记忆归档目录；相对路径会放在 OpenRelix state_root 下，也可用 OPENRELIX_CODEX_MEMORY_ROOT 覆盖。",
+            "Fixed Codex memory archive directory; relative paths live under OpenRelix state_root and can be overridden with OPENRELIX_CODEX_MEMORY_ROOT.",
+        ),
+    )
+    config.add_argument(
         "--model-cli",
         choices=["codex", "claude", "cc"],
         help=localized(
@@ -1080,6 +1088,241 @@ def build_parser():
         action="store_true",
         help=localized("以 JSON 打印结果。", "Print results as JSON."),
     )
+
+    openviking_summary = subparsers.add_parser(
+        "openviking-summary",
+        help=localized(
+            "构建和查看 OpenViking 旁路总结文档。",
+            "Build and inspect OpenViking sidecar summary docs.",
+        ),
+    )
+    openviking_summary.add_argument(
+        "action",
+        choices=["build", "list", "status"],
+        help=localized("OpenViking 总结操作。", "OpenViking summary action."),
+    )
+    openviking_summary.add_argument(
+        "--source",
+        default="",
+        help=localized(
+            "OpenViking export JSON/JSONL 路径，默认 registry/openviking_memory_exports.jsonl。",
+            "OpenViking export JSON/JSONL path; defaults to registry/openviking_memory_exports.jsonl.",
+        ),
+    )
+    openviking_summary.add_argument(
+        "--date",
+        default=current_date_str(),
+        help=localized(
+            "build 使用的目标日期，格式 YYYY-MM-DD。默认今天。",
+            "Target date for build in YYYY-MM-DD. Default: today.",
+        ),
+    )
+    openviking_summary.add_argument(
+        "--dry-run",
+        action="store_true",
+        help=localized("只计算，不写入 registry 或文档。", "Compute without writing registries or docs."),
+    )
+    openviking_summary.add_argument("--limit", type=int, default=20, help=localized("最多返回条数。", "Maximum result count."))
+    openviking_summary.add_argument(
+        "--json",
+        action="store_true",
+        help=localized("以 JSON 打印结果。", "Print results as JSON."),
+    )
+
+    openviking = subparsers.add_parser(
+        "openviking",
+        help=localized(
+            "安装、配置并连接 OpenViking 服务进行记忆总结。",
+            "Install, configure, and connect OpenViking for memory summaries.",
+        ),
+    )
+    openviking.add_argument(
+        "action",
+        choices=["install", "config", "status", "summarize", "setup"],
+        help=localized("OpenViking 操作。", "OpenViking action."),
+    )
+    openviking.add_argument("--url", help=localized("OpenViking Server URL。", "OpenViking Server URL."))
+    openviking.add_argument("--api-key", help=localized("OpenViking API key。", "OpenViking API key."))
+    openviking.add_argument(
+        "--clear-api-key",
+        action="store_true",
+        help=localized("清空 OpenViking API key 配置。", "Clear the configured OpenViking API key."),
+    )
+    openviking.add_argument("--account", help=localized("OpenViking account header。", "OpenViking account header."))
+    openviking.add_argument("--user", help=localized("OpenViking user header。", "OpenViking user header."))
+    openviking.add_argument("--agent-id", help=localized("OpenViking agent id。", "OpenViking agent id."))
+    openviking.add_argument("--timeout", type=float, help=localized("HTTP 超时时间，秒。", "HTTP timeout in seconds."))
+    openviking.add_argument(
+        "--write-ovcli",
+        action="store_true",
+        help=localized("同时写入 ~/.openviking/ovcli.conf。", "Also write ~/.openviking/ovcli.conf."),
+    )
+    openviking.add_argument(
+        "--package",
+        default="openviking",
+        help=localized("install 使用的 pip 包名。", "pip package spec used by install."),
+    )
+    openviking.add_argument(
+        "--no-force-reinstall",
+        action="store_true",
+        help=localized("install 时不追加 --force-reinstall。", "Do not append --force-reinstall during install."),
+    )
+    openviking.add_argument(
+        "--install",
+        action="store_true",
+        help=localized("setup 时强制执行 OpenViking 安装。", "Force OpenViking installation during setup."),
+    )
+    openviking.add_argument(
+        "--skip-install",
+        action="store_true",
+        help=localized("setup 时跳过 OpenViking 安装。", "Skip OpenViking installation during setup."),
+    )
+    openviking.add_argument(
+        "--server-init",
+        action="store_true",
+        help=localized("setup 时执行 openviking-server init。", "Run openviking-server init during setup."),
+    )
+    openviking.add_argument(
+        "--doctor",
+        action="store_true",
+        help=localized("setup 时执行 openviking-server doctor。", "Run openviking-server doctor during setup."),
+    )
+    openviking.add_argument(
+        "--date",
+        default=current_date_str(),
+        help=localized("summarize/setup 的目标日期，格式 YYYY-MM-DD。", "Target date for summarize/setup in YYYY-MM-DD."),
+    )
+    openviking.add_argument(
+        "--days",
+        type=int,
+        default=1,
+        help=localized("setup 从结束日期向前处理 N 天；默认 1。", "For setup, process N days ending at the end date; default 1."),
+    )
+    openviking.add_argument(
+        "--from",
+        dest="date_from",
+        help=localized("summarize/setup 起始日期，格式 YYYY-MM-DD。", "Start date for summarize/setup in YYYY-MM-DD."),
+    )
+    openviking.add_argument(
+        "--to",
+        dest="date_to",
+        help=localized("summarize/setup 结束日期，格式 YYYY-MM-DD；默认 --date。", "End date for summarize/setup in YYYY-MM-DD; defaults to --date."),
+    )
+    openviking.add_argument("--project", default="", help=localized("按项目 key/label 过滤。", "Filter by project key/label."))
+    openviking.add_argument("--limit", type=int, default=50, help=localized("最多发送的记忆条数。", "Maximum memory rows to send."))
+    openviking.add_argument("--session-id", default="", help=localized("自定义 OpenViking session id。", "Custom OpenViking session id."))
+    openviking.add_argument(
+        "--skip-backfill",
+        action="store_true",
+        help=localized("setup 时跳过 OpenRelix 本地回溯。", "Skip local OpenRelix backfill during setup."),
+    )
+    openviking.add_argument(
+        "--backfill-stage",
+        default="final",
+        choices=["manual", "preliminary", "final"],
+        help=localized("setup 回溯写入的 summary 阶段。", "Summary stage used by setup backfill."),
+    )
+    openviking.add_argument(
+        "--force-backfill",
+        action="store_true",
+        help=localized("setup 回溯时即使已有 summary 也重新生成。", "During setup backfill, rerun even when summaries already exist."),
+    )
+    openviking.add_argument(
+        "--jobs",
+        type=int,
+        default=1,
+        help=localized("setup 回溯并发数，当前最大 2。", "Setup backfill concurrency, currently capped at 2."),
+    )
+    openviking.add_argument(
+        "--learn-window-days",
+        type=int,
+        default=0,
+        help=localized("setup 回溯前学习前 N 天近期窗口摘要。", "For setup backfill, learn from recent window summaries in the previous N days."),
+    )
+    openviking.add_argument(
+        "--no-summarize",
+        action="store_true",
+        help=localized("setup 时只配置/回溯，不推送 OpenViking 总结。", "During setup, configure/backfill only and do not push OpenViking summaries."),
+    )
+    openviking.add_argument(
+        "--require-service",
+        action="store_true",
+        help=localized("setup 时 OpenViking 服务不健康则失败。", "During setup, fail if the OpenViking service is not healthy."),
+    )
+    openviking.add_argument(
+        "--no-wait",
+        action="store_true",
+        help=localized("提交后不等待 OpenViking 异步任务完成。", "Do not wait for the OpenViking async task after commit."),
+    )
+    openviking.add_argument(
+        "--task-timeout",
+        type=float,
+        default=180.0,
+        help=localized("等待 OpenViking 异步任务的超时时间，秒。", "Timeout for waiting on the OpenViking async task."),
+    )
+    openviking.add_argument(
+        "--poll-interval",
+        type=float,
+        default=2.0,
+        help=localized("轮询 OpenViking 异步任务的间隔，秒。", "Polling interval for the OpenViking async task."),
+    )
+    openviking.add_argument(
+        "--dry-run",
+        action="store_true",
+        help=localized("只计算命令或消息，不安装、不请求服务、不写入总结。", "Compute only; do not install, call the service, or write summaries."),
+    )
+    openviking.add_argument(
+        "--json",
+        action="store_true",
+        help=localized("以 JSON 打印结果。", "Print results as JSON."),
+    )
+
+    codex_memory = subparsers.add_parser(
+        "codex-memory",
+        help=localized(
+            "归档、回溯和增量更新 Codex 窗口记忆。",
+            "Archive, backfill, and incrementally update Codex window memory.",
+        ),
+    )
+    codex_memory.add_argument(
+        "action",
+        nargs="?",
+        default="status",
+        choices=["status", "sync", "backfill", "incremental", "schedule"],
+        help=localized("动作：status/sync/backfill/incremental/schedule。", "Action: status/sync/backfill/incremental/schedule."),
+    )
+    codex_memory.add_argument("--date", dest="dates", action="append", default=[], help=localized("指定日期，可重复。", "Target date; repeatable."))
+    codex_memory.add_argument("--from", dest="from_date", default="", help=localized("起始日期 YYYY-MM-DD。", "Start date YYYY-MM-DD."))
+    codex_memory.add_argument("--to", dest="to_date", default="", help=localized("结束日期 YYYY-MM-DD。", "End date YYYY-MM-DD."))
+    codex_memory.add_argument("--days", type=int, default=0, help=localized("最近 N 天。", "Last N days."))
+    codex_memory.add_argument("--all-history", action="store_true", help=localized("发现并回溯全部 Codex 历史日期。", "Discover and backfill all Codex history dates."))
+    codex_memory.add_argument(
+        "--stage",
+        default="final",
+        choices=["manual", "preliminary", "final"],
+        help=localized("生成 summary 的阶段。", "Summary stage."),
+    )
+    codex_memory.add_argument(
+        "--activity-source",
+        default="auto",
+        choices=["history", "app-server", "auto"],
+        help=localized("Codex 窗口来源：auto 优先 app-server，失败回退 history。", "Codex window source: auto tries app-server before history fallback."),
+    )
+    codex_memory.add_argument(
+        "--learn-window-days",
+        type=int,
+        default=0,
+        help=localized("总结回溯时学习前 N 天窗口。", "For summary backfill, learn from the previous N days."),
+    )
+    codex_memory.add_argument("--lookback-days", type=int, default=1, help=localized("增量更新向前重扫 N 天。", "Incremental sync lookback days."))
+    codex_memory.add_argument("--interval-minutes", type=int, default=15, help=localized("定时增量间隔分钟。", "Scheduled incremental interval in minutes."))
+    codex_memory.add_argument("--install", action="store_true", help=localized("schedule 时安装到 crontab。", "Install schedule into crontab."))
+    codex_memory.add_argument("--summarize", action="store_true", help=localized("sync/incremental 后也执行 OpenRelix 总结。", "Also run OpenRelix summarization after sync/incremental."))
+    codex_memory.add_argument("--skip-summarize", action="store_true", help=localized("backfill/schedule 时只归档，不执行总结。", "Archive only for backfill/schedule; skip summarization."))
+    codex_memory.add_argument("--force", action="store_true", help=localized("总结回溯时强制重跑。", "Force summary backfill rerun."))
+    codex_memory.add_argument("--jobs", type=int, default=1, help=localized("总结回溯并发数，最大 2。", "Summary backfill jobs, capped at 2."))
+    codex_memory.add_argument("--refresh", action="store_true", help=localized("归档后刷新索引和面板。", "Refresh index and panel after archive sync."))
+    codex_memory.add_argument("--json", action="store_true", help=localized("以 JSON 打印结果。", "Print result as JSON."))
 
     recall = subparsers.add_parser(
         "recall",
@@ -4374,6 +4617,7 @@ def memory_summary_budget_payload(config=None):
         "claude_model": get_claude_model(PATHS),
         "claude_settings": get_claude_settings(PATHS),
         "claude_env_file": get_claude_env_file(PATHS),
+        "codex_memory_root": str(get_codex_memory_root(PATHS)),
         "memory_summary_max_tokens": budget["max_tokens"],
         "memory_summary_target_tokens": budget["target_tokens"],
         "memory_summary_warn_tokens": budget["warn_tokens"],
@@ -4386,6 +4630,7 @@ def memory_summary_budget_payload(config=None):
         "configured_claude_model": config.get("claude_model"),
         "configured_claude_settings": config.get("claude_settings"),
         "configured_claude_env_file": config.get("claude_env_file"),
+        "configured_codex_memory_root": config.get("codex_memory_root"),
         "configured_activity_host": config.get("activity_host"),
         "configured_memory_summary_max_tokens": config.get("memory_summary_max_tokens"),
     }
@@ -4400,6 +4645,7 @@ def command_config(args):
     requested_claude_model = getattr(args, "claude_model", None)
     requested_claude_settings = getattr(args, "claude_settings", None)
     requested_claude_env_file = getattr(args, "claude_env_file", None)
+    requested_codex_memory_root = getattr(args, "codex_memory_root", None)
     if (
         requested_max_tokens is None
         and requested_activity_source is None
@@ -4409,6 +4655,7 @@ def command_config(args):
         and requested_claude_model is None
         and requested_claude_settings is None
         and requested_claude_env_file is None
+        and requested_codex_memory_root is None
     ):
         payload = memory_summary_budget_payload()
         if args.json:
@@ -4422,6 +4669,7 @@ def command_config(args):
         print("- claude_model: {}".format(payload["claude_model"]))
         print("- claude_settings: {}".format(payload["claude_settings"] or "(default)"))
         print("- claude_env_file: {}".format(payload["claude_env_file"] or "(none)"))
+        print("- codex_memory_root: {}".format(payload["codex_memory_root"]))
         print("- memory_summary_max_tokens: {}".format(payload["memory_summary_max_tokens"]))
         print("- memory_summary_target_tokens: {}".format(payload["memory_summary_target_tokens"]))
         print("- memory_summary_warn_tokens: {}".format(payload["memory_summary_warn_tokens"]))
@@ -4481,6 +4729,7 @@ def command_config(args):
         claude_model=normalized_claude_model,
         claude_settings=requested_claude_settings,
         claude_env_file=requested_claude_env_file,
+        codex_memory_root=requested_codex_memory_root,
         memory_summary_max_tokens=normalized_max_tokens,
         paths=PATHS,
     )
@@ -4503,6 +4752,7 @@ def command_config(args):
     print("- claude_model: {}".format(payload["claude_model"]))
     print("- claude_settings: {}".format(payload["claude_settings"] or "(default)"))
     print("- claude_env_file: {}".format(payload["claude_env_file"] or "(none)"))
+    print("- codex_memory_root: {}".format(payload["codex_memory_root"]))
     print("- memory_summary_max_tokens: {}".format(payload["memory_summary_max_tokens"]))
     print("- memory_summary_target_tokens: {}".format(payload["memory_summary_target_tokens"]))
     print("- memory_summary_warn_tokens: {}".format(payload["memory_summary_warn_tokens"]))
@@ -4982,6 +5232,417 @@ def command_knowledge(args):
     raise SystemExit(localized(
         "不支持的知识文档操作: {}".format(args.action),
         "unsupported knowledge action: {}".format(args.action),
+    ))
+
+
+def run_codex_memory_summary_backfill(dates, args):
+    old_values = {
+        "OPENRELIX_ACTIVITY_HOST": os.environ.get("OPENRELIX_ACTIVITY_HOST"),
+        "OPENRELIX_ACTIVITY_SOURCE": os.environ.get("OPENRELIX_ACTIVITY_SOURCE"),
+    }
+    os.environ["OPENRELIX_ACTIVITY_HOST"] = "codex"
+    os.environ["OPENRELIX_ACTIVITY_SOURCE"] = getattr(args, "activity_source", "auto") or "auto"
+    try:
+        results = run_backfill_dates(
+            dates,
+            args.stage,
+            learn_window_days=getattr(args, "learn_window_days", 0),
+            force=getattr(args, "force", False),
+            ensure_learning_final=True,
+            defer_global_refresh=True,
+            verbose=not getattr(args, "json", False),
+            jobs=getattr(args, "jobs", 1),
+        )
+    finally:
+        for key, value in old_values.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+    return results
+
+
+def finalize_codex_memory_backfill(dates, results, verbose=True):
+    failed_results = [item for item in results if item.get("status") == "failed"]
+    completed = sum(1 for item in results if item.get("status") == "completed")
+    if completed or failed_results:
+        if verbose:
+            print(
+                localized(
+                    "刷新中: Codex 记忆回溯完成，正在更新索引、host context 摘要和面板。",
+                    "Refreshing: Codex memory backfill completed; updating index, host context summary, and panel.",
+                )
+            )
+        run_task_summary_for_dates_warning_only(dates, verbose=verbose)
+        sync_review_outputs(include_index=True, include_native_display=True, verbose=verbose)
+    return failed_results
+
+
+def print_codex_memory_payload(payload):
+    print(localized("Codex 记忆归档", "Codex memory archive"))
+    for key in (
+        "codex_memory_root",
+        "windows_path",
+        "archive_window_count",
+        "synced_window_count",
+        "doc_count",
+        "date_count",
+        "first_date",
+        "last_date",
+        "last_sync",
+        "schedule_path",
+        "installed",
+    ):
+        if key in payload:
+            print("- {}: {}".format(key, payload.get(key)))
+    if payload.get("dates"):
+        print("- dates: {}".format(", ".join(item.get("date", "") for item in payload.get("dates", [])[:12])))
+    if payload.get("entry"):
+        print("- cron: {}".format(payload["entry"]))
+    if payload.get("env_hint"):
+        print("- {}".format(payload["env_hint"]))
+
+
+def command_codex_memory(args):
+    import codex_memory_sync
+
+    if args.action == "status":
+        payload = codex_memory_sync.codex_memory_status(paths=PATHS)
+        if args.json:
+            print_json(payload)
+            return
+        print_codex_memory_payload(payload)
+        return
+
+    if args.action == "schedule":
+        payload = codex_memory_sync.install_cron_schedule(
+            paths=PATHS,
+            interval_minutes=max(1, int(args.interval_minutes or 15)),
+            stage=args.stage,
+            days=max(1, int(args.days or 2)),
+            lookback_days=max(0, int(args.lookback_days or 0)),
+            source=args.activity_source,
+            summarize=not args.skip_summarize,
+            install=args.install,
+        )
+        if args.json:
+            print_json(payload)
+            return
+        print_codex_memory_payload(payload)
+        if not payload.get("installed") and not args.install:
+            print(localized("加 --install 可写入当前用户 crontab。", "Add --install to write the current user's crontab."))
+        if payload.get("error"):
+            print("- error: {}".format(payload["error"]))
+        return
+
+    if args.action == "incremental":
+        payload = codex_memory_sync.sync_incremental(
+            paths=PATHS,
+            stage=args.stage,
+            days=max(1, int(args.days or 2)),
+            lookback_days=max(0, int(args.lookback_days or 0)),
+            source=args.activity_source,
+        )
+        dates = [item.get("date", "") for item in payload.get("dates", []) if item.get("date")]
+    else:
+        dates = codex_memory_sync.resolve_dates(
+            dates=args.dates,
+            from_date=args.from_date,
+            to_date=args.to_date,
+            days=args.days,
+            all_history=args.all_history,
+            source=args.activity_source,
+            paths=PATHS,
+        )
+        if not dates:
+            raise SystemExit(localized("没有发现可回溯的 Codex 历史日期。", "No Codex history dates were discovered."))
+        payload = codex_memory_sync.sync_codex_memory_archive(
+            paths=PATHS,
+            dates=dates,
+            stage=args.stage,
+            source=args.activity_source,
+        )
+
+    should_summarize = (
+        (args.action == "backfill" and not args.skip_summarize)
+        or (args.action in {"sync", "incremental"} and args.summarize)
+    )
+    summary_results = []
+    if should_summarize and dates:
+        if not args.json:
+            print(
+                localized(
+                    "开始 Codex-only 总结回溯: {} -> {}".format(dates[0], dates[-1]),
+                    "Starting Codex-only summary backfill: {} -> {}".format(dates[0], dates[-1]),
+                )
+            )
+        summary_results = run_codex_memory_summary_backfill(dates, args)
+        failed_results = finalize_codex_memory_backfill(dates, summary_results, verbose=not args.json)
+    elif args.refresh:
+        sync_review_outputs(include_index=True, include_native_display=True, verbose=not args.json)
+        failed_results = []
+    else:
+        failed_results = []
+
+    payload["summary_results"] = summary_results
+    if args.json:
+        print_json(payload)
+        if failed_results:
+            raise SystemExit(failed_result_exit_code(failed_results))
+        return
+
+    print_codex_memory_payload(payload)
+    if summary_results:
+        completed = sum(1 for item in summary_results if item.get("status") == "completed")
+        skipped = sum(1 for item in summary_results if item.get("status") == "skipped_existing")
+        failed = len([item for item in summary_results if item.get("status") == "failed"])
+        print("- summary: completed {} | skipped {} | failed {}".format(completed, skipped, failed))
+    print("- panel: {}".format(REPORTS_DIR / "panel.html"))
+    if failed_results:
+        raise SystemExit(failed_result_exit_code(failed_results))
+
+
+def command_openviking_summary(args):
+    import build_openviking_summaries
+
+    if getattr(args, "limit", 20) <= 0:
+        raise SystemExit(localized("--limit 必须大于 0。", "--limit must be greater than 0."))
+
+    if args.action == "build":
+        payload = build_openviking_summaries.build_openviking_summaries(
+            paths=PATHS,
+            source=getattr(args, "source", ""),
+            date=getattr(args, "date", current_date_str()),
+            dry_run=getattr(args, "dry_run", False),
+            limit=getattr(args, "limit", 20),
+        )
+        if args.json:
+            print_json(payload)
+            return
+        print(localized("OpenViking 总结构建结果", "OpenViking summary build result"))
+        print("- created_docs: {}".format(payload["created_docs"]))
+        print("- source: {}".format(payload["source"]))
+        print("- run_artifact: {}".format(payload["run_artifact"]))
+        return
+
+    if args.action == "list":
+        docs = build_openviking_summaries.list_openviking_summaries(paths=PATHS, limit=args.limit)
+        if args.json:
+            print_json({"docs": docs})
+            return
+        for doc in docs:
+            print("- {} [{}]".format(
+                doc.get("title") or doc.get("doc_id") or "(untitled)",
+                doc.get("status") or "-",
+            ))
+            print("  doc_id: {}".format(doc.get("doc_id") or "-"))
+            print("  body_path: {}".format(doc.get("body_path") or "-"))
+        return
+
+    if args.action == "status":
+        payload = build_openviking_summaries.openviking_summary_status(paths=PATHS)
+        if args.json:
+            print_json(payload)
+            return
+        print(localized("OpenViking 总结状态", "OpenViking summary status"))
+        print("- state_root: {}".format(payload["state_root"]))
+        print("- source_registry: {}".format(payload["source_registry"]))
+        print("- doc_registry: {}".format(payload["doc_registry"]))
+        print("- doc_rows: {}".format(payload["doc_rows"]))
+        print("- run_count: {}".format(payload["run_count"]))
+        return
+
+    raise SystemExit(localized(
+        "不支持的 OpenViking 总结操作: {}".format(args.action),
+        "unsupported OpenViking summary action: {}".format(args.action),
+    ))
+
+
+def command_openviking(args):
+    import openrelix_openviking
+
+    def connection_from_args():
+        overrides = {}
+        if getattr(args, "url", None):
+            overrides["openviking_url"] = args.url
+        if getattr(args, "api_key", None):
+            overrides["openviking_api_key"] = args.api_key
+        if getattr(args, "clear_api_key", False):
+            overrides["openviking_api_key"] = ""
+        if getattr(args, "account", None) is not None:
+            overrides["openviking_account"] = args.account
+        if getattr(args, "user", None) is not None:
+            overrides["openviking_user"] = args.user
+        if getattr(args, "agent_id", None) is not None:
+            overrides["openviking_agent_id"] = args.agent_id
+        if getattr(args, "timeout", None) is not None:
+            overrides["openviking_timeout"] = args.timeout
+        return openrelix_openviking.load_openviking_connection(PATHS, overrides=overrides)
+
+    try:
+        if args.action == "install":
+            payload = openrelix_openviking.install_openviking(
+                package=args.package,
+                force_reinstall=not args.no_force_reinstall,
+                dry_run=args.dry_run,
+            )
+            if args.json:
+                print_json(openrelix_model_runner.sanitize_model_input(payload))
+                return
+            print(localized("OpenViking 安装", "OpenViking install"))
+            print("- command: {}".format(" ".join(shlex.quote(str(item)) for item in payload["command"])))
+            print("- dry_run: {}".format(payload["dry_run"]))
+            if payload.get("returncode") is not None:
+                print("- returncode: {}".format(payload["returncode"]))
+            if payload.get("openviking_version_after"):
+                print("- version: {}".format(payload["openviking_version_after"]))
+            return
+
+        if args.action == "config":
+            payload = openrelix_openviking.write_openviking_config(
+                paths=PATHS,
+                url=args.url,
+                api_key=args.api_key,
+                account=args.account,
+                user=args.user,
+                agent_id=args.agent_id,
+                timeout=args.timeout,
+                clear_api_key=args.clear_api_key,
+                write_ovcli=args.write_ovcli,
+            )
+            if args.json:
+                print_json(payload)
+                return
+            print(localized("OpenViking 配置已更新", "OpenViking configuration updated"))
+            print("- config: {}".format(payload["config_path"]))
+            if payload.get("ovcli_config_path"):
+                print("- ovcli_config: {}".format(payload["ovcli_config_path"]))
+            connection = payload["connection"]
+            print("- url: {}".format(connection["url"]))
+            print("- api_key: {}".format(connection["api_key"] or "-"))
+            print("- account: {}".format(connection["account"] or "-"))
+            print("- user: {}".format(connection["user"] or "-"))
+            print("- agent_id: {}".format(connection["agent_id"] or "-"))
+            print("- timeout: {}".format(connection["timeout"]))
+            return
+
+        if args.action == "status":
+            payload = openrelix_openviking.openviking_status(PATHS, connection=connection_from_args())
+            if args.json:
+                print_json(payload)
+                return
+            print(localized("OpenViking 状态", "OpenViking status"))
+            print("- url: {}".format(payload["connection"]["url"]))
+            print("- api_key: {}".format(payload["connection"]["api_key"] or "-"))
+            print("- package_version: {}".format(payload.get("python_package_version") or "-"))
+            print("- openviking-server: {}".format(payload["commands"].get("openviking-server") or "-"))
+            print("- ov: {}".format(payload["commands"].get("ov") or "-"))
+            print("- health: {}".format("ok" if payload["health"].get("ok") else "failed"))
+            if payload["health"].get("error"):
+                print("- health_error: {}".format(payload["health"]["error"]))
+            return
+
+        if args.action == "setup":
+            if args.limit <= 0:
+                raise SystemExit(localized("--limit 必须大于 0。", "--limit must be greater than 0."))
+            install_mode = "always" if args.install else "never" if args.skip_install else "auto"
+            payload = openrelix_openviking.setup_openviking_defaults(
+                paths=PATHS,
+                url=args.url or openrelix_openviking.DEFAULT_OPENVIKING_URL,
+                api_key=args.api_key,
+                account=args.account,
+                user=args.user,
+                agent_id=args.agent_id or openrelix_openviking.DEFAULT_OPENVIKING_AGENT_ID,
+                timeout=args.timeout or openrelix_openviking.DEFAULT_OPENVIKING_TIMEOUT,
+                write_ovcli=True,
+                install_mode=install_mode,
+                package=args.package,
+                force_reinstall=not args.no_force_reinstall,
+                server_init=args.server_init,
+                doctor=args.doctor,
+                run_backfill=not args.skip_backfill,
+                backfill_stage=args.backfill_stage,
+                force_backfill=args.force_backfill,
+                jobs=args.jobs,
+                learn_window_days=args.learn_window_days,
+                run_summarize=not args.no_summarize,
+                require_service=args.require_service,
+                date=args.date,
+                date_from=args.date_from,
+                date_to=args.date_to,
+                days=args.days,
+                project=args.project,
+                limit=args.limit,
+                wait=not args.no_wait,
+                task_timeout=args.task_timeout,
+                poll_interval=args.poll_interval,
+                dry_run=args.dry_run,
+            )
+            if args.json:
+                print_json(payload)
+                return
+            print(localized("OpenViking 一键设置", "OpenViking setup"))
+            print("- dry_run: {}".format(payload["dry_run"]))
+            print("- date_range: {}..{}".format(payload["date_from"], payload["date_to"]))
+            print("- project: {}".format(payload.get("project") or "-"))
+            counts = payload.get("source_counts") or {}
+            print("- source: daily_summaries={}, memory_rows={}, messages={}".format(
+                counts.get("daily_summaries", 0),
+                counts.get("memory_rows", 0),
+                counts.get("messages", 0),
+            ))
+            for step in payload.get("steps") or []:
+                print("- {}: {}".format(step.get("name"), step.get("status")))
+                if step.get("reason"):
+                    print("  reason: {}".format(step["reason"]))
+            if payload.get("next_steps"):
+                print(localized("下一步", "Next steps"))
+                for item in payload["next_steps"]:
+                    print("- {}".format(item))
+            return
+
+        if args.action == "summarize":
+            if args.limit <= 0:
+                raise SystemExit(localized("--limit 必须大于 0。", "--limit must be greater than 0."))
+            payload = openrelix_openviking.summarize_openrelix_memory(
+                paths=PATHS,
+                connection=connection_from_args(),
+                date_from=args.date_from,
+                date_to=args.date_to or args.date,
+                project=args.project,
+                limit=args.limit,
+                session_id=args.session_id,
+                wait=not args.no_wait,
+                task_timeout=args.task_timeout,
+                poll_interval=args.poll_interval,
+                dry_run=args.dry_run,
+            )
+            if args.json:
+                print_json(openrelix_model_runner.sanitize_model_input(payload))
+                return
+            print(localized("OpenViking 记忆总结", "OpenViking memory summary"))
+            print("- dry_run: {}".format(payload["dry_run"]))
+            print("- session_id: {}".format(payload["session_id"]))
+            counts = payload.get("source_counts") or {}
+            print("- source: daily_summaries={}, memory_rows={}, messages={}".format(
+                counts.get("daily_summaries", 0),
+                counts.get("memory_rows", 0),
+                counts.get("messages", 0),
+            ))
+            if not payload["dry_run"]:
+                print("- task_id: {}".format((payload.get("commit_result") or {}).get("task_id") or "-"))
+                print("- archive_uri: {}".format(payload.get("archive_uri") or "-"))
+                print("- export_registry: {}".format(payload.get("export_registry") or "-"))
+                summary = payload.get("summary") or {}
+                print("- created_docs: {}".format(summary.get("created_docs", 0)))
+                print("- run_artifact: {}".format(summary.get("run_artifact") or "-"))
+            return
+    except (openrelix_openviking.OpenVikingError, ValueError) as exc:
+        raise SystemExit(str(exc)) from exc
+
+    raise SystemExit(localized(
+        "不支持的 OpenViking 操作: {}".format(args.action),
+        "unsupported OpenViking action: {}".format(args.action),
     ))
 
 
@@ -5711,6 +6372,15 @@ def main():
         return
     if args.command == "knowledge":
         command_knowledge(args)
+        return
+    if args.command == "openviking-summary":
+        command_openviking_summary(args)
+        return
+    if args.command == "openviking":
+        command_openviking(args)
+        return
+    if args.command == "codex-memory":
+        command_codex_memory(args)
         return
     if args.command == "recall":
         command_recall(args)
