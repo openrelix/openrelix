@@ -58,8 +58,12 @@ class KnowledgeDocsContractTests(unittest.TestCase):
 
             self.assertTrue((state_dir / "knowledge" / "docs").is_dir())
             self.assertTrue((state_dir / "knowledge" / "runs").is_dir())
+            self.assertTrue((state_dir / "openviking" / "docs").is_dir())
+            self.assertTrue((state_dir / "openviking" / "runs").is_dir())
             self.assertTrue((state_dir / "registry" / "knowledge_candidates.jsonl").is_file())
             self.assertTrue((state_dir / "registry" / "knowledge_docs.jsonl").is_file())
+            self.assertTrue((state_dir / "registry" / "openviking_memory_exports.jsonl").is_file())
+            self.assertTrue((state_dir / "registry" / "openviking_summary_docs.jsonl").is_file())
 
     def test_knowledge_doc_schema_is_strict_and_has_phase_one_fields(self):
         schema = json.loads((ROOT / "templates" / "knowledge-doc-schema.json").read_text(encoding="utf-8"))

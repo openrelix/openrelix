@@ -2067,6 +2067,48 @@ def load_knowledge_docs(limit=25):
     return rows[: max(0, int(limit or 0))]
 
 
+def load_openviking_summary_docs(limit=25):
+    rows = []
+    for row in load_jsonl(REGISTRY_DIR / "openviking_summary_docs.jsonl"):
+        if not isinstance(row, dict):
+            continue
+        current = dict(row)
+        current["body_path_label"] = knowledge_doc_body_path_label(current.get("body_path"))
+        current["body_path_abs"] = knowledge_doc_body_path_abs(current.get("body_path"))
+        current["body_path_uri"] = knowledge_doc_body_path_uri(current.get("body_path"))
+        rows.append(current)
+    rows.sort(
+        key=lambda item: (
+            str(item.get("status") or ""),
+            str(item.get("updated_at") or ""),
+            str(item.get("doc_id") or ""),
+        ),
+        reverse=True,
+    )
+    return rows[: max(0, int(limit or 0))]
+
+
+def load_codex_memory_docs(limit=25):
+    rows = []
+    for row in load_jsonl(REGISTRY_DIR / "codex_memory_docs.jsonl"):
+        if not isinstance(row, dict):
+            continue
+        current = dict(row)
+        current["body_path_label"] = knowledge_doc_body_path_label(current.get("body_path"))
+        current["body_path_abs"] = knowledge_doc_body_path_abs(current.get("body_path"))
+        current["body_path_uri"] = knowledge_doc_body_path_uri(current.get("body_path"))
+        rows.append(current)
+    rows.sort(
+        key=lambda item: (
+            str(item.get("status") or ""),
+            str(item.get("updated_at") or ""),
+            str(item.get("doc_id") or ""),
+        ),
+        reverse=True,
+    )
+    return rows[: max(0, int(limit or 0))]
+
+
 def normalize_loaded_memory_item_quality(item):
     stage = str(item.get("stage") or item.get("summary_stage") or "").strip().lower()
     generation = str(item.get("summary_generation") or item.get("model_status") or "").strip().lower()
@@ -9333,6 +9375,7 @@ def build_data(assets, usage_events, reviews, language=None):
     )
     curated_memory_pack = build_curated_memory_pack_preview(memory_registry["rows"])
     knowledge_docs = load_knowledge_docs()
+    codex_memory_docs = load_codex_memory_docs()
     known_project_names = collect_known_project_names(window_overview)
     codex_memory_summary_path_label = render_path(codex_memory_summary_path)
     codex_memory_index_path_label = render_path(codex_memory_index_path)
@@ -9890,6 +9933,7 @@ def build_data(assets, usage_events, reviews, language=None):
         "memory_policy_views": memory_policy_views,
         "curated_memory_pack": curated_memory_pack,
         "knowledge_docs": knowledge_docs,
+        "codex_memory_docs": codex_memory_docs,
         "personal_memory_token_usage": personal_memory_token_usage,
         "context_memory_preview": context_memory_preview,
         "codex_native_memory": codex_native_memory["rows"],
@@ -13443,7 +13487,14 @@ def make_curated_memory_panel_body(pack):
     )
 
 
-def make_knowledge_docs_panel_body(rows):
+def make_document_docs_panel_body(
+    rows,
+    *,
+    empty_zh,
+    empty_en,
+    kind_fallback="knowledge",
+    card_extra_class="",
+):
     rows = [row for row in (rows or []) if (row.get("visibility") or {}).get("panel", True)]
     if not rows:
         return """
@@ -13451,7 +13502,7 @@ def make_knowledge_docs_panel_body(rows):
             <div class="curated-memory-empty">{empty}</div>
           </div>
         """.format(
-            empty=panel_language_text_html("暂无知识文档草稿", "No knowledge docs yet")
+            empty=panel_language_text_html(empty_zh, empty_en)
         )
 
     def render_row(row):
@@ -13460,6 +13511,10 @@ def make_knowledge_docs_panel_body(rows):
         window_ids = [str(item) for item in (source_refs.get("window_ids") or []) if str(item)]
         memory_ids = [str(item) for item in (source_refs.get("memory_ids") or []) if str(item)]
         review_paths = [str(item) for item in (source_refs.get("review_paths") or []) if str(item)]
+        openviking_uris = [str(item) for item in (source_refs.get("openviking_uris") or []) if str(item)]
+        session_ids = [str(item) for item in (source_refs.get("session_ids") or []) if str(item)]
+        archive_ids = [str(item) for item in (source_refs.get("archive_ids") or []) if str(item)]
+        task_ids = [str(item) for item in (source_refs.get("task_ids") or []) if str(item)]
         source_range = row.get("source_range") or {}
         source_contexts = [item for item in (row.get("source_contexts") or []) if isinstance(item, dict)]
         source_rows = []
@@ -13478,14 +13533,45 @@ def make_knowledge_docs_panel_body(rows):
             source_rows.append(("memories", memory_ids))
         if review_paths:
             source_rows.append(("reviews", review_paths))
+        if openviking_uris:
+            source_rows.append(("openviking_uri", openviking_uris))
+        if session_ids:
+            source_rows.append(("sessions", session_ids))
+        if archive_ids:
+            source_rows.append(("archives", archive_ids))
+        if task_ids:
+            source_rows.append(("tasks", task_ids))
+        known_ref_keys = {
+            "summary_dates",
+            "window_ids",
+            "memory_ids",
+            "review_paths",
+            "openviking_uris",
+            "session_ids",
+            "archive_ids",
+            "task_ids",
+        }
+        for key in sorted(set(source_refs) - known_ref_keys):
+            raw_value = source_refs.get(key)
+            if isinstance(raw_value, list):
+                values = [str(item) for item in raw_value if str(item)]
+            elif raw_value:
+                values = [str(raw_value)]
+            else:
+                values = []
+            if values:
+                source_rows.append((str(key), values))
         for context in source_contexts:
             context_parts = [
+                str(context.get("source") or "").strip(),
                 str(context.get("date") or "").strip(),
                 str(context.get("ai_host") or "").strip(),
                 str(context.get("window_id") or "").strip(),
                 str(context.get("title") or "").strip(),
                 str(context.get("project_label") or "").strip(),
                 str(context.get("main_takeaway") or "").strip(),
+                str(context.get("overview") or "").strip(),
+                str(context.get("abstract") or "").strip(),
             ]
             source_rows.append(("context", [" · ".join(part for part in context_parts if part)]))
         source_html = """
@@ -13559,8 +13645,11 @@ def make_knowledge_docs_panel_body(rows):
             ),
             lark_button=lark_button,
         )
+        card_classes = "native-brief-card knowledge-doc-card"
+        if card_extra_class:
+            card_classes = "{} {}".format(card_classes, card_extra_class)
         return """
-          <article class="native-brief-card knowledge-doc-card" data-knowledge-doc-card-href="{body_uri}" data-knowledge-doc-path="{body_abs}">
+          <article class="{card_classes}" data-knowledge-doc-card-href="{body_uri}" data-knowledge-doc-path="{body_abs}">
             <div class="native-brief-topline">
               <span>{status}</span>
               <span class="native-brief-source-label">{kind}</span>
@@ -13577,11 +13666,12 @@ def make_knowledge_docs_panel_body(rows):
             {actions_html}
           </article>
         """.format(
+            card_classes=escape(card_classes, quote=True),
             body_uri=escape(str(body_uri), quote=True),
             body_abs=escape(str(body_abs), quote=True),
             status=escape(str(row.get("status") or "draft")),
-            kind=escape(str(row.get("knowledge_type") or "knowledge")),
-            title=escape(str(row.get("title") or row.get("doc_id") or "Untitled knowledge doc")),
+            kind=escape(str(row.get("knowledge_type") or row.get("summary_type") or kind_fallback)),
+            title=escape(str(row.get("title") or row.get("doc_id") or "Untitled document")),
             summary=escape(str(row.get("summary") or "")),
             reviewer_state=escape(str(row.get("reviewer_state") or "needs_review")),
             project=escape(str(row.get("project_label") or row.get("project_key") or row.get("scope") or "local")),
@@ -13622,6 +13712,35 @@ def make_knowledge_docs_panel_body(rows):
         {sections}
       </div>
     """.format(sections="\n".join(sections))
+
+
+def make_knowledge_docs_panel_body(rows):
+    return make_document_docs_panel_body(
+        rows,
+        empty_zh="暂无知识文档草稿",
+        empty_en="No knowledge docs yet",
+        kind_fallback="knowledge",
+    )
+
+
+def make_openviking_summaries_panel_body(rows):
+    return make_document_docs_panel_body(
+        rows,
+        empty_zh="暂无 OpenViking 总结",
+        empty_en="No OpenViking summaries yet",
+        kind_fallback="openviking_summary",
+        card_extra_class="openviking-summary-card",
+    )
+
+
+def make_codex_memory_docs_panel_body(rows):
+    return make_document_docs_panel_body(
+        rows,
+        empty_zh="暂无 Codex 窗口记忆归档",
+        empty_en="No Codex window memory archive yet",
+        kind_fallback="codex_memory_archive",
+        card_extra_class="codex-memory-card",
+    )
 
 
 def make_memory_family_header(title_zh, title_en, note_zh, note_en, extra_html=""):
@@ -16969,6 +17088,8 @@ def build_html(data):
     )
     curated_memory_pack = data.get("curated_memory_pack") or empty_curated_memory_pack()
     knowledge_docs = data.get("knowledge_docs") or load_knowledge_docs()
+    codex_memory_docs = data.get("codex_memory_docs") or load_codex_memory_docs()
+    openviking_summaries = data.get("openviking_summaries") or load_openviking_summary_docs()
     codex_native_memory = data.get("codex_native_memory") or []
     codex_native_profile_rows = data.get("codex_native_profile_rows") or []
     codex_native_preference_rows = data.get("codex_native_preference_rows") or []
@@ -24588,6 +24709,16 @@ def build_html(data):
         {knowledge_docs_body}
       </section>
 
+      <section class="panel memory-compiler-panel" id="codex-memory-docs-section">
+        {codex_memory_docs_header}
+        {codex_memory_docs_body}
+      </section>
+
+      <section class="panel memory-compiler-panel" id="openviking-summaries-section">
+        {openviking_summaries_header}
+        {openviking_summaries_body}
+      </section>
+
     </section>
 
     <section class="memory-family" id="codex-native-section">
@@ -31355,6 +31486,16 @@ def build_html(data):
             "基于 consolidated/candidate 层生成的本地草稿；MVP 不注入 host context",
         ),
         knowledge_docs_body=make_knowledge_docs_panel_body(knowledge_docs),
+        codex_memory_docs_header=make_panel_header(
+            "Codex 窗口记忆",
+            "固定目录中的 Codex 窗口归档；可跨 CODEX_HOME/环境读取，并支持打开 Markdown 或导出飞书文档",
+        ),
+        codex_memory_docs_body=make_codex_memory_docs_panel_body(codex_memory_docs),
+        openviking_summaries_header=make_panel_header(
+            "OpenViking 总结",
+            "OpenViking 旁路总结生成的本地草稿；与知识文档分开展示，默认不进入 host context",
+        ),
+        openviking_summaries_body=make_openviking_summaries_panel_body(openviking_summaries),
         global_memory_header=make_panel_header(
             "通用上下文",
             "会进入 host context 的通用个人资产记忆",

@@ -27,6 +27,7 @@ DEFAULT_ACTIVITY_HOST = "all"
 SUPPORTED_MODEL_CLIS = ("codex", "claude")
 DEFAULT_MODEL_CLI = "codex"
 SUPPORTED_HOST_CONTEXT_TARGETS = ("codex", "claude")
+CODEX_MEMORY_ROOT_ENV_KEYS = ("OPENRELIX_CODEX_MEMORY_ROOT", "AI_ASSET_CODEX_MEMORY_ROOT")
 DEFAULT_CODEX_MODEL = "gpt-5.4-mini"
 DEFAULT_CLAUDE_MODEL = "auto"
 DEFAULT_MEMORY_SUMMARY_MAX_TOKENS = 8000
@@ -381,6 +382,13 @@ def normalize_optional_path(value: Optional[str]) -> str:
     if not text:
         return ""
     return str(_expand_path(text))
+
+
+def normalize_optional_config_path(value: Optional[str]) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    return str(Path(text).expanduser())
 
 
 def normalize_host_context_targets(value: Optional[Union[str, list, tuple]], *, strict: bool = False) -> list[str]:
@@ -909,6 +917,31 @@ def get_host_context_targets(paths: Optional["RuntimePaths"] = None) -> list[str
     return normalize_host_context_targets(config.get("host_context_targets"))
 
 
+def get_codex_memory_root(paths: Optional["RuntimePaths"] = None) -> Path:
+    paths = paths or get_runtime_paths()
+    for env_key in CODEX_MEMORY_ROOT_ENV_KEYS:
+        explicit = os.environ.get(env_key)
+        if explicit:
+            return _expand_path(explicit)
+
+    config = load_runtime_config(paths)
+    configured = normalize_optional_config_path(config.get("codex_memory_root"))
+    if configured:
+        path = Path(configured)
+        if path.is_absolute():
+            return path.resolve()
+        return (paths.state_root / path).resolve()
+    return paths.state_root / "codex-memory"
+
+
+def codex_memory_windows_path(paths: Optional["RuntimePaths"] = None) -> Path:
+    return get_codex_memory_root(paths) / "windows.jsonl"
+
+
+def codex_memory_state_path(paths: Optional["RuntimePaths"] = None) -> Path:
+    return get_codex_memory_root(paths) / "state.json"
+
+
 def personal_memory_enabled(paths: Optional["RuntimePaths"] = None) -> bool:
     return get_memory_mode(paths) != "off"
 
@@ -933,6 +966,7 @@ def write_runtime_config(
     claude_env_file: Optional[str] = None,
     memory_summary_max_tokens: Optional[Union[int, str]] = None,
     host_context_targets: Optional[Union[str, list, tuple]] = None,
+    codex_memory_root: Optional[str] = None,
     paths: Optional["RuntimePaths"] = None,
 ) -> dict:
     paths = paths or get_runtime_paths()
@@ -992,6 +1026,10 @@ def write_runtime_config(
         if host_context_targets is not None
         else config.get("host_context_targets")
     )
+    if codex_memory_root is not None:
+        config["codex_memory_root"] = normalize_optional_config_path(codex_memory_root)
+    elif "codex_memory_root" not in config:
+        config["codex_memory_root"] = ""
     atomic_write_json(runtime_config_path(paths), config)
     return config
 
@@ -1056,11 +1094,17 @@ def get_runtime_paths() -> RuntimePaths:
 
 def ensure_state_layout(paths: Optional[RuntimePaths] = None) -> RuntimePaths:
     paths = paths or get_runtime_paths()
+    codex_memory_root = get_codex_memory_root(paths)
     for directory in (
         paths.raw_daily_dir,
         paths.raw_windows_dir,
         paths.state_root / "knowledge" / "docs",
         paths.state_root / "knowledge" / "runs",
+        paths.state_root / "openviking" / "docs",
+        paths.state_root / "openviking" / "runs",
+        codex_memory_root,
+        codex_memory_root / "daily",
+        codex_memory_root / "docs",
         paths.registry_dir,
         paths.reviews_dir,
         paths.reports_dir,
@@ -1080,6 +1124,11 @@ def ensure_state_layout(paths: Optional[RuntimePaths] = None) -> RuntimePaths:
         paths.registry_dir / "memory_items.jsonl",
         paths.registry_dir / "knowledge_candidates.jsonl",
         paths.registry_dir / "knowledge_docs.jsonl",
+        paths.registry_dir / "openviking_memory_exports.jsonl",
+        paths.registry_dir / "openviking_summary_docs.jsonl",
+        paths.registry_dir / "codex_memory_windows.jsonl",
+        paths.registry_dir / "codex_memory_docs.jsonl",
+        codex_memory_root / "windows.jsonl",
     ):
         file_path.touch(exist_ok=True)
 

@@ -151,9 +151,10 @@ def _find_knowledge_doc(doc_id):
     target = str(doc_id or "").strip()
     if not target:
         return None
-    for row in _read_jsonl(PATHS.registry_dir / "knowledge_docs.jsonl"):
-        if str(row.get("doc_id") or "") == target:
-            return row
+    for registry_name in ("knowledge_docs.jsonl", "openviking_summary_docs.jsonl", "codex_memory_docs.jsonl"):
+        for row in _read_jsonl(PATHS.registry_dir / registry_name):
+            if str(row.get("doc_id") or "") == target:
+                return row
     return None
 
 
@@ -164,27 +165,29 @@ def _write_jsonl(path, rows):
 
 def _update_knowledge_doc_feishu_export(doc_id, export_state):
     target = str(doc_id or "").strip()
-    registry_path = PATHS.registry_dir / "knowledge_docs.jsonl"
-    rows = _read_jsonl(registry_path)
-    updated_doc = None
-    for row in rows:
-        if str(row.get("doc_id") or "") != target:
-            continue
-        current = row.get("feishu_export") if isinstance(row.get("feishu_export"), dict) else {}
-        merged = {
-            "status": str(current.get("status") or "not_configured"),
-            "doc_url": str(current.get("doc_url") or ""),
-            "doc_token": str(current.get("doc_token") or ""),
-            "updated_at": str(current.get("updated_at") or ""),
-            "error_hint": str(current.get("error_hint") or ""),
-        }
-        merged.update({key: str(value or "") for key, value in (export_state or {}).items()})
-        row["feishu_export"] = merged
-        updated_doc = row
-        break
-    if updated_doc is not None:
-        _write_jsonl(registry_path, rows)
-    return updated_doc
+    for registry_name in ("knowledge_docs.jsonl", "openviking_summary_docs.jsonl", "codex_memory_docs.jsonl"):
+        registry_path = PATHS.registry_dir / registry_name
+        rows = _read_jsonl(registry_path)
+        updated_doc = None
+        for row in rows:
+            if str(row.get("doc_id") or "") != target:
+                continue
+            current = row.get("feishu_export") if isinstance(row.get("feishu_export"), dict) else {}
+            merged = {
+                "status": str(current.get("status") or "not_configured"),
+                "doc_url": str(current.get("doc_url") or ""),
+                "doc_token": str(current.get("doc_token") or ""),
+                "updated_at": str(current.get("updated_at") or ""),
+                "error_hint": str(current.get("error_hint") or ""),
+            }
+            merged.update({key: str(value or "") for key, value in (export_state or {}).items()})
+            row["feishu_export"] = merged
+            updated_doc = row
+            break
+        if updated_doc is not None:
+            _write_jsonl(registry_path, rows)
+            return updated_doc
+    return None
 
 
 def _first_url(value):
