@@ -490,8 +490,36 @@ def evidence_labels(source_refs: Mapping[str, Any]) -> list[str]:
     return labels
 
 
+def reusable_fact_label(question: str) -> str:
+    text = compact_text(question)
+    lowered = text.lower()
+    # More specific business intents must win before generic locator wording like “在哪里”.
+    if any(marker in text for marker in ("跳转", "路由", "schema", "落地页")):
+        return "跳转逻辑"
+    if any(marker in text for marker in ("综搜", "综合搜索", "general")):
+        return "综搜逻辑"
+    if any(marker in text for marker in ("实验", "开关", "AB", "灰度")) or any(marker in lowered for marker in ("experiment", "ab")):
+        return "实验开关"
+    if any(marker in text for marker in ("代码位置", "在哪里", "哪个类", "哪个文件", "入口")):
+        return "代码位置"
+    if any(marker in text for marker in ("根因", "原因", "为什么")):
+        return "根因判断"
+    return "经验事实"
+
+
+def reusable_fact_from_pair(pair: Mapping[str, Any]) -> str:
+    conclusion = compact_text(pair.get("conclusion") or pair.get("question"))
+    if not conclusion:
+        return ""
+    question = compact_text(pair.get("question"))
+    if not question:
+        return conclusion
+    return "{}：{}".format(reusable_fact_label(question), conclusion)
+
+
 def render_markdown(doc: Mapping[str, Any]) -> str:
     body = doc["body_sections"]
+    procedure_items = [compact_text(item) for item in body.get("procedure") or [] if compact_text(item)]
     lines = [
         "# {}".format(doc["title"]),
         "",
@@ -507,11 +535,17 @@ def render_markdown(doc: Mapping[str, Any]) -> str:
         "",
         compact_text(body.get("decision")),
         "",
-        "## Procedure",
+        "## Reusable Debugging Facts",
         "",
     ]
-    for item in body.get("procedure") or []:
-        lines.append("- {}".format(compact_text(item)))
+    for item in procedure_items:
+        lines.append("- {}".format(item))
+    lines.extend([
+        "",
+        "## Procedure",
+        "",
+        "Use the reusable facts above as the reviewed code map before changing or validating this flow.",
+    ])
     lines.extend(["", "## Evidence", ""])
     for item in body.get("evidence") or []:
         lines.append("- {}".format(compact_text(item)))
@@ -533,9 +567,9 @@ def deterministic_doc_from_candidate(candidate: Mapping[str, Any], created_at: s
         "decision": compact_text(source_window.get("main_takeaway"))
         or "Keep this as a local draft until review confirms the evidence.",
         "procedure": [
-            compact_text(pair.get("conclusion") or pair.get("question"))
+            reusable_fact_from_pair(pair)
             for pair in source_window.get("summary_pairs") or []
-            if isinstance(pair, Mapping) and compact_text(pair.get("conclusion") or pair.get("question"))
+            if isinstance(pair, Mapping) and reusable_fact_from_pair(pair)
         ],
         "evidence": evidence_labels(source_refs),
         "limits": "Draft knowledge generated from consolidated summaries only; review before publishing or reuse.",

@@ -154,6 +154,58 @@ class KnowledgeDocsOverviewTests(unittest.TestCase):
             self.assertNotIn("审核后可导出", html)
             self.assertIn("w-route", html)
 
+    def test_exported_knowledge_doc_renders_status_tag_and_open_button(self):
+        with TemporaryDirectory() as tmpdir:
+            paths = runtime_paths_for_state(Path(tmpdir) / "state")
+            asset_runtime.ensure_state_layout(paths)
+            doc = sample_doc()
+            doc["feishu_export"] = {
+                "status": "exported",
+                "doc_url": "https://www.feishu.cn/docx/abc",
+                "doc_token": "abc",
+                "updated_at": "2026-05-25T10:00:00Z",
+                "error_hint": "",
+            }
+            (paths.registry_dir / "knowledge_docs.jsonl").write_text(
+                json.dumps(doc, ensure_ascii=False) + "\n",
+                encoding="utf-8",
+            )
+            body_path = paths.state_root / doc["body_path"]
+            body_path.parent.mkdir(parents=True, exist_ok=True)
+            body_path.write_text("# Route drift\n", encoding="utf-8")
+
+            with mock.patch.object(build_overview, "PATHS", paths), mock.patch.object(
+                build_overview,
+                "REGISTRY_DIR",
+                paths.registry_dir,
+            ):
+                rows = build_overview.load_knowledge_docs()
+                html = build_overview.make_knowledge_docs_panel_body(rows)
+
+            self.assertIn('data-knowledge-lark-exported="true"', html)
+            self.assertIn("已导出飞书文档", html)
+            self.assertIn("打开飞书文档", html)
+            self.assertIn('href="https://www.feishu.cn/docx/abc"', html)
+
+    def test_exported_knowledge_doc_url_survives_panel_redaction_as_open_button(self):
+        doc = sample_doc()
+        doc["feishu_export"] = {
+            "status": "exported",
+            "doc_url": "https://www.feishu.cn/docx/abc",
+            "doc_token": "abc",
+            "updated_at": "2026-05-25T10:00:00Z",
+            "error_hint": "",
+        }
+        html = build_overview.make_knowledge_docs_panel_body([doc])
+        redacted = html.replace("https://www.feishu.cn/docx/abc", "<link>")
+
+        restored = build_overview.restore_knowledge_doc_export_urls(redacted, [doc])
+
+        self.assertIn(
+            '<a class="knowledge-doc-action" href="https://www.feishu.cn/docx/abc" target="_blank" rel="noopener noreferrer">打开飞书文档</a>',
+            restored,
+        )
+
     def test_overview_source_contains_knowledge_docs_section(self):
         source = (ROOT / "scripts" / "build_overview.py").read_text(encoding="utf-8")
 

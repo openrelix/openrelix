@@ -2067,6 +2067,31 @@ def load_knowledge_docs(limit=25):
     return rows[: max(0, int(limit or 0))]
 
 
+def restore_knowledge_doc_export_urls(html, rows):
+    result = str(html or "")
+    for row in rows or []:
+        feishu_export = row.get("feishu_export") if isinstance(row, dict) else {}
+        if not isinstance(feishu_export, dict):
+            continue
+        feishu_url = str(feishu_export.get("doc_url") or "").strip()
+        if not feishu_url.startswith(("http://", "https://")):
+            continue
+        marker = (
+            '<span class="knowledge-doc-action-status" data-knowledge-lark-status>'
+            '<a class="knowledge-doc-action" href="<link>" target="_blank" rel="noopener noreferrer">打开飞书文档</a>'
+            '</span>'
+        )
+        replacement = (
+            '<span class="knowledge-doc-action-status" data-knowledge-lark-status>'
+            '<a class="knowledge-doc-action" href="'
+            + escape(feishu_url, quote=True)
+            + '" target="_blank" rel="noopener noreferrer">打开飞书文档</a>'
+            + '</span>'
+        )
+        result = result.replace(marker, replacement, 1)
+    return result
+
+
 def normalize_loaded_memory_item_quality(item):
     stage = str(item.get("stage") or item.get("summary_stage") or "").strip().lower()
     generation = str(item.get("summary_generation") or item.get("model_status") or "").strip().lower()
@@ -13511,6 +13536,11 @@ def make_knowledge_docs_panel_body(rows):
         feishu_export = row.get("feishu_export") or {}
         feishu_status = str(feishu_export.get("status") or "").strip()
         feishu_url = str(feishu_export.get("doc_url") or "").strip()
+        feishu_url_button = ""
+        if feishu_status == "exported" and feishu_url:
+            feishu_url_button = (
+                '<a class="knowledge-doc-action" href="{url}" target="_blank" rel="noopener noreferrer">打开飞书文档</a>'
+            ).format(url=escape(feishu_url, quote=True))
         body_html = ""
         if body_path:
             if body_uri:
@@ -13523,18 +13553,12 @@ def make_knowledge_docs_panel_body(rows):
                 )
             else:
                 body_html = '<div class="native-brief-source-label">{}</div>'.format(escape(str(body_path)))
-        if feishu_status == "exported" and feishu_url:
+        if feishu_status == "exported":
             lark_button = """
-            <a class="knowledge-doc-action" href="{url}" target="_blank" rel="noopener noreferrer">
-              打开飞书文档
-            </a>
-            <button type="button" class="knowledge-doc-action" data-knowledge-lark-doc="{doc_id}" disabled>
+            <span class="knowledge-doc-action knowledge-doc-action-tag" data-knowledge-lark-exported="true">
               已导出飞书文档
-            </button>
-            """.format(
-                url=escape(feishu_url, quote=True),
-                doc_id=escape(str(row.get("doc_id") or ""), quote=True),
-            )
+            </span>
+            """
         else:
             lark_button = (
             """
@@ -13547,7 +13571,7 @@ def make_knowledge_docs_panel_body(rows):
           <div class="knowledge-doc-actions">
             {body_action}
             {lark_button}
-            <span class="knowledge-doc-action-status" data-knowledge-lark-status></span>
+            <span class="knowledge-doc-action-status" data-knowledge-lark-status>{feishu_url_button}</span>
           </div>
         """.format(
             body_action=(
@@ -13558,6 +13582,7 @@ def make_knowledge_docs_panel_body(rows):
                 else ""
             ),
             lark_button=lark_button,
+            feishu_url_button=feishu_url_button,
         )
         return """
           <article class="native-brief-card knowledge-doc-card" data-knowledge-doc-card-href="{body_uri}" data-knowledge-doc-path="{body_abs}">
@@ -21562,6 +21587,11 @@ def build_html(data):
       font-size: 12px;
       text-decoration: none;
       cursor: pointer;
+    }}
+
+    .knowledge-doc-action-tag {{
+      cursor: default;
+      color: var(--muted);
     }}
 
     .knowledge-doc-action-status {{
@@ -31504,7 +31534,10 @@ def main():
         indent=2,
     )
     overview_md_content = normalize_brand_display_text(build_markdown(data))
-    panel_html_content = normalize_brand_display_text(build_html(data))
+    panel_html_content = restore_knowledge_doc_export_urls(
+        normalize_brand_display_text(build_html(data)),
+        data.get("knowledge_docs") or [],
+    )
 
     atomic_write_text(overview_json, overview_json_content + "\n")
     atomic_write_text(overview_md, overview_md_content)

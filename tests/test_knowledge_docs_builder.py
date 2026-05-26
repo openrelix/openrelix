@@ -274,6 +274,65 @@ class KnowledgeDocsBuilderTests(unittest.TestCase):
             self.assertEqual(docs[0]["project_label"], "My Project")
             self.assertEqual(docs[0]["aggregation_scope"], "project")
 
+    def test_deterministic_build_extracts_reusable_debugging_facts_from_dialogue(self):
+        import build_knowledge_docs
+
+        with TemporaryDirectory() as tmpdir:
+            paths = runtime_paths_for_state(Path(tmpdir) / "state")
+            project_dir = Path(tmpdir) / "staggerOpt"
+            project_dir.mkdir()
+            asset_runtime.ensure_state_layout(paths)
+            summary_dir = paths.consolidated_daily_dir / "2026-05-25"
+            summary_dir.mkdir(parents=True, exist_ok=True)
+            (summary_dir / "summary.json").write_text(
+                json.dumps(
+                    {
+                        "date": "2026-05-25",
+                        "window_summaries": [
+                            {
+                                "window_id": "w-visual-collection-progress",
+                                "cwd": str(project_dir),
+                                "window_title": "修复视搜合集卡进度异常",
+                                "question_summary": "定位视搜合集卡返回后进度不同步的问题。",
+                                "main_takeaway": "问题不在播放器，而在 quick 链路和新返回同步模块没有回填外流 shareInfo。",
+                                "keywords": ["视搜", "合集卡", "quick", "shareInfo", "实验开关"],
+                                "summary_pairs": [
+                                    {"question": "视搜合集卡代码位置在哪里？", "conclusion": "视搜合集卡卡片由 VisualSearchCollectionCardFactory 创建，卡片主体在 VisualSearchCollectionCard。"},
+                                    {"question": "跳转逻辑在哪里？", "conclusion": "点击跳转从 VisualSearchCollectionCard.handleClick 进入 quick 内流，并携带外流 shareInfo。"},
+                                    {"question": "综搜的逻辑在哪里？", "conclusion": "综搜返回同步逻辑在 SearchGeneralReturnSyncModule，负责内流返回事件和外流状态回写。"},
+                                    {"question": "相关业务逻辑受哪些实验开关控制？", "conclusion": "链路受 SearchVisualCollectionProgressSyncExperiment 和 SearchInnerReturnSyncExperiment 控制。"},
+                                ],
+                            }
+                        ],
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            result = build_knowledge_docs.build_knowledge_docs(
+                paths=paths,
+                date="2026-05-25",
+                project_dir=str(project_dir),
+            )
+
+            self.assertEqual(result["created_docs"], 1)
+            docs = read_jsonl(paths.registry_dir / "knowledge_docs.jsonl")
+            doc = docs[0]
+            body_text = (paths.state_root / doc["body_path"]).read_text(encoding="utf-8")
+            self.assertIn("## Reusable Debugging Facts", body_text)
+            self.assertIn("代码位置", body_text)
+            self.assertIn("VisualSearchCollectionCardFactory", body_text)
+            self.assertIn("跳转逻辑", body_text)
+            self.assertIn("SearchGeneralReturnSyncModule", body_text)
+            self.assertIn("实验开关", body_text)
+            self.assertIn("SearchVisualCollectionProgressSyncExperiment", body_text)
+            self.assertNotIn("## Procedure\n\n- 问题不在播放器", body_text)
+            self.assertIn("Use the reusable facts above as the reviewed code map", body_text)
+            self.assertEqual(body_text.count("VisualSearchCollectionCardFactory"), 1)
+
     def test_openrelix_cli_build_uses_model_runner_by_default(self):
         import openrelix
 
