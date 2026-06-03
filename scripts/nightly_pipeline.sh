@@ -265,6 +265,7 @@ esac
 
 pipeline_status_start
 trap pipeline_status_finish EXIT
+export OPENRELIX_PIPELINE_RUN_ID="$pipeline_run_id"
 
 should_collect=1
 if [[ "$reuse_lightweight" == "1" ]]; then

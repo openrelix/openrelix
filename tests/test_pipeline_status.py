@@ -233,6 +233,119 @@ class PipelineStatusTests(unittest.TestCase):
 
             self.assertEqual(rows[0]["next_at_iso"], "2026-05-07T21:28:00+08:00")
 
+    def test_normalize_token_usage_drops_zero_records(self):
+        self.assertIsNone(pipeline_status.normalize_token_usage(None))
+        self.assertIsNone(pipeline_status.normalize_token_usage({}))
+        record = pipeline_status.normalize_token_usage({
+            "input_tokens": 120,
+            "output_tokens": 0,
+            "cached_input_tokens": 0,
+        })
+        self.assertIsNotNone(record)
+        self.assertEqual(record["input_tokens"], 120)
+        self.assertEqual(record["output_tokens"], 0)
+        self.assertEqual(record["total_tokens"], 120)
+        self.assertEqual(record["source"], "estimate")
+
+    def test_is_token_consuming_stage(self):
+        self.assertFalse(pipeline_status.is_token_consuming_stage("preliminary"))
+        self.assertTrue(pipeline_status.is_token_consuming_stage("final"))
+        self.assertTrue(pipeline_status.is_token_consuming_stage("manual"))
+        self.assertFalse(pipeline_status.is_token_consuming_stage(""))
+        self.assertFalse(pipeline_status.is_token_consuming_stage(None))
+
+    def test_summarize_token_usage_aggregates_records(self):
+        rows = [
+            {
+                "run_id": "r1",
+                "stage": "final",
+                "status": "completed",
+                "token_usage": {"input_tokens": 100, "output_tokens": 50, "source": "estimate"},
+            },
+            {
+                "run_id": "r2",
+                "stage": "manual",
+                "status": "completed",
+                "token_usage": {"input_tokens": 200, "output_tokens": 80, "source": "estimate"},
+            },
+            {
+                "run_id": "r3",
+                "stage": "preliminary",
+                "status": "completed",
+                "token_usage": {"input_tokens": 9999, "output_tokens": 9999, "source": "estimate"},
+            },
+            {
+                "run_id": "r4",
+                "stage": "final",
+                "status": "completed",
+            },
+        ]
+
+        totals = pipeline_status.summarize_token_usage(rows)
+
+        self.assertEqual(totals["runs_with_tokens"], 3)
+        self.assertEqual(totals["input_tokens"], 300 + 9999)
+        self.assertEqual(totals["output_tokens"], 130 + 9999)
+        self.assertEqual(totals["total_tokens"], 430 + 19998)
+
+    def test_record_token_usage_rejects_preliminary_runs(self):
+        with TemporaryDirectory() as tmpdir:
+            paths = runtime_paths_for_state(tmpdir)
+            payload = pipeline_status.start_run(
+                "nightly_pipeline",
+                target_date="2026-05-06",
+                stage="preliminary",
+                paths=paths,
+            )
+
+            updated = pipeline_status.record_token_usage(
+                payload["run_id"],
+                input_tokens=12345,
+                output_tokens=6789,
+                paths=paths,
+            )
+
+            self.assertNotIn("token_usage", updated)
+
+    def test_record_token_usage_persists_for_final_runs(self):
+        with TemporaryDirectory() as tmpdir:
+            paths = runtime_paths_for_state(tmpdir)
+            payload = pipeline_status.start_run(
+                "nightly_pipeline",
+                target_date="2026-05-06",
+                stage="final",
+                paths=paths,
+            )
+
+            updated = pipeline_status.record_token_usage(
+                payload["run_id"],
+                input_tokens=1024,
+                output_tokens=512,
+                cached_input_tokens=128,
+                source="estimate",
+                model="gpt-test",
+                paths=paths,
+            )
+
+            self.assertIn("token_usage", updated)
+            self.assertEqual(updated["token_usage"]["input_tokens"], 1024)
+            self.assertEqual(updated["token_usage"]["output_tokens"], 512)
+            self.assertEqual(updated["token_usage"]["cached_input_tokens"], 128)
+            self.assertEqual(updated["token_usage"]["total_tokens"], 1536)
+            self.assertEqual(updated["token_usage"]["model"], "gpt-test")
+
+            payload = pipeline_status.finish_run(
+                payload["run_id"],
+                status="completed",
+                exit_code=0,
+                paths=paths,
+            )
+            self.assertEqual(payload["recent_runs"][0]["token_usage"]["input_tokens"], 1024)
+
+            reloaded = pipeline_status.load_status(paths)
+            self.assertIn("token_usage_totals", reloaded)
+            self.assertEqual(reloaded["token_usage_totals"]["input_tokens"], 1024)
+
 
 if __name__ == "__main__":
     unittest.main()

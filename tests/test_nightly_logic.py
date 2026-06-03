@@ -11707,19 +11707,26 @@ Native Codex profile.
                     "title": "run-{}".format(index),
                     "title_en": "run-{}".format(index),
                     "status": "completed",
+                    "stage": "final",
                 }
                 for index in range(35)
             ]
         )
-        collector = TextCollector()
-        collector.feed(html)
 
-        self.assertIn("run-0", collector.text)
-        self.assertIn("run-3", collector.text)
-        self.assertNotIn("run-4", collector.text)
-        self.assertIn("展开更多", collector.text)
-        self.assertIn("查看最近 24 条记录", collector.text)
-        self.assertIn("View latest 24 runs", collector.text)
+        # Deep backfill uses the same 4-row default cap as before; the rest
+        # sit inside a <details> so they only render on demand.
+        self.assertIn("run-0", html)
+        self.assertIn("run-3", html)
+        self.assertIn("查看更早 20 次深度回溯", html)
+        self.assertIn("深度回溯（消耗 token）", html)
+        details_start = html.find('<details class="pipeline-history-deep-extras">')
+        self.assertGreater(details_start, -1)
+        run_0_index = html.find("run-0")
+        run_3_index = html.find("run-3")
+        self.assertLess(run_0_index, details_start)
+        self.assertLess(run_3_index, details_start)
+        run_4_index = html.find("run-4")
+        self.assertGreater(run_4_index, details_start)
 
     def test_pipeline_status_panel_localizes_stage_labels(self):
         html = build_overview.make_pipeline_status_panel(

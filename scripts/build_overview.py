@@ -16367,14 +16367,198 @@ def make_pipeline_step_track(steps):
     return "".join(rows)
 
 
+def _classify_recent_run(row):
+    """Decide whether a sanitized recent run should land in the deep or quick bucket.
+
+    Quick backfill uses stage == "preliminary"; everything else (final / manual /
+    empty) is treated as a deep backfill that may consume model tokens. Runs
+    without a stage default to deep so we do not silently drop unknown kinds.
+    """
+    if not isinstance(row, dict):
+        return "deep"
+    stage = str(row.get("stage") or "").strip().lower()
+    if stage == "preliminary":
+        return "quick"
+    return "deep"
+
+
+def _recent_run_token_record(row):
+    if not isinstance(row, dict):
+        return None
+    raw = row.get("token_usage")
+    if not isinstance(raw, dict):
+        return None
+    try:
+        input_tokens = int(raw.get("input_tokens") or 0)
+        output_tokens = int(raw.get("output_tokens") or 0)
+    except (TypeError, ValueError):
+        return None
+    if input_tokens <= 0 and output_tokens <= 0:
+        return None
+    return {
+        "input_tokens": max(input_tokens, 0),
+        "output_tokens": max(output_tokens, 0),
+        "total_tokens": max(input_tokens, 0) + max(output_tokens, 0),
+    }
+
+
+def make_pipeline_token_summary(rows):
+    """Token summary card for the deep backfill bucket.
+
+    Quick backfill (preliminary) rows are filtered out, since the user only
+    wants to see model-token usage for the runs that actually call the
+    model. Returns an empty string when there is nothing meaningful to show.
+    """
+    deep_rows = [row for row in (rows or []) if _classify_recent_run(row) == "deep"]
+    if not deep_rows:
+        return ""
+    total_input = 0
+    total_output = 0
+    runs_with_tokens = 0
+    for row in deep_rows:
+        record = _recent_run_token_record(row)
+        if not record:
+            continue
+        runs_with_tokens += 1
+        total_input += record["input_tokens"]
+        total_output += record["output_tokens"]
+    if not runs_with_tokens:
+        return ""
+    total_tokens = total_input + total_output
+    input_display_zh = compact_token(total_input, language="zh")
+    input_display_en = compact_token(total_input, language="en")
+    output_display_zh = compact_token(total_output, language="zh")
+    output_display_en = compact_token(total_output, language="en")
+    total_display_zh = compact_token(total_tokens, language="zh")
+    total_display_en = compact_token(total_tokens, language="en")
+    runs_label_zh = "深度回溯 {} 次消耗 token".format(runs_with_tokens)
+    runs_label_en = "{} deep backfill runs consumed tokens".format(runs_with_tokens)
+    rows_html = []
+    for row in deep_rows:
+        record = _recent_run_token_record(row)
+        if not record:
+            continue
+        title = row.get("title") or row.get("pipeline") or ""
+        title_en = row.get("title_en") or title
+        target_date = str(row.get("target_date") or "").strip()
+        started = pipeline_history_time_display(row.get("started_at_iso"))
+        in_disp_zh = compact_token(record["input_tokens"], language="zh")
+        in_disp_en = compact_token(record["input_tokens"], language="en")
+        out_disp_zh = compact_token(record["output_tokens"], language="zh")
+        out_disp_en = compact_token(record["output_tokens"], language="en")
+        total_disp_zh = compact_token(record["total_tokens"], language="zh")
+        total_disp_en = compact_token(record["total_tokens"], language="en")
+        date_label_zh = "日期 {}".format(target_date) if target_date else "日期 —"
+        date_label_en = "Date {}".format(target_date) if target_date else "Date —"
+        time_label_zh = "触发 {}".format(started or "—")
+        time_label_en = "Started {}".format(started or "—")
+        rows_html.append(
+            """
+            <div class="pipeline-token-row">
+              <div class="pipeline-token-row-title">{title}</div>
+              <div class="pipeline-token-row-meta">
+                <span class="pipeline-token-meta">{date_zh}</span>
+                <span class="pipeline-token-meta">{date_en}</span>
+                <span class="pipeline-token-meta">{time_zh}</span>
+                <span class="pipeline-token-meta">{time_en}</span>
+              </div>
+              <div class="pipeline-token-row-stats">
+                <span class="pipeline-token-stat" data-kind="input">
+                  <span class="pipeline-token-stat-label">{input_label}</span>
+                  <span class="pipeline-token-stat-value">{input_zh}</span>
+                  <span class="pipeline-token-stat-value-en">{input_en}</span>
+                </span>
+                <span class="pipeline-token-stat" data-kind="output">
+                  <span class="pipeline-token-stat-label">{output_label}</span>
+                  <span class="pipeline-token-stat-value">{output_zh}</span>
+                  <span class="pipeline-token-stat-value-en">{output_en}</span>
+                </span>
+                <span class="pipeline-token-stat" data-kind="total">
+                  <span class="pipeline-token-stat-label">{total_label}</span>
+                  <span class="pipeline-token-stat-value">{total_zh}</span>
+                  <span class="pipeline-token-stat-value-en">{total_en}</span>
+                </span>
+              </div>
+            </div>
+            """.format(
+                title=panel_language_text_html(title, title_en),
+                date_zh=escape(date_label_zh),
+                date_en=escape(date_label_en),
+                time_zh=escape(time_label_zh),
+                time_en=escape(time_label_en),
+                input_label=panel_language_text_html("输入", "Input"),
+                output_label=panel_language_text_html("输出", "Output"),
+                total_label=panel_language_text_html("合计", "Total"),
+                input_zh=escape(in_disp_zh),
+                input_en=escape(in_disp_en),
+                output_zh=escape(out_disp_zh),
+                output_en=escape(out_disp_en),
+                total_zh=escape(total_disp_zh),
+                total_en=escape(total_disp_en),
+            )
+        )
+    return """
+    <div class="pipeline-token-summary" id="pipeline-token-summary">
+      <div class="pipeline-token-summary-header">
+        <span class="pipeline-token-summary-title">{title}</span>
+        <span class="pipeline-token-summary-totals">
+          <span class="pipeline-token-summary-total" data-kind="input">
+            <span class="pipeline-token-summary-total-label">{input_label}</span>
+            <span class="pipeline-token-summary-total-value">{input_zh}</span>
+            <span class="pipeline-token-summary-total-value-en">{input_en}</span>
+          </span>
+          <span class="pipeline-token-summary-total" data-kind="output">
+            <span class="pipeline-token-summary-total-label">{output_label}</span>
+            <span class="pipeline-token-summary-total-value">{output_zh}</span>
+            <span class="pipeline-token-summary-total-value-en">{output_en}</span>
+          </span>
+          <span class="pipeline-token-summary-total" data-kind="total">
+            <span class="pipeline-token-summary-total-label">{total_label}</span>
+            <span class="pipeline-token-summary-total-value">{total_zh}</span>
+            <span class="pipeline-token-summary-total-value-en">{total_en}</span>
+          </span>
+        </span>
+      </div>
+      <div class="pipeline-token-rows">{rows}</div>
+    </div>
+    """.format(
+        title=panel_language_text_html(
+            "深度回溯 Token 消耗",
+            "Deep Backfill Token Usage",
+        ),
+        input_label=panel_language_text_html("总输入 Token", "Total input"),
+        output_label=panel_language_text_html("总输出 Token", "Total output"),
+        total_label=panel_language_text_html("总 Token", "Total tokens"),
+        input_zh=escape(input_display_zh),
+        input_en=escape(input_display_en),
+        output_zh=escape(output_display_zh),
+        output_en=escape(output_display_en),
+        total_zh=escape(total_display_zh),
+        total_en=escape(total_display_en),
+        rows="".join(rows_html),
+    )
+
+
 def make_pipeline_recent_runs(rows):
+    """Render recent runs with deep / quick backfill split.
+
+    Quick backfill (preliminary) is collapsed to the latest single row by
+    default; everything else is summarized under a "show more" toggle. Deep
+    backfill rows follow the same collapsed-then-expandable pattern as
+    before (default 4 latest), with a "show more" disclosure for the
+    remainder. Deep backfill runs are also consumed by the token summary
+    card separately.
+    """
     if not rows:
         return '<div class="pipeline-empty">{}</div>'.format(
             panel_language_text_html("暂无近期运行记录。", "No recent runs yet.")
         )
-    rendered = []
     limited_rows = list(rows[:PIPELINE_HISTORY_EXPANDED_LIMIT])
-    for row in limited_rows[:PIPELINE_HISTORY_COLLAPSED_LIMIT]:
+    deep_rows = [row for row in limited_rows if _classify_recent_run(row) == "deep"]
+    quick_rows = [row for row in limited_rows if _classify_recent_run(row) == "quick"]
+    rendered = []
+
+    def _row_html(row):
         title = row.get("title") or row.get("pipeline") or ""
         title_en = row.get("title_en") or title
         status = row.get("status") or "idle"
@@ -16387,32 +16571,78 @@ def make_pipeline_recent_runs(rows):
                 pipeline_history_meta_labels(row, language="en"),
             )
         )
-        rendered.append(
-            """
+        return """
             <div class="pipeline-history-row" data-status="{status}">
               <span class="pipeline-history-title">{title}</span>
               <span class="pipeline-history-meta-list">{meta}</span>
             </div>
             """.format(
-                status=escape(str(status), quote=True),
-                title=panel_language_text_html(title, title_en),
-                meta=meta_html,
+            status=escape(str(status), quote=True),
+            title=panel_language_text_html(title, title_en),
+            meta=meta_html,
+        )
+
+    if deep_rows:
+        rendered.append(
+            '<div class="pipeline-history-group-label">{}</div>'.format(
+                panel_language_text_html(
+                    "深度回溯（消耗 token）",
+                    "Deep backfill (consumes tokens)",
+                )
             )
         )
-    if len(limited_rows) > PIPELINE_HISTORY_COLLAPSED_LIMIT:
-        count = len(limited_rows)
+        visible_deep = deep_rows[:PIPELINE_HISTORY_COLLAPSED_LIMIT]
+        hidden_deep = deep_rows[PIPELINE_HISTORY_COLLAPSED_LIMIT:]
+        for row in visible_deep:
+            rendered.append(_row_html(row))
+        if hidden_deep:
+            extras = "".join(_row_html(row) for row in hidden_deep)
+            rendered.append(
+                """
+                <details class="pipeline-history-deep-extras">
+                  <summary>{summary}</summary>
+                  {rows}
+                </details>
+                """.format(
+                    summary=panel_language_text_html(
+                        "查看更早 {} 次深度回溯".format(len(hidden_deep)),
+                        "Show {} earlier deep backfill runs".format(len(hidden_deep)),
+                    ),
+                    rows=extras,
+                )
+            )
+
+    if quick_rows:
         rendered.append(
-            """
-            <button class="pipeline-history-toggle" type="button" data-pipeline-history-toggle aria-expanded="false">
-              <span class="pipeline-history-toggle-label">{label}</span>
-              <span class="pipeline-history-toggle-count">{count_label}</span>
-            </button>
-            """.format(
-                label=panel_language_text_html("展开更多", "Show More"),
-                count_label=panel_language_text_html(
-                    "查看最近 {} 条记录".format(count),
-                    "View latest {} runs".format(count),
-                ),
+            '<div class="pipeline-history-group-label">{}</div>'.format(
+                panel_language_text_html(
+                    "快速回溯（每 1 小时刷新，不消耗 token）",
+                    "Quick backfill (hourly, no tokens)",
+                )
+            )
+        )
+        rendered.append(_row_html(quick_rows[0]))
+        if len(quick_rows) > 1:
+            extras = "".join(_row_html(row) for row in quick_rows[1:])
+            rendered.append(
+                """
+                <details class="pipeline-history-quick-extras">
+                  <summary>{summary}</summary>
+                  {rows}
+                </details>
+                """.format(
+                    summary=panel_language_text_html(
+                        "查看其它 {} 次快速回溯".format(len(quick_rows) - 1),
+                        "Show {} more quick backfill runs".format(len(quick_rows) - 1),
+                    ),
+                    rows=extras,
+                )
+            )
+
+    if not (deep_rows or quick_rows):
+        rendered.append(
+            '<div class="pipeline-history-row">{}</div>'.format(
+                panel_language_text_html("暂无近期运行记录。", "No recent runs yet.")
             )
         )
     return "".join(rendered)
@@ -16452,6 +16682,7 @@ def make_pipeline_status_panel(status_payload, help_html=""):
             next_meta_parts_en.append("{}-day window".format(learn_window_days))
     next_meta = " · ".join(item for item in next_meta_parts_zh if item) or "—"
     next_meta_en = " · ".join(item for item in next_meta_parts_en if item) or "—"
+    token_summary = make_pipeline_token_summary(payload.get("recent_runs", []))
     return """
     <section class="panel pipeline-panel" id="pipeline-section" data-pipeline-status="{status}">
       {header}
@@ -16487,6 +16718,7 @@ def make_pipeline_status_panel(status_payload, help_html=""):
       <div class="pipeline-step-track" id="pipeline-step-track">
         {steps}
       </div>
+      {token_summary}
       <div class="pipeline-history" id="pipeline-history">
         {history}
       </div>
@@ -16512,6 +16744,7 @@ def make_pipeline_status_panel(status_payload, help_html=""):
         next_time=panel_language_text_html(next_meta, next_meta_en),
         run_label=panel_language_text_html("立即运行", "Run Now"),
         steps=make_pipeline_step_track(payload.get("steps", [])),
+        token_summary=token_summary,
         history=make_pipeline_recent_runs(payload.get("recent_runs", [])),
     )
 
@@ -19894,6 +20127,165 @@ def build_html(data):
       color: var(--muted);
       font-size: 13px;
       line-height: 1.45;
+    }}
+
+    .pipeline-history-group-label {{
+      color: var(--accent);
+      font-size: 12px;
+      font-weight: 780;
+      letter-spacing: 0.01em;
+      padding: 6px 0 0;
+    }}
+
+    .pipeline-history-deep-extras,
+    .pipeline-history-quick-extras {{
+      margin-top: 4px;
+      border-radius: 12px;
+      background: var(--soft);
+    }}
+
+    .pipeline-history-deep-extras > summary,
+    .pipeline-history-quick-extras > summary {{
+      cursor: pointer;
+      padding: 8px 12px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 720;
+    }}
+
+    .pipeline-history-deep-extras[open] > summary,
+    .pipeline-history-quick-extras[open] > summary {{
+      color: var(--accent);
+    }}
+
+    .pipeline-token-summary {{
+      display: grid;
+      gap: 10px;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: var(--soft);
+    }}
+
+    .pipeline-token-summary-header {{
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }}
+
+    .pipeline-token-summary-title {{
+      color: var(--ink);
+      font-size: 13px;
+      font-weight: 780;
+    }}
+
+    .pipeline-token-summary-totals {{
+      display: inline-flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }}
+
+    .pipeline-token-summary-total {{
+      display: inline-flex;
+      align-items: baseline;
+      gap: 6px;
+      min-height: 26px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: var(--chip-muted-bg);
+      color: var(--slate);
+      font-size: 12px;
+      font-weight: 760;
+      line-height: 1.25;
+    }}
+
+    .pipeline-token-summary-total-value,
+    .pipeline-token-summary-total-value-en {{
+      color: var(--accent);
+      font-weight: 820;
+    }}
+
+    [lang="en"] .pipeline-token-summary-total-value {{
+      display: none;
+    }}
+
+    [lang="zh"] .pipeline-token-summary-total-value-en {{
+      display: none;
+    }}
+
+    .pipeline-token-rows {{
+      display: grid;
+      gap: 8px;
+    }}
+
+    .pipeline-token-row {{
+      display: grid;
+      gap: 6px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      background: var(--card);
+    }}
+
+    .pipeline-token-row-title {{
+      color: var(--ink);
+      font-size: 13px;
+      font-weight: 720;
+    }}
+
+    .pipeline-token-row-meta {{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }}
+
+    .pipeline-token-meta {{
+      display: inline-flex;
+      align-items: center;
+      min-height: 22px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: var(--chip-muted-bg);
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 720;
+    }}
+
+    .pipeline-token-row-stats {{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }}
+
+    .pipeline-token-stat {{
+      display: inline-flex;
+      align-items: baseline;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: var(--chip-muted-bg);
+      color: var(--slate);
+      font-size: 12px;
+      font-weight: 720;
+    }}
+
+    .pipeline-token-stat-label {{
+      color: var(--muted);
+    }}
+
+    .pipeline-token-stat-value,
+    .pipeline-token-stat-value-en {{
+      color: var(--accent);
+      font-weight: 820;
+    }}
+
+    [lang="en"] .pipeline-token-stat-value {{
+      display: none;
+    }}
+
+    [lang="zh"] .pipeline-token-stat-value-en {{
+      display: none;
     }}
 
     .nightly-shell {{
@@ -25557,18 +25949,143 @@ def build_html(data):
         }}).join("");
       }}
 
+      function classifyPipelineRun(row) {{
+        const stage = String((row && row.stage) || "").trim().toLowerCase();
+        if (stage === "preliminary") return "quick";
+        return "deep";
+      }}
+
+      function pipelineRunTokenRecord(row) {{
+        if (!row || !row.token_usage) return null;
+        const raw = row.token_usage;
+        const inputTokens = Number(raw.input_tokens || 0);
+        const outputTokens = Number(raw.output_tokens || 0);
+        if (inputTokens <= 0 && outputTokens <= 0) return null;
+        return {{
+          input_tokens: Math.max(inputTokens, 0),
+          output_tokens: Math.max(outputTokens, 0),
+          total_tokens: Math.max(inputTokens, 0) + Math.max(outputTokens, 0),
+        }};
+      }}
+
+      function renderPipelineTokenSummary(rows) {{
+        const deepRows = (rows || []).filter(function (row) {{
+          return classifyPipelineRun(row) === "deep";
+        }});
+        if (!deepRows.length) return "";
+        let totalInput = 0;
+        let totalOutput = 0;
+        let runsWithTokens = 0;
+        const detailRows = [];
+        deepRows.forEach(function (row) {{
+          const record = pipelineRunTokenRecord(row);
+          if (!record) return;
+          runsWithTokens += 1;
+          totalInput += record.input_tokens;
+          totalOutput += record.output_tokens;
+          const title = localizeValue(
+            row.title || row.pipeline || "",
+            row.title_en || row.title || row.pipeline || ""
+          );
+          const targetDate = String(row.target_date || "").trim();
+          const started = compactPipelineTime(row.started_at_iso);
+          const dateZh = targetDate ? ("日期 " + targetDate) : "日期 —";
+          const dateEn = targetDate ? ("Date " + targetDate) : "Date —";
+          const timeZh = "触发 " + (started || "—");
+          const timeEn = "Started " + (started || "—");
+          detailRows.push(
+            '<div class="pipeline-token-row">' +
+              '<div class="pipeline-token-row-title">' + escapeHtml(title) + '</div>' +
+              '<div class="pipeline-token-row-meta">' +
+                '<span class="pipeline-token-meta">' + escapeHtml(dateZh) + '</span>' +
+                '<span class="pipeline-token-meta">' + escapeHtml(dateEn) + '</span>' +
+                '<span class="pipeline-token-meta">' + escapeHtml(timeZh) + '</span>' +
+                '<span class="pipeline-token-meta">' + escapeHtml(timeEn) + '</span>' +
+              '</div>' +
+              '<div class="pipeline-token-row-stats">' +
+                '<span class="pipeline-token-stat" data-kind="input">' +
+                  '<span class="pipeline-token-stat-label">' +
+                    escapeHtml(currentLanguage === "en" ? "Input" : "输入") +
+                  '</span>' +
+                  '<span class="pipeline-token-stat-value">' +
+                    escapeHtml(compactTokenValue(record.input_tokens)) +
+                  '</span>' +
+                '</span>' +
+                '<span class="pipeline-token-stat" data-kind="output">' +
+                  '<span class="pipeline-token-stat-label">' +
+                    escapeHtml(currentLanguage === "en" ? "Output" : "输出") +
+                  '</span>' +
+                  '<span class="pipeline-token-stat-value">' +
+                    escapeHtml(compactTokenValue(record.output_tokens)) +
+                  '</span>' +
+                '</span>' +
+                '<span class="pipeline-token-stat" data-kind="total">' +
+                  '<span class="pipeline-token-stat-label">' +
+                    escapeHtml(currentLanguage === "en" ? "Total" : "合计") +
+                  '</span>' +
+                  '<span class="pipeline-token-stat-value">' +
+                    escapeHtml(compactTokenValue(record.total_tokens)) +
+                  '</span>' +
+                '</span>' +
+              '</div>' +
+            '</div>'
+          );
+        }});
+        if (!runsWithTokens) return "";
+        const totalTokens = totalInput + totalOutput;
+        const titleText = currentLanguage === "en"
+          ? "Deep Backfill Token Usage"
+          : "深度回溯 Token 消耗";
+        const inputLabel = currentLanguage === "en" ? "Total input" : "总输入 Token";
+        const outputLabel = currentLanguage === "en" ? "Total output" : "总输出 Token";
+        const totalLabel = currentLanguage === "en" ? "Total tokens" : "总 Token";
+        return (
+          '<div class="pipeline-token-summary" id="pipeline-token-summary">' +
+            '<div class="pipeline-token-summary-header">' +
+              '<span class="pipeline-token-summary-title">' + escapeHtml(titleText) + '</span>' +
+              '<span class="pipeline-token-summary-totals">' +
+                '<span class="pipeline-token-summary-total" data-kind="input">' +
+                  '<span class="pipeline-token-summary-total-label">' + escapeHtml(inputLabel) + '</span>' +
+                  '<span class="pipeline-token-summary-total-value">' +
+                    escapeHtml(compactTokenValue(totalInput)) +
+                  '</span>' +
+                '</span>' +
+                '<span class="pipeline-token-summary-total" data-kind="output">' +
+                  '<span class="pipeline-token-summary-total-label">' + escapeHtml(outputLabel) + '</span>' +
+                  '<span class="pipeline-token-summary-total-value">' +
+                    escapeHtml(compactTokenValue(totalOutput)) +
+                  '</span>' +
+                '</span>' +
+                '<span class="pipeline-token-summary-total" data-kind="total">' +
+                  '<span class="pipeline-token-summary-total-label">' + escapeHtml(totalLabel) + '</span>' +
+                  '<span class="pipeline-token-summary-total-value">' +
+                    escapeHtml(compactTokenValue(totalTokens)) +
+                  '</span>' +
+                '</span>' +
+              '</span>' +
+            '</div>' +
+            '<div class="pipeline-token-rows">' + detailRows.join("") + '</div>' +
+          '</div>'
+        );
+      }}
+
       function renderPipelineHistory(rows) {{
         if (!elements.pipelineHistory) return;
         if (!Array.isArray(rows) || !rows.length) {{
           elements.pipelineHistory.innerHTML = '<div class="pipeline-empty">' +
             escapeHtml(currentLanguage === "en" ? "No recent runs yet." : "暂无近期运行记录。") +
             '</div>';
+          renderPipelineTokenSummaryInline(rows);
           return;
         }}
         const limitedRows = rows.slice(0, pipelineHistoryExpandedLimit);
-        const visibleLimit = state.pipelineHistoryExpanded ? pipelineHistoryExpandedLimit : pipelineHistoryCollapsedLimit;
-        const visibleRows = limitedRows.slice(0, visibleLimit);
-        const rowHtml = visibleRows.map(function (row) {{
+        const deepRows = limitedRows.filter(function (row) {{
+          return classifyPipelineRun(row) === "deep";
+        }});
+        const quickRows = limitedRows.filter(function (row) {{
+          return classifyPipelineRun(row) === "quick";
+        }});
+        const rowHtml = function (row) {{
           const status = String((row && row.status) || "idle");
           const title = localizeValue((row && row.title) || (row && row.pipeline) || "", (row && row.title_en) || (row && row.title) || "");
           const meta = pipelineHistoryMetaLabels(row).map(function (label) {{
@@ -25580,25 +26097,76 @@ def build_html(data):
               '<span class="pipeline-history-meta-list">' + meta + '</span>' +
             '</div>'
           );
-        }}).join("");
-        const toggleHtml = limitedRows.length > pipelineHistoryCollapsedLimit
-          ? (
-            '<button class="pipeline-history-toggle" type="button" data-pipeline-history-toggle aria-expanded="' +
-              (state.pipelineHistoryExpanded ? 'true' : 'false') + '">' +
-              '<span class="pipeline-history-toggle-label">' +
-                escapeHtml(state.pipelineHistoryExpanded
-                  ? (currentLanguage === "en" ? "Collapse" : "收起")
-                  : (currentLanguage === "en" ? "Show More" : "展开更多")) +
-              '</span>' +
-              '<span class="pipeline-history-toggle-count">' +
-                escapeHtml(currentLanguage === "en"
-                  ? ("View latest " + limitedRows.length + " runs")
-                  : ("查看最近 " + limitedRows.length + " 条记录")) +
-              '</span>' +
-            '</button>'
-          )
-          : "";
-        elements.pipelineHistory.innerHTML = rowHtml + toggleHtml;
+        }};
+        const html = [];
+        if (deepRows.length) {{
+          html.push(
+            '<div class="pipeline-history-group-label">' + escapeHtml(
+              currentLanguage === "en"
+                ? "Deep backfill (consumes tokens)"
+                : "深度回溯（消耗 token）"
+            ) + '</div>'
+          );
+          const visibleDeep = deepRows.slice(0, pipelineHistoryCollapsedLimit);
+          const hiddenDeep = deepRows.slice(pipelineHistoryCollapsedLimit);
+          visibleDeep.forEach(function (row) {{ html.push(rowHtml(row)); }});
+          if (hiddenDeep.length) {{
+            const extras = hiddenDeep.map(rowHtml).join("");
+            const summaryLabel = currentLanguage === "en"
+              ? ("Show " + hiddenDeep.length + " earlier deep backfill runs")
+              : ("查看更早 " + hiddenDeep.length + " 次深度回溯");
+            html.push(
+              '<details class="pipeline-history-deep-extras">' +
+                '<summary>' + escapeHtml(summaryLabel) + '</summary>' +
+                extras +
+              '</details>'
+            );
+          }}
+        }}
+        if (quickRows.length) {{
+          html.push(
+            '<div class="pipeline-history-group-label">' + escapeHtml(
+              currentLanguage === "en"
+                ? "Quick backfill (hourly, no tokens)"
+                : "快速回溯（每 1 小时刷新，不消耗 token）"
+            ) + '</div>'
+          );
+          html.push(rowHtml(quickRows[0]));
+          if (quickRows.length > 1) {{
+            const extras = quickRows.slice(1).map(rowHtml).join("");
+            const summaryLabel = currentLanguage === "en"
+              ? ("Show " + (quickRows.length - 1) + " more quick backfill runs")
+              : ("查看其它 " + (quickRows.length - 1) + " 次快速回溯");
+            html.push(
+              '<details class="pipeline-history-quick-extras">' +
+                '<summary>' + escapeHtml(summaryLabel) + '</summary>' +
+                extras +
+              '</details>'
+            );
+          }}
+        }}
+        if (!html.length) {{
+          html.push(
+            '<div class="pipeline-history-row">' + escapeHtml(
+              currentLanguage === "en" ? "No recent runs yet." : "暂无近期运行记录。"
+            ) + '</div>'
+          );
+        }}
+        elements.pipelineHistory.innerHTML = html.join("");
+        renderPipelineTokenSummaryInline(rows);
+      }}
+
+      function renderPipelineTokenSummaryInline(rows) {{
+        let summary = document.getElementById("pipeline-token-summary");
+        if (!summary) return;
+        const html = renderPipelineTokenSummary(rows || []);
+        if (html) {{
+          const wrapper = document.createElement("div");
+          wrapper.innerHTML = html;
+          summary.replaceWith(wrapper.firstElementChild);
+        }} else if (summary.parentNode) {{
+          summary.parentNode.removeChild(summary);
+        }}
       }}
 
       function updatePipelineStatus(payload) {{

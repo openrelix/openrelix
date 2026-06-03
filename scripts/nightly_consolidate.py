@@ -2135,6 +2135,87 @@ def run_model_consolidation(prompt, output_path, language=None, timeout_seconds=
     )
 
 
+def rough_text_token_count(text):
+    """Local fallback when the model CLI does not return usage directly.
+
+    Heuristic: each CJK glyph counts as 1, every 4 non-CJK chars as 1. This
+    intentionally matches build_overview.rough_text_token_count so the
+    estimation stays consistent across the project.
+    """
+    text = str(text or "")
+    if not text.strip():
+        return 0
+    cjk_chars = 0
+    other_chars = 0
+    for char in text:
+        if char.isspace():
+            continue
+        codepoint = ord(char)
+        if (
+            0x3400 <= codepoint <= 0x4DBF
+            or 0x4E00 <= codepoint <= 0x9FFF
+            or 0xF900 <= codepoint <= 0xFAFF
+        ):
+            cjk_chars += 1
+        else:
+            other_chars += 1
+    return cjk_chars + ((other_chars + 3) // 4)
+
+
+def estimate_summary_output_tokens(payload):
+    if not isinstance(payload, dict):
+        return 0
+    parts = [
+        payload.get("day_summary", ""),
+        " ".join(
+            " ".join(
+                "{}\n{}".format(
+                    str(pair.get("question", "") or ""),
+                    str(pair.get("conclusion", "") or ""),
+                )
+                for pair in (item.get("summary_pairs") or [])
+            )
+            for item in (payload.get("window_summaries") or [])
+        ),
+        " ".join(
+            "{}\n{}".format(
+                str(item.get("title", "") or ""),
+                str(item.get("value_note", "") or ""),
+            )
+            for item in (
+                list(payload.get("durable_memories") or [])
+                + list(payload.get("session_memories") or [])
+                + list(payload.get("low_priority_memories") or [])
+                + list(payload.get("global_context_memories") or [])
+            )
+        ),
+        " ".join(str(keyword) for keyword in (payload.get("keywords") or [])),
+        " ".join(str(item) for item in (payload.get("next_actions") or [])),
+    ]
+    return rough_text_token_count("\n".join(parts))
+
+
+def record_pipeline_token_usage(run_id, prompt, summary_payload, source="estimate"):
+    if not run_id:
+        return
+    try:
+        from openrelix_overview import pipeline_status as overview_pipeline_status
+    except ImportError:
+        return
+    input_tokens = rough_text_token_count(prompt)
+    output_tokens = estimate_summary_output_tokens(summary_payload)
+    if not (input_tokens or output_tokens):
+        return
+    model_name = CODEX_MODEL if MODEL_CLI != "claude" else CLAUDE_MODEL
+    overview_pipeline_status.record_token_usage(
+        run_id,
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        source=source,
+        model=model_name or "",
+    )
+
+
 def fallback_question_summary(window, language=None):
     if window["prompt_count"] == 0:
         return localized("当日没有用户问题。", "No user questions were captured for the day.", language)
@@ -3713,6 +3794,11 @@ def main():
         )
         candidate_summary["model_status"] = "completed"
         candidate_summary["model_cli"] = MODEL_CLI
+        record_pipeline_token_usage(
+            os.environ.get("OPENRELIX_PIPELINE_RUN_ID", ""),
+            prompt,
+            candidate_summary,
+        )
     except (CodexConsolidationError, subprocess.CalledProcessError) as exc:
         if isinstance(exc, CodexConsolidationError):
             model_error = str(exc)

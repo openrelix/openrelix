@@ -23,6 +23,11 @@ STATUS_FILE_NAME = "pipeline-status.json"
 RECENT_LIMIT = 24
 STALE_RUNNING_SECONDS = 12 * 60 * 60
 
+# Stages that actually call the model and therefore can burn tokens. Quick
+# backfill (preliminary) only emits window summaries and a fast index, so it
+# stays out of the "consumes tokens" bucket.
+TOKEN_CONSUMING_STAGES = frozenset({"final", "manual"})
+
 SCHEDULED_JOBS = (
     (
         "io.github.openrelix.overview-refresh",
@@ -133,6 +138,80 @@ def process_is_alive(pid):
     except PermissionError:
         return True
     return True
+
+
+def _coerce_token_int(value):
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        return 0
+    return max(number, 0)
+
+
+def is_token_consuming_stage(stage):
+    """Quick backfill (preliminary) does not call the model; everything else does."""
+    return str(stage or "").strip().lower() in TOKEN_CONSUMING_STAGES
+
+
+def normalize_token_usage(value):
+    """Coerce a token-usage record into the stable shape the panel reads.
+
+    All fields are optional and integer-typed. A record that has no positive
+    values is dropped so the front end can rely on truthiness to hide the
+    card.
+    """
+    if not isinstance(value, dict):
+        return None
+    input_tokens = _coerce_token_int(value.get("input_tokens"))
+    output_tokens = _coerce_token_int(value.get("output_tokens"))
+    cached_input_tokens = _coerce_token_int(value.get("cached_input_tokens"))
+    if not (input_tokens or output_tokens or cached_input_tokens):
+        return None
+    source = str(value.get("source") or "estimate")[:32]
+    model = str(value.get("model") or "")[:64]
+    captured_at = value.get("captured_at")
+    if not isinstance(captured_at, (int, float)) or captured_at <= 0:
+        captured_at = 0
+    record = {
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "cached_input_tokens": cached_input_tokens,
+        "total_tokens": input_tokens + output_tokens,
+        "source": source,
+    }
+    if model:
+        record["model"] = model
+    if captured_at:
+        record["captured_at"] = captured_at
+        record["captured_at_iso"] = now_iso()
+    return record
+
+
+def summarize_token_usage(rows):
+    """Sum input/output token usage across recent runs.
+
+    Rows may be either full status payloads or sanitized recent-run dicts.
+    A run that did not consume tokens is skipped instead of counted as zero.
+    """
+    totals = {
+        "runs_with_tokens": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cached_input_tokens": 0,
+        "total_tokens": 0,
+    }
+    for row in rows or []:
+        if not isinstance(row, dict):
+            continue
+        usage = normalize_token_usage(row.get("token_usage"))
+        if not usage:
+            continue
+        totals["runs_with_tokens"] += 1
+        totals["input_tokens"] += usage["input_tokens"]
+        totals["output_tokens"] += usage["output_tokens"]
+        totals["cached_input_tokens"] += usage["cached_input_tokens"]
+        totals["total_tokens"] += usage["total_tokens"]
+    return totals
 
 
 def _load_raw(path):
@@ -314,6 +393,7 @@ def _sanitize_recent_runs(rows):
             "ended_at": row.get("ended_at"),
             "ended_at_iso": str(row.get("ended_at_iso") or "")[:40],
             "exit_code": row.get("exit_code"),
+            "token_usage": normalize_token_usage(row.get("token_usage")),
         })
         if len(sanitized) >= RECENT_LIMIT:
             break
@@ -352,6 +432,8 @@ def load_status(paths=None):
     payload = attach_failure_hint(payload)
     payload["scheduled_runs"] = scheduled_runs(paths, status_payload=payload)
     payload["next_run"] = payload["scheduled_runs"][0] if payload["scheduled_runs"] else {}
+    token_rows = [payload] if payload.get("token_usage") else []
+    payload["token_usage_totals"] = summarize_token_usage(token_rows)
     return payload
 
 
@@ -548,7 +630,45 @@ def finish_run(run_id, status="completed", exit_code=0, error="", paths=None, ex
             "ended_at",
             "ended_at_iso",
             "exit_code",
+            "token_usage",
         )
     }
     payload["recent_runs"] = _sanitize_recent_runs([recent_entry] + list(payload.get("recent_runs") or []))
+    return write_status(payload, paths)
+
+
+def record_token_usage(
+    run_id,
+    input_tokens=0,
+    output_tokens=0,
+    cached_input_tokens=0,
+    source="estimate",
+    model="",
+    paths=None,
+    existing=None,
+):
+    """Attach a token-usage record to the active run.
+
+    Quick backfill runs (stage == preliminary) are rejected so the panel
+    does not falsely show a token spend. The record is mirrored onto
+    the most recent run entry so it survives `finish_run`.
+    """
+    payload = dict(existing or load_status(paths))
+    if run_id and payload.get("run_id") and payload.get("run_id") != run_id:
+        return payload
+    if not is_token_consuming_stage(payload.get("stage")):
+        return payload
+    record = normalize_token_usage({
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "cached_input_tokens": cached_input_tokens,
+        "source": source,
+        "model": model,
+        "captured_at": now_epoch(),
+    })
+    if not record:
+        return payload
+    payload["token_usage"] = record
+    payload["updated_at"] = now_epoch()
+    payload["updated_at_iso"] = now_iso()
     return write_status(payload, paths)

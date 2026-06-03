@@ -25,6 +25,14 @@ def main(argv=None):
     step.add_argument("--message", default="")
     step.add_argument("--message-en", default="")
 
+    tokens = subparsers.add_parser("tokens")
+    tokens.add_argument("--run-id", required=True)
+    tokens.add_argument("--input-tokens", type=int, default=0)
+    tokens.add_argument("--output-tokens", type=int, default=0)
+    tokens.add_argument("--cached-input-tokens", type=int, default=0)
+    tokens.add_argument("--source", default="estimate")
+    tokens.add_argument("--model", default="")
+
     finish = subparsers.add_parser("finish")
     finish.add_argument("--run-id", required=True)
     finish.add_argument("--status", choices=["completed", "failed"], required=True)
@@ -57,6 +65,18 @@ def main(argv=None):
             args.step,
             message=args.message,
             message_en=args.message_en,
+            paths=paths,
+        )
+        return 0
+
+    if args.command == "tokens":
+        pipeline_status.record_token_usage(
+            args.run_id,
+            input_tokens=args.input_tokens,
+            output_tokens=args.output_tokens,
+            cached_input_tokens=args.cached_input_tokens,
+            source=args.source,
+            model=args.model,
             paths=paths,
         )
         return 0
