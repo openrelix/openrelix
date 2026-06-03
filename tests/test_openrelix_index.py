@@ -235,6 +235,77 @@ class OpenRelixIndexTests(unittest.TestCase):
             self.assertEqual(raw_question_windows[0]["matched_messages"][0]["kind"], "prompt")
             self.assertEqual(raw_question_windows[0]["matched_messages"][0]["text"], "add search command")
 
+    def test_all_window_search_orders_fts_matches_by_recent_activity(self):
+        with TemporaryDirectory() as tmpdir:
+            paths = runtime_paths_for_state(tmpdir)
+            asset_runtime.ensure_state_layout(paths)
+            raw_window_dir = paths.raw_windows_dir / "2026-06-02"
+            raw_window_dir.mkdir(parents=True, exist_ok=True)
+            older_window = {
+                "date": "2026-05-09",
+                "window_id": "w-older-strong-match",
+                "cwd": "/tmp/openrelix",
+                "originator": "codex_cli",
+                "source": "history",
+                "started_at": "2026-05-09T09:00:00+08:00",
+                "prompt_count": 1,
+                "conclusion_count": 1,
+                "prompts": [
+                    {
+                        "local_time": "2026-05-09T09:00:00+08:00",
+                        "text": "rankingterm rankingterm rankingterm rankingterm older recap",
+                    }
+                ],
+                "conclusions": [
+                    {
+                        "completed_at": "2026-05-09T09:05:00+08:00",
+                        "text": "rankingterm rankingterm older conclusion",
+                    }
+                ],
+            }
+            newer_window = {
+                "date": "2026-06-02",
+                "window_id": "w-newer-light-match",
+                "cwd": "/tmp/openrelix",
+                "originator": "codex_cli",
+                "source": "history",
+                "started_at": "2026-06-02T10:00:00+08:00",
+                "prompt_count": 1,
+                "conclusion_count": 1,
+                "prompts": [
+                    {
+                        "local_time": "2026-06-02T10:00:00+08:00",
+                        "text": "rankingterm newer recap",
+                    }
+                ],
+                "conclusions": [
+                    {
+                        "completed_at": "2026-06-02T10:05:00+08:00",
+                        "text": "newer conclusion",
+                    }
+                ],
+            }
+            for item in (older_window, newer_window):
+                (raw_window_dir / "{}.json".format(item["window_id"])).write_text(
+                    json.dumps(item),
+                    encoding="utf-8",
+                )
+            db_path = Path(tmpdir) / "runtime" / "test-index.sqlite3"
+            openrelix_index.rebuild_index(paths, db_path)
+
+            windows = openrelix_index.search_windows(
+                "rankingterm",
+                search_scope="all",
+                paths=paths,
+                db_path=db_path,
+                limit=2,
+            )
+
+            self.assertEqual(
+                [item["window_id"] for item in windows],
+                ["w-newer-light-match", "w-older-strong-match"],
+            )
+
     def test_rebuild_skips_claude_mem_observer_windows(self):
         with TemporaryDirectory() as tmpdir:
             paths = runtime_paths_for_state(tmpdir)

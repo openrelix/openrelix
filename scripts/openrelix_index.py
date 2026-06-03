@@ -1457,6 +1457,17 @@ def execute_window_scoped_like(conn, query, clauses, params, limit, search_scope
     return conn.execute(sql, like_params).fetchall()
 
 
+def recent_window_sort_value(row):
+    return row["latest_activity_at"] or row["started_at"] or row["date"] or ""
+
+
+def sort_window_rows_by_recent_activity(rows):
+    sorted_rows = list(rows)
+    sorted_rows.sort(key=lambda row: row["window_id"] or "")
+    sorted_rows.sort(key=recent_window_sort_value, reverse=True)
+    return sorted_rows
+
+
 def search_memories(
     query="",
     *,
@@ -1569,7 +1580,7 @@ def search_windows(
             params.append(query)
             if clauses:
                 sql += " WHERE " + " AND ".join(clauses)
-            sql += " ORDER BY bm25(window_fts), w.latest_activity_at DESC, w.window_id LIMIT ?"
+            sql += " ORDER BY w.latest_activity_at DESC, w.window_id LIMIT ?"
             try:
                 fts_rows = conn.execute(sql, [*params, limit]).fetchall()
             except sqlite3.DatabaseError:
@@ -1585,8 +1596,7 @@ def search_windows(
                     continue
                 seen.add(row_id)
                 rows.append(row)
-                if len(rows) >= limit:
-                    break
+            rows = sort_window_rows_by_recent_activity(rows)[:limit]
             return [row_to_window_search_result(conn, row, query, search_scope) for row in rows]
         else:
             return [

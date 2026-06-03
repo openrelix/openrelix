@@ -11160,6 +11160,10 @@ def make_window_filter_panel(default_start_date, default_end_date):
                 <input id="window-search-query" class="window-search-input" type="text" role="searchbox" autocomplete="off" spellcheck="false" placeholder="{search_placeholder}">
               </span>
             </label>
+            <button id="window-search-submit" class="window-search-submit" type="button" aria-label="{search_button_aria}">
+              <span class="window-search-submit-icon" aria-hidden="true">{search_icon}</span>
+              <span class="window-search-submit-label">{search_button_label}</span>
+            </button>
             <div class="token-filter-field window-search-scope-field">
               <span class="token-filter-label">{scope_label}</span>
               <div class="token-segment-group window-search-scope-group" role="group" aria-label="{scope_aria}">
@@ -11202,6 +11206,8 @@ def make_window_filter_panel(default_start_date, default_end_date):
         end_label=panel_language_text_html("结束日期", "End Date"),
         search_label=panel_language_text_html("搜索窗口", "Search Windows"),
         search_placeholder=escape(localized("搜问题、结论、项目或窗口 ID", "Search questions, conclusions, projects, or window IDs"), quote=True),
+        search_button_label=panel_language_text_html("搜索", "Search"),
+        search_button_aria=escape(localized("搜索窗口", "Search windows"), quote=True),
         open_search_label=panel_language_text_html("打开搜索", "Open Search"),
         reset_aria=escape(localized("删除搜索并恢复未检索状态", "Clear search and restore unsearched state"), quote=True),
         close_aria=escape(localized("关闭窗口搜索", "Close window search"), quote=True),
@@ -20911,7 +20917,8 @@ def build_html(data):
     }}
 
     .window-search-trigger-icon,
-    .window-search-input-icon {{
+    .window-search-input-icon,
+    .window-search-submit-icon {{
       width: 18px;
       height: 18px;
       color: var(--muted);
@@ -21053,6 +21060,40 @@ def build_html(data):
       opacity: 0.78;
     }}
 
+    .window-search-submit {{
+      align-self: end;
+      min-width: 92px;
+      height: 40px;
+      padding: 0 14px;
+      border: 1px solid rgba(0, 113, 227, 0.34);
+      border-radius: 12px;
+      background: linear-gradient(135deg, #0071e3, #4da2ff);
+      color: #fff;
+      font: inherit;
+      font-size: 13px;
+      font-weight: 760;
+      line-height: 1;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      cursor: pointer;
+      box-shadow: 0 10px 22px rgba(0, 113, 227, 0.18);
+      transition: border-color 160ms ease, box-shadow 160ms ease, background 160ms ease, transform 160ms ease;
+    }}
+
+    .window-search-submit:hover,
+    .window-search-submit:focus-visible {{
+      border-color: rgba(0, 113, 227, 0.52);
+      box-shadow: 0 12px 28px rgba(0, 113, 227, 0.24);
+      outline: none;
+      transform: translateY(-1px);
+    }}
+
+    .window-search-submit-icon {{
+      color: currentColor;
+    }}
+
     .window-search-scope-group {{
       grid-auto-columns: minmax(0, 1fr);
     }}
@@ -21183,7 +21224,7 @@ def build_html(data):
 
     .window-search-dialog-form {{
       display: grid;
-      grid-template-columns: minmax(280px, 0.95fr) minmax(360px, 1.25fr);
+      grid-template-columns: minmax(280px, 0.95fr) auto minmax(360px, 1.25fr);
       gap: 12px;
       align-items: end;
     }}
@@ -24305,6 +24346,10 @@ def build_html(data):
         grid-template-columns: 1fr;
       }}
 
+      .window-search-submit {{
+        width: 100%;
+      }}
+
       .token-filter-presets,
       .window-filter-presets,
       .asset-filter-presets {{
@@ -25130,6 +25175,7 @@ def build_html(data):
       }};
       const pipelineHistoryCollapsedLimit = {pipeline_history_collapsed_limit};
       const pipelineHistoryExpandedLimit = {pipeline_history_expanded_limit};
+      const windowSearchResultLimit = 100;
       function tokenDateInputValue(date) {{
         const year = date.getFullYear();
         const month = String(date.getMonth() + 1).padStart(2, "0");
@@ -25195,6 +25241,7 @@ def build_html(data):
         windowSearchTimer: null,
         windowSearchResults: null,
         windowSearchOpen: false,
+        windowSearchDraftQuery: "",
         assetFilters: {{
           startDate: defaultAssetFilterStart,
           endDate: defaultAssetFilterEnd,
@@ -25242,6 +25289,7 @@ def build_html(data):
         windowSearchEndDateInput: document.getElementById("window-search-end-date"),
         windowSearchRangeButtons: Array.from(document.querySelectorAll("[data-window-search-range-days]")),
         windowSearchInput: document.getElementById("window-search-query"),
+        windowSearchSubmitButton: document.getElementById("window-search-submit"),
         windowSearchCloseButton: document.getElementById("window-search-close"),
         windowSearchScopeButtons: Array.from(document.querySelectorAll("[data-window-search-scope]")),
         windowSearchLive: document.getElementById("window-search-live"),
@@ -26991,13 +27039,6 @@ def build_html(data):
         return fallback ? label + "：" + fallback : "";
       }}
 
-      function windowSearchPairText(pairs, key) {{
-        const list = Array.isArray(pairs) ? pairs : [];
-        return normalizeWindowSearchValue(list.map(function (pair) {{
-          return pair && pair[key] ? pair[key] : "";
-        }}).filter(Boolean).join(" "));
-      }}
-
       function windowSearchMessageLabel(kind) {{
         return kind === "prompt"
           ? localizeValue("原始问题", "Raw question")
@@ -27018,78 +27059,6 @@ def build_html(data):
         }}
         const message = matches[0];
         return windowSearchMessageLabel(message.kind) + "：" + message.text;
-      }}
-
-      function windowSearchMatchedMessageText(result, kind) {{
-        return normalizeWindowSearchValue(windowSearchMatchedMessages(result, kind).map(function (message) {{
-          return message.text || "";
-        }}).filter(Boolean).join(" "));
-      }}
-
-      function windowSearchResultScopeText(result, scope) {{
-        const resolvedScope = ["all", "ai", "raw-question", "raw-conclusion", "id", "project"].includes(scope)
-          ? scope
-          : "all";
-        if (!result) {{
-          return "";
-        }}
-        if (resolvedScope === "id") {{
-          return normalizeWindowSearchValue(result.window_id || "");
-        }}
-        if (resolvedScope === "project") {{
-          return normalizeWindowSearchValue([result.project_label || "", result.cwd || ""].join(" "));
-        }}
-        if (resolvedScope === "raw-question") {{
-          return normalizeWindowSearchValue([
-            windowSearchMatchedMessageText(result, "prompt"),
-            windowSearchPairText(result.raw_summary_pairs, "question"),
-          ].join(" "));
-        }}
-        if (resolvedScope === "raw-conclusion") {{
-          return normalizeWindowSearchValue([
-            windowSearchMatchedMessageText(result, "conclusion"),
-            windowSearchPairText(result.raw_summary_pairs, "conclusion"),
-          ].join(" "));
-        }}
-        if (resolvedScope === "ai") {{
-          return normalizeWindowSearchValue([
-            result.window_title || "",
-            result.question_summary || "",
-            result.main_takeaway || "",
-            windowSearchPairText(result.summary_pairs, "question"),
-            windowSearchPairText(result.summary_pairs, "conclusion"),
-            Array.isArray(result.keywords) ? result.keywords.join(" ") : "",
-          ].join(" "));
-        }}
-        return normalizeWindowSearchValue([
-          result.window_id || "",
-          result.project_label || "",
-          result.cwd || "",
-          result.window_title || "",
-          result.question_summary || "",
-          result.main_takeaway || "",
-          windowSearchPairText(result.summary_pairs, "question"),
-          windowSearchPairText(result.summary_pairs, "conclusion"),
-          windowSearchMatchedMessageText(result),
-          windowSearchPairText(result.raw_summary_pairs, "question"),
-          windowSearchPairText(result.raw_summary_pairs, "conclusion"),
-          Array.isArray(result.keywords) ? result.keywords.join(" ") : "",
-        ].join(" "));
-      }}
-
-      function windowSearchResultMatchesScope(result, filters) {{
-        const activeFilters = normalizeWindowFilters(filters || state.windowFilters);
-        const query = normalizeWindowSearchValue(activeFilters.query);
-        if (!query) {{
-          return true;
-        }}
-        const haystack = windowSearchResultScopeText(result, activeFilters.searchScope);
-        if (!haystack) {{
-          return false;
-        }}
-        return query.split(" ").filter(Boolean).every(function (term) {{
-          return haystack.indexOf(term) !== -1;
-        }});
       }}
 
       function windowSearchResultAnchor(result) {{
@@ -27147,21 +27116,6 @@ def build_html(data):
         return String((result && result.date) || "").slice(0, 10);
       }}
 
-      function windowSearchResultMatchesFilters(result, filters) {{
-        const activeFilters = normalizeWindowFilters(filters || state.windowFilters);
-        const dateValue = windowSearchResultDate(result);
-        if (!dateValue) {{
-          return !activeFilters.startDate && !activeFilters.endDate && windowSearchResultMatchesScope(result, activeFilters);
-        }}
-        if (activeFilters.startDate && dateValue < activeFilters.startDate) {{
-          return false;
-        }}
-        if (activeFilters.endDate && dateValue > activeFilters.endDate) {{
-          return false;
-        }}
-        return windowSearchResultMatchesScope(result, activeFilters);
-      }}
-
       function syncWindowSearchDialogVisibility() {{
         const isOpen = !!state.windowSearchOpen;
         if (elements.windowSearchLive) {{
@@ -27192,6 +27146,36 @@ def build_html(data):
         }}
       }}
 
+      function windowSearchDraftQueryValue() {{
+        if (typeof state.windowSearchDraftQuery === "string") {{
+          return state.windowSearchDraftQuery;
+        }}
+        return normalizeWindowFilters(state.windowFilters).query;
+      }}
+
+      function windowSearchDraftHasPending(filters) {{
+        const activeFilters = normalizeWindowFilters(filters || state.windowFilters);
+        return normalizeWindowSearchValue(windowSearchDraftQueryValue()) !== normalizeWindowSearchValue(activeFilters.query);
+      }}
+
+      function markWindowSearchDraftChanged() {{
+        state.windowSearchOpen = true;
+        state.windowSearchDraftQuery = elements.windowSearchInput ? elements.windowSearchInput.value : windowSearchDraftQueryValue();
+        clearWindowSearchRequest();
+        state.windowSearchRequestSeq += 1;
+        renderWindowSearchResults(state.windowSearchResults);
+      }}
+
+      function submitWindowSearch() {{
+        const submittedQuery = elements.windowSearchInput ? elements.windowSearchInput.value : windowSearchDraftQueryValue();
+        const nextFilters = normalizeWindowFilters(Object.assign({{}}, state.windowFilters, {{
+          query: submittedQuery,
+        }}));
+        state.windowSearchDraftQuery = nextFilters.query;
+        state.windowSearchOpen = true;
+        setWindowFilterState(nextFilters);
+      }}
+
       function setWindowSearchOpen(isOpen, shouldFocus) {{
         state.windowSearchOpen = !!isOpen;
         syncWindowSearchDialogVisibility();
@@ -27213,6 +27197,17 @@ def build_html(data):
         const filters = normalizeWindowFilters(state.windowFilters);
         syncWindowSearchDialogVisibility();
         if (!state.windowSearchOpen) {{
+          return;
+        }}
+        if (windowSearchDraftHasPending(filters)) {{
+          const draftFilters = Object.assign({{}}, filters, {{
+            query: windowSearchDraftQueryValue(),
+          }});
+          const pendingText = draftFilters.query
+            ? localizeValue("按回车或点击搜索后检索", "Press Enter or Search to run")
+            : localizeValue("按回车或点击搜索后清空检索", "Press Enter or Search to clear");
+          elements.windowSearchStatus.textContent = windowSearchStatusText(pendingText, draftFilters);
+          elements.windowSearchResults.innerHTML = '<p class="empty">' + escapeHtml(windowSearchStatusText(localizeValue("当前输入尚未提交。", "The current query has not been submitted."), draftFilters)) + '</p>';
           return;
         }}
         if (!filters.query) {{
@@ -27239,20 +27234,21 @@ def build_html(data):
           elements.windowSearchResults.innerHTML = '<p class="empty">' + escapeHtml(windowSearchStatusText(localizeValue("运行 openrelix index rebuild 后可检索历史窗口。", "Run openrelix index rebuild to search historical windows."), filters)) + '</p>';
           return;
         }}
-        const allResults = results;
-        const filteredResults = allResults.filter(function (result) {{
-          return windowSearchResultMatchesFilters(result, filters);
-        }});
-        const filteredNote = filteredResults.length === allResults.length
-          ? ""
-          : localizeValue(" · 已按当前筛选过滤", " · filtered by current filters");
+        const displayedResults = results;
         const staleNote = indexInfo.stale ? localizeValue(" · 可能不是最新", " · may be stale") : "";
-        elements.windowSearchStatus.textContent = windowSearchStatusText(localizeValue("命中 ", "Matched ") + filteredResults.length + localizeValue(" 个", "") + staleNote + filteredNote, filters);
-        if (!filteredResults.length) {{
+        const responseLimit = Math.max(Number(payload && payload.limit) || windowSearchResultLimit, 1);
+        const reachedLimit = displayedResults.length >= responseLimit;
+        const countText = reachedLimit
+          ? (currentLanguage === "en"
+            ? "Showing first " + displayedResults.length + " matches · more may exist"
+            : "展示前 " + displayedResults.length + " 个 · 可能还有更多")
+          : localizeValue("命中 ", "Matched ") + displayedResults.length + localizeValue(" 个", "");
+        elements.windowSearchStatus.textContent = windowSearchStatusText(countText + staleNote, filters);
+        if (!displayedResults.length) {{
           elements.windowSearchResults.innerHTML = '<p class="empty">' + escapeHtml(windowSearchStatusText(localizeValue("本地索引没有命中。", "No local index matches."), filters)) + '</p>';
           return;
         }}
-        elements.windowSearchResults.innerHTML = filteredResults.map(function (result) {{
+        elements.windowSearchResults.innerHTML = displayedResults.map(function (result) {{
           const anchor = windowSearchResultAnchor(result);
           const title = result.window_title || result.question_summary || result.window_id || localizeValue("未命名窗口", "Untitled window");
           const metaParts = [
@@ -27294,7 +27290,7 @@ def build_html(data):
         try {{
           const requestUrl = new URL(endpoint);
           requestUrl.searchParams.set("q", filters.query);
-          requestUrl.searchParams.set("limit", "20");
+          requestUrl.searchParams.set("limit", String(windowSearchResultLimit));
           requestUrl.searchParams.set("scope", filters.searchScope || "all");
           if (filters.startDate) {{
             requestUrl.searchParams.set("date_from", filters.startDate);
@@ -28040,8 +28036,9 @@ def build_html(data):
         if (elements.windowFilterSummary) {{
           elements.windowFilterSummary.textContent = windowFilterSummaryLabel(filters, matchedCount || 0);
         }}
-        if (elements.windowSearchInput && elements.windowSearchInput.value !== filters.query) {{
-          elements.windowSearchInput.value = filters.query;
+        const inputQuery = windowSearchDraftQueryValue();
+        if (elements.windowSearchInput && elements.windowSearchInput.value !== inputQuery) {{
+          elements.windowSearchInput.value = inputQuery;
         }}
         if (elements.windowSearchResetButton) {{
           const shouldHideReset = !filters.query && filters.searchScope === "all";
@@ -28147,6 +28144,12 @@ def build_html(data):
         state.windowDetailsExpanded = false;
         state.windowOverviewProjectsExpanded = false;
         applyWindowFilters();
+        if (windowSearchDraftHasPending(state.windowFilters)) {{
+          clearWindowSearchRequest();
+          state.windowSearchRequestSeq += 1;
+          renderWindowSearchResults(state.windowSearchResults);
+          return;
+        }}
         scheduleWindowSearchRequest();
       }}
 
@@ -28154,6 +28157,7 @@ def build_html(data):
         clearWindowSearchRequest();
         state.windowSearchOpen = false;
         state.windowSearchResults = null;
+        state.windowSearchDraftQuery = "";
         setWindowFilterState(Object.assign({{}}, state.windowFilters, {{
           query: "",
           searchScope: "all",
@@ -28216,17 +28220,25 @@ def build_html(data):
         if (elements.windowSearchTriggerButton) {{
           elements.windowSearchTriggerButton.addEventListener("click", function () {{
             setWindowSearchOpen(true, true);
-            if (normalizeWindowFilters(state.windowFilters).query && !state.windowSearchResults) {{
+            if (normalizeWindowFilters(state.windowFilters).query && !state.windowSearchResults && !windowSearchDraftHasPending(state.windowFilters)) {{
               scheduleWindowSearchRequest();
             }}
           }});
         }}
         if (elements.windowSearchInput) {{
           elements.windowSearchInput.addEventListener("input", function () {{
-            state.windowSearchOpen = true;
-            setWindowFilterState(Object.assign({{}}, state.windowFilters, {{
-              query: elements.windowSearchInput.value,
-            }}));
+            markWindowSearchDraftChanged();
+          }});
+          elements.windowSearchInput.addEventListener("keydown", function (event) {{
+            if (event.key === "Enter" && !event.isComposing) {{
+              event.preventDefault();
+              submitWindowSearch();
+            }}
+          }});
+        }}
+        if (elements.windowSearchSubmitButton) {{
+          elements.windowSearchSubmitButton.addEventListener("click", function () {{
+            submitWindowSearch();
           }});
         }}
         if (elements.windowSearchResetButton) {{
