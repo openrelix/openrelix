@@ -251,7 +251,7 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessag
         NSApp.setActivationPolicy(.regular)
         buildMenu()
         buildWindow()
-        ensureTokenLiveLaunchAgent(forceRestart: false)
+        ensureTokenLiveLaunchAgent()
         loadPanel()
         NSApp.activate(ignoringOtherApps: true)
     }
@@ -333,7 +333,7 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessag
             return
         }
         if message.name == "openrelixEnsureTokenLive" {
-            ensureTokenLiveLaunchAgent(forceRestart: true)
+            ensureTokenLiveLaunchAgent()
             return
         }
         if message.name == "openrelixOpenExternal",
@@ -354,7 +354,7 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessag
         }
     }
 
-    private func ensureTokenLiveLaunchAgent(forceRestart: Bool) {
+    private func ensureTokenLiveLaunchAgent() {
         let plistURL = URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true)
             .appendingPathComponent("Library", isDirectory: true)
             .appendingPathComponent("LaunchAgents", isDirectory: true)
@@ -365,12 +365,9 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessag
         }
         let domain = "gui/\(getuid())"
         let serviceTarget = "\(domain)/\(tokenLiveLabel)"
-        let kickstartArguments = forceRestart
-            ? ["kickstart", "-k", serviceTarget]
-            : ["kickstart", serviceTarget]
         DispatchQueue.global(qos: .utility).async {
             self.runLaunchctl(["bootstrap", domain, plistPath])
-            self.runLaunchctl(kickstartArguments)
+            self.runLaunchctl(["kickstart", serviceTarget])
         }
     }
 

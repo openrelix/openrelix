@@ -25622,6 +25622,11 @@ def build_html(data):
         tokenSourceKind: storedInitialTokenUsage === initialTokenUsage ? "cache" : "snapshot",
         tokenUsageCache: {{}},
         tokenStaleRetryTimer: null,
+        tokenStaleRetryDelayMs: 8000,
+        tokenRefreshInFlight: false,
+        tokenRefreshQueued: false,
+        tokenRefreshQueuedForce: false,
+        tokenVisualSig: "",
         tokenServiceStartRequestedAt: 0,
         tokenRequestSeq: 0,
         tokenFilters: {{
@@ -32116,6 +32121,49 @@ def build_html(data):
         }}
       }}
 
+      function tokenRowVisualSignature(row) {{
+        const values = tokenRowBreakdownValues(row || {{}});
+        return [
+          tokenRowDateKey(row),
+          row && row.label,
+          row && row.value,
+          row && row.display,
+          row && row.token_display,
+          row && row.costUSD,
+          row && row.cost_display,
+          values.input,
+          values.cached,
+          values.cacheCreate,
+          values.output,
+          values.reasoning,
+          values.total,
+        ].map(function (value) {{
+          return String(value === null || value === undefined ? "" : value);
+        }}).join(":");
+      }}
+
+      function tokenUsageVisualSignature(tokenUsage) {{
+        const dailyRows = Array.isArray(tokenUsage && tokenUsage.daily_rows) ? tokenUsage.daily_rows : [];
+        const todayRows = Array.isArray(tokenUsage && tokenUsage.today_breakdown) ? tokenUsage.today_breakdown : [];
+        const filters = state.tokenFilters || {{}};
+        return [
+          currentLanguage,
+          String(Math.floor(Date.now() / 60000)),
+          normalizeTokenProvider(tokenUsage && tokenUsage.provider),
+          normalizeTokenGroupBy(filters.groupBy || (tokenUsage && tokenUsage.group_by)),
+          String(tokenUsage && tokenUsage.range_start || ""),
+          String(tokenUsage && tokenUsage.range_end || ""),
+          String(tokenUsage && tokenUsage.refreshed_at || ""),
+          String(tokenUsage && tokenUsage.today_refreshed_at || ""),
+          String(tokenUsage && tokenUsage.today_total_tokens || ""),
+          String(tokenUsage && tokenUsage.today_cost_usd || ""),
+          String(tokenUsage && tokenUsage.period_total_tokens || ""),
+          String(tokenUsage && tokenUsage.period_cost_usd || ""),
+          dailyRows.map(tokenRowVisualSignature).join(";"),
+          todayRows.map(tokenRowVisualSignature).join(";"),
+        ].join("|");
+      }}
+
       function updateTokenVisuals(tokenUsage, sourceKind) {{
         if (!tokenUsage) {{
           return;
@@ -32131,6 +32179,12 @@ def build_html(data):
           endDate: currentFilters.endDate || "",
           groupBy: normalizeTokenGroupBy(currentFilters.groupBy || tokenUsage.group_by),
         }};
+        const nextVisualSig = tokenUsageVisualSignature(tokenUsage);
+        if (state.tokenVisualSig === nextVisualSig) {{
+          syncTokenFilterControls(tokenUsage);
+          return;
+        }}
+        state.tokenVisualSig = nextVisualSig;
         const relativeUpdate = describeRelativeTime(state.tokenRefreshedAt, "更新");
         const todayRelativeUpdate = describeRelativeTime(state.tokenTodayRefreshedAt || state.tokenRefreshedAt, "更新");
         const preparedTokenUsage = prepareTokenUsageForPanel(tokenUsage, relativeUpdate, state.tokenFilters.groupBy);
@@ -32207,7 +32261,7 @@ def build_html(data):
 
       function requestNativeTokenServiceStart() {{
         const now = Date.now();
-        if (now - Number(state.tokenServiceStartRequestedAt || 0) < 10000) {{
+        if (now - Number(state.tokenServiceStartRequestedAt || 0) < 30000) {{
           return false;
         }}
         try {{
@@ -32228,38 +32282,79 @@ def build_html(data):
         }}
       }}
 
+      function clearTokenStaleRetry() {{
+        if (state.tokenStaleRetryTimer) {{
+          window.clearTimeout(state.tokenStaleRetryTimer);
+          state.tokenStaleRetryTimer = null;
+        }}
+        state.tokenStaleRetryDelayMs = 8000;
+      }}
+
       function scheduleTokenStaleRetry() {{
         if (state.tokenStaleRetryTimer) {{
           return;
         }}
+        const delayMs = Math.min(Math.max(Number(state.tokenStaleRetryDelayMs) || 8000, 8000), 60000);
+        state.tokenStaleRetryDelayMs = Math.min(delayMs * 2, 60000);
         state.tokenStaleRetryTimer = window.setTimeout(function () {{
           state.tokenStaleRetryTimer = null;
           refreshTokenUsage(false);
-        }}, 2500);
+        }}, delayMs);
       }}
 
-      async function refreshTokenUsage(forceRefresh) {{
+      function refreshTokenUsage(forceRefresh) {{
+        const requestedForceRefresh = Boolean(forceRefresh);
+        if (state.tokenRefreshInFlight) {{
+          state.tokenRefreshQueued = true;
+          state.tokenRefreshQueuedForce = state.tokenRefreshQueuedForce || requestedForceRefresh;
+          return;
+        }}
+        state.tokenRefreshInFlight = true;
+        performTokenUsageRefresh(requestedForceRefresh)
+          .catch(function () {{}})
+          .finally(function () {{
+            state.tokenRefreshInFlight = false;
+            if (state.tokenRefreshQueued) {{
+              const queuedForce = Boolean(state.tokenRefreshQueuedForce);
+              state.tokenRefreshQueued = false;
+              state.tokenRefreshQueuedForce = false;
+              refreshTokenUsage(queuedForce);
+            }}
+          }});
+      }}
+
+      async function performTokenUsageRefresh(forceRefresh) {{
         const filters = state.tokenFilters || {{}};
         const sourceRange = tokenSourceDateRange(filters);
         const windowDays = {token_cache_window_days};
         const cacheKey = tokenRequestCacheKey(filters, windowDays);
         const requestSeq = state.tokenRequestSeq + 1;
         state.tokenRequestSeq = requestSeq;
+        function requestStillCurrent() {{
+          return requestSeq === state.tokenRequestSeq &&
+            cacheKey === tokenRequestCacheKey(state.tokenFilters || {{}}, windowDays);
+        }}
         if (!forceRefresh) {{
           const cachedTokenUsage = getCachedTokenUsage(cacheKey);
           if (cachedTokenUsage && tokenUsageCoversFilters(cachedTokenUsage, filters)) {{
+            clearTokenStaleRetry();
             updateTokenVisuals(cachedTokenUsage, "cache");
             setStatus("live", "", "live_refreshed");
             setLoading(false);
             return;
           }}
         }}
-        setLoading(true);
-        setStatus(
-          "loading",
-          "",
-          forceRefresh ? "loading_force" : "loading_page"
-        );
+        const hasDisplayedTokenUsage = !forceRefresh && state.tokenUsage &&
+          normalizeTokenProvider(state.tokenUsage.provider) === normalizeTokenProvider(filters.provider) &&
+          tokenUsageCoversFilters(state.tokenUsage, filters);
+        setLoading(forceRefresh || !hasDisplayedTokenUsage);
+        if (forceRefresh || !hasDisplayedTokenUsage) {{
+          setStatus(
+            "loading",
+            "",
+            forceRefresh ? "loading_force" : "loading_page"
+          );
+        }}
         try {{
           const requestUrl = new URL(config.liveEndpoint);
           requestUrl.searchParams.set(
@@ -32287,7 +32382,7 @@ def build_html(data):
           if (!payload.stale) {{
             rememberTokenUsage(cacheKey, payload.token_usage, filters);
           }}
-          if (requestSeq !== state.tokenRequestSeq) {{
+          if (!requestStillCurrent()) {{
             return;
           }}
           state.tokenServiceStartRequestedAt = 0;
@@ -32296,20 +32391,21 @@ def build_html(data):
             scheduleTokenStaleRetry();
             setStatus("warn", "", "warn_stale");
           }} else {{
+            clearTokenStaleRetry();
             setStatus("live", "", "live_refreshed");
           }}
         }} catch (error) {{
-          if (requestSeq !== state.tokenRequestSeq) {{
+          if (!requestStillCurrent()) {{
             return;
           }}
           const serviceUnavailable = isLikelyTokenServiceUnavailable(error);
           if (serviceUnavailable && requestNativeTokenServiceStart()) {{
             setStatus("loading", "", "starting_service");
             window.setTimeout(function () {{
-              if (requestSeq === state.tokenRequestSeq) {{
+              if (requestStillCurrent()) {{
                 refreshTokenUsage(true);
               }}
-            }}, 1600);
+            }}, 3500);
             return;
           }}
           if (!state.tokenUsage && snapshot.token_usage) {{
@@ -32323,7 +32419,7 @@ def build_html(data):
             serviceUnavailable && forceRefresh ? "offline_service" : "offline_snapshot"
           );
         }} finally {{
-          if (requestSeq === state.tokenRequestSeq) {{
+          if (requestStillCurrent()) {{
             setLoading(false);
           }}
         }}
