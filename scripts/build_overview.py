@@ -20074,9 +20074,11 @@ def build_html(data):
       justify-content: space-between;
       gap: 10px;
       min-width: 0;
+      min-height: 52px;
       padding: 10px 12px;
       border-radius: 12px;
       background: var(--soft);
+      box-sizing: border-box;
     }}
 
     .pipeline-history-title {{
@@ -20085,12 +20087,18 @@ def build_html(data):
       font-size: 13px;
       font-weight: 720;
       overflow-wrap: anywhere;
+      flex: 1 1 auto;
+      min-width: 0;
     }}
 
     .pipeline-history-meta {{
-      flex: 0 1 auto;
-      white-space: normal;
+      flex: 0 0 auto;
+      white-space: nowrap;
       text-align: right;
+      font-variant-numeric: tabular-nums;
+      max-width: 180px;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }}
 
     .pipeline-history-toggle {{
@@ -26085,74 +26093,166 @@ def build_html(data):
         const quickRows = limitedRows.filter(function (row) {{
           return classifyPipelineRun(row) === "quick";
         }});
-        const rowHtml = function (row) {{
-          const status = String((row && row.status) || "idle");
-          const title = localizeValue((row && row.title) || (row && row.pipeline) || "", (row && row.title_en) || (row && row.title) || "");
-          const meta = pipelineHistoryMetaLabels(row).map(function (label) {{
+
+        // Stable key for a row — only changes when content meaningfully changes
+        function rowKey(row) {{
+          return [
+            String(row && row.pipeline || ""),
+            String(row && row.started_at_iso || ""),
+            String(row && row.status || ""),
+            String(row && row.target_date || ""),
+          ].join("|");
+        }}
+
+        // Compute content signature BEFORE any DOM manipulation.
+        // If unchanged, skip all DOM operations; if changed, rebuild.
+        var newSig = (
+          deepRows.length + "|" + quickRows.length + "|" +
+          deepRows.slice(0, pipelineHistoryCollapsedLimit).map(function (r) {{
+            return rowKey(r) + ":" + localizeValue((r && r.title) || (r && r.pipeline) || "", (r && r.title_en) || (r && r.title) || "");
+          }}).join("|") + "||" +
+          quickRows.slice(0, 1).map(function (r) {{
+            return rowKey(r) + ":" + localizeValue((r && r.title) || (r && r.pipeline) || "", (r && r.title_en) || (r && r.title) || "");
+          }}).join("|")
+        );
+
+        if (newSig === state.pipelineHistorySig) {{
+          // Signature unchanged — refresh live status/meta in-place, no DOM moves.
+          var existingEls = elements.pipelineHistory.querySelectorAll(".pipeline-history-row[data-key]");
+          for (var si = 0; si < existingEls.length; si++) {{
+            var sel = existingEls[si];
+            var sk = sel.getAttribute("data-key");
+            var matched = null;
+            for (var mi = 0; mi < limitedRows.length; mi++) {{
+              if (rowKey(limitedRows[mi]) === sk) {{ matched = limitedRows[mi]; break; }}
+            }}
+            if (!matched) continue;
+            var metaListEl = sel.querySelector(".pipeline-history-meta-list");
+            if (metaListEl) {{
+              var newMeta = pipelineHistoryMetaLabels(matched).map(function (label) {{
+                return '<span class="pipeline-history-meta">' + escapeHtml(label) + '</span>';
+              }}).join("");
+              if (metaListEl.innerHTML !== newMeta) metaListEl.innerHTML = newMeta;
+            }}
+            var newStatus = String((matched && matched.status) || "idle");
+            if (sel.getAttribute("data-status") !== newStatus) {{
+              sel.setAttribute("data-status", newStatus);
+            }}
+          }}
+          renderPipelineTokenSummaryInline(rows);
+          return;
+        }}
+        state.pipelineHistorySig = newSig;
+
+        // Collect existing rows before rebuilding
+        var existing = {{}};
+        var existingEls = elements.pipelineHistory.querySelectorAll(".pipeline-history-row[data-key]");
+        for (var i = 0; i < existingEls.length; i++) {{
+          var el = existingEls[i];
+          var k = el.getAttribute("data-key");
+          if (k) existing[k] = el;
+        }}
+
+        function getOrCreateRow(row) {{
+          var k = rowKey(row);
+          var el = existing[k];
+          if (el) {{
+            var titleEl = el.querySelector(".pipeline-history-title");
+            var metaListEl = el.querySelector(".pipeline-history-meta-list");
+            if (titleEl) {{
+              var newTitle = escapeHtml(localizeValue((row && row.title) || (row && row.pipeline) || "", (row && row.title_en) || (row && row.title) || ""));
+              if (titleEl.textContent !== newTitle) titleEl.textContent = newTitle;
+            }}
+            if (metaListEl) {{
+              var newMeta = pipelineHistoryMetaLabels(row).map(function (label) {{
+                return '<span class="pipeline-history-meta">' + escapeHtml(label) + '</span>';
+              }}).join("");
+              if (metaListEl.innerHTML !== newMeta) metaListEl.innerHTML = newMeta;
+            }}
+            var currentStatus = el.getAttribute("data-status");
+            var newStatus = String((row && row.status) || "idle");
+            if (currentStatus !== newStatus) el.setAttribute("data-status", newStatus);
+            delete existing[k];
+            return el;
+          }}
+          var status = String((row && row.status) || "idle");
+          var title = escapeHtml(localizeValue((row && row.title) || (row && row.pipeline) || "", (row && row.title_en) || (row && row.title) || ""));
+          var meta = pipelineHistoryMetaLabels(row).map(function (label) {{
             return '<span class="pipeline-history-meta">' + escapeHtml(label) + '</span>';
           }}).join("");
-          return (
-            '<div class="pipeline-history-row" data-status="' + escapeHtml(status) + '">' +
-              '<span class="pipeline-history-title">' + escapeHtml(title) + '</span>' +
-              '<span class="pipeline-history-meta-list">' + meta + '</span>' +
-            '</div>'
-          );
-        }};
-        const html = [];
+          var div = document.createElement("div");
+          div.className = "pipeline-history-row";
+          div.setAttribute("data-key", k);
+          div.setAttribute("data-status", status);
+          div.innerHTML =
+            '<span class="pipeline-history-title">' + title + '</span>' +
+            '<span class="pipeline-history-meta-list">' + meta + '</span>';
+          return div;
+        }}
+
+        var container = document.createElement("div");
+        var groupLabelDeep = (
+          '<div class="pipeline-history-group-label">' + escapeHtml(
+            currentLanguage === "en"
+              ? "Deep backfill (consumes tokens)"
+              : "深度回溯（消耗 token）"
+          ) + '</div>'
+        );
+        var groupLabelQuick = (
+          '<div class="pipeline-history-group-label">' + escapeHtml(
+            currentLanguage === "en"
+              ? "Quick backfill (hourly, no tokens)"
+              : "快速回溯（每 1 小时刷新，不消耗 token）"
+          ) + '</div>'
+        );
+
         if (deepRows.length) {{
-          html.push(
-            '<div class="pipeline-history-group-label">' + escapeHtml(
-              currentLanguage === "en"
-                ? "Deep backfill (consumes tokens)"
-                : "深度回溯（消耗 token）"
-            ) + '</div>'
-          );
-          const visibleDeep = deepRows.slice(0, pipelineHistoryCollapsedLimit);
-          const hiddenDeep = deepRows.slice(pipelineHistoryCollapsedLimit);
-          visibleDeep.forEach(function (row) {{ html.push(rowHtml(row)); }});
+          container.insertAdjacentHTML("beforeend", groupLabelDeep);
+          var visibleDeep = deepRows.slice(0, pipelineHistoryCollapsedLimit);
+          var hiddenDeep = deepRows.slice(pipelineHistoryCollapsedLimit);
+          for (var di = 0; di < visibleDeep.length; di++) {{
+            container.appendChild(getOrCreateRow(visibleDeep[di]));
+          }}
           if (hiddenDeep.length) {{
-            const extras = hiddenDeep.map(rowHtml).join("");
-            const summaryLabel = currentLanguage === "en"
+            var extras = document.createElement("details");
+            extras.className = "pipeline-history-deep-extras";
+            var summaryLabel = currentLanguage === "en"
               ? ("Show " + hiddenDeep.length + " earlier deep backfill runs")
               : ("查看更早 " + hiddenDeep.length + " 次深度回溯");
-            html.push(
-              '<details class="pipeline-history-deep-extras">' +
-                '<summary>' + escapeHtml(summaryLabel) + '</summary>' +
-                extras +
-              '</details>'
-            );
+            extras.insertAdjacentHTML("beforeend",
+              '<summary>' + escapeHtml(summaryLabel) + '</summary>');
+            for (var hdi = 0; hdi < hiddenDeep.length; hdi++) {{
+              extras.appendChild(getOrCreateRow(hiddenDeep[hdi]));
+            }}
+            container.appendChild(extras);
           }}
         }}
         if (quickRows.length) {{
-          html.push(
-            '<div class="pipeline-history-group-label">' + escapeHtml(
-              currentLanguage === "en"
-                ? "Quick backfill (hourly, no tokens)"
-                : "快速回溯（每 1 小时刷新，不消耗 token）"
-            ) + '</div>'
-          );
-          html.push(rowHtml(quickRows[0]));
+          container.insertAdjacentHTML("beforeend", groupLabelQuick);
+          container.appendChild(getOrCreateRow(quickRows[0]));
           if (quickRows.length > 1) {{
-            const extras = quickRows.slice(1).map(rowHtml).join("");
-            const summaryLabel = currentLanguage === "en"
+            var qExtras = document.createElement("details");
+            qExtras.className = "pipeline-history-quick-extras";
+            var qSummaryLabel = currentLanguage === "en"
               ? ("Show " + (quickRows.length - 1) + " more quick backfill runs")
               : ("查看其它 " + (quickRows.length - 1) + " 次快速回溯");
-            html.push(
-              '<details class="pipeline-history-quick-extras">' +
-                '<summary>' + escapeHtml(summaryLabel) + '</summary>' +
-                extras +
-              '</details>'
-            );
+            qExtras.insertAdjacentHTML("beforeend",
+              '<summary>' + escapeHtml(qSummaryLabel) + '</summary>');
+            for (var qi = 1; qi < quickRows.length; qi++) {{
+              qExtras.appendChild(getOrCreateRow(quickRows[qi]));
+            }}
+            container.appendChild(qExtras);
           }}
         }}
-        if (!html.length) {{
-          html.push(
-            '<div class="pipeline-history-row">' + escapeHtml(
-              currentLanguage === "en" ? "No recent runs yet." : "暂无近期运行记录。"
-            ) + '</div>'
-          );
+
+        for (var staleKey in existing) {{
+          var staleEl = existing[staleKey];
+          if (staleEl && staleEl.parentNode) {{
+            staleEl.parentNode.removeChild(staleEl);
+          }}
         }}
-        elements.pipelineHistory.innerHTML = html.join("");
+
+        elements.pipelineHistory.innerHTML = container.innerHTML;
         renderPipelineTokenSummaryInline(rows);
       }}
 
@@ -32295,7 +32395,7 @@ def build_html(data):
       window.setInterval(function () {{
         refreshTokenUsage(false);
       }}, config.livePollMs);
-      window.setInterval(refreshPipelineStatus, Math.min(config.livePollMs, 10000));
+      window.setInterval(refreshPipelineStatus, config.livePollMs);
       refreshTokenUsage(false);
       updatePipelineStatus(state.pipelineStatus || snapshot.pipeline_status || null);
       refreshPipelineStatus();
