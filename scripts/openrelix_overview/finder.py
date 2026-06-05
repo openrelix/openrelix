@@ -31,7 +31,7 @@ def reveal_path_in_finder(raw_path):
         return {"ok": False, "error": "finder_unsupported_platform", "path": str(path)}
     try:
         subprocess.Popen(
-            ["open", "-R", str(path)],
+            ["/usr/bin/open", "-R", str(path)],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             start_new_session=True,

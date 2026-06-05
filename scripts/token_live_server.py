@@ -31,6 +31,14 @@ from openrelix_overview.config import (
 from openrelix_overview.finder import FINDER_REVEAL_PATH, reveal_path_in_finder
 from openrelix_overview.memory_feedback import append_memory_feedback
 from openrelix_overview.pipeline_status import load_status as load_pipeline_status
+from openrelix_overview.skill_quarantine import (
+    block_all_grace,
+    block_all_suggestions,
+    block_entity,
+    quarantine_action_lock,
+    read_view_cache,
+    unblock_entity,
+)
 from openrelix_overview.token_fetcher import (
     fetch_ccusage_daily,
     normalize_token_provider,
@@ -67,6 +75,7 @@ UPDATE_STATUS_PATH = RUNTIME_DIR / "update-status.json"
 UPDATE_TIMEOUT_SECONDS = 600
 UPDATE_LOG_TAIL_LINES = 12
 PANEL_REFRESH_PATH = "/run-refresh"
+SKILL_QUARANTINE_PATH = "/skill-quarantine"
 PANEL_REFRESH_TIMEOUT_SECONDS = 180
 PANEL_REFRESH_LOG_TAIL_LINES = 20
 MEMORY_FEEDBACK_PATH = "/memory-feedback"
@@ -105,8 +114,25 @@ TRUSTED_POST_PATHS = {
     MEMORY_FEEDBACK_PATH,
     CLAUDE_DESKTOP_OPEN_PATH,
     FINDER_REVEAL_PATH,
+    SKILL_QUARANTINE_PATH,
 }
 SENSITIVE_GET_PATHS = {WINDOW_SEARCH_PATH}
+
+
+def skill_quarantine_warning_count(payload):
+    if not isinstance(payload, dict):
+        return 0
+    explicit = payload.get("migration_warning_count")
+    if isinstance(explicit, int):
+        return max(explicit, 0)
+    warnings = payload.get("migration_warnings")
+    return len(warnings) if isinstance(warnings, list) else 0
+
+
+def skill_quarantine_block_result_warning_count(result):
+    if not isinstance(result, dict):
+        return 0
+    return sum(skill_quarantine_warning_count(entry) for entry in result.get("blocked", []) or [])
 
 
 def get_update_token():
@@ -620,7 +646,7 @@ def memory_feedback_accepted_payload(feedback, refresh_snapshot, refresh_started
     }
 
 
-def start_manual_pipeline_refresh(target_date=None):
+def start_manual_pipeline_refresh(target_date=None, asset_layer_only=False):
     target_date = str(target_date or current_local_datetime().date().isoformat())
     current = load_pipeline_status(PATHS)
     if current.get("status") == "running":
@@ -648,7 +674,7 @@ def start_manual_pipeline_refresh(target_date=None):
     try:
         with REFRESH_LOCK:
             proc = subprocess.Popen(
-                build_panel_refresh_command(target_date, asset_layer_only=False),
+                build_panel_refresh_command(target_date, asset_layer_only=asset_layer_only),
                 cwd=str(PATHS.repo_root),
                 env=env,
                 stdin=subprocess.DEVNULL,
@@ -672,6 +698,7 @@ def start_manual_pipeline_refresh(target_date=None):
         "status": "running",
         "started_now": True,
         "target_date": target_date,
+        "asset_layer_only": bool(asset_layer_only),
         "pid": proc.pid,
     })
     return True, snapshot
@@ -1408,6 +1435,67 @@ class TokenLiveHandler(BaseHTTPRequestHandler):
                 memory_feedback_accepted_payload(feedback, refresh_snapshot, refresh_started),
                 allow_origin=origin or None,
             )
+            return
+        if parsed.path == SKILL_QUARANTINE_PATH:
+            try:
+                payload = json.loads(body.decode("utf-8")) if body else {}
+            except (UnicodeDecodeError, json.JSONDecodeError):
+                payload = {}
+            action = str(payload.get("action") or "").strip()
+            entity_key = str(payload.get("entity_key") or "").strip()
+            cached_view = read_view_cache(PATHS) or None
+            try:
+                with quarantine_action_lock(PATHS):
+                    if action == "block":
+                        result = block_entity(PATHS, entity_key, apply=True, view=cached_view)
+                        response = {
+                            "ok": True,
+                            "action": action,
+                            "entry": result,
+                            "migration_warning_count": skill_quarantine_warning_count(result),
+                        }
+                    elif action == "unblock":
+                        result = unblock_entity(PATHS, entity_key, apply=True, view=cached_view)
+                        response = {
+                            "ok": bool(result.get("ok")),
+                            "action": action,
+                            "result": result,
+                            "migration_warning_count": skill_quarantine_warning_count(result),
+                        }
+                    elif action == "block-all":
+                        result = block_all_suggestions(PATHS, apply=True, view=cached_view)
+                        response = {
+                            "ok": True,
+                            "action": action,
+                            "blocked_count": len(result.get("blocked", [])),
+                            "migration_warning_count": skill_quarantine_block_result_warning_count(result),
+                        }
+                    elif action == "block-grace-all":
+                        result = block_all_grace(PATHS, apply=True, view=cached_view)
+                        response = {
+                            "ok": True,
+                            "action": action,
+                            "blocked_count": len(result.get("blocked", [])),
+                            "migration_warning_count": skill_quarantine_block_result_warning_count(result),
+                        }
+                    else:
+                        self._send_json(
+                            400,
+                            {"ok": False, "error": "unsupported_action"},
+                            allow_origin=origin or None,
+                        )
+                        return
+            except ValueError as exc:
+                self._send_json(
+                    400,
+                    {"ok": False, "error": str(exc)},
+                    allow_origin=origin or None,
+                )
+                return
+            refresh_started, refresh_snapshot = start_manual_pipeline_refresh(asset_layer_only=True)
+            response["refresh"] = refresh_snapshot
+            response["refresh_started_now"] = refresh_started
+            self._send_json(200 if response.get("ok") else 409, response, allow_origin=origin or None)
             return
         if parsed.path == PANEL_REFRESH_PATH:
             try:

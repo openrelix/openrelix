@@ -61,6 +61,7 @@ from asset_runtime import (
 )
 from openrelix_overview import asset_discovery as overview_asset_discovery
 from openrelix_overview import codex_profiles as overview_codex_profiles
+from openrelix_overview import skill_quarantine as overview_skill_quarantine
 from openrelix_overview.token_fetcher import fetch_ccusage_daily, normalize_token_provider
 from openrelix_overview.token_usage import build_token_usage_view, normalize_token_group_by
 from openrelix_memory_migration import (
@@ -945,6 +946,66 @@ def build_parser():
         action="store_true",
         help=localized("以 JSON 打印统计快照。", "Print the stats snapshot as JSON."),
     )
+
+    skill_quarantine = subparsers.add_parser(
+        "skill-quarantine",
+        aliases=["skill-blackroom", "skill-blacklist"],
+        help=localized(
+            "管理 Skill/MCP 小黑屋。",
+            "Manage Skill/MCP quarantine.",
+        ),
+    )
+    skill_quarantine_subparsers = skill_quarantine.add_subparsers(
+        dest="subcommand",
+        help=localized("子命令。", "Subcommands."),
+    )
+    skill_quarantine_list = skill_quarantine_subparsers.add_parser(
+        "list",
+        help=localized("列出所有 Skill/MCP 状态。", "List Skill/MCP quarantine status."),
+    )
+    skill_quarantine_list.add_argument("--json", action="store_true", help=localized("以 JSON 打印。", "Print JSON."))
+    skill_quarantine_suggest = skill_quarantine_subparsers.add_parser(
+        "suggest",
+        help=localized("查看建议隔离的项目。", "Show suggested quarantine items."),
+    )
+    skill_quarantine_suggest.add_argument("--json", action="store_true", help=localized("以 JSON 打印。", "Print JSON."))
+    skill_quarantine_blocked = skill_quarantine_subparsers.add_parser(
+        "blocked",
+        help=localized("查看小黑屋。", "Show quarantined items."),
+    )
+    skill_quarantine_blocked.add_argument("--json", action="store_true", help=localized("以 JSON 打印。", "Print JSON."))
+    skill_quarantine_block = skill_quarantine_subparsers.add_parser(
+        "block",
+        help=localized("手动隔离。", "Manually quarantine an item."),
+    )
+    skill_quarantine_block.add_argument("entity", help=localized("项目 ID，例如 skill:foo 或 mcp:playwright。", "Entity ID, for example skill:foo or mcp:playwright."))
+    skill_quarantine_block.add_argument("--type", choices=["skill", "mcp"], help=localized("未写前缀时指定类型。", "Type to use when the entity has no prefix."))
+    skill_quarantine_block.add_argument("--note", default="", help=localized("备注。", "Note."))
+    skill_quarantine_block.add_argument("--no-apply", action="store_true", help=localized("只记录状态，不搬移 skill 或改 MCP JSON 配置。", "Only record state; do not move skills or edit MCP JSON config."))
+    skill_quarantine_unblock = skill_quarantine_subparsers.add_parser(
+        "unblock",
+        help=localized("从小黑屋放行。", "Restore an item from quarantine."),
+    )
+    skill_quarantine_unblock.add_argument("entity", help=localized("项目 ID，例如 skill:foo 或 mcp:playwright。", "Entity ID, for example skill:foo or mcp:playwright."))
+    skill_quarantine_unblock.add_argument("--type", choices=["skill", "mcp"], help=localized("未写前缀时指定类型。", "Type to use when the entity has no prefix."))
+    skill_quarantine_unblock.add_argument("--no-apply", action="store_true", help=localized("只移除状态，不恢复搬移或配置。", "Only remove state; do not restore moved files or config."))
+    skill_quarantine_all = skill_quarantine_subparsers.add_parser(
+        "block-all",
+        aliases=["auto-clean"],
+        help=localized("一键隔离所有建议项。", "Quarantine all suggested items."),
+    )
+    skill_quarantine_all.add_argument("--dry-run", action="store_true", help=localized("仅预览，不执行。", "Preview only."))
+    skill_quarantine_all.add_argument("--yes", "-y", action="store_true", help=localized("跳过确认。", "Skip confirmation."))
+    skill_quarantine_all.add_argument("--no-apply", action="store_true", help=localized("只记录状态，不搬移 skill 或改 MCP JSON 配置。", "Only record state; do not move skills or edit MCP JSON config."))
+    skill_quarantine_all.add_argument("--json", action="store_true", help=localized("以 JSON 打印。", "Print JSON."))
+    skill_quarantine_grace_all = skill_quarantine_subparsers.add_parser(
+        "block-grace-all",
+        help=localized("一键隔离所有可选项。", "Quarantine all optional items."),
+    )
+    skill_quarantine_grace_all.add_argument("--dry-run", action="store_true", help=localized("仅预览，不执行。", "Preview only."))
+    skill_quarantine_grace_all.add_argument("--yes", "-y", action="store_true", help=localized("跳过确认。", "Skip confirmation."))
+    skill_quarantine_grace_all.add_argument("--no-apply", action="store_true", help=localized("只记录状态，不搬移 skill 或改 MCP JSON 配置。", "Only record state; do not move skills or edit MCP JSON config."))
+    skill_quarantine_grace_all.add_argument("--json", action="store_true", help=localized("以 JSON 打印。", "Print JSON."))
 
     index = subparsers.add_parser(
         "index",
@@ -2323,7 +2384,11 @@ def print_model_failure_warning(summary, date_str):
 
 
 def print_json(payload):
-    print(json.dumps(payload, ensure_ascii=False, indent=2))
+    try:
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+    except BrokenPipeError:
+        sys.stdout = open(os.devnull, "w", encoding="utf-8")
+        raise SystemExit(0)
 
 
 def format_metric_row(metric):
@@ -4786,6 +4851,178 @@ def command_asset_stats(args):
     print("- skill_sessions_30d: {}".format(summary.get("skill_sessions_30d", 0)))
 
 
+def collect_asset_codex_homes():
+    runtime_config = load_runtime_config(PATHS)
+    codex_profiles = overview_codex_profiles.collect_codex_profiles(
+        PATHS,
+        config=runtime_config,
+        include_running=True,
+    )
+    return [profile.codex_home for profile in codex_profiles]
+
+
+def format_quarantine_row(row):
+    return "{key:<34} {typ:<5} {uses:<5} {last:<12} {status:<14} {reason}".format(
+        key=str(row.get("entity_key") or "")[:34],
+        typ=str(row.get("entity_type") or "")[:5],
+        uses=str(row.get("usage_30d", 0)),
+        last=str(row.get("last_used_at") or "-")[:12],
+        status=str(row.get("isolation_status") or row.get("status") or "")[:14],
+        reason=str(row.get("reason") or ""),
+    )
+
+
+def print_quarantine_rows(title, rows):
+    print(title)
+    print("-" * 92)
+    if not rows:
+        print(localized("暂无。", "None."))
+        return
+    print("{:<34} {:<5} {:<5} {:<12} {:<14} {}".format("entity", "type", "30d", "last", "status", "reason"))
+    for row in rows:
+        print(format_quarantine_row(row))
+
+
+def command_skill_quarantine(args):
+    codex_homes = collect_asset_codex_homes()
+    today = datetime.now().astimezone().date()
+    view = overview_skill_quarantine.build_quarantine_view(
+        PATHS,
+        today=today,
+        codex_homes=codex_homes,
+    )
+    subcommand = args.subcommand or "list"
+    if subcommand == "list":
+        if args.json:
+            print_json(view)
+            return
+        counts = view.get("counts", {})
+        print(localized("Skill/MCP 小黑屋", "Skill/MCP Quarantine"))
+        print("- suggested: {}".format(counts.get("suggested", 0)))
+        print("- quarantined: {}".format(counts.get("quarantined", 0)))
+        print("- grace: {}".format(counts.get("grace", 0)))
+        print_quarantine_rows(localized("建议隔离", "Suggested"), view.get("suggested", []))
+        print()
+        print_quarantine_rows(localized("可选隔离", "Optional Isolation"), view.get("grace", []))
+        print()
+        print_quarantine_rows(localized("小黑屋", "Quarantine"), view.get("quarantined", []))
+        return
+    if subcommand == "suggest":
+        rows = view.get("suggested", [])
+        if args.json:
+            print_json({"suggested": rows, "count": len(rows)})
+            return
+        print_quarantine_rows(localized("建议隔离", "Suggested"), rows)
+        return
+    if subcommand == "blocked":
+        rows = view.get("quarantined", [])
+        if args.json:
+            print_json({"quarantined": rows, "count": len(rows)})
+            return
+        print_quarantine_rows(localized("小黑屋", "Quarantine"), rows)
+        return
+    if subcommand == "block":
+        with overview_skill_quarantine.quarantine_action_lock(PATHS):
+            entry = overview_skill_quarantine.block_entity(
+                PATHS,
+                args.entity,
+                entity_type=getattr(args, "type", None),
+                today=today,
+                note=getattr(args, "note", ""),
+                apply=not getattr(args, "no_apply", False),
+                view=view,
+                codex_homes=codex_homes,
+            )
+        print(localized("已隔离: {}", "Quarantined: {}").format(entry.get("entity_key")))
+        print("- isolation_status: {}".format(entry.get("isolation_status")))
+        print("- state: {}".format(overview_skill_quarantine.quarantine_state_path(PATHS)))
+        return
+    if subcommand == "unblock":
+        with overview_skill_quarantine.quarantine_action_lock(PATHS):
+            result = overview_skill_quarantine.unblock_entity(
+                PATHS,
+                args.entity,
+                entity_type=getattr(args, "type", None),
+                today=today,
+                apply=not getattr(args, "no_apply", False),
+                codex_homes=codex_homes,
+            )
+        print(localized("已放行: {}", "Restored: {}").format(result.get("entity_key")))
+        print("- ok: {}".format(result.get("ok")))
+        return
+    if subcommand in {"block-all", "auto-clean"}:
+        preview = overview_skill_quarantine.block_all_suggestions(
+            PATHS,
+            today=today,
+            dry_run=True,
+            codex_homes=codex_homes,
+        )
+        suggestions = preview.get("suggested", [])
+        if args.dry_run:
+            if args.json:
+                print_json(preview)
+            else:
+                print_quarantine_rows(localized("将隔离", "Will quarantine"), suggestions)
+            return
+        if suggestions and not args.yes:
+            answer = input(localized(
+                "确认移入 {} 个建议项？输入 yes 继续: ".format(len(suggestions)),
+                "Quarantine {} suggested items? Type yes to continue: ".format(len(suggestions)),
+            ))
+            if answer.strip().lower() != "yes":
+                print(localized("已取消。", "Cancelled."))
+                return
+        with overview_skill_quarantine.quarantine_action_lock(PATHS):
+            result = overview_skill_quarantine.block_all_suggestions(
+                PATHS,
+                today=today,
+                apply=not getattr(args, "no_apply", False),
+                codex_homes=codex_homes,
+            )
+        if args.json:
+            print_json(result)
+            return
+        print(localized("已隔离: {} 项", "Quarantined: {} items").format(len(result.get("blocked", []))))
+        print("- state: {}".format(overview_skill_quarantine.quarantine_state_path(PATHS)))
+        return
+    if subcommand == "block-grace-all":
+        preview = overview_skill_quarantine.block_all_grace(
+            PATHS,
+            today=today,
+            dry_run=True,
+            codex_homes=codex_homes,
+        )
+        grace_rows = preview.get("grace", [])
+        if args.dry_run:
+            if args.json:
+                print_json(preview)
+            else:
+                print_quarantine_rows(localized("将隔离可选项", "Will quarantine optional items"), grace_rows)
+            return
+        if grace_rows and not args.yes:
+            answer = input(localized(
+                "确认移入 {} 个可选项？输入 yes 继续: ".format(len(grace_rows)),
+                "Quarantine {} optional items? Type yes to continue: ".format(len(grace_rows)),
+            ))
+            if answer.strip().lower() != "yes":
+                print(localized("已取消。", "Cancelled."))
+                return
+        with overview_skill_quarantine.quarantine_action_lock(PATHS):
+            result = overview_skill_quarantine.block_all_grace(
+                PATHS,
+                today=today,
+                apply=not getattr(args, "no_apply", False),
+                codex_homes=codex_homes,
+            )
+        if args.json:
+            print_json(result)
+            return
+        print(localized("已隔离可选项: {} 项", "Quarantined optional items: {}").format(len(result.get("blocked", []))))
+        print("- state: {}".format(overview_skill_quarantine.quarantine_state_path(PATHS)))
+        return
+    raise SystemExit(localized("不支持的子命令: {}", "Unsupported subcommand: {}").format(subcommand))
+
+
 def print_index_results(kind, rows):
     if not rows:
         print(localized("未找到结果。", "No results."))
@@ -5618,6 +5855,9 @@ def main():
         return
     if args.command == "asset-stats":
         command_asset_stats(args)
+        return
+    if args.command in {"skill-quarantine", "skill-blackroom", "skill-blacklist"}:
+        command_skill_quarantine(args)
         return
     if args.command == "index":
         command_index(args)

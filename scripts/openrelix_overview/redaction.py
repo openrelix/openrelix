@@ -33,6 +33,9 @@ LOCAL_EXECUTION_ATTR_PATTERNS = (
     r"data-claude-cwd=([\"'])[^\"']+\1",
     r"data-claude-cwd=\\([\"'])[^\\]+?\\\1",
 )
+LOCAL_EXECUTION_ATTR_PLACEHOLDER_RE = re.compile(
+    r"\x00OPENRELIX_LOCAL_ATTR_\d+_[0-9a-f]{32}\x00"
+)
 
 
 def protect_local_execution_attrs(text):
@@ -52,9 +55,13 @@ def protect_local_execution_attrs(text):
 
 
 def restore_protected_text(text, protected):
-    for placeholder, original in protected:
-        text = text.replace(placeholder, original)
-    return text
+    if not protected:
+        return text
+    replacements = dict(protected)
+    return LOCAL_EXECUTION_ATTR_PLACEHOLDER_RE.sub(
+        lambda match: replacements.get(match.group(0), match.group(0)),
+        text,
+    )
 
 
 def load_personal_redaction_patterns(paths=None, denylist_env_var="OPENRELIX_PERSONAL_DENYLIST"):
@@ -93,7 +100,12 @@ def load_personal_redaction_patterns(paths=None, denylist_env_var="OPENRELIX_PER
     return tuple(compiled)
 
 
-def redact_personal_text(value, patterns=(), redaction_label=PERSONAL_REDACTION_LABEL):
+def redact_personal_text(
+    value,
+    patterns=(),
+    redaction_label=PERSONAL_REDACTION_LABEL,
+    protect_local_attrs=True,
+):
     if not isinstance(value, str):
         return value
     text = value
@@ -102,7 +114,9 @@ def redact_personal_text(value, patterns=(), redaction_label=PERSONAL_REDACTION_
     # redacting visible text and title attributes around those links. Finder
     # reveal buttons need the same treatment because the hidden path is the
     # action payload, not display text.
-    text, protected_local_attrs = protect_local_execution_attrs(text)
+    protected_local_attrs = ()
+    if protect_local_attrs:
+        text, protected_local_attrs = protect_local_execution_attrs(text)
 
     text = re.sub(r"file:///(?:Users|home)/[^/\\\s<>\"']+", "file://~", text)
     text = re.sub(r"(?:/Users|/home)/[^/\\\s<>\"']+", "~", text)
@@ -146,7 +160,12 @@ def normalize_brand_display_text(
     for phrase in legacy_phrases:
         text = text.replace(phrase, brand_display_name)
     text = re.sub(r"\bAPA\b", brand_display_name, text)
-    text = redact_personal_text(text, patterns=patterns, redaction_label=redaction_label)
+    text = redact_personal_text(
+        text,
+        patterns=patterns,
+        redaction_label=redaction_label,
+        protect_local_attrs=False,
+    )
     return restore_protected_text(text, protected_local_attrs)
 
 

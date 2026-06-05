@@ -7433,7 +7433,7 @@ Native Codex profile.
         self.assertIn("state.tokenRefreshQueued = true;", html)
         self.assertIn("cacheKey === tokenRequestCacheKey(state.tokenFilters || {}, windowDays)", html)
         self.assertIn("state.tokenStaleRetryDelayMs = Math.min(delayMs * 2, 60000);", html)
-        self.assertIn("}}, 3500);", html)
+        self.assertIn("}, 3500);", html)
         self.assertNotIn(".token-filter-panel.is-loading .token-segment-button", html)
         self.assertIn("function extractTokenRowCost(row)", html)
         self.assertIn("display: compactTokenWithCostValue(row.value, rowCost)", html)
@@ -7756,7 +7756,7 @@ Native Codex profile.
         self.assertLess(main_template.index("{usage_rows}"), main_template.index("{project_context_body}"))
         self.assertLess(main_template.index("{project_context_body}"), main_template.index("{window_overview_header}"))
 
-    def test_build_html_routes_skill_file_opens_through_finder_endpoint(self):
+    def test_build_html_keeps_finder_reveal_endpoint_for_path_buttons(self):
         source = (ROOT / "scripts" / "build_overview.py").read_text(encoding="utf-8")
 
         self.assertIn("data-finder-open-endpoint", source)
@@ -7772,6 +7772,44 @@ Native Codex profile.
         self.assertIn("action-button asset-refresh-button", source)
         self.assertIn("asset-refresh-meta", source)
         self.assertIn("{asset_refresh_meta_html}", source)
+
+    def test_skill_quarantine_action_updates_rows_without_static_reload(self):
+        source = (ROOT / "scripts" / "build_overview.py").read_text(encoding="utf-8")
+        start = source.index("function submitSkillQuarantineAction")
+        end = source.index("function wireSkillQuarantineActions", start)
+        handler_source = source[start:end]
+        apply_start = source.index("function applySkillQuarantineSuccess")
+        apply_end = source.index("function submitSkillQuarantineAction", apply_start)
+        apply_source = source[apply_start:apply_end]
+
+        self.assertIn("applySkillQuarantineSuccess(action, button, payload)", handler_source)
+        self.assertIn('action === "block-grace-all"', handler_source)
+        self.assertIn('skillQuarantineMessage("confirmGraceAll")', handler_source)
+        self.assertIn("skillQuarantinePayloadWarningCount(payload)", handler_source)
+        self.assertIn('skillQuarantineMessage("savedWithWarnings")', handler_source)
+        self.assertIn('applySkillQuarantineBlockAllSuccess(payload, "grace")', apply_source)
+        self.assertIn("rememberSkillQuarantineAction", source)
+        self.assertIn("applyStoredSkillQuarantineActions()", source)
+        self.assertIn("skill-quarantine-warning-panel", source)
+        self.assertIn("skill-quarantine-warning-inline", source)
+        self.assertIn("skill-quarantine-table-count", source)
+        self.assertIn("skillQuarantineCountText", source)
+        self.assertIn("Skill/MCP 小黑屋", source)
+        self.assertIn("一键隔离可选项", source)
+        self.assertIn("创建天数", source)
+        self.assertNotIn("skill-quarantine-table-head span", source)
+        self.assertNotIn("一键隔离" + "缓" + "冲期项", source)
+        self.assertIn("migration_warnings", source)
+        self.assertNotIn("window.location.reload()", handler_source)
+
+    def test_skill_quarantine_refresh_uses_lightweight_asset_layer_rebuild(self):
+        source = (ROOT / "scripts" / "token_live_server.py").read_text(encoding="utf-8")
+
+        self.assertIn("start_manual_pipeline_refresh(target_date=None, asset_layer_only=False)", source)
+        self.assertIn("start_manual_pipeline_refresh(asset_layer_only=True)", source)
+        self.assertIn("with quarantine_action_lock(PATHS):", source)
+        self.assertIn("skill_quarantine_block_result_warning_count(result)", source)
+        self.assertIn('"migration_warning_count"', source)
 
     def test_build_html_uses_light_system_dashboard_style(self):
         source = (ROOT / "scripts" / "build_overview.py").read_text(encoding="utf-8")
@@ -9702,7 +9740,7 @@ Native Codex profile.
         self.assertTrue(result["ok"])
         self.assertEqual(result["status"], "opening")
         command = popen.call_args.args[0]
-        self.assertEqual(command[:2], ["open", "-R"])
+        self.assertEqual(command[:2], ["/usr/bin/open", "-R"])
         self.assertEqual(command[2], str(target.resolve()))
 
     def test_finder_reveal_rejects_missing_or_relative_path(self):
@@ -13521,11 +13559,11 @@ Native Codex profile.
         self.assertIn('data-window-date="2026-04-26"', html)
         self.assertIn('data-window-started-at="2026-04-26T09:00:00+08:00"', html)
         self.assertIn("窗口创建 04-26 09:00", html)
-        self.assertIn('"window_overview_default_date": "2026-04-26"', html)
-        self.assertIn('"window_filter_start_date": "2026-04-24"', html)
-        self.assertIn('"window_filter_end_date": "2026-04-26"', html)
-        self.assertIn('"window_detail_visible_count": 20', html)
-        self.assertIn('"window_overview_project_visible_count": 3', html)
+        self.assertIn('"window_overview_default_date":"2026-04-26"', html)
+        self.assertIn('"window_filter_start_date":"2026-04-24"', html)
+        self.assertIn('"window_filter_end_date":"2026-04-26"', html)
+        self.assertIn('"window_detail_visible_count":20', html)
+        self.assertIn('"window_overview_project_visible_count":3', html)
         self.assertIn("function applyWindowFilters()", html)
         self.assertIn("function windowFilterNeedsBackfillHint(filters)", html)
         self.assertIn("function windowBackfillSearchWarning(filters)", html)
@@ -13829,12 +13867,24 @@ Native Codex profile.
             }
         )
 
-        self.assertIn('"context_labels_en": ["Personal assets system", "Codex local environment"]', html)
         self.assertIn(
-            '"note_text_en": "These numbers combine the new memory policy with today\'s Token snapshot: general and project context both enter host context under separate budgets."',
+            json.dumps(
+                {
+                    "context_labels_en": [
+                        "Personal assets system",
+                        "Codex local environment",
+                    ]
+                },
+                ensure_ascii=False,
+                separators=(",", ":"),
+            )[1:-1],
             html,
         )
-        self.assertIn('"lead_text_en": "2026-04-27 synthesis captured 2 work windows', html)
+        self.assertIn(
+            '"note_text_en":"These numbers combine the new memory policy with today\'s Token snapshot: general and project context both enter host context under separate budgets."',
+            html,
+        )
+        self.assertIn('"lead_text_en":"2026-04-27 synthesis captured 2 work windows', html)
         self.assertIn('getLocalizedSummaryText(summary, "lead_text")', html)
         self.assertIn('getLocalizedSummaryList(summary, "detail_parts")', html)
         self.assertIn('getLocalizedSummaryList(summary, "context_labels")', html)

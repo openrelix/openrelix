@@ -666,20 +666,25 @@ class AssetDiscoveryTests(unittest.TestCase):
         self.assertEqual(android_cr["click_target"], str(agent_manifest.resolve()))
         self.assertEqual(android_cr["description"], "Agent source")
 
-    def test_discovered_skill_name_uses_finder_button_instead_of_file_href(self):
+    def test_discovered_skill_name_links_to_skill_file(self):
+        manifest_path = self.paths.codex_home / "skills" / "foo" / "SKILL.md"
+        manifest_path.parent.mkdir(parents=True, exist_ok=True)
+        manifest_path.write_text("---\nname: foo\n---\n", encoding="utf-8")
         html = build_overview.make_discovered_asset_name_html(
             {
                 "type": "skill",
                 "name": "foo",
                 "identifier": "foo",
-                "click_target": str(self.paths.codex_home / "skills" / "foo" / "SKILL.md"),
+                "click_target": str(manifest_path),
             }
         )
 
-        self.assertIn("data-open-finder-path", html)
-        self.assertIn("<button", html)
-        self.assertNotIn("file://", html)
-        self.assertNotIn("<a ", html)
+        self.assertIn('class="discovered-skill-name path-link"', html)
+        self.assertIn("file://", html)
+        self.assertIn("/SKILL.md", html)
+        self.assertIn("<a ", html)
+        self.assertNotIn("data-open-finder-path", html)
+        self.assertNotIn("<button", html)
 
     def test_noise_gate_preserves_installed_zero_activation_skill(self):
         self.write_skill(self.paths.codex_home / "skills", "quiet")
