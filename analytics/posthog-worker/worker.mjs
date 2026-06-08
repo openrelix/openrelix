@@ -42,6 +42,33 @@ const ALLOWED_MODULES = new Set([
   "window_details",
 ]);
 
+const MODULE_LABELS_ZH = new Map([
+  ["overview", "总览"],
+  ["nightly_summary", "整理摘要"],
+  ["token_filters", "Token 筛选"],
+  ["token_usage", "Token 使用明细"],
+  ["token_overview", "Token 总览"],
+  ["daily_token_usage", "每日 Token 使用"],
+  ["today_token_usage", "今日 Token 使用"],
+  ["pipeline_status", "处理状态"],
+  ["personal_asset_memory", "个人资产记忆"],
+  ["memory_compiler", "记忆编译"],
+  ["curated_memory", "精选记忆"],
+  ["codex_native_memory", "Codex 原生记忆"],
+  ["claude_native_memory", "Claude 原生记忆"],
+  ["asset_ledger", "资产台账"],
+  ["asset_filters", "资产筛选"],
+  ["asset_stats", "资产统计"],
+  ["top_assets", "高频资产"],
+  ["mcp_usage", "MCP 使用"],
+  ["discovered_assets", "已发现资产"],
+  ["reviews", "复盘"],
+  ["usage_events", "使用事件"],
+  ["window_context", "窗口上下文"],
+  ["window_filters", "窗口筛选"],
+  ["window_details", "窗口详情"],
+]);
+
 const ALLOWED_CONTROLS = new Set([
   "asset_refresh",
   "update_primary",
@@ -67,6 +94,33 @@ const ALLOWED_CONTROLS = new Set([
   "window_resume_claude",
   "window_resume_copy",
   "window_review_copy",
+]);
+
+const CONTROL_LABELS_ZH = new Map([
+  ["asset_refresh", "刷新资产"],
+  ["update_primary", "主更新"],
+  ["theme_switch", "切换主题"],
+  ["language_switch", "切换语言"],
+  ["token_provider_filter", "Token 提供方筛选"],
+  ["token_group_filter", "Token 分组筛选"],
+  ["token_range_filter", "Token 时间范围筛选"],
+  ["window_range_filter", "窗口时间范围筛选"],
+  ["window_search_range_filter", "窗口搜索时间范围筛选"],
+  ["window_search_scope_filter", "窗口搜索范围筛选"],
+  ["window_search_open", "打开窗口搜索"],
+  ["window_search_submit", "提交窗口搜索"],
+  ["window_search_reset", "重置窗口搜索"],
+  ["window_search_close", "关闭窗口搜索"],
+  ["window_detail_more", "展开窗口详情"],
+  ["window_backfill_copy", "复制窗口回填"],
+  ["memory_feedback", "记忆反馈"],
+  ["context_days_filter", "上下文天数筛选"],
+  ["expand_more", "展开更多"],
+  ["collapse_more", "收起更多"],
+  ["window_resume_codex", "用 Codex 续聊"],
+  ["window_resume_claude", "用 Claude 续聊"],
+  ["window_resume_copy", "复制续聊内容"],
+  ["window_review_copy", "复制复盘内容"],
 ]);
 
 const ALLOWED_REASONS = new Set([
@@ -195,11 +249,13 @@ function sanitizeProperties(properties) {
   const moduleID = cleanString(source.module_id, 80);
   if (ALLOWED_MODULES.has(moduleID)) {
     clean.module_id = moduleID;
+    clean.module_label_zh = MODULE_LABELS_ZH.get(moduleID) || moduleID;
   }
 
   const controlID = cleanString(source.control_id, 80);
   if (ALLOWED_CONTROLS.has(controlID)) {
     clean.control_id = controlID;
+    clean.control_label_zh = CONTROL_LABELS_ZH.get(controlID) || controlID;
   }
 
   const reason = cleanString(source.reason, 80);

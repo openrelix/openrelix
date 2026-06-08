@@ -83,10 +83,60 @@ class PostHogWorkerTests(unittest.TestCase):
             assert.equal(posthogEvent.properties.openrelix_os, "macOS");
             assert.equal(posthogEvent.properties.openrelix_os_version, "15.5");
             assert.equal(posthogEvent.properties.module_id, "personal_asset_memory");
+            assert.equal(posthogEvent.properties.module_label_zh, "个人资产记忆");
             assert.equal(posthogEvent.properties.dwell_ms, 1234);
             assert.equal(posthogEvent.properties.reason, "page_hidden");
             assert.equal(posthogEvent.properties.prompt, undefined);
             assert.equal(posthogEvent.properties.file_path, undefined);
+            """
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_control_events_include_chinese_display_label(self):
+        result = run_node(
+            """
+            import assert from "node:assert/strict";
+            import worker from "./analytics/posthog-worker/worker.mjs";
+
+            const env = {
+              OPENRELIX_ANALYTICS_INGEST_TOKEN: "ingest-test-token",
+              POSTHOG_API_KEY: "phc_test_project_token",
+            };
+            let captured = null;
+            globalThis.fetch = async (url, options) => {
+              captured = { url: String(url), body: JSON.parse(options.body) };
+              return new Response(JSON.stringify({ ok: true }), { status: 200 });
+            };
+
+            const response = await worker.fetch(new Request("https://collector.example/events", {
+              method: "POST",
+              headers: {
+                authorization: "Bearer ingest-test-token",
+                "content-type": "application/json",
+              },
+              body: JSON.stringify({
+                events: [{
+                  schema_version: 1,
+                  app: "openrelix_macos",
+                  event: "control_click",
+                  install_id: "12345678-1234-1234-1234-123456789abc",
+                  session_id: "abcdef12-3456-7890-abcd-ef1234567890",
+                  properties: {
+                    control_id: "window_search_open",
+                    module_id: "window_details",
+                  },
+                }],
+              }),
+            }), env);
+            const payload = await response.json();
+
+            assert.equal(response.status, 200);
+            assert.deepEqual(payload, { ok: true, accepted: 1, rejected: 0 });
+            const posthogEvent = captured.body.batch[0];
+            assert.equal(posthogEvent.properties.control_id, "window_search_open");
+            assert.equal(posthogEvent.properties.control_label_zh, "打开窗口搜索");
+            assert.equal(posthogEvent.properties.module_id, "window_details");
+            assert.equal(posthogEvent.properties.module_label_zh, "窗口详情");
             """
         )
         self.assertEqual(result.returncode, 0, result.stderr)
