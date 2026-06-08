@@ -37,6 +37,8 @@ unknown events/properties. It forwards aggregate product analytics fields only:
 - app version and coarse macOS version
 - fixed event names
 - whitelisted `module_id` / `control_id`
+- Chinese display labels `module_label_zh` / `control_label_zh` derived from
+  the fixed module/control allowlists
 - `dwell_ms`, `session_duration_ms`, `reason`, and `panel_language`
 
 It must not receive or forward prompts, model responses, memory or review text,
@@ -105,9 +107,11 @@ Recommended insights:
 - `Session duration`: average and p50 of `session_duration_ms` on
   `openrelix_app_quit`.
 - `Module dwell heatmap`: `sum(dwell_ms)` and `p50(dwell_ms)` from
-  `openrelix_module_hidden`, broken down by `module_id`.
+  `openrelix_module_hidden`, broken down by `module_label_zh` for Chinese
+  dashboards or `module_id` for raw debugging.
 - `Core action clicks`: count and unique users for `openrelix_control_click`,
-  broken down by `control_id`.
+  broken down by `control_label_zh` for Chinese dashboards or `control_id` for
+  raw debugging.
 - `Memory value funnel`: `openrelix_panel_ready -> openrelix_module_visible`
   filtered to `module_id=personal_asset_memory -> openrelix_control_click`
   filtered to `control_id=memory_feedback`.
