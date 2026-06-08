@@ -45,6 +45,25 @@ It must not receive or forward prompts, model responses, memory or review text,
 window titles, project names, file paths, usernames, hostnames, cookies, tokens,
 local reports, raw OpenRelix state, or generated panel content.
 
+## AI Development Guardrails
+
+When an AI or human developer adds a macOS panel module, button, filter, or
+other product surface, treat analytics as part of the feature contract:
+
+- Start with the product question the metric should answer.
+- Reuse the existing event schema when possible.
+- Add any new `module_id` / `control_id` to the Worker allowlist and add the
+  matching Chinese display label.
+- Update the analytics table and dashboard maintenance notes in
+  `analytics-governance.zh-CN.md`.
+- Keep Chinese product dashboards broken down by `module_label_zh` or
+  `control_label_zh`; use raw IDs only for debug dashboards.
+- Add or update focused Worker tests before shipping.
+
+The Worker fails at module load time if an allowlisted module or control is
+missing its Chinese label. This keeps AI-assisted feature work from silently
+breaking the Chinese dashboard.
+
 ## Deploy
 
 1. Create a PostHog project and copy the project token.

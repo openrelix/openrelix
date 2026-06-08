@@ -302,7 +302,10 @@ For an 800 DAU first pass, the repo includes a PostHog + Cloudflare Worker
 collector template and dashboard recipe at
 `analytics/posthog-worker/README.md`. It forwards only the whitelisted schema to
 PostHog Product Analytics and is intentionally kept outside the npm package
-allowlist until there is an explicit release decision.
+allowlist until there is an explicit release decision. AI-assisted panel feature
+work should also follow the analytics governance checklist at
+`analytics/posthog-worker/analytics-governance.zh-CN.md` so event tables,
+Chinese labels, focused tests, and PostHog dashboard cards stay in sync.
 
 For release updates, use `openrelix update --check` in automation and `openrelix update --yes` when you actually want to reinstall the latest npm package. If the package is already current but the local app, LaunchAgents, or generated panel need to be resynced, use `openrelix update --yes --force`. The in-panel update button uses that repair path automatically, then reloads the regenerated panel. The daily check is intentionally no-mutation; `09:30` is the default because it avoids the `23:00` nightly preview and `00:10` previous-day finalize windows.
 
