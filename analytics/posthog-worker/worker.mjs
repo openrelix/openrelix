@@ -132,6 +132,17 @@ const ALLOWED_REASONS = new Set([
   "provisional_navigation_error",
 ]);
 
+function assertLabelCoverage(ids, labels, labelName) {
+  for (const id of ids) {
+    if (!labels.has(id)) {
+      throw new Error(`${labelName}_missing_${id}`);
+    }
+  }
+}
+
+assertLabelCoverage(ALLOWED_MODULES, MODULE_LABELS_ZH, "module_label_zh");
+assertLabelCoverage(ALLOWED_CONTROLS, CONTROL_LABELS_ZH, "control_label_zh");
+
 function jsonResponse(payload, status = 200) {
   return new Response(JSON.stringify(payload), {
     status,

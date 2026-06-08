@@ -19,6 +19,17 @@ def run_node(script):
 
 
 class PostHogWorkerTests(unittest.TestCase):
+    def test_worker_module_loads_with_complete_chinese_label_maps(self):
+        result = run_node(
+            """
+            import assert from "node:assert/strict";
+            import worker from "./analytics/posthog-worker/worker.mjs";
+
+            assert.equal(typeof worker.fetch, "function");
+            """
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_valid_event_is_sanitized_and_forwarded_to_posthog_batch(self):
         result = run_node(
             """
