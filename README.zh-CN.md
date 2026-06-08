@@ -268,6 +268,26 @@ macOS 上可以用 `openrelix app` 构建并打开一个轻量原生客户端，
 `reports/panel.html`，不引入 Electron，也不依赖托管服务。从 repo checkout 调试时，也可以运行
 `./scripts/build_macos_client.sh --open` 构建本地 `dist/OpenRelix.app`。
 
+macOS 客户端内置了面向 panel 的隐私边界内产品埋点。配置
+`OPENRELIX_ANALYTICS_ENDPOINT` 后，匿名使用指标默认开启，帮助维护者判断 DAU、
+模块好用程度和产品卡点。事件包括 app 启动、panel 加载状态、固定 panel 模块的曝光
+和停留时长、核心控件点击、app 退出。payload 使用随机 install ID 和单次启动
+session ID，并包含 app 版本、粗粒度 macOS 版本；不会上报 prompt、memory/review
+正文、窗口标题、文件路径、用户名、主机名、token、Cookie、本地报告或原始
+OpenRelix state。用户可在 OpenRelix 菜单里通过 `Share Anonymous Usage Metrics`
+关闭，也可以用 `OPENRELIX_ANALYTICS_ENABLED=0` 或
+`OPENRELIX_ANALYTICS_DISABLED=1` 启动来关闭。endpoint 可以在构建时通过
+`scripts/build_macos_client.sh --analytics-endpoint <url>` 写入 app bundle，也可以在启动时
+用 `OPENRELIX_ANALYTICS_ENDPOINT` 覆盖。`OPENRELIX_ANALYTICS_TOKEN` 或
+`--analytics-token` 是可选项；若存在，会作为 bearer token 发给配置的 endpoint。
+嵌入客户端的 token 只能当客户端 ingest token，不能当服务端密钥；高权限 analytics key
+应保留在服务端。
+
+以 800 DAU 的第一阶段规模，仓库里提供了 PostHog + Cloudflare Worker collector
+模板和看板配置建议：`analytics/posthog-worker/README.md`。这个 collector 只把
+白名单 schema 转发到 PostHog Product Analytics，并且暂时不在 npm package allowlist
+里，直到有明确发布决策再扩大分发面。
+
 发布更新建议拆成两步：自动化里只跑 `openrelix update --check`，真正升级时再手动跑 `openrelix update --yes`。如果 npm 包已经是最新，但本机 app、LaunchAgent 或已生成面板需要重新同步，运行 `openrelix update --yes --force`。面板内的更新按钮会自动走这条修复路径，并在安装器完成后重载新生成的面板。每日校验默认放在 `09:30`，避开 `23:00` 当日预览和 `00:10` 前一日终版整理。
 
 如果所选 bin 目录还不在 `PATH` 中，installer 会向当前 shell rc 文件追加一个受管理的 `PATH` block，并打印当前 shell 可直接执行的一行 `export PATH=...`。

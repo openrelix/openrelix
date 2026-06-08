@@ -281,6 +281,29 @@ the same local `reports/panel.html`, so it adds no Electron runtime or hosted
 service. From a repo checkout, you can also run `./scripts/build_macos_client.sh
 --open` to build a local `dist/OpenRelix.app`.
 
+The macOS client includes privacy-bounded product analytics for the panel. When
+`OPENRELIX_ANALYTICS_ENDPOINT` is configured, anonymous usage metrics are shared
+by default so maintainers can understand daily active use, module usefulness,
+and product friction. Events cover app launch, panel load state, fixed panel
+module visibility and dwell time, core control clicks, and app quit. Payloads
+use a random install ID and per-launch session ID plus app/coarse macOS version;
+they do not include prompts, memory or review text, window titles, file paths,
+usernames, hostnames, tokens, cookies, local reports, or raw OpenRelix state.
+Users can turn this off from the OpenRelix app menu with `Share Anonymous Usage
+Metrics`, or by launching with `OPENRELIX_ANALYTICS_ENABLED=0` /
+`OPENRELIX_ANALYTICS_DISABLED=1`. The endpoint can be embedded at build time
+with `scripts/build_macos_client.sh --analytics-endpoint <url>` or supplied at
+launch time with `OPENRELIX_ANALYTICS_ENDPOINT`. `OPENRELIX_ANALYTICS_TOKEN` or
+`--analytics-token` is optional and, when present, is sent as a bearer token to
+the configured endpoint. Treat embedded tokens as client-side ingestion tokens,
+not service secrets; keep privileged analytics keys server-side.
+
+For an 800 DAU first pass, the repo includes a PostHog + Cloudflare Worker
+collector template and dashboard recipe at
+`analytics/posthog-worker/README.md`. It forwards only the whitelisted schema to
+PostHog Product Analytics and is intentionally kept outside the npm package
+allowlist until there is an explicit release decision.
+
 For release updates, use `openrelix update --check` in automation and `openrelix update --yes` when you actually want to reinstall the latest npm package. If the package is already current but the local app, LaunchAgents, or generated panel need to be resynced, use `openrelix update --yes --force`. The in-panel update button uses that repair path automatically, then reloads the regenerated panel. The daily check is intentionally no-mutation; `09:30` is the default because it avoids the `23:00` nightly preview and `00:10` previous-day finalize windows.
 
 If the chosen bin directory is not already on `PATH`, the installer appends a managed `PATH` block to your active shell rc file and prints the one-line `export PATH=...` command for the current shell.
