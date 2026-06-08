@@ -12383,7 +12383,10 @@ def make_skill_quarantine_panel(view):
       <div class="skill-quarantine-grid">
         <section class="skill-quarantine-table-card" data-skill-quarantine-bucket="suggested">
           <div class="skill-quarantine-table-head">
-            <h3>{suggested_title}</h3>
+            <div class="skill-quarantine-table-title">
+              <h3>{suggested_title}</h3>
+              <small>{suggested_note}</small>
+            </div>
             <span class="skill-quarantine-table-count">{suggested_count}</span>
           </div>
           <div class="table-wrap asset-discovery-table-wrap">
@@ -12405,7 +12408,10 @@ def make_skill_quarantine_panel(view):
         </section>
         <section class="skill-quarantine-table-card" data-skill-quarantine-bucket="grace">
           <div class="skill-quarantine-table-head">
-            <h3>{grace_title}</h3>
+            <div class="skill-quarantine-table-title">
+              <h3>{grace_title}</h3>
+              <small>{grace_note}</small>
+            </div>
             <span class="skill-quarantine-table-count">{grace_count}</span>
           </div>
           <div class="table-wrap asset-discovery-table-wrap">
@@ -12427,7 +12433,10 @@ def make_skill_quarantine_panel(view):
         </section>
         <section class="skill-quarantine-table-card" data-skill-quarantine-bucket="quarantined">
           <div class="skill-quarantine-table-head">
-            <h3>{quarantine_title}</h3>
+            <div class="skill-quarantine-table-title">
+              <h3>{quarantine_title}</h3>
+              <small>{quarantine_note}</small>
+            </div>
             <span class="skill-quarantine-table-count">{quarantined_count}</span>
           </div>
           <div class="table-wrap asset-discovery-table-wrap">
@@ -12491,8 +12500,11 @@ def make_skill_quarantine_panel(view):
         block_all_label=panel_language_text_html("一键隔离建议项", "Quarantine suggested"),
         grace_all_label=panel_language_text_html("一键隔离可选项", "Quarantine optional"),
         suggested_title=panel_language_text_html("建议隔离", "Suggested Isolation"),
+        suggested_note=panel_language_text_html("超过 7 天保护期且近 30 天未使用，建议默认停用。", "Past the 7-day protection period and unused for 30 days; recommended to disable by default."),
         grace_title=panel_language_text_html("可选隔离", "Optional Isolation"),
+        grace_note=panel_language_text_html("新增 7 天内未使用，可手动提前隔离。", "New and unused within 7 days; can be manually isolated early."),
         quarantine_title=panel_language_text_html("小黑屋", "Quarantine"),
+        quarantine_note=panel_language_text_html("已停用且默认不再注入，需要时可随时放行。", "Disabled and excluded by default; restore when needed."),
         suggested_count=skill_quarantine_count_label(suggested_count),
         grace_count=skill_quarantine_count_label(grace_count),
         quarantined_count=skill_quarantine_count_label(quarantined_count),
@@ -19511,11 +19523,15 @@ def build_html(data):
 
     .skill-quarantine-table-head {{
       display: flex;
-      align-items: center;
+      align-items: flex-start;
       justify-content: space-between;
       gap: 10px;
       padding: 12px 14px;
       border-bottom: 1px solid var(--line);
+    }}
+
+    .skill-quarantine-table-title {{
+      min-width: 0;
     }}
 
     .skill-quarantine-table-head h3 {{
@@ -19525,10 +19541,20 @@ def build_html(data):
       line-height: 1.3;
     }}
 
+    .skill-quarantine-table-title small {{
+      display: block;
+      margin-top: 3px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 650;
+      line-height: 1.35;
+    }}
+
     .skill-quarantine-table-count {{
       display: inline-flex;
       align-items: center;
       justify-content: center;
+      flex: 0 0 auto;
       min-width: 42px;
       height: 22px;
       padding: 0 7px;
