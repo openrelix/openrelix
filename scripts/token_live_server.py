@@ -1150,7 +1150,76 @@ def fetch_token_payload(window_days, force_refresh=False, provider="all", start_
     start_date = str(start_date or "").strip()
     end_date = str(end_date or "").strip()
     cached_payload = load_cache()
-    if not force_refresh:
+    cached_result = build_payload_from_cache(
+        cached_payload,
+        window_days,
+        provider,
+        start_date=start_date,
+        end_date=end_date,
+        group_by=group_by,
+    )
+    if cached_result:
+        if force_refresh:
+            refresh_started = start_token_cache_refresh_async(
+                window_days,
+                provider,
+                start_date=start_date,
+                end_date=end_date,
+                group_by=group_by,
+            )
+            cached_result["stale"] = True
+            cached_result["served_from_cache"] = True
+            cached_result["refreshing"] = bool(refresh_started)
+            cached_result["error"] = ""
+            cached_result.setdefault("token_usage", {})["error"] = ""
+            cached_result["token_usage"]["refreshing"] = bool(refresh_started)
+            return cached_result
+        if cached_result.get("stale"):
+            start_token_cache_refresh_async(
+                window_days,
+                provider,
+                start_date=start_date,
+                end_date=end_date,
+                group_by=group_by,
+            )
+        return cached_result
+
+    if force_refresh:
+        with FETCH_LOCK:
+            cached_payload = load_cache()
+            cached_result = build_payload_from_cache(
+                cached_payload,
+                window_days,
+                provider,
+                start_date=start_date,
+                end_date=end_date,
+                group_by=group_by,
+            )
+            if cached_result:
+                refresh_started = start_token_cache_refresh_async(
+                    window_days,
+                    provider,
+                    start_date=start_date,
+                    end_date=end_date,
+                    group_by=group_by,
+                )
+                cached_result["stale"] = True
+                cached_result["served_from_cache"] = True
+                cached_result["refreshing"] = bool(refresh_started)
+                cached_result["error"] = ""
+                cached_result.setdefault("token_usage", {})["error"] = ""
+                cached_result["token_usage"]["refreshing"] = bool(refresh_started)
+                return cached_result
+            return refresh_token_cache(
+                window_days,
+                provider,
+                start_date=start_date or None,
+                end_date=end_date or None,
+                group_by=group_by,
+            )
+
+    with FETCH_LOCK:
+        cached_payload = load_cache()
         cached_result = build_payload_from_cache(
             cached_payload,
             window_days,
@@ -1169,28 +1238,6 @@ def fetch_token_payload(window_days, force_refresh=False, provider="all", start_
                     group_by=group_by,
                 )
             return cached_result
-
-    with FETCH_LOCK:
-        cached_payload = load_cache()
-        if not force_refresh:
-            cached_result = build_payload_from_cache(
-                cached_payload,
-                window_days,
-                provider,
-                start_date=start_date,
-                end_date=end_date,
-                group_by=group_by,
-            )
-            if cached_result:
-                if cached_result.get("stale"):
-                    start_token_cache_refresh_async(
-                        window_days,
-                        provider,
-                        start_date=start_date,
-                        end_date=end_date,
-                        group_by=group_by,
-                    )
-                return cached_result
 
         payload = refresh_token_cache(
             window_days,

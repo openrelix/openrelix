@@ -31772,6 +31772,9 @@ def build_html(data):
         if (messageKey === "warn_stale") {{
           return t("实时 Token 暂时不可用，先展示最近一次成功缓存。");
         }}
+        if (messageKey === "refreshing_cache") {{
+          return t("已先展示缓存，后台正在同步最新 Token…");
+        }}
         if (messageKey === "offline_service") {{
           return t("本地 Token 服务暂时不可用，已继续展示本地快照。OpenRelix App 会自动尝试恢复后台服务。");
         }}
@@ -32174,8 +32177,28 @@ def build_html(data):
 
       function tokenSourceDateRange(filters) {{
         const activeFilters = filters || {{}};
-        const endDate = activeFilters.endDate || defaultTokenDateRange.endDate || tokenDateInputValue(new Date());
-        return tokenDateRangeForDays({token_cache_window_days}, endDate);
+        const requestedEndDate = activeFilters.endDate || defaultTokenDateRange.endDate || tokenDateInputValue(new Date());
+        const fallbackRange = tokenDateRangeForDays({token_cache_window_days}, requestedEndDate);
+        let startDate = activeFilters.startDate || fallbackRange.startDate;
+        let endDate = activeFilters.endDate || fallbackRange.endDate;
+        if (!parseTokenInputDate(startDate)) {{
+          startDate = fallbackRange.startDate;
+        }}
+        if (!parseTokenInputDate(endDate)) {{
+          endDate = fallbackRange.endDate;
+        }}
+        if (startDate && endDate && startDate > endDate) {{
+          const previousStart = startDate;
+          startDate = endDate;
+          endDate = previousStart;
+        }}
+        if (fallbackRange.startDate && (!startDate || fallbackRange.startDate < startDate)) {{
+          startDate = fallbackRange.startDate;
+        }}
+        return {{
+          startDate: startDate,
+          endDate: endDate,
+        }};
       }}
 
       function tokenRequestCacheKey(filters, windowDays) {{
@@ -33352,6 +33375,8 @@ def build_html(data):
           String(Math.floor(Date.now() / 60000)),
           normalizeTokenProvider(tokenUsage && tokenUsage.provider),
           normalizeTokenGroupBy(filters.groupBy || (tokenUsage && tokenUsage.group_by)),
+          String(filters.startDate || ""),
+          String(filters.endDate || ""),
           String(tokenUsage && tokenUsage.range_start || ""),
           String(tokenUsage && tokenUsage.range_end || ""),
           String(tokenUsage && tokenUsage.refreshed_at || ""),
@@ -33588,7 +33613,10 @@ def build_html(data):
           }}
           state.tokenServiceStartRequestedAt = 0;
           updateTokenVisuals(payload.token_usage, payload.stale ? "stale" : "live");
-          if (payload.stale) {{
+          if (payload.refreshing) {{
+            scheduleTokenStaleRetry();
+            setStatus("warn", "", "refreshing_cache");
+          }} else if (payload.stale) {{
             scheduleTokenStaleRetry();
             setStatus("warn", "", "warn_stale");
           }} else {{

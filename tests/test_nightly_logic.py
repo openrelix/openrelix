@@ -1390,6 +1390,67 @@ class NightlyLogicTests(unittest.TestCase):
         self.assertEqual(payload["token_usage"]["today_total_tokens"], 120)
         start_refresh.assert_called_once()
 
+    def test_token_live_force_refresh_returns_cache_and_refreshes_in_background(self):
+        cached = {
+            "ok": True,
+            "provider": "all",
+            "group_by": "day",
+            "window_days": 30,
+            "range_start": "2026-04-01",
+            "range_end": "2026-06-08",
+            "_cached_at_epoch": token_live_server.time.time(),
+            "ccusage_result": {
+                "available": True,
+                "provider": "all",
+                "provider_label": token_fetcher.provider_display_name("all"),
+                "window_days": 69,
+                "range_start": "2026-04-01",
+                "range_end": "2026-06-08",
+                "payload": {
+                    "daily": [
+                        {
+                            "date": "2026-04-03",
+                            "provider": "all",
+                            "inputTokens": 100,
+                            "cachedInputTokens": 10,
+                            "outputTokens": 20,
+                            "reasoningOutputTokens": 0,
+                            "totalTokens": 120,
+                            "costUSD": 2.0,
+                        }
+                    ]
+                },
+                "error": "",
+            },
+        }
+
+        with mock.patch.object(token_live_server, "load_cache", return_value=cached), mock.patch.object(
+            token_live_server,
+            "start_token_cache_refresh_async",
+            return_value=True,
+        ) as start_refresh, mock.patch.object(
+            token_live_server,
+            "fetch_ccusage_daily",
+            side_effect=AssertionError("force refresh should not block when cache covers the request"),
+        ):
+            payload = token_live_server.fetch_token_payload(
+                window_days=30,
+                force_refresh=True,
+                provider="all",
+                start_date="2026-04-01",
+                end_date="2026-06-08",
+                group_by="month",
+            )
+
+        self.assertTrue(payload["served_from_cache"])
+        self.assertTrue(payload["stale"])
+        self.assertTrue(payload["refreshing"])
+        self.assertTrue(payload["token_usage"]["refreshing"])
+        self.assertEqual(payload["token_usage"]["range_start"], "2026-04-01")
+        self.assertEqual(payload["token_usage"]["range_end"], "2026-06-08")
+        self.assertEqual(payload["token_usage"]["daily_rows"][0]["label"], "2026-04")
+        start_refresh.assert_called_once()
+
     def test_token_live_cache_keeps_provider_entries_separate(self):
         def result(provider, total_tokens):
             return {
@@ -7377,7 +7438,12 @@ Native Codex profile.
         self.assertIn("function tokenDateRangeForDays(days, endDateValue)", html)
         self.assertIn("function tokenDefaultDateRange(days)", html)
         self.assertIn("const defaultTokenDateRange = tokenDefaultDateRange(7);", html)
+        self.assertIn("requestTimeoutMs: 90000,", html)
         self.assertIn("function tokenEffectiveWindowDays(filters, fallbackWindowDays)", html)
+        self.assertIn("const fallbackRange = tokenDateRangeForDays(30, requestedEndDate);", html)
+        self.assertIn("let startDate = activeFilters.startDate || fallbackRange.startDate;", html)
+        self.assertIn("fallbackRange.startDate < startDate", html)
+        self.assertNotIn("return tokenDateRangeForDays(30, endDate);", html)
         self.assertIn("function tokenUsageMatchesRequestFilters(tokenUsage, filters)", html)
         self.assertIn("function tokenShortDateMonthKey(text, context)", html)
         self.assertIn("function tokenShortDateIsoKey(text, context)", html)
@@ -7429,8 +7495,13 @@ Native Codex profile.
         self.assertIn('elements.tokenFilterPanel.setAttribute("aria-busy", isLoading ? "true" : "false");', html)
         self.assertIn("function requestStillCurrent()", html)
         self.assertIn("function tokenUsageVisualSignature(tokenUsage)", html)
+        self.assertIn('String(filters.startDate || ""),', html)
+        self.assertIn('String(filters.endDate || ""),', html)
         self.assertIn("async function performTokenUsageRefresh(forceRefresh)", html)
         self.assertIn("state.tokenRefreshQueued = true;", html)
+        self.assertIn("refreshing_cache", html)
+        self.assertIn("已先展示缓存，后台正在同步最新 Token", html)
+        self.assertIn("if (payload.refreshing)", html)
         self.assertIn("cacheKey === tokenRequestCacheKey(state.tokenFilters || {}, windowDays)", html)
         self.assertIn("state.tokenStaleRetryDelayMs = Math.min(delayMs * 2, 60000);", html)
         self.assertIn("}, 3500);", html)
