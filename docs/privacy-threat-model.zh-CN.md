@@ -71,7 +71,20 @@ OpenRelix 应保护：
 - 涉及第三方云记忆或 SaaS 持久化前，先确认合规边界。
 - 公开文档中只保留流程、字段形态、验证路径和结论。
 
-### 5. Release Surface 扩大
+### 5. 产品埋点外发
+
+风险：为了判断 DAU、模块停留和产品卡点，把本地工作内容或身份信息随埋点发到外部服务。
+
+控制：
+
+- 只有配置了 `OPENRELIX_ANALYTICS_ENDPOINT` 的 macOS panel client 会联网发送埋点；该产品路径默认开启。
+- 用户可以在 OpenRelix 菜单中关闭，也可以通过 `OPENRELIX_ANALYTICS_ENABLED=0` 或 `OPENRELIX_ANALYTICS_DISABLED=1` 启动关闭。
+- 允许字段仅限随机 install ID、单次启动 session ID、app 版本、粗粒度 macOS 版本、固定事件名、白名单模块/控件 ID、停留毫秒数和 panel 语言。
+- 禁止发送 prompt、模型回答、memory/review 正文、窗口标题、项目名、文件路径、用户名、主机名、token、Cookie、connector 内容、本地报告、raw state 或生成后的 panel 内容。
+- 客户端发送前必须丢弃未知事件和未知属性，失败的埋点 payload 不落盘。
+- 嵌入 macOS app 的 token 只能视为客户端 ingest token，不能当服务端密钥；高权限 analytics 凭证必须留在采集 endpoint 后面。
+
+### 6. Release Surface 扩大
 
 风险：package allowlist 或站点资源扩大后，带出开发 harness、fixture、私有素材或生成报告。
 

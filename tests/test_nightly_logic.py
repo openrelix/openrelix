@@ -11942,6 +11942,47 @@ Native Codex profile.
         self.assertIn("url.isFileURL && isPanelURL(url)", mac_client)
         self.assertIn("decisionHandler(.cancel)", mac_client)
 
+    def test_macos_client_has_privacy_bounded_panel_analytics(self):
+        mac_client = (ROOT / "macos" / "OpenRelixClient" / "main.swift").read_text(
+            encoding="utf-8"
+        )
+        panel_builder = (ROOT / "scripts" / "build_overview.py").read_text(encoding="utf-8")
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        zh_readme = (ROOT / "README.zh-CN.md").read_text(encoding="utf-8")
+        mac_client_builder = (ROOT / "scripts" / "build_macos_client.sh").read_text(
+            encoding="utf-8"
+        )
+        privacy_model = (ROOT / "docs" / "privacy-threat-model.md").read_text(encoding="utf-8")
+        zh_privacy_model = (ROOT / "docs" / "privacy-threat-model.zh-CN.md").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("OPENRELIX_ANALYTICS_ENDPOINT", mac_client)
+        self.assertIn("OPENRELIX_ANALYTICS_ENABLED", mac_client)
+        self.assertIn("OPENRELIX_ANALYTICS_DISABLED", mac_client)
+        self.assertIn("openrelixAnalytics", mac_client)
+        self.assertIn("panelUsageAnalyticsScript", mac_client)
+        self.assertIn('"app_launch"', mac_client)
+        self.assertIn('"module_visible"', mac_client)
+        self.assertIn('"module_hidden"', mac_client)
+        self.assertIn('"control_click"', mac_client)
+        self.assertIn('"nightly_summary"', mac_client)
+        self.assertIn('"personal_asset_memory"', mac_client)
+        self.assertIn("allowedModules", mac_client)
+        self.assertIn("allowedControls", mac_client)
+        self.assertIn("does not send window titles", mac_client)
+        self.assertIn("Share Anonymous Usage Metrics", mac_client)
+        self.assertIn('id="usage-events-section"', panel_builder)
+        self.assertIn("--analytics-endpoint", mac_client_builder)
+        self.assertIn("OpenRelixAnalyticsEndpoint.txt", mac_client_builder)
+        self.assertIn("OPENRELIX_ANALYTICS_ENDPOINT", readme)
+        self.assertIn("--analytics-endpoint <url>", readme)
+        self.assertIn("Share Anonymous Usage", readme)
+        self.assertIn("Metrics", readme)
+        self.assertIn("不会上报 prompt", zh_readme)
+        self.assertIn("Product Analytics Policy", privacy_model)
+        self.assertIn("产品埋点外发", zh_privacy_model)
+
     def test_installer_openrelix_templates_exist_and_use_new_entrypoints(self):
         expected_templates = [
             ROOT / "install" / "templates" / "bin" / "openrelix.tmpl",

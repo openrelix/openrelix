@@ -1,10 +1,13 @@
 import AppKit
 import Darwin
+import Foundation
 import WebKit
 
 private let stateRootResourceName = "OpenRelixStateRoot"
 private let tokenLiveLabel = "io.github.openrelix.token-live"
 private let tokenLivePlistName = "\(tokenLiveLabel).plist"
+private let analyticsDisabledDefaultsKey = "openrelix.analytics.disabled"
+private let analyticsInstallIDDefaultsKey = "openrelix.analytics.install_id"
 
 private func trimmed(_ value: String) -> String {
     value.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -21,8 +24,15 @@ private func panelURL(for stateRoot: URL) -> URL {
 }
 
 private func bundledStateRootPath() -> String? {
+    guard let value = bundledConfigValue(resourceName: stateRootResourceName) else {
+        return nil
+    }
+    return expandedPath(value)
+}
+
+private func bundledConfigValue(resourceName: String) -> String? {
     guard
-        let url = Bundle.main.url(forResource: stateRootResourceName, withExtension: "txt"),
+        let url = Bundle.main.url(forResource: resourceName, withExtension: "txt"),
         let text = try? String(contentsOf: url, encoding: .utf8)
     else {
         return nil
@@ -31,10 +41,18 @@ private func bundledStateRootPath() -> String? {
     for line in text.components(separatedBy: .newlines) {
         let value = trimmed(line)
         if !value.isEmpty && !value.hasPrefix("#") {
-            return expandedPath(value)
+            return value
         }
     }
     return nil
+}
+
+private func configuredValue(environmentKey: String, resourceName: String) -> String {
+    let environmentValue = trimmed(ProcessInfo.processInfo.environment[environmentKey] ?? "")
+    if !environmentValue.isEmpty {
+        return environmentValue
+    }
+    return trimmed(bundledConfigValue(resourceName: resourceName) ?? "")
 }
 
 private func defaultApplicationSupportStateRoot() -> URL {
@@ -84,6 +102,21 @@ private func htmlEscaped(_ value: String) -> String {
         .replacingOccurrences(of: "<", with: "&lt;")
         .replacingOccurrences(of: ">", with: "&gt;")
         .replacingOccurrences(of: "\"", with: "&quot;")
+}
+
+private func isFalseyEnvironmentValue(_ value: String?) -> Bool {
+    let normalized = trimmed(value ?? "").lowercased()
+    return ["0", "false", "no", "off", "disabled"].contains(normalized)
+}
+
+private func isTruthyEnvironmentValue(_ value: String?) -> Bool {
+    let normalized = trimmed(value ?? "").lowercased()
+    return ["1", "true", "yes", "on", "enabled"].contains(normalized)
+}
+
+private func coarseOSVersion() -> String {
+    let version = ProcessInfo.processInfo.operatingSystemVersion
+    return "\(version.majorVersion).\(version.minorVersion).\(version.patchVersion)"
 }
 
 private func missingPanelHTML(panelPath: String, stateRootPath: String) -> String {
@@ -230,10 +263,478 @@ private let panelThemeBridgeScript = """
 })();
 """
 
+private let panelUsageAnalyticsScript = """
+(function() {
+  var handler = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.openrelixAnalytics;
+  if (!handler) return;
+
+  var sectionToModule = {
+    "overview-top": "overview",
+    "nightly-summary": "nightly_summary",
+    "token-filter-panel": "token_filters",
+    "token-section": "token_usage",
+    "token-overview-panel": "token_overview",
+    "daily-token-panel": "daily_token_usage",
+    "today-token-panel": "today_token_usage",
+    "pipeline-section": "pipeline_status",
+    "memory-section": "personal_asset_memory",
+    "personal-memory-compiler-section": "memory_compiler",
+    "personal-memory-curated-section": "curated_memory",
+    "codex-native-section": "codex_native_memory",
+    "claude-native-section": "claude_native_memory",
+    "asset-overview-section": "asset_ledger",
+    "asset-filter-panel": "asset_filters",
+    "asset-stats-snapshot-section": "asset_stats",
+    "top-assets-section": "top_assets",
+    "mcp-usage-section": "mcp_usage",
+    "discovered-assets-section": "discovered_assets",
+    "reviews-section": "reviews",
+    "usage-events-section": "usage_events",
+    "project-context-section": "window_context",
+    "window-filter-panel": "window_filters",
+    "window-overview-section": "window_details"
+  };
+
+  var controlSelectors = [
+    ["#asset-layer-refresh-button", "asset_refresh"],
+    ["[data-update-primary]", "update_primary"],
+    ["[data-theme-option]", "theme_switch"],
+    ["[data-language-option]", "language_switch"],
+    ["[data-token-provider]", "token_provider_filter"],
+    ["[data-token-group]", "token_group_filter"],
+    ["[data-token-range-days]", "token_range_filter"],
+    ["[data-window-range-days]", "window_range_filter"],
+    ["[data-window-search-range-days]", "window_search_range_filter"],
+    ["[data-window-search-scope]", "window_search_scope_filter"],
+    ["#window-search-trigger", "window_search_open"],
+    ["#window-search-submit", "window_search_submit"],
+    ["#window-search-reset", "window_search_reset"],
+    ["#window-search-close", "window_search_close"],
+    ["#window-detail-more-button", "window_detail_more"],
+    ["[data-window-backfill-copy]", "window_backfill_copy"],
+    ["[data-memory-feedback]", "memory_feedback"],
+    ["[data-context-days]", "context_days_filter"],
+    ["[data-expand-group]", "expand_more"],
+    ["[data-collapse-details]", "collapse_more"],
+    ["[data-window-resume-open]", "window_resume_codex"],
+    ["[data-window-resume-claude-desktop]", "window_resume_claude"],
+    ["[data-window-resume-copy]", "window_resume_copy"],
+    ["[data-window-review-copy]", "window_review_copy"]
+  ];
+
+  function currentPanelLanguage() {
+    var lang = (document.body && document.body.getAttribute("data-language")) ||
+      document.documentElement.getAttribute("lang") || "";
+    lang = String(lang || "").toLowerCase();
+    return lang.indexOf("zh") === 0 ? "zh" : "en";
+  }
+
+  function elementFromTarget(target) {
+    if (!target) return null;
+    if (target.nodeType === 1) return target;
+    return target.parentElement || null;
+  }
+
+  function moduleForElement(element) {
+    var node = elementFromTarget(element);
+    while (node && node !== document.documentElement) {
+      if (node.id && sectionToModule[node.id]) {
+        return sectionToModule[node.id];
+      }
+      node = node.parentElement;
+    }
+    return "";
+  }
+
+  function post(eventName, properties) {
+    try {
+      handler.postMessage({
+        event: eventName,
+        properties: Object.assign({ panel_language: currentPanelLanguage() }, properties || {})
+      });
+    } catch (error) {
+    }
+  }
+
+  function controlForClick(target) {
+    target = elementFromTarget(target);
+    if (!target || !target.closest) return "";
+    for (var i = 0; i < controlSelectors.length; i += 1) {
+      if (target.closest(controlSelectors[i][0])) {
+        return controlSelectors[i][1];
+      }
+    }
+    return "";
+  }
+
+  document.addEventListener("click", function(event) {
+    var controlId = controlForClick(event.target);
+    if (!controlId) return;
+    post("control_click", {
+      control_id: controlId,
+      module_id: moduleForElement(event.target)
+    });
+  }, true);
+
+  var visibilityState = {};
+  var visibleThreshold = 0.55;
+  var hiddenThreshold = 0.15;
+
+  function markVisible(moduleId) {
+    if (!moduleId) return;
+    var state = visibilityState[moduleId] || {};
+    if (state.visible) return;
+    visibilityState[moduleId] = { visible: true, startedAt: Date.now() };
+    post("module_visible", { module_id: moduleId });
+  }
+
+  function markHidden(moduleId, reason) {
+    if (!moduleId) return;
+    var state = visibilityState[moduleId];
+    if (!state || !state.visible) return;
+    var dwellMs = Math.max(0, Date.now() - state.startedAt);
+    visibilityState[moduleId] = { visible: false, startedAt: 0 };
+    if (dwellMs >= 250) {
+      post("module_hidden", {
+        module_id: moduleId,
+        dwell_ms: dwellMs,
+        reason: reason || "intersection"
+      });
+    }
+  }
+
+  function markAllHidden(reason) {
+    Object.keys(visibilityState).forEach(function(moduleId) {
+      markHidden(moduleId, reason);
+    });
+  }
+
+  function setupVisibilityObserver() {
+    var targets = Object.keys(sectionToModule).map(function(id) {
+      return document.getElementById(id);
+    }).filter(Boolean);
+    if (!targets.length) return;
+    if (!window.IntersectionObserver) {
+      targets.forEach(function(target) { markVisible(sectionToModule[target.id]); });
+      return;
+    }
+    var observer = new IntersectionObserver(function(entries) {
+      entries.forEach(function(entry) {
+        var moduleId = sectionToModule[entry.target.id] || "";
+        if (!moduleId) return;
+        if (entry.isIntersecting && entry.intersectionRatio >= visibleThreshold) {
+          markVisible(moduleId);
+        } else if (!entry.isIntersecting || entry.intersectionRatio <= hiddenThreshold) {
+          markHidden(moduleId, "intersection");
+        }
+      });
+    }, { threshold: [0, hiddenThreshold, visibleThreshold, 1] });
+    targets.forEach(function(target) { observer.observe(target); });
+  }
+
+  document.addEventListener("visibilitychange", function() {
+    if (document.visibilityState === "hidden") {
+      markAllHidden("page_hidden");
+    }
+  });
+  window.addEventListener("pagehide", function() { markAllHidden("page_unload"); });
+  window.addEventListener("beforeunload", function() { markAllHidden("page_unload"); });
+
+  function start() {
+    setupVisibilityObserver();
+    post("panel_ready", {});
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", start, { once: true });
+  } else {
+    start();
+  }
+})();
+"""
+
+private final class PanelAnalytics {
+    private let endpoint: URL?
+    private let token: String
+    private let environmentDisabled: Bool
+    private let sessionID = UUID().uuidString.lowercased()
+    private let sessionStartedAt = Date()
+    private let defaults = UserDefaults.standard
+    private let appVersion: String
+    private let queue = DispatchQueue(label: "openrelix.analytics.queue")
+    private var pendingEvents: [[String: Any]] = []
+    private var flushWorkItem: DispatchWorkItem?
+
+    private let allowedEvents: Set<String> = [
+        "app_launch",
+        "app_quit",
+        "panel_loaded",
+        "panel_load_failed",
+        "panel_ready",
+        "module_visible",
+        "module_hidden",
+        "control_click",
+    ]
+    private let allowedModules: Set<String> = [
+        "overview",
+        "nightly_summary",
+        "token_filters",
+        "token_usage",
+        "token_overview",
+        "daily_token_usage",
+        "today_token_usage",
+        "pipeline_status",
+        "personal_asset_memory",
+        "memory_compiler",
+        "curated_memory",
+        "codex_native_memory",
+        "claude_native_memory",
+        "asset_ledger",
+        "asset_filters",
+        "asset_stats",
+        "top_assets",
+        "mcp_usage",
+        "discovered_assets",
+        "reviews",
+        "usage_events",
+        "window_context",
+        "window_filters",
+        "window_details",
+    ]
+    private let allowedControls: Set<String> = [
+        "asset_refresh",
+        "update_primary",
+        "theme_switch",
+        "language_switch",
+        "token_provider_filter",
+        "token_group_filter",
+        "token_range_filter",
+        "window_range_filter",
+        "window_search_range_filter",
+        "window_search_scope_filter",
+        "window_search_open",
+        "window_search_submit",
+        "window_search_reset",
+        "window_search_close",
+        "window_detail_more",
+        "window_backfill_copy",
+        "memory_feedback",
+        "context_days_filter",
+        "expand_more",
+        "collapse_more",
+        "window_resume_codex",
+        "window_resume_claude",
+        "window_resume_copy",
+        "window_review_copy",
+    ]
+    private let allowedReasons: Set<String> = [
+        "intersection",
+        "page_hidden",
+        "page_unload",
+        "missing_panel",
+        "navigation_error",
+        "provisional_navigation_error",
+    ]
+
+    init() {
+        let environment = ProcessInfo.processInfo.environment
+        let endpointValue = configuredValue(
+            environmentKey: "OPENRELIX_ANALYTICS_ENDPOINT",
+            resourceName: "OpenRelixAnalyticsEndpoint"
+        )
+        if let url = URL(string: endpointValue),
+           let scheme = url.scheme?.lowercased(),
+           scheme == "https" || scheme == "http",
+           scheme == "https" || url.host == "127.0.0.1" || url.host == "localhost" {
+            endpoint = url
+        } else {
+            endpoint = nil
+        }
+        token = configuredValue(
+            environmentKey: "OPENRELIX_ANALYTICS_TOKEN",
+            resourceName: "OpenRelixAnalyticsToken"
+        )
+        environmentDisabled = isFalseyEnvironmentValue(environment["OPENRELIX_ANALYTICS_ENABLED"])
+            || isTruthyEnvironmentValue(environment["OPENRELIX_ANALYTICS_DISABLED"])
+        appVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.0.0"
+    }
+
+    var isEndpointConfigured: Bool {
+        endpoint != nil && !environmentDisabled
+    }
+
+    var isUserDisabled: Bool {
+        defaults.bool(forKey: analyticsDisabledDefaultsKey)
+    }
+
+    var isEnabled: Bool {
+        isEndpointConfigured && !isUserDisabled
+    }
+
+    func setUserDisabled(_ disabled: Bool) {
+        defaults.set(disabled, forKey: analyticsDisabledDefaultsKey)
+        if disabled {
+            queue.async {
+                self.flushWorkItem?.cancel()
+                self.flushWorkItem = nil
+                self.pendingEvents.removeAll()
+            }
+        }
+    }
+
+    func track(_ eventName: String, properties: [String: Any] = [:]) {
+        guard isEnabled, allowedEvents.contains(eventName) else {
+            return
+        }
+        let payload: [String: Any] = [
+            "schema_version": 1,
+            "app": "openrelix_macos",
+            "event": eventName,
+            "ts": ISO8601DateFormatter().string(from: Date()),
+            "app_version": appVersion,
+            "session_id": sessionID,
+            "install_id": anonymousInstallID(),
+            "os": "macOS",
+            "os_version": coarseOSVersion(),
+            "properties": sanitizedProperties(properties),
+        ]
+        queue.async {
+            self.pendingEvents.append(payload)
+            if self.pendingEvents.count >= 8 {
+                self.flushOnQueue()
+            } else {
+                self.scheduleFlushOnQueue()
+            }
+        }
+    }
+
+    func trackPanelMessage(_ body: Any) {
+        guard let message = body as? [String: Any],
+              let eventName = message["event"] as? String
+        else {
+            return
+        }
+        let properties = message["properties"] as? [String: Any] ?? [:]
+        track(eventName, properties: properties)
+    }
+
+    func trackAppQuit() {
+        let durationMs = max(0, Int(Date().timeIntervalSince(sessionStartedAt) * 1000))
+        track("app_quit", properties: ["session_duration_ms": durationMs])
+        flush(waitForCompletion: true)
+    }
+
+    func flush(waitForCompletion: Bool = false) {
+        let semaphore = waitForCompletion ? DispatchSemaphore(value: 0) : nil
+        queue.async {
+            self.flushOnQueue(completion: {
+                semaphore?.signal()
+            })
+        }
+        if waitForCompletion {
+            _ = semaphore?.wait(timeout: .now() + 2.0)
+        }
+    }
+
+    private func anonymousInstallID() -> String {
+        if let existing = defaults.string(forKey: analyticsInstallIDDefaultsKey),
+           !trimmed(existing).isEmpty {
+            return existing
+        }
+        let value = UUID().uuidString.lowercased()
+        defaults.set(value, forKey: analyticsInstallIDDefaultsKey)
+        return value
+    }
+
+    private func sanitizedProperties(_ properties: [String: Any]) -> [String: Any] {
+        var clean: [String: Any] = [:]
+        if let moduleID = properties["module_id"] as? String, allowedModules.contains(moduleID) {
+            clean["module_id"] = moduleID
+        }
+        if let controlID = properties["control_id"] as? String, allowedControls.contains(controlID) {
+            clean["control_id"] = controlID
+        }
+        if let language = properties["panel_language"] as? String, ["zh", "en"].contains(language) {
+            clean["panel_language"] = language
+        }
+        if let reason = properties["reason"] as? String, allowedReasons.contains(reason) {
+            clean["reason"] = reason
+        }
+        if let dwellMs = integerProperty(properties["dwell_ms"]) {
+            clean["dwell_ms"] = min(max(dwellMs, 0), 24 * 60 * 60 * 1000)
+        }
+        if let sessionDurationMs = integerProperty(properties["session_duration_ms"]) {
+            clean["session_duration_ms"] = min(max(sessionDurationMs, 0), 24 * 60 * 60 * 1000)
+        }
+        return clean
+    }
+
+    private func integerProperty(_ value: Any?) -> Int? {
+        if let intValue = value as? Int {
+            return intValue
+        }
+        if let doubleValue = value as? Double {
+            return Int(doubleValue)
+        }
+        if let number = value as? NSNumber {
+            return number.intValue
+        }
+        return nil
+    }
+
+    private func scheduleFlushOnQueue() {
+        flushWorkItem?.cancel()
+        let item = DispatchWorkItem { [weak self] in
+            self?.flush()
+        }
+        flushWorkItem = item
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 5.0, execute: item)
+    }
+
+    private func flushOnQueue(completion: (() -> Void)? = nil) {
+        flushWorkItem?.cancel()
+        flushWorkItem = nil
+        guard isEnabled, let endpoint = endpoint, !pendingEvents.isEmpty else {
+            if !isEnabled {
+                pendingEvents.removeAll()
+            }
+            completion?()
+            return
+        }
+        let batch = pendingEvents
+        pendingEvents.removeAll()
+        send(batch, to: endpoint, completion: completion)
+    }
+
+    private func send(_ events: [[String: Any]], to endpoint: URL, completion: (() -> Void)? = nil) {
+        let body: [String: Any] = ["events": events]
+        guard JSONSerialization.isValidJSONObject(body),
+              let data = try? JSONSerialization.data(withJSONObject: body, options: [])
+        else {
+            completion?()
+            return
+        }
+        var request = URLRequest(url: endpoint)
+        request.httpMethod = "POST"
+        request.httpBody = data
+        request.timeoutInterval = 3.0
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("OpenRelix-macOS", forHTTPHeaderField: "User-Agent")
+        if !token.isEmpty {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        URLSession.shared.dataTask(with: request) { _, _, _ in
+            completion?()
+        }.resume()
+    }
+}
+
 private final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKNavigationDelegate, WKUIDelegate {
     private var window: NSWindow?
     private var webView: WKWebView?
     private var stateRoot = preferredStateRoot()
+    private let analytics = PanelAnalytics()
+    private var analyticsMenuItem: NSMenuItem?
     private let lightPanelBackground = NSColor(
         calibratedRed: 245.0 / 255.0,
         green: 245.0 / 255.0,
@@ -252,8 +753,13 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessag
         buildMenu()
         buildWindow()
         ensureTokenLiveLaunchAgent()
+        analytics.track("app_launch")
         loadPanel()
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        analytics.trackAppQuit()
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
@@ -272,7 +778,15 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessag
                 forMainFrameOnly: true
             )
         )
+        configuration.userContentController.addUserScript(
+            WKUserScript(
+                source: panelUsageAnalyticsScript,
+                injectionTime: .atDocumentEnd,
+                forMainFrameOnly: true
+            )
+        )
         configuration.userContentController.add(self, name: "openrelixTheme")
+        configuration.userContentController.add(self, name: "openrelixAnalytics")
         configuration.userContentController.add(self, name: "openrelixOpenExternal")
         configuration.userContentController.add(self, name: "openrelixEnsureTokenLive")
 
@@ -334,6 +848,10 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessag
         }
         if message.name == "openrelixEnsureTokenLive" {
             ensureTokenLiveLaunchAgent()
+            return
+        }
+        if message.name == "openrelixAnalytics" {
+            analytics.trackPanelMessage(message.body)
             return
         }
         if message.name == "openrelixOpenExternal",
@@ -408,6 +926,18 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessag
         decisionHandler(.allow)
     }
 
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        analytics.track("panel_loaded")
+    }
+
+    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+        analytics.track("panel_load_failed", properties: ["reason": "navigation_error"])
+    }
+
+    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+        analytics.track("panel_load_failed", properties: ["reason": "provisional_navigation_error"])
+    }
+
     func webView(
         _ webView: WKWebView,
         createWebViewWith configuration: WKWebViewConfiguration,
@@ -434,6 +964,15 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessag
         let aboutItem = NSMenuItem(title: "About OpenRelix", action: #selector(showAbout(_:)), keyEquivalent: "")
         aboutItem.target = self
         appMenu.addItem(aboutItem)
+
+        let analyticsItem = NSMenuItem(title: "Share Anonymous Usage Metrics", action: #selector(toggleAnalytics(_:)), keyEquivalent: "")
+        analyticsItem.target = self
+        appMenu.addItem(analyticsItem)
+        analyticsMenuItem = analyticsItem
+
+        let privacyItem = NSMenuItem(title: "Analytics Privacy", action: #selector(showAnalyticsPrivacy(_:)), keyEquivalent: "")
+        privacyItem.target = self
+        appMenu.addItem(privacyItem)
         appMenu.addItem(NSMenuItem.separator())
         appMenu.addItem(NSMenuItem(title: "Quit OpenRelix", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
         appMenuItem.submenu = appMenu
@@ -473,6 +1012,11 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessag
         editMenuItem.submenu = editMenu
 
         NSApp.mainMenu = mainMenu
+        updateAnalyticsMenuItem()
+    }
+
+    private func updateAnalyticsMenuItem() {
+        analyticsMenuItem?.state = analytics.isUserDisabled ? .off : .on
     }
 
     private func loadPanel() {
@@ -481,6 +1025,7 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessag
         if FileManager.default.fileExists(atPath: panel.path) {
             webView?.loadFileURL(panel, allowingReadAccessTo: stateRoot)
         } else {
+            analytics.track("panel_load_failed", properties: ["reason": "missing_panel"])
             webView?.loadHTMLString(
                 missingPanelHTML(panelPath: panel.path, stateRootPath: stateRoot.path),
                 baseURL: nil
@@ -512,6 +1057,25 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessag
             .applicationVersion: version,
             .version: version,
         ])
+    }
+
+    @objc private func toggleAnalytics(_ sender: Any?) {
+        analytics.setUserDisabled(!analytics.isUserDisabled)
+        updateAnalyticsMenuItem()
+    }
+
+    @objc private func showAnalyticsPrivacy(_ sender: Any?) {
+        let alert = NSAlert()
+        alert.messageText = "Anonymous Usage Metrics"
+        alert.informativeText = """
+        When OPENRELIX_ANALYTICS_ENDPOINT is configured, OpenRelix sends anonymous macOS client events by default: app launch, panel load state, fixed panel module visibility, dwell time, core control clicks, and app quit.
+
+        The payload includes a random install ID, per-launch session ID, app version, coarse macOS version, fixed module/control IDs, and durations. It does not send window titles, prompts, memory text, review text, file paths, usernames, hostnames, tokens, cookies, local reports, or raw OpenRelix state.
+
+        Turn this off from the OpenRelix menu with "Share Anonymous Usage Metrics", or launch with OPENRELIX_ANALYTICS_ENABLED=0 / OPENRELIX_ANALYTICS_DISABLED=1.
+        """
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
     }
 }
 

@@ -26211,7 +26211,7 @@ def build_html(data):
       </div>
     </section>
 
-    <section class="panel">
+    <section class="panel" id="usage-events-section">
       {usage_header}
       <div class="table-wrap">
         <table>
