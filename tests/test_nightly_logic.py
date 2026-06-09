@@ -7913,6 +7913,10 @@ Native Codex profile.
         self.assertIn("skill_quarantine_warning_count", source)
         self.assertIn("postSkillQuarantineAnalytics(action, analyticsResult, payload, applyResult, bulkBucket)", source)
         self.assertIn('postSkillQuarantineAnalytics(action, "failed"', source)
+        self.assertIn("isSkillQuarantineStaleBackendError(action, error)", source)
+        self.assertIn('requestNativeTokenServiceStart("skill-quarantine", endpoint, true)', source)
+        self.assertIn("runSkillQuarantineRequest(true)", source)
+        self.assertIn("本地后台已重启，正在重试小黑屋操作", source)
         self.assertIn('button.getAttribute("data-skill-quarantine-confirm-submit") === "true"', source)
         self.assertIn('submitSkillQuarantineAction("delete", entityKey, sourceButton)', source)
         self.assertNotIn("confirm-delete", source)
@@ -9748,6 +9752,45 @@ Native Codex profile.
         self.assertEqual(payload["version"], token_live_server.SERVICE_VERSION)
         self.assertEqual(payload["repo_root"], str(token_live_server.PATHS.repo_root))
         self.assertEqual(payload["script_path"], token_live_server.SERVICE_SCRIPT_PATH)
+
+    def test_skill_quarantine_delete_post_is_accepted_by_http_handler(self):
+        server = token_live_server.ThreadingHTTPServer(("127.0.0.1", 0), token_live_server.TokenLiveHandler)
+        thread = token_live_server.threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        body = json.dumps({"action": "delete", "entity_key": "skill:delete-me"}).encode("utf-8")
+        try:
+            with mock.patch.object(token_live_server, "get_update_token", return_value="test-token"), mock.patch.object(
+                token_live_server,
+                "read_view_cache",
+                return_value={"quarantined": [{"entity_key": "skill:delete-me"}]},
+            ), mock.patch.object(
+                token_live_server,
+                "start_skill_quarantine_action_async",
+                return_value=(True, {"ok": True, "status": "queued", "started_now": True}),
+            ) as start_action:
+                conn = http.client.HTTPConnection("127.0.0.1", server.server_address[1], timeout=2)
+                conn.request(
+                    "POST",
+                    token_live_server.SKILL_QUARANTINE_PATH,
+                    body=body,
+                    headers={
+                        "Content-Type": "application/json",
+                        "X-OpenRelix-Token": "test-token",
+                    },
+                )
+                response = conn.getresponse()
+                payload = json.loads(response.read().decode("utf-8"))
+                conn.close()
+        finally:
+            server.shutdown()
+            thread.join(timeout=2)
+            server.server_close()
+
+        self.assertEqual(response.status, 202)
+        self.assertEqual(payload["action"], "delete")
+        self.assertEqual(payload["status"], "accepted")
+        self.assertEqual(payload["task"]["status"], "queued")
+        start_action.assert_called_once()
 
     def test_ensure_token_live_service_bootstraps_when_health_check_fails(self):
         with TemporaryDirectory() as tmpdir:
@@ -12130,9 +12173,7 @@ Native Codex profile.
         self.assertIn("openrelixOpenExternal", mac_client)
         self.assertIn("openrelixEnsureTokenLive", mac_client)
         self.assertIn("ensureTokenLiveLaunchAgent()", mac_client)
-        self.assertIn('["kickstart", serviceTarget]', mac_client)
-        self.assertNotIn('["kickstart", "-k", serviceTarget]', mac_client)
-        self.assertNotIn("forceRestart", mac_client)
+        self.assertIn('["kickstart", "-k", serviceTarget]', mac_client)
         self.assertIn("webView?.underPageBackgroundColor = background", mac_client)
         self.assertIn("window?.backgroundColor = background", mac_client)
         self.assertNotIn("private let defaultBackground", mac_client)
