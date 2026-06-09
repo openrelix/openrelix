@@ -1086,12 +1086,29 @@ def compute_activations_and_extend(paths, installed, today, codex_homes=None):
 
 
 def filter_renderable_assets(assets, frequency_by_key):
+    skill_windows_by_identifier = {}
+    for asset in assets or []:
+        if _high_level_type(asset.get("kind", "")) != "skill":
+            continue
+        identifier = _safe_identifier(asset.get("identifier", ""))
+        if not identifier:
+            continue
+        stats = frequency_by_key.get(asset.get("asset_key", ""), {})
+        skill_windows_by_identifier[identifier] = int(skill_windows_by_identifier.get(identifier) or 0) + int(
+            stats.get("windows_30d") or 0
+        )
+
     visible = []
     for asset in assets or []:
         kind = asset.get("kind", "")
         key = asset.get("asset_key", "")
         stats = frequency_by_key.get(key, {})
-        if kind in NOISE_GATED_KINDS and int(stats.get("windows_30d") or 0) < 2:
+        identifier = _safe_identifier(asset.get("identifier", ""))
+        if (
+            kind in NOISE_GATED_KINDS
+            and int(stats.get("windows_30d") or 0) < 2
+            and int(skill_windows_by_identifier.get(identifier) or 0) < 2
+        ):
             continue
         visible.append(asset)
     return _dedupe_and_sort_assets(visible)

@@ -714,6 +714,59 @@ class AssetDiscoveryTests(unittest.TestCase):
         self.assertNotIn("external_repo_skill:external", visible)
         self.assertNotIn("project_skill:project", visible)
 
+    def test_noise_gate_uses_aggregate_skill_activity_for_same_identifier(self):
+        external_manifest = self.write_skill(self.root / "other-repo" / ".agents" / "skills", "shared")
+        project_manifest = self.write_skill(self.root / "project" / "skills", "shared")
+        self.write_codex_rollout(self.today, "one", ["cat {}".format(external_manifest)])
+        self.write_codex_rollout(self.today, "two", ["cat {}".format(project_manifest)])
+
+        assets, frequency = self.compute([])
+        visible_assets = asset_discovery.filter_renderable_assets(assets, frequency)
+        visible = self.assets_by_key(visible_assets)
+        rows = asset_discovery.aggregate_renderable_assets(visible_assets, frequency)
+        shared = [row for row in rows if row["type"] == "skill" and row["identifier"] == "shared"][0]
+
+        self.assertIn("external_repo_skill:shared", visible)
+        self.assertIn("project_skill:shared", visible)
+        self.assertEqual(shared["windows_30d"], 2)
+        self.assertEqual(
+            {source["kind"] for source in shared["sources"]},
+            {"external_repo_skill", "project_skill"},
+        )
+
+    def test_project_local_aiden_and_iac_skill_reads_are_counted(self):
+        aiden_manifest = self.write_skill(
+            self.root / "Douyin" / ".aiden" / "skills",
+            "android-douyin-search-workflow",
+            description="Search workflow",
+        )
+        iac_manifest = self.write_skill(
+            self.root / "Douyin" / ".iac" / "ai" / "skills",
+            "clean_useless_ab",
+            description="AB cleanup",
+        )
+        self.write_codex_rollout(self.today, "aiden-one", ["sed -n '1,120p' {}".format(aiden_manifest)])
+        self.write_codex_rollout(
+            self.today,
+            "aiden-two",
+            [
+                "sed -n '1,120p' {}".format(aiden_manifest),
+                "sed -n '121,240p' {}".format(aiden_manifest),
+            ],
+        )
+        self.write_codex_rollout(self.today, "iac-one", ["sed -n '1,120p' {}".format(iac_manifest)])
+        self.write_codex_rollout(self.today, "iac-two", ["sed -n '121,240p' {}".format(iac_manifest)])
+
+        assets, frequency = self.compute([])
+        visible = self.assets_by_key(asset_discovery.filter_renderable_assets(assets, frequency))
+
+        self.assertIn("project_skill:android-douyin-search-workflow", visible)
+        self.assertIn("project_skill:clean_useless_ab", visible)
+        self.assertEqual(frequency["project_skill:android-douyin-search-workflow"]["windows_30d"], 2)
+        self.assertEqual(frequency["project_skill:android-douyin-search-workflow"]["read_events_30d"], 3)
+        self.assertEqual(frequency["project_skill:clean_useless_ab"]["windows_30d"], 2)
+        self.assertEqual(frequency["project_skill:clean_useless_ab"]["read_events_30d"], 2)
+
     def test_old_asset_panels_are_absent_from_rendered_asset_html(self):
         rows = [
             {
@@ -1110,6 +1163,8 @@ class AssetDiscoveryTests(unittest.TestCase):
         repo_manifest = self.paths.repo_skill_root / "baz" / "SKILL.md"
         external_manifest = self.root / "other" / ".agents" / "skills" / "qux" / "SKILL.md"
         project_manifest = self.root / "project" / "skills" / "local" / "SKILL.md"
+        aiden_manifest = self.root / "project" / ".aiden" / "skills" / "aiden-local" / "SKILL.md"
+        iac_manifest = self.root / "project" / ".iac" / "ai" / "skills" / "iac-local" / "SKILL.md"
 
         self.assertEqual(asset_discovery.classify_skill_manifest_path(str(codex_manifest), self.paths), ("codex_skill", "foo"))
         self.assertEqual(
@@ -1122,6 +1177,8 @@ class AssetDiscoveryTests(unittest.TestCase):
         self.assertEqual(asset_discovery.classify_skill_manifest_path(str(external_manifest), self.paths), ("external_repo_skill", "qux"))
         self.assertEqual(asset_discovery.classify_skill_manifest_path("skills/local/SKILL.md", self.paths), ("project_skill", "local"))
         self.assertEqual(asset_discovery.classify_skill_manifest_path(str(project_manifest), self.paths), ("project_skill", "local"))
+        self.assertEqual(asset_discovery.classify_skill_manifest_path(str(aiden_manifest), self.paths), ("project_skill", "aiden-local"))
+        self.assertEqual(asset_discovery.classify_skill_manifest_path(str(iac_manifest), self.paths), ("project_skill", "iac-local"))
 
 
 if __name__ == "__main__":
