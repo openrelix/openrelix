@@ -84,6 +84,12 @@ _SKILL_MANIFEST_RE = re.compile(
 )
 _EXEC_COMMAND_NAMES = {"exec_command", "functions.exec_command"}
 _CODEX_SKILL_COMMAND_RG_PATTERN = r'SKILL\.md.*(?:\\"cmd\\"|"cmd")|(?:\\"cmd\\"|"cmd").*SKILL\.md'
+PROJECT_SKILL_SUBDIRS = (
+    "skills",
+    ".agents/skills",
+    ".codex/skills",
+    ".claude/skills",
+)
 
 
 def asset_key(kind, identifier):
@@ -207,6 +213,13 @@ def _resolved(path):
         return Path(path).expanduser()
 
 
+def _absolute_entry_path(path):
+    try:
+        return Path(path).expanduser().absolute()
+    except OSError:
+        return Path(path).expanduser()
+
+
 def _is_relative_to(path, root):
     try:
         _resolved(path).relative_to(_resolved(root))
@@ -313,8 +326,10 @@ def _asset_row(kind, identifier, name="", description="", source_root="", manife
     if not identifier:
         return None
     manifest_abspath_text = ""
+    manifest_entry_abspath_text = ""
     if manifest_abspath:
         manifest_abspath_text = _resolved(manifest_abspath).as_posix()
+        manifest_entry_abspath_text = _absolute_entry_path(manifest_abspath).as_posix()
     return {
         "asset_key": asset_key(kind, identifier),
         "kind": kind,
@@ -324,6 +339,7 @@ def _asset_row(kind, identifier, name="", description="", source_root="", manife
         "source_root": _redact_display_text(source_root or ""),
         "manifest_path": _redact_display_text(manifest_path or ""),
         "manifest_abspath": manifest_abspath_text,
+        "manifest_entry_abspath": manifest_entry_abspath_text,
     }
 
 
@@ -375,6 +391,53 @@ def _discover_skill_dir(root, kind, source_root):
         )
         if row:
             assets.append(row)
+    return assets
+
+
+def _project_skill_root_label(project_root, skill_root):
+    project_root = _resolved(project_root)
+    skill_root = _resolved(skill_root)
+    project_name = project_root.name or "project"
+    try:
+        rel = skill_root.relative_to(project_root).as_posix()
+    except ValueError:
+        rel = skill_root.name or "skills"
+    if not rel or rel == ".":
+        return "project:{}/skills".format(project_name)
+    return "project:{}/{}".format(project_name, rel)
+
+
+def _project_skill_dir_roots(project_skill_roots=None):
+    roots = []
+    seen = set()
+    for raw_root in project_skill_roots or []:
+        if raw_root is None:
+            continue
+        root = _resolved(Path(raw_root).expanduser())
+        candidates = []
+        if root.name == "skills":
+            candidates.append(root)
+        for rel in PROJECT_SKILL_SUBDIRS:
+            candidates.append(root / rel)
+        for candidate in candidates:
+            key = _resolved(candidate).as_posix()
+            if key in seen:
+                continue
+            seen.add(key)
+            roots.append((root, candidate))
+    return roots
+
+
+def _discover_project_skill_dirs(project_skill_roots=None):
+    assets = []
+    for project_root, skill_root in _project_skill_dir_roots(project_skill_roots):
+        assets.extend(
+            _discover_skill_dir(
+                skill_root,
+                "project_skill",
+                _project_skill_root_label(project_root, skill_root),
+            )
+        )
     return assets
 
 
@@ -512,7 +575,7 @@ def _discover_launch_agents(paths):
     return assets
 
 
-def discover_installed_assets(paths, codex_homes=None):
+def discover_installed_assets(paths, codex_homes=None, project_skill_roots=None):
     """Discover static assets installed on this machine.
 
     The returned rows are display-safe and do not include raw absolute paths.
@@ -544,6 +607,7 @@ def discover_installed_assets(paths, codex_homes=None):
     discovered.extend(_discover_skill_dir(claude_skill_root, "claude_skill", "~/.claude/skills"))
     discovered.extend(_discover_skill_dir(agent_skill_root, "agent_skill", "~/.agents/skills"))
     discovered.extend(_discover_skill_dir(repo_skill_root, "repo_skill", ".agents/skills"))
+    discovered.extend(_discover_project_skill_dirs(project_skill_roots))
     discovered.extend(_discover_claude_plugins())
     discovered.extend(_discover_launch_agents(paths))
     return _dedupe_and_sort_assets(discovered)
@@ -613,7 +677,7 @@ def _absolute_path_from_raw(raw_path):
     return None
 
 
-def classify_skill_manifest_path(raw_path, paths, codex_homes=None):
+def classify_skill_manifest_path(raw_path, paths, codex_homes=None, project_skill_roots=None):
     """Return (kind, identifier) for a SKILL.md path, or None if unsupported."""
     hits = _skill_manifest_hits(raw_path)
     if hits:
@@ -645,6 +709,9 @@ def classify_skill_manifest_path(raw_path, paths, codex_homes=None):
             return ("agent_skill", identifier)
         if _direct_skill_under_root(absolute_path, repo_skill_root, identifier):
             return ("repo_skill", identifier)
+        for _project_root, project_skill_root in _project_skill_dir_roots(project_skill_roots):
+            if _direct_skill_under_root(absolute_path, project_skill_root, identifier):
+                return ("project_skill", identifier)
 
     normalized = path_text.replace("\\", "/")
     if re.search(r"(?:^|/)\.agents/skills/{}/SKILL\.md$".format(re.escape(identifier)), normalized):
@@ -682,8 +749,13 @@ def _organic_asset_from_manifest(kind, identifier, raw_path, cache):
     )
 
 
-def _hit_key_and_row(raw_path, paths, codex_homes=None):
-    classified = classify_skill_manifest_path(raw_path, paths, codex_homes=codex_homes)
+def _hit_key_and_row(raw_path, paths, codex_homes=None, project_skill_roots=None):
+    classified = classify_skill_manifest_path(
+        raw_path,
+        paths,
+        codex_homes=codex_homes,
+        project_skill_roots=project_skill_roots,
+    )
     if not classified:
         return None
     kind, identifier = classified
@@ -708,7 +780,7 @@ def _merge_session_hit(hits, hit):
     hits[key]["read_events"] = int(hits[key].get("read_events") or 0) + int(hit.get("read_events") or 1)
 
 
-def _scan_codex_session(session_path, paths, codex_homes=None):
+def _scan_codex_session(session_path, paths, codex_homes=None, project_skill_roots=None):
     hits = OrderedDict()
     try:
         payload = Path(session_path).read_bytes()
@@ -732,7 +804,12 @@ def _scan_codex_session(session_path, paths, codex_homes=None):
             line = raw_line.decode("utf-8")
         except UnicodeDecodeError:
             continue
-        for hit in _hits_from_codex_json_line(line, paths, codex_homes=codex_homes):
+        for hit in _hits_from_codex_json_line(
+            line,
+            paths,
+            codex_homes=codex_homes,
+            project_skill_roots=project_skill_roots,
+        ):
             _merge_session_hit(hits, hit)
     return hits
 
@@ -750,7 +827,7 @@ def _parse_local_timestamp_date(value):
     return parsed.date()
 
 
-def _scan_claude_session(session_path, paths, mtime_date):
+def _scan_claude_session(session_path, paths, mtime_date, project_skill_roots=None):
     hits = OrderedDict()
     session_date = None
     try:
@@ -790,7 +867,7 @@ def _scan_claude_session(session_path, paths, mtime_date):
             input_payload = item.get("input")
             file_path = input_payload.get("file_path") if isinstance(input_payload, dict) else ""
             for raw_path, _identifier in _skill_manifest_hits(file_path):
-                hit = _hit_key_and_row(raw_path, paths)
+                hit = _hit_key_and_row(raw_path, paths, project_skill_roots=project_skill_roots)
                 _merge_session_hit(hits, hit)
     return (session_date or mtime_date, hits)
 
@@ -835,7 +912,7 @@ def _iter_codex_session_month_roots(paths, start, anchor):
     return roots
 
 
-def _hits_from_codex_json_line(line, paths, codex_homes=None):
+def _hits_from_codex_json_line(line, paths, codex_homes=None, project_skill_roots=None):
     obj = _parse_json_line(line)
     if not isinstance(obj, dict) or obj.get("type") != "response_item":
         return []
@@ -860,13 +937,18 @@ def _hits_from_codex_json_line(line, paths, codex_homes=None):
         if not isinstance(cmd, str) or "SKILL.md" not in cmd:
             continue
         for raw_path, _identifier in _skill_manifest_hits(cmd):
-            hit = _hit_key_and_row(raw_path, paths, codex_homes=codex_homes)
+            hit = _hit_key_and_row(
+                raw_path,
+                paths,
+                codex_homes=codex_homes,
+                project_skill_roots=project_skill_roots,
+            )
             if hit:
                 hits.append(hit)
     return hits
 
 
-def _scan_codex_sessions_with_rg(paths, lookback_start, anchor, codex_homes=None):
+def _scan_codex_sessions_with_rg(paths, lookback_start, anchor, codex_homes=None, project_skill_roots=None):
     if not shutil.which("rg"):
         return None
     roots = _iter_codex_session_month_roots(paths, lookback_start, anchor)
@@ -915,7 +997,12 @@ def _scan_codex_sessions_with_rg(paths, lookback_start, anchor, codex_homes=None
         if not json_line:
             continue
         session_hits = sessions.setdefault(session_path, (session_date, OrderedDict()))[1]
-        for hit in _hits_from_codex_json_line(json_line, paths, codex_homes=codex_homes):
+        for hit in _hits_from_codex_json_line(
+            json_line,
+            paths,
+            codex_homes=codex_homes,
+            project_skill_roots=project_skill_roots,
+        ):
             _merge_session_hit(session_hits, hit)
     return list(sessions.values())
 
@@ -1005,7 +1092,7 @@ def _record_monthly_activity(date_value, hits, monthly_activity):
                 monthly_activity[month_label].add(identifier)
 
 
-def compute_activation_snapshot(paths, installed, today, monthly_months=6, codex_homes=None):
+def compute_activation_snapshot(paths, installed, today, monthly_months=6, codex_homes=None, project_skill_roots=None):
     """Return discovered assets, 30-day frequency, and optional monthly activity.
 
     Frequency exposes both deduped sessions and raw SKILL.md read events:
@@ -1037,6 +1124,7 @@ def compute_activation_snapshot(paths, installed, today, monthly_months=6, codex
             lookback_start,
             anchor,
             codex_homes=codex_homes,
+            project_skill_roots=project_skill_roots,
         )
         if rg_codex_sessions is not None:
             for session_date, hits in rg_codex_sessions:
@@ -1048,12 +1136,22 @@ def compute_activation_snapshot(paths, installed, today, monthly_months=6, codex
             if session_date < lookback_start:
                 continue
             for session_path in _iter_codex_sessions_for_date(codex_paths, session_date):
-                hits = _scan_codex_session(session_path, codex_paths, codex_homes=codex_homes)
+                hits = _scan_codex_session(
+                    session_path,
+                    codex_paths,
+                    codex_homes=codex_homes,
+                    project_skill_roots=project_skill_roots,
+                )
                 _record_monthly_activity(session_date, hits, monthly_activity)
                 _record_activation(session_date, hits, assets_by_key, frequency_by_key, frontmatter_cache, anchor)
 
     for session_path, mtime_date in _iter_claude_session_files(anchor, lookback_start=lookback_start):
-        session_date, hits = _scan_claude_session(session_path, paths, mtime_date)
+        session_date, hits = _scan_claude_session(
+            session_path,
+            paths,
+            mtime_date,
+            project_skill_roots=project_skill_roots,
+        )
         _record_monthly_activity(session_date, hits, monthly_activity)
         _record_activation(session_date, hits, assets_by_key, frequency_by_key, frontmatter_cache, anchor)
 
@@ -1074,14 +1172,21 @@ def compute_activation_snapshot(paths, installed, today, monthly_months=6, codex
     }
 
 
-def compute_activations_and_extend(paths, installed, today, codex_homes=None):
+def compute_activations_and_extend(paths, installed, today, codex_homes=None, project_skill_roots=None):
     """Return discovered assets plus real SKILL.md activation frequencies.
 
     The returned frequency keeps windows_7d/windows_30d for backward
     compatibility; those values are deduped session counts. read_events_7d and
     read_events_30d hold the raw manifest-read count.
     """
-    snapshot = compute_activation_snapshot(paths, installed, today, monthly_months=0, codex_homes=codex_homes)
+    snapshot = compute_activation_snapshot(
+        paths,
+        installed,
+        today,
+        monthly_months=0,
+        codex_homes=codex_homes,
+        project_skill_roots=project_skill_roots,
+    )
     return (snapshot["assets"], snapshot["frequency_by_key"])
 
 
@@ -1378,16 +1483,29 @@ def top_skill_rows(render_rows, limit=10):
     return sorted_rows[: max(int(limit or 0), 0)]
 
 
-def build_asset_stats_snapshot(paths, target_date, generated_at=None, monthly_months=6, top_limit=10, codex_homes=None):
+def build_asset_stats_snapshot(
+    paths,
+    target_date,
+    generated_at=None,
+    monthly_months=6,
+    top_limit=10,
+    codex_homes=None,
+    project_skill_roots=None,
+):
     """Build a single-date asset statistics snapshot without writing state."""
     anchor = _coerce_date(target_date)
-    installed_assets = discover_installed_assets(paths, codex_homes=codex_homes)
+    installed_assets = discover_installed_assets(
+        paths,
+        codex_homes=codex_homes,
+        project_skill_roots=project_skill_roots,
+    )
     activation_snapshot = compute_activation_snapshot(
         paths,
         installed_assets,
         anchor,
         monthly_months=monthly_months,
         codex_homes=codex_homes,
+        project_skill_roots=project_skill_roots,
     )
     all_assets = activation_snapshot["assets"]
     frequency_by_key = activation_snapshot["frequency_by_key"]

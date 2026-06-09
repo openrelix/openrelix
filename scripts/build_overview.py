@@ -9205,6 +9205,7 @@ def build_data(assets, usage_events, reviews, language=None):
         include_running=True,
     )
     codex_homes = [profile.codex_home for profile in codex_profiles]
+    project_skill_roots = overview_skill_quarantine.configured_project_skill_roots(PATHS)
     memory_items = load_memory_registry_items()
     nightly_candidates = load_nightly_summary_candidates()
     primary_nightly, active_nightly = load_primary_and_active_nightly_summaries()
@@ -9216,13 +9217,18 @@ def build_data(assets, usage_events, reviews, language=None):
         asset_filter_end_date,
         ASSET_FILTER_DEFAULT_DAYS,
     )
-    installed_assets = overview_asset_discovery.discover_installed_assets(PATHS, codex_homes=codex_homes)
+    installed_assets = overview_asset_discovery.discover_installed_assets(
+        PATHS,
+        codex_homes=codex_homes,
+        project_skill_roots=project_skill_roots,
+    )
     discovered_snapshot = overview_asset_discovery.compute_activation_snapshot(
         PATHS,
         installed_assets,
         today,
         monthly_months=6,
         codex_homes=codex_homes,
+        project_skill_roots=project_skill_roots,
     )
     all_discovered_assets = discovered_snapshot["assets"]
     discovered_asset_frequency = discovered_snapshot["frequency_by_key"]
@@ -9392,6 +9398,7 @@ def build_data(assets, usage_events, reviews, language=None):
         activation_snapshot=discovered_snapshot,
         mcp_usage_view=mcp_usage_view,
         codex_homes=codex_homes,
+        project_skill_roots=project_skill_roots,
     )
     overview_skill_quarantine.write_view_cache(PATHS, skill_quarantine_view)
     discovered_render_rows = overview_skill_quarantine.filter_asset_rows(
@@ -12144,7 +12151,7 @@ def skill_quarantine_isolation_label(status):
         "moved": ("已搬移隔离", "Moved"),
         "config_isolated": ("配置已隔离", "Config isolated"),
         "toml_disabled": ("TOML 已禁用", "TOML disabled"),
-        "state_only": ("仅状态隔离", "State only"),
+        "state_only": ("只登记小黑屋状态", "State recorded only"),
         "missing": ("源已缺失", "Missing"),
         "archive_failed": ("归档失败", "Archive failed"),
         "backup_failed": ("备份失败", "Backup failed"),
@@ -12161,7 +12168,8 @@ def skill_quarantine_isolation_label(status):
 def skill_quarantine_warning_note_label(note):
     labels = {
         "repo_skill_not_moved": ("仓库内 skill 不做物理搬移", "Repo-local skill was not moved"),
-        "not_in_known_global_skill_root": ("来源不在已知全局 skill 根", "Source is outside known global skill roots"),
+        "project_skill_not_moved": ("常用项目 skill 不做物理搬移", "Project-local skill was not moved"),
+        "not_in_known_global_skill_root": ("来源不在可安全搬移目录，未搬文件", "Source is outside movable skill roots; file was not moved"),
         "toml_config_not_mutated": ("TOML 配置未修改", "TOML config was not changed"),
         "no_movable_skill_sources": ("没有可搬移的 skill 来源", "No movable skill source"),
         "no_mutable_mcp_config": ("没有可修改的 MCP 配置", "No mutable MCP config"),
@@ -12178,22 +12186,42 @@ def make_skill_quarantine_warning_summary(rows):
             warnings.append((row, warning))
     if not warnings:
         return ""
+    grouped = []
+    seen = {}
+    for row, warning in warnings:
+        group_key = (
+            str(row.get("entity_key") or row.get("display_name") or row.get("identifier") or ""),
+            str(warning.get("status") or ""),
+            str(warning.get("note") or ""),
+            str(warning.get("error") or ""),
+        )
+        if group_key in seen:
+            grouped[seen[group_key]]["count"] += 1
+            continue
+        seen[group_key] = len(grouped)
+        grouped.append({"row": row, "warning": warning, "count": 1})
     items = []
-    for row, warning in warnings[:6]:
+    for group in grouped[:6]:
+        row = group["row"]
+        warning = group["warning"]
+        count = safe_int(group.get("count", 1))
         name = str(row.get("display_name") or row.get("identifier") or row.get("entity_key") or "")
         status = skill_quarantine_isolation_label(str(warning.get("status") or ""))
         note = skill_quarantine_warning_note_label(str(warning.get("note") or ""))
         error = str(warning.get("error") or "")
+        source_count = ""
+        if count > 1:
+            source_count = panel_language_text_html(" · {} 个来源".format(count), " · {} sources".format(count))
         error_html = ' <span class="skill-quarantine-warning-error">{}</span>'.format(escape(error)) if error else ""
         items.append(
             "<li><strong>{name}</strong><span>{status}</span><small>{note}{error}</small></li>".format(
                 name=escape(name),
                 status=status,
-                note=note,
+                note=note + source_count,
                 error=error_html,
             )
         )
-    more = len(warnings) - len(items)
+    more = len(grouped) - len(items)
     more_html = ""
     if more > 0:
         more_html = "<p>{}</p>".format(panel_language_text_html("另有 {} 条提示。".format(more), "{} more notices.".format(more)))
@@ -12204,7 +12232,7 @@ def make_skill_quarantine_warning_summary(rows):
         {more}
       </div>
     """.format(
-        title=panel_language_text_html("迁移提示", "Migration Notices"),
+        title=panel_language_text_html("隔离提示", "Isolation Notices"),
         items="".join(items),
         more=more_html,
     )
@@ -12222,23 +12250,88 @@ def skill_quarantine_count_label(value):
     return panel_language_text_html("{} 项".format(count), "{} items".format(count))
 
 
+def skill_quarantine_display_path(value):
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    try:
+        path = Path(text).expanduser()
+        home = Path.home()
+        if path_is_within(path, home):
+            return "~/" + path.relative_to(home).as_posix()
+    except (OSError, ValueError):
+        pass
+    return text
+
+
 def skill_quarantine_type_label(entity_type):
     return "MCP" if entity_type == "mcp" else "Skill"
 
 
-def make_skill_quarantine_metric(label_zh, label_en, value, caption_zh, caption_en, tone):
+def make_skill_quarantine_metric(label_zh, label_en, value, caption_zh, caption_en, tone, action_html=""):
+    action_block = '<div class="skill-quarantine-metric-action">{}</div>'.format(action_html) if action_html else ""
     return """
       <div class="skill-quarantine-metric is-{tone}">
-        <span>{label}</span>
-        <strong>{value}</strong>
-        <small>{caption}</small>
+        <div class="skill-quarantine-metric-body">
+          <span>{label}</span>
+          <strong>{value}</strong>
+          <small>{caption}</small>
+        </div>
+        {action_block}
       </div>
     """.format(
         tone=escape(tone, quote=True),
         label=panel_language_text_html(label_zh, label_en),
         value=escape(str(value)),
         caption=panel_language_text_html(caption_zh, caption_en),
+        action_block=action_block,
     )
+
+
+def make_skill_quarantine_project_root_rows(project_roots):
+    if not project_roots:
+        return """
+          <li class="skill-quarantine-project-root is-empty">
+            <div>
+              <strong>{empty}</strong>
+              <code>{hint}</code>
+            </div>
+          </li>
+        """.format(
+            empty=panel_language_text_html("暂无常用项目路径", "No project paths"),
+            hint=panel_language_text_html("添加后会扫描项目内 skills 目录。", "Added paths scan project-local skill folders."),
+        )
+    rows = []
+    for root in project_roots:
+        if not isinstance(root, dict):
+            continue
+        path = str(root.get("path") or "").strip()
+        if not path:
+            continue
+        label = str(root.get("label") or Path(path).name or path)
+        rows.append(
+            """
+            <li class="skill-quarantine-project-root" data-skill-quarantine-project-root="{path_attr}">
+              <div>
+                <strong>{label}</strong>
+                <code>{path}</code>
+              </div>
+              <button
+                class="skill-quarantine-project-remove"
+                type="button"
+                data-skill-quarantine-action="remove-project-skill-root"
+                data-skill-quarantine-project-path="{path_attr}"
+                data-label="Remove"
+              >{remove_label}</button>
+            </li>
+            """.format(
+                path_attr=escape(path, quote=True),
+                label=escape(label),
+                path=escape(path),
+                remove_label=panel_language_text_html("移除", "Remove"),
+            )
+        )
+    return "".join(rows) or make_skill_quarantine_project_root_rows([])
 
 
 def make_skill_quarantine_rows(rows, action):
@@ -12279,7 +12372,30 @@ def make_skill_quarantine_rows(rows, action):
             status_cell = '<span class="skill-quarantine-chip is-grace">{}</span>'.format(skill_quarantine_reason_label(reason))
         else:
             status_cell = '<span class="skill-quarantine-chip is-reason">{}</span>'.format(skill_quarantine_reason_label(reason))
-        if action in {"block", "grace", "unblock"}:
+        if action == "unblock":
+            action_cell = """
+              <div class="skill-quarantine-action-group">
+                <button
+                  class="skill-quarantine-action"
+                  type="button"
+                  data-skill-quarantine-action="unblock"
+                  data-skill-quarantine-key="{key}"
+                  data-label="Restore"
+                >{restore_label}</button>
+                <button
+                  class="skill-quarantine-action is-danger"
+                  type="button"
+                  data-skill-quarantine-action="delete"
+                  data-skill-quarantine-key="{key}"
+                  data-label="Delete"
+                >{delete_label}</button>
+              </div>
+            """.format(
+                key=escape(key, quote=True),
+                restore_label=panel_language_text_html("放行", "Restore"),
+                delete_label=panel_language_text_html("删除", "Delete"),
+            )
+        elif action in {"block", "grace"}:
             action_cell = """
                 <button
                   class="skill-quarantine-action"
@@ -12335,6 +12451,15 @@ def make_skill_quarantine_panel(view):
     suggested_count = safe_int(counts.get("suggested", len(suggested)))
     quarantined_count = safe_int(counts.get("quarantined", len(quarantined)))
     grace_count = safe_int(counts.get("grace", len(grace)))
+    quarantine_root_path = str(view.get("quarantine_root") or "")
+    quarantine_root_display = skill_quarantine_display_path(quarantine_root_path)
+    quarantine_root_exists = bool(quarantine_root_path and Path(quarantine_root_path).exists())
+    quarantine_root_disabled = "" if quarantine_root_exists else " disabled"
+    quarantine_root_hint = (
+        panel_language_text_html("隔离目录", "Isolation folder")
+        if quarantine_root_exists
+        else panel_language_text_html("隔离目录尚未创建", "Quarantine folder has not been created yet")
+    )
     block_all_disabled = " disabled" if suggested_count <= 0 else ""
     grace_all_disabled = " disabled" if grace_count <= 0 else ""
     block_all_hint = (
@@ -12347,6 +12472,62 @@ def make_skill_quarantine_panel(view):
         if grace_count <= 0
         else panel_language_text_html("手动覆盖 7 天保护期", "Manually overrides the 7-day protection period")
     )
+    suggested_action_html = """
+      <button
+        class="action-button skill-quarantine-block-all"
+        type="button"
+        data-skill-quarantine-action="block-all"
+        data-label="一键隔离建议项"
+        title="{block_all_hint_plain}"
+        {block_all_disabled}
+      >{block_all_label}</button>
+      <small class="skill-quarantine-action-hint">{block_all_hint}</small>
+    """.format(
+        block_all_hint_plain=escape("当前没有建议隔离项" if suggested_count <= 0 else "只处理建议隔离列表", quote=True),
+        block_all_disabled=block_all_disabled,
+        block_all_label=panel_language_text_html("一键隔离建议项", "Quarantine suggested"),
+        block_all_hint=block_all_hint,
+    )
+    grace_action_html = """
+      <button
+        class="action-button skill-quarantine-grace-all"
+        type="button"
+        data-skill-quarantine-action="block-grace-all"
+        data-label="一键隔离可选项"
+        title="{grace_all_hint_plain}"
+        {grace_all_disabled}
+      >{grace_all_label}</button>
+      <small class="skill-quarantine-action-hint">{grace_all_hint}</small>
+    """.format(
+        grace_all_hint_plain=escape("当前没有可选项" if grace_count <= 0 else "手动覆盖 7 天保护期", quote=True),
+        grace_all_disabled=grace_all_disabled,
+        grace_all_label=panel_language_text_html("一键隔离可选项", "Quarantine optional"),
+        grace_all_hint=grace_all_hint,
+    )
+    quarantine_root_action_html = """
+      <button
+        class="action-button skill-quarantine-open-folder"
+        type="button"
+        data-open-finder-path="{quarantine_root_attr}"
+        data-label="{quarantine_root_label_plain}"
+        data-label-zh="打开小黑屋文件夹"
+        data-label-en="Open quarantine folder"
+        title="{quarantine_root_title}"
+        {quarantine_root_disabled}
+      >{quarantine_root_label}</button>
+      <small class="skill-quarantine-action-hint skill-quarantine-path-hint">
+        {quarantine_root_hint_html}
+        <code>{quarantine_root_display}</code>
+      </small>
+    """.format(
+        quarantine_root_attr=escape(quarantine_root_path, quote=True),
+        quarantine_root_label_plain=escape("打开小黑屋文件夹", quote=True),
+        quarantine_root_title=escape("打开小黑屋文件夹" if quarantine_root_exists else "隔离目录尚未创建", quote=True),
+        quarantine_root_disabled=quarantine_root_disabled,
+        quarantine_root_label=panel_language_text_html("打开小黑屋文件夹", "Open quarantine folder"),
+        quarantine_root_hint_html=quarantine_root_hint,
+        quarantine_root_display=escape(quarantine_root_display or "—"),
+    )
     warning_summary = make_skill_quarantine_warning_summary(quarantined)
     return """
     <section class="panel skill-quarantine-panel" id="skill-quarantine-section" data-discovered-assets-label="Skill/MCP Quarantine">
@@ -12354,32 +12535,11 @@ def make_skill_quarantine_panel(view):
       <div class="skill-quarantine-toolbar">
         <div class="skill-quarantine-metrics">
           {suggested_metric}
-          {quarantined_metric}
           {grace_metric}
+          {quarantined_metric}
         </div>
-        <div class="skill-quarantine-actions">
-          <button
-            class="action-button skill-quarantine-block-all"
-            type="button"
-            data-skill-quarantine-action="block-all"
-            data-label="Quarantine suggested"
-            title="{block_all_hint_plain}"
-            {block_all_disabled}
-          >{block_all_label}</button>
-          <small class="skill-quarantine-action-hint">{block_all_hint}</small>
-          <button
-            class="action-button skill-quarantine-grace-all"
-            type="button"
-            data-skill-quarantine-action="block-grace-all"
-            data-label="Quarantine grace"
-            title="{grace_all_hint_plain}"
-            {grace_all_disabled}
-          >{grace_all_label}</button>
-          <small class="skill-quarantine-action-hint">{grace_all_hint}</small>
-          <span class="asset-refresh-status skill-quarantine-status" id="skill-quarantine-status" role="status" aria-live="polite"></span>
-        </div>
+        <span class="asset-refresh-status skill-quarantine-status" id="skill-quarantine-status" role="status" aria-live="polite"></span>
       </div>
-      {warning_summary}
       <div class="skill-quarantine-grid">
         <section class="skill-quarantine-table-card" data-skill-quarantine-bucket="suggested">
           <div class="skill-quarantine-table-head">
@@ -12455,6 +12615,7 @@ def make_skill_quarantine_panel(view):
               <tbody>{quarantined_rows}</tbody>
             </table>
           </div>
+          {warning_summary}
         </section>
       </div>
     </section>
@@ -12473,14 +12634,7 @@ def make_skill_quarantine_panel(view):
             "近 30 天未使用",
             "Unused in the window",
             "suggested",
-        ),
-        quarantined_metric=make_skill_quarantine_metric(
-            "小黑屋",
-            "Quarantined",
-            quarantined_count,
-            "默认不再注入",
-            "Excluded by default",
-            "quarantined",
+            action_html=suggested_action_html,
         ),
         grace_metric=make_skill_quarantine_metric(
             "可选隔离",
@@ -12489,16 +12643,18 @@ def make_skill_quarantine_panel(view):
             "新增 {} 天内可选".format(grace_days),
             "New items under {} days".format(grace_days),
             "grace",
+            action_html=grace_action_html,
         ),
-        block_all_disabled=block_all_disabled,
-        grace_all_disabled=grace_all_disabled,
-        block_all_hint=block_all_hint,
-        grace_all_hint=grace_all_hint,
-        block_all_hint_plain=escape("No suggested items" if suggested_count <= 0 else "Suggested list only", quote=True),
-        grace_all_hint_plain=escape("No optional items" if grace_count <= 0 else "Manually overrides the 7-day protection period", quote=True),
+        quarantined_metric=make_skill_quarantine_metric(
+            "小黑屋",
+            "Quarantined",
+            quarantined_count,
+            "默认不再注入",
+            "Excluded by default",
+            "quarantined",
+            action_html=quarantine_root_action_html,
+        ),
         warning_summary=warning_summary,
-        block_all_label=panel_language_text_html("一键隔离建议项", "Quarantine suggested"),
-        grace_all_label=panel_language_text_html("一键隔离可选项", "Quarantine optional"),
         suggested_title=panel_language_text_html("建议隔离", "Suggested Isolation"),
         suggested_note=panel_language_text_html("超过 7 天保护期且近 30 天未使用，建议默认停用。", "Past the 7-day protection period and unused for 30 days; recommended to disable by default."),
         grace_title=panel_language_text_html("可选隔离", "Optional Isolation"),
@@ -19355,9 +19511,8 @@ def build_html(data):
 
     .skill-quarantine-toolbar {{
       display: grid;
-      grid-template-columns: minmax(0, 1fr) auto;
-      align-items: start;
-      gap: 14px;
+      grid-template-columns: minmax(0, 1fr);
+      gap: 12px;
     }}
 
     .skill-quarantine-metrics {{
@@ -19368,6 +19523,10 @@ def build_html(data):
     }}
 
     .skill-quarantine-metric {{
+      display: grid;
+      grid-template-rows: auto auto;
+      gap: 12px;
+      align-content: start;
       min-width: 0;
       padding: 12px;
       border: 1px solid var(--line);
@@ -19375,8 +19534,13 @@ def build_html(data):
       background: var(--soft);
     }}
 
-    .skill-quarantine-metric span,
-    .skill-quarantine-metric small {{
+    .skill-quarantine-metric-body {{
+      min-width: 0;
+    }}
+
+    .skill-quarantine-metric-body > span,
+    .skill-quarantine-metric-body > small,
+    .skill-quarantine-metric-action > small {{
       display: block;
       color: var(--muted);
       font-size: 12px;
@@ -19394,40 +19558,52 @@ def build_html(data):
       line-height: 1;
     }}
 
-    .skill-quarantine-metric.is-suggested strong,
-    .skill-quarantine-metric.is-suggested span {{
-      color: var(--teal);
-    }}
-
-    .skill-quarantine-metric.is-quarantined strong,
-    .skill-quarantine-metric.is-quarantined span {{
-      color: var(--rose);
-    }}
-
-    .skill-quarantine-metric.is-grace strong,
-    .skill-quarantine-metric.is-grace span {{
-      color: var(--amber);
-    }}
-
-    .skill-quarantine-actions {{
+    .skill-quarantine-metric-action {{
       display: grid;
-      justify-items: end;
-      gap: 8px;
-      min-width: 160px;
+      gap: 5px;
+      min-width: 0;
+    }}
+
+    .skill-quarantine-metric-action .action-button {{
+      width: 100%;
+      min-height: 36px;
+      justify-content: center;
+    }}
+
+    .skill-quarantine-metric-action .action-button span {{
+      color: inherit;
+      font-size: inherit;
+      font-weight: inherit;
+      line-height: inherit;
     }}
 
     .skill-quarantine-block-all[disabled],
     .skill-quarantine-grace-all[disabled] {{
       cursor: not-allowed;
-      opacity: 0.48;
+      color: #ffffff;
+      background: color-mix(in srgb, var(--teal) 48%, var(--control));
+      box-shadow: none;
+      opacity: 1;
     }}
 
     .skill-quarantine-action-hint {{
-      max-width: 220px;
+      max-width: 100%;
       color: var(--muted);
       font-size: 12px;
       line-height: 1.35;
-      text-align: right;
+      text-align: left;
+    }}
+
+    .skill-quarantine-path-hint code {{
+      display: block;
+      margin-top: 2px;
+      color: var(--muted);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 11px;
+      font-weight: 650;
+      line-height: 1.35;
+      overflow-wrap: anywhere;
+      white-space: normal;
     }}
 
     .skill-quarantine-warning-panel {{
@@ -19437,6 +19613,10 @@ def build_html(data):
       border: 1px solid color-mix(in srgb, var(--amber) 24%, var(--line));
       border-radius: 8px;
       background: color-mix(in srgb, var(--amber) 7%, var(--panel));
+    }}
+
+    .skill-quarantine-table-card > .skill-quarantine-warning-panel {{
+      margin: 12px 14px 14px;
     }}
 
     .skill-quarantine-warning-panel > strong {{
@@ -19620,6 +19800,13 @@ def build_html(data):
       white-space: nowrap;
     }}
 
+    .skill-quarantine-action-group {{
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }}
+
     .skill-quarantine-action {{
       min-height: 30px;
       padding: 0 10px;
@@ -19631,6 +19818,11 @@ def build_html(data):
       font-size: 12px;
       font-weight: 780;
       white-space: nowrap;
+    }}
+
+    .skill-quarantine-action.is-danger {{
+      border-color: var(--rose);
+      color: var(--rose);
     }}
 
     .skill-quarantine-action:disabled {{
@@ -25571,10 +25763,6 @@ def build_html(data):
         grid-template-columns: 1fr;
       }}
 
-      .skill-quarantine-actions {{
-        justify-items: start;
-      }}
-
       .panel h2 {{
         font-size: 21px;
       }}
@@ -30103,7 +30291,10 @@ def build_html(data):
         if (!button || !label) {{
           return;
         }}
-        const original = button.getAttribute("data-label") || button.textContent || "";
+        const localizedLabel = currentLanguage === "en"
+          ? button.getAttribute("data-label-en")
+          : button.getAttribute("data-label-zh");
+        const original = localizedLabel || button.textContent || button.getAttribute("data-label") || "";
         button.textContent = label;
         window.setTimeout(function () {{
           button.textContent = original;
@@ -30188,21 +30379,37 @@ def build_html(data):
       function skillQuarantineMessage(key) {{
         const zh = {{
           saving: "正在更新小黑屋...",
-          saved: "小黑屋已更新，正在后台刷新面板",
+          saved: "已提交小黑屋后台处理",
+          savedCount: "已提交 {{count}} 项，后台处理中",
           savedWithWarnings: "小黑屋已更新，但有 {{count}} 条迁移提示",
           failed: "小黑屋更新失败",
+          stale: "小黑屋已更新，但当前面板没有跟上，请刷新面板",
+          deleted: "已移到废纸篓，并从小黑屋移除",
+          partial: "已隔离 {{count}} 项，{{failed}} 项失败",
           service: "本地服务未启动。",
           confirmAll: "确认隔离所有建议项？",
-          confirmGraceAll: "确认隔离所有可选项？"
+          confirmGraceAll: "确认隔离所有可选项？",
+          confirmDelete: "确认删除这条小黑屋记录？隔离副本会移到废纸篓，删除后不能从小黑屋一键放行。",
+          pathRequired: "请先输入项目路径",
+          projectSaved: "常用项目路径已更新，正在后台增量扫描",
+          projectFailed: "常用项目路径更新失败"
         }};
         const en = {{
           saving: "Updating quarantine...",
-          saved: "Quarantine updated. Refreshing in background",
+          saved: "Quarantine action queued",
+          savedCount: "Queued {{count}} items for quarantine",
           savedWithWarnings: "Quarantine updated with {{count}} migration notices",
           failed: "Quarantine update failed",
+          stale: "Quarantine updated, but this panel is stale. Please reload",
+          deleted: "Moved to Trash and removed from quarantine",
+          partial: "Quarantined {{count}} items; {{failed}} failed",
           service: "Local service is not running.",
           confirmAll: "Quarantine all suggested items?",
-          confirmGraceAll: "Quarantine all grace-period items?"
+          confirmGraceAll: "Quarantine all optional items?",
+          confirmDelete: "Delete this quarantine record? The isolated copy will move to Trash and cannot be restored from quarantine afterward.",
+          pathRequired: "Enter a project path first",
+          projectSaved: "Project skill paths updated. Incremental scan is running",
+          projectFailed: "Project skill path update failed"
         }};
         return (currentLanguage === "en" ? en : zh)[key] || key;
       }}
@@ -30278,6 +30485,68 @@ def build_html(data):
         return next;
       }}
 
+      function skillQuarantineProjectRootEmptyItem() {{
+        const item = document.createElement("li");
+        item.className = "skill-quarantine-project-root is-empty";
+        const label = document.createElement("span");
+        label.textContent = currentLanguage === "en" ? "No project paths" : "暂无常用项目路径";
+        const note = document.createElement("small");
+        note.textContent = currentLanguage === "en"
+          ? "Add a project root to scan local skill folders."
+          : "添加项目根目录后，会扫描项目内 skill 文件夹。";
+        item.appendChild(label);
+        item.appendChild(note);
+        return item;
+      }}
+
+      function renderSkillQuarantineProjectRoots(projectRoots) {{
+        const list = elements.skillQuarantineProjectRoots;
+        if (!list) {{
+          return;
+        }}
+        const roots = Array.isArray(projectRoots) ? projectRoots : [];
+        list.textContent = "";
+        if (!roots.length) {{
+          list.appendChild(skillQuarantineProjectRootEmptyItem());
+        }} else {{
+          roots.forEach(function (root) {{
+            if (!root || typeof root !== "object") {{
+              return;
+            }}
+            const path = String(root.path || "");
+            const item = document.createElement("li");
+            item.className = "skill-quarantine-project-root";
+            item.setAttribute("data-skill-quarantine-project-root", path);
+
+            const text = document.createElement("div");
+            const title = document.createElement("strong");
+            title.textContent = String(root.label || path || "Project");
+            const note = document.createElement("small");
+            note.textContent = path;
+            text.appendChild(title);
+            text.appendChild(note);
+
+            const button = document.createElement("button");
+            button.className = "skill-quarantine-project-remove";
+            button.type = "button";
+            button.setAttribute("data-skill-quarantine-action", "remove-project-skill-root");
+            button.setAttribute("data-skill-quarantine-project-path", path);
+            button.setAttribute("data-label", "Remove");
+            button.textContent = currentLanguage === "en" ? "Remove" : "移除";
+
+            item.appendChild(text);
+            item.appendChild(button);
+            list.appendChild(item);
+          }});
+          if (!list.children.length) {{
+            list.appendChild(skillQuarantineProjectRootEmptyItem());
+          }}
+        }}
+        if (elements.skillQuarantineProjectRootCount) {{
+          elements.skillQuarantineProjectRootCount.textContent = skillQuarantineCountText(roots.length);
+        }}
+      }}
+
       function adjustSkillQuarantineBucket(bucket, delta) {{
         if (!bucket || !delta) {{
           return;
@@ -30351,7 +30620,18 @@ def build_html(data):
         button.setAttribute("data-skill-quarantine-key", entityKey || "");
         button.setAttribute("data-label", "Restore");
         button.textContent = currentLanguage === "en" ? "Restore" : "放行";
-        actionCell.appendChild(button);
+        const deleteButton = document.createElement("button");
+        deleteButton.className = "skill-quarantine-action is-danger";
+        deleteButton.type = "button";
+        deleteButton.setAttribute("data-skill-quarantine-action", "delete");
+        deleteButton.setAttribute("data-skill-quarantine-key", entityKey || "");
+        deleteButton.setAttribute("data-label", "Delete");
+        deleteButton.textContent = currentLanguage === "en" ? "Delete" : "删除";
+        const group = document.createElement("div");
+        group.className = "skill-quarantine-action-group";
+        group.appendChild(button);
+        group.appendChild(deleteButton);
+        actionCell.appendChild(group);
       }}
 
       function setSkillQuarantineIsolationCell(statusCell, isolationStatus, warningCount) {{
@@ -30445,15 +30725,48 @@ def build_html(data):
         return null;
       }}
 
+      function skillQuarantineRowsForBucket(bucket) {{
+        const sourceTbody = document.querySelector('[data-skill-quarantine-bucket="' + bucket + '"] tbody');
+        return sourceTbody ? Array.prototype.slice.call(sourceTbody.querySelectorAll("tr[data-skill-quarantine-row]")) : [];
+      }}
+
+      function skillQuarantineKeysForBucket(bucket) {{
+        return skillQuarantineRowsForBucket(bucket).map(function (row) {{
+          return row.getAttribute("data-skill-quarantine-row") || "";
+        }}).filter(Boolean);
+      }}
+
+      function skillQuarantineBulkBucket(action) {{
+        if (action === "block-all") {{
+          return "suggested";
+        }}
+        if (action === "block-grace-all") {{
+          return "grace";
+        }}
+        return "";
+      }}
+
+      function skillQuarantineBlockedEntries(payload) {{
+        if (!payload || typeof payload !== "object") {{
+          return [];
+        }}
+        if (Array.isArray(payload.blocked)) {{
+          return payload.blocked.filter(function (entry) {{
+            return entry && typeof entry === "object";
+          }});
+        }}
+        return [];
+      }}
+
       function moveSkillQuarantineRowToQuarantined(row, payload) {{
         if (!row) {{
-          return;
+          return false;
         }}
         const sourceTbody = row.parentElement;
         const sourceCard = row.closest("[data-skill-quarantine-bucket]");
         const sourceBucket = sourceCard ? sourceCard.getAttribute("data-skill-quarantine-bucket") : "";
         if (sourceBucket === "quarantined") {{
-          return;
+          return false;
         }}
         const targetTbody = document.querySelector('[data-skill-quarantine-bucket="quarantined"] tbody');
         const entityKey = row.getAttribute("data-skill-quarantine-row") || "";
@@ -30476,12 +30789,13 @@ def build_html(data):
         }}
         ensureSkillQuarantineEmptyRow(sourceTbody);
         syncSkillQuarantineBlockAllButton();
+        return true;
       }}
 
       function applySkillQuarantineBlockSuccess(button, payload) {{
         const row = button ? button.closest("tr[data-skill-quarantine-row]") : null;
         if (!row) {{
-          return;
+          return {{ movedCount: 0, expectedCount: 1, stale: true }};
         }}
         const entityKey = row.getAttribute("data-skill-quarantine-row") || "";
         rememberSkillQuarantineAction({{
@@ -30489,15 +30803,38 @@ def build_html(data):
           entity_key: entityKey,
           isolation_status: payload && payload.entry ? payload.entry.isolation_status : "state_only"
         }});
-        moveSkillQuarantineRowToQuarantined(row, payload);
+        return {{
+          movedCount: moveSkillQuarantineRowToQuarantined(row, payload) ? 1 : 0,
+          expectedCount: 1,
+          stale: false
+        }};
       }}
 
       function applySkillQuarantineBlockAllSuccess(payload, bucket) {{
         const sourceBucket = bucket || "suggested";
         const sourceTbody = document.querySelector('[data-skill-quarantine-bucket="' + sourceBucket + '"] tbody');
-        const rows = sourceTbody ? Array.prototype.slice.call(sourceTbody.querySelectorAll("tr[data-skill-quarantine-row]")) : [];
-        const payloadCount = payload && Number.isFinite(Number(payload.blocked_count)) ? Number(payload.blocked_count) : rows.length;
-        if (rows.length > 0) {{
+        const rows = skillQuarantineRowsForBucket(sourceBucket);
+        const entries = skillQuarantineBlockedEntries(payload);
+        const hasPayloadCount = payload && Number.isFinite(Number(payload.blocked_count));
+        const payloadCount = hasPayloadCount ? Math.max(Number(payload.blocked_count) || 0, 0) : rows.length;
+        let movedCount = 0;
+        if (entries.length > 0) {{
+          entries.forEach(function (entry) {{
+            const entityKey = entry.entity_key || "";
+            const row = entityKey ? findSkillQuarantineRow(entityKey) : null;
+            if (!row) {{
+              return;
+            }}
+            rememberSkillQuarantineAction({{
+              action: "block",
+              entity_key: entityKey,
+              isolation_status: entry.isolation_status || "state_only"
+            }});
+            if (moveSkillQuarantineRowToQuarantined(row, {{ entry: entry }})) {{
+              movedCount += 1;
+            }}
+          }});
+        }} else if (!hasPayloadCount && rows.length > 0) {{
           rows.forEach(function (row) {{
             const entityKey = row.getAttribute("data-skill-quarantine-row") || "";
             rememberSkillQuarantineAction({{
@@ -30505,26 +30842,33 @@ def build_html(data):
               entity_key: entityKey,
               isolation_status: "state_only"
             }});
-            moveSkillQuarantineRowToQuarantined(row, {{ entry: {{ isolation_status: "state_only" }} }});
+            if (moveSkillQuarantineRowToQuarantined(row, {{ entry: {{ isolation_status: "state_only" }} }})) {{
+              movedCount += 1;
+            }}
           }});
         }} else {{
-          setSkillQuarantineBucketCount(sourceBucket, 0);
           if (payloadCount > 0) {{
             adjustSkillQuarantineBucket("quarantined", payloadCount);
+            setSkillQuarantineBucketCount(sourceBucket, 0);
           }}
           ensureSkillQuarantineEmptyRow(sourceTbody);
           syncSkillQuarantineBlockAllButton();
         }}
+        return {{
+          movedCount: movedCount,
+          expectedCount: payloadCount,
+          stale: payloadCount > 0 && movedCount === 0
+        }};
       }}
 
-      function applySkillQuarantineUnblockSuccess(button) {{
+      function applySkillQuarantineRemoveSuccess(button, action) {{
         const row = button ? button.closest("tr[data-skill-quarantine-row]") : null;
         if (!row) {{
-          return;
+          return {{ movedCount: 0, expectedCount: 1, stale: true }};
         }}
         const entityKey = row.getAttribute("data-skill-quarantine-row") || "";
         rememberSkillQuarantineAction({{
-          action: "unblock",
+          action: action || "unblock",
           entity_key: entityKey
         }});
         const sourceTbody = row.parentElement;
@@ -30532,6 +30876,15 @@ def build_html(data):
         adjustSkillQuarantineBucket("quarantined", -1);
         ensureSkillQuarantineEmptyRow(sourceTbody);
         syncSkillQuarantineBlockAllButton();
+        return {{ movedCount: 1, expectedCount: 1, stale: false }};
+      }}
+
+      function applySkillQuarantineUnblockSuccess(button) {{
+        return applySkillQuarantineRemoveSuccess(button, "unblock");
+      }}
+
+      function applySkillQuarantineDeleteSuccess(button) {{
+        return applySkillQuarantineRemoveSuccess(button, "delete");
       }}
 
       function applyStoredSkillQuarantineActions() {{
@@ -30549,7 +30902,7 @@ def build_html(data):
             moveSkillQuarantineRowToQuarantined(row, {{
               entry: {{ isolation_status: record.isolation_status || "state_only" }}
             }});
-          }} else if (record.action === "unblock") {{
+          }} else if (record.action === "unblock" || record.action === "delete") {{
             const card = row.closest("[data-skill-quarantine-bucket]");
             if (card && card.getAttribute("data-skill-quarantine-bucket") === "quarantined") {{
               const sourceTbody = row.parentElement;
@@ -30564,44 +30917,72 @@ def build_html(data):
 
       function applySkillQuarantineSuccess(action, button, payload) {{
         if (action === "block") {{
-          applySkillQuarantineBlockSuccess(button, payload);
+          return applySkillQuarantineBlockSuccess(button, payload);
         }} else if (action === "unblock") {{
-          applySkillQuarantineUnblockSuccess(button);
+          return applySkillQuarantineUnblockSuccess(button);
+        }} else if (action === "delete") {{
+          return applySkillQuarantineDeleteSuccess(button);
         }} else if (action === "block-all") {{
-          applySkillQuarantineBlockAllSuccess(payload, "suggested");
+          return applySkillQuarantineBlockAllSuccess(payload, "suggested");
         }} else if (action === "block-grace-all") {{
-          applySkillQuarantineBlockAllSuccess(payload, "grace");
+          return applySkillQuarantineBlockAllSuccess(payload, "grace");
+        }} else if (action === "add-project-skill-root" || action === "remove-project-skill-root") {{
+          renderSkillQuarantineProjectRoots(payload && payload.project_skill_roots ? payload.project_skill_roots : []);
+          return {{ movedCount: 0, expectedCount: 0, stale: false, projectRootsChanged: true }};
         }}
+        return {{ movedCount: 0, expectedCount: 0, stale: false }};
       }}
 
-      function submitSkillQuarantineAction(action, entityKey, button) {{
+      function skillQuarantineActionButtonLabel(action, button) {{
+        const labels = {{
+          "block": ["隔离", "Quarantine"],
+          "unblock": ["放行", "Restore"],
+          "delete": ["删除", "Delete"],
+          "block-all": ["一键隔离建议项", "Quarantine suggested"],
+          "block-grace-all": ["一键隔离可选项", "Quarantine optional"],
+          "remove-project-skill-root": ["移除", "Remove"]
+        }};
+        if (labels[action]) {{
+          return currentLanguage === "en" ? labels[action][1] : labels[action][0];
+        }}
+        if (!button) {{
+          return "";
+        }}
+        return button.getAttribute("data-label") || button.textContent || "";
+      }}
+
+      function submitSkillQuarantineAction(action, entityKey, button, extraPayload) {{
         const endpoint = config.skillQuarantineEndpoint;
         const token = openrelixMetaAttr("data-update-token");
         if (!endpoint || !token || !window.fetch) {{
           setSkillQuarantineStatus(skillQuarantineMessage("service"), "error");
           return;
         }}
-        if (action === "block-all" && !window.confirm(skillQuarantineMessage("confirmAll"))) {{
-          return;
-        }}
-        if (action === "block-grace-all" && !window.confirm(skillQuarantineMessage("confirmGraceAll"))) {{
-          return;
-        }}
+        const bulkBucket = skillQuarantineBulkBucket(action);
         const headers = {{ "Content-Type": "application/json" }};
         headers["X-OpenRelix-Token"] = token;
-        const originalLabel = button ? (button.getAttribute("data-label") || button.textContent || "") : "";
+        const originalLabel = skillQuarantineActionButtonLabel(action, button);
         if (button) {{
           button.disabled = true;
           button.textContent = currentLanguage === "en" ? "Working" : "处理中";
         }}
         setSkillQuarantineStatus(skillQuarantineMessage("saving"), "loading");
+        const requestPayload = {{
+          action: action,
+          entity_key: entityKey || ""
+        }};
+        if (extraPayload && typeof extraPayload === "object") {{
+          Object.keys(extraPayload).forEach(function (key) {{
+            requestPayload[key] = extraPayload[key];
+          }});
+        }}
+        if (bulkBucket) {{
+          requestPayload.entity_keys = skillQuarantineKeysForBucket(bulkBucket);
+        }}
         fetch(endpoint, {{
           method: "POST",
           headers: headers,
-          body: JSON.stringify({{
-            action: action,
-            entity_key: entityKey || ""
-          }})
+          body: JSON.stringify(requestPayload)
         }})
           .then(function (response) {{
             return response.json().catch(function () {{
@@ -30614,19 +30995,52 @@ def build_html(data):
             }});
           }})
           .then(function (payload) {{
-            applySkillQuarantineSuccess(action, button, payload);
+            const applyResult = applySkillQuarantineSuccess(action, button, payload) || {{}};
+            if (button && bulkBucket) {{
+              button.textContent = originalLabel;
+              syncSkillQuarantineBlockAllButton();
+            }} else if (button && applyResult.projectRootsChanged) {{
+              button.disabled = false;
+              button.textContent = originalLabel;
+            }}
             const warningCount = skillQuarantinePayloadWarningCount(payload);
-            if (warningCount > 0) {{
+            const failedCount = payload && Number.isFinite(Number(payload.failed_count)) ? Number(payload.failed_count) : 0;
+            if (failedCount > 0) {{
+              setSkillQuarantineStatus(
+                skillQuarantineMessage("partial")
+                  .replace("{{count}}", String(applyResult.movedCount || payload.blocked_count || 0))
+                  .replace("{{failed}}", String(failedCount)),
+                "warning"
+              );
+            }} else if (applyResult.projectRootsChanged) {{
+              if (action === "add-project-skill-root" && elements.skillQuarantineProjectInput) {{
+                elements.skillQuarantineProjectInput.value = "";
+              }}
+              setSkillQuarantineStatus(skillQuarantineMessage("projectSaved"), "success");
+            }} else if (applyResult.stale) {{
+              setSkillQuarantineStatus(skillQuarantineMessage("stale"), "warning");
+            }} else if (warningCount > 0) {{
               setSkillQuarantineStatus(
                 skillQuarantineMessage("savedWithWarnings").replace("{{count}}", String(warningCount)),
                 "warning"
               );
+            }} else if (bulkBucket && Number(applyResult.expectedCount || 0) > 0) {{
+              setSkillQuarantineStatus(
+                skillQuarantineMessage("savedCount").replace("{{count}}", String(applyResult.expectedCount || 0)),
+                "success"
+              );
+            }} else if (action === "delete") {{
+              setSkillQuarantineStatus(skillQuarantineMessage("deleted"), "success");
             }} else {{
               setSkillQuarantineStatus(skillQuarantineMessage("saved"), "success");
             }}
           }})
-          .catch(function () {{
-            setSkillQuarantineStatus(skillQuarantineMessage("failed"), "error");
+          .catch(function (error) {{
+            const detail = error && error.message ? (": " + error.message) : "";
+            const failedKey = action === "add-project-skill-root" || action === "remove-project-skill-root"
+              ? "projectFailed"
+              : "failed";
+            setSkillQuarantineStatus(skillQuarantineMessage(failedKey) + detail, "error");
             if (button) {{
               button.disabled = false;
               button.textContent = originalLabel;
@@ -30642,8 +31056,21 @@ def build_html(data):
           }}
           event.preventDefault();
           event.stopPropagation();
+          const action = button.getAttribute("data-skill-quarantine-action") || "";
+          if (action === "remove-project-skill-root") {{
+            submitSkillQuarantineAction(
+              action,
+              "",
+              button,
+              {{ path: button.getAttribute("data-skill-quarantine-project-path") || "" }}
+            );
+            return;
+          }}
+          if (action === "delete" && !window.confirm(skillQuarantineMessage("confirmDelete"))) {{
+            return;
+          }}
           submitSkillQuarantineAction(
-            button.getAttribute("data-skill-quarantine-action") || "",
+            action,
             button.getAttribute("data-skill-quarantine-key") || "",
             button
           );

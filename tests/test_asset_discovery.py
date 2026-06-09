@@ -170,6 +170,26 @@ class AssetDiscoveryTests(unittest.TestCase):
         self.assertEqual(assets["codex_skill:extra"]["description"], "Pro helper")
         self.assertEqual(assets["codex_skill:extra"]["manifest_abspath"], str(manifest.resolve()))
 
+    def test_discovers_codex_skill_preserves_symlink_entry_path(self):
+        source_manifest = self.write_skill(
+            self.root / "external-skills",
+            "linked-skill",
+            name="Linked Skill",
+            description="Shared helper",
+        )
+        link_root = self.paths.codex_home / "skills" / "linked-skill"
+        link_root.parent.mkdir(parents=True, exist_ok=True)
+        link_root.symlink_to(source_manifest.parent, target_is_directory=True)
+
+        assets = self.assets_by_key(asset_discovery.discover_installed_assets(self.paths))
+
+        self.assertIn("codex_skill:linked-skill", assets)
+        self.assertEqual(assets["codex_skill:linked-skill"]["manifest_abspath"], str(source_manifest.resolve()))
+        self.assertEqual(
+            assets["codex_skill:linked-skill"]["manifest_entry_abspath"],
+            str(link_root.absolute() / "SKILL.md"),
+        )
+
     def test_discovers_codex_memory_skill_as_codex_skill(self):
         manifest = self.write_skill(
             self.paths.codex_home / "memories" / "skills",
@@ -213,6 +233,29 @@ class AssetDiscoveryTests(unittest.TestCase):
 
         self.assertIn("repo_skill:repo-helper", assets)
         self.assertEqual(assets["repo_skill:repo-helper"]["manifest_path"], ".agents/skills/repo-helper/SKILL.md")
+
+    def test_discovers_configured_project_skill_roots(self):
+        project_root = self.root / "project-a"
+        self.write_skill(project_root / "skills", "plain-project-skill", description="Plain project helper")
+        self.write_skill(project_root / ".claude" / "skills", "claude-project-skill", description="Claude project helper")
+        self.write_skill(project_root / ".aiden" / "skills", "ignored-aiden-skill", description="Ignored helper")
+        self.write_skill(project_root / ".iac" / "ai" / "skills", "ignored-iac-skill", description="Ignored helper")
+
+        assets = self.assets_by_key(
+            asset_discovery.discover_installed_assets(
+                self.paths,
+                project_skill_roots=[project_root],
+            )
+        )
+
+        self.assertIn("project_skill:plain-project-skill", assets)
+        self.assertIn("project_skill:claude-project-skill", assets)
+        self.assertEqual(
+            assets["project_skill:claude-project-skill"]["source_root"],
+            "project:project-a/.claude/skills",
+        )
+        self.assertNotIn("project_skill:ignored-aiden-skill", assets)
+        self.assertNotIn("project_skill:ignored-iac-skill", assets)
 
     def test_discovers_codex_prompt(self):
         prompt_root = self.paths.codex_home / "prompts"

@@ -4811,12 +4811,14 @@ def command_asset_stats(args):
         include_running=True,
     )
     codex_homes = [profile.codex_home for profile in codex_profiles]
+    project_skill_roots = overview_skill_quarantine.configured_project_skill_roots(PATHS)
     snapshot = overview_asset_discovery.build_asset_stats_snapshot(
         PATHS,
         target_date,
         monthly_months=monthly_months,
         top_limit=top_limit,
         codex_homes=codex_homes,
+        project_skill_roots=project_skill_roots,
     )
     snapshot["command"] = "openrelix asset-stats --date {}".format(snapshot["date"])
     REPORTS_DIR.mkdir(parents=True, exist_ok=True)
