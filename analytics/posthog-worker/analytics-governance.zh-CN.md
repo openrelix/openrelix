@@ -39,6 +39,7 @@
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | 用户是否使用某模块 | `module_visible` / `module_hidden` | 模块进入/离开可见区 | stable snake_case ID | 中文模块名 | 空 | 空 | `dwell_ms`, `reason`, `panel_language` | 不含文本、路径、标题、用户名 | 模块浏览次数、模块停留时长 | Worker sanitization test |
 | 用户是否点击某核心功能 | `control_click` | 点击按钮、菜单、筛选器或复制动作 | 所属模块 ID | 中文模块名 | stable snake_case ID | 中文按钮名 | `panel_language` | 不含输入内容、搜索词、复制内容 | 核心功能点击次数 | Worker label test |
+| 小黑屋动作是否被成功受理 | `skill_quarantine_action` | 小黑屋隔离/放行/删除/项目路径动作收到前端结果时 | `skill_quarantine` | Skill/MCP 小黑屋 | 空 | 空 | `skill_quarantine_action`、`skill_quarantine_result`、`skill_quarantine_bucket`、`skill_quarantine_count`、`skill_quarantine_failed_count`、`skill_quarantine_warning_count`、`panel_language` | 不含 skill/MCP 名称、entity key、文件路径、错误全文 | 小黑屋动作成功率、失败率、迁移提示数 | Skill quarantine action sanitization test |
 | 用户是否完成启动 | `app_launch` / `panel_loaded` / `panel_ready` | 应用启动、WebView 加载、面板可交互 | 空 | 空 | 空 | 空 | app/coarse OS version | 不含 hostname、path、token | 启动到可用、DAU | Worker forwarding test |
 
 新增功能时，AI 应在 PR 或提交说明里贴出新增/变更的表格行；如果没有新增埋点，也要说明复用了哪些已有事件和看板。
@@ -50,6 +51,7 @@
 | 模块浏览次数：按模块 | 哪些模块真的被看到 | `openrelix_module_visible` count | `module_label_zh` | Last 30 days | 新增/下线模块 |
 | 模块平均停留时长：毫秒 | 哪些模块值得继续投入 | `openrelix_module_hidden` avg `dwell_ms` | `module_label_zh` | Last 30 days | 新增/重命名模块 |
 | 核心功能点击次数：按按钮 | 哪些交互被使用 | `openrelix_control_click` count | `control_label_zh` | Last 30 days | 新增/下线按钮 |
+| 小黑屋动作结果 | 隔离/放行/删除是否成功受理 | `openrelix_skill_quarantine_action` count by `skill_quarantine_result_label_zh` | `skill_quarantine_action_label_zh` | Last 30 days | 小黑屋 action/result/bucket 变更 |
 | 启动到可用 | 是否存在启动或加载问题 | `openrelix_app_launch`, `openrelix_panel_loaded`, `openrelix_panel_ready` count | none | Last 30 days | 启动链路变更 |
 | 面板加载失败次数 | 是否有加载失败或白屏风险 | `openrelix_panel_load_failed` count by `reason` | `reason` | Last 30 days | WebView/面板加载逻辑变更 |
 

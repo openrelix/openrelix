@@ -40,10 +40,13 @@ unknown events/properties. It forwards aggregate product analytics fields only:
 - Chinese display labels `module_label_zh` / `control_label_zh` derived from
   the fixed module/control allowlists
 - `dwell_ms`, `session_duration_ms`, `reason`, and `panel_language`
+- Skill/MCP quarantine action/result/bucket enum values and bounded aggregate
+  counts for affected items, failed items, and migration notices
 
 It must not receive or forward prompts, model responses, memory or review text,
-window titles, project names, file paths, usernames, hostnames, cookies, tokens,
-local reports, raw OpenRelix state, or generated panel content.
+window titles, project names, skill/MCP names, entity keys, file paths,
+usernames, hostnames, cookies, tokens, local reports, raw OpenRelix state, raw
+error messages, or generated panel content.
 
 ## AI Development Guardrails
 
@@ -60,9 +63,9 @@ other product surface, treat analytics as part of the feature contract:
   `control_label_zh`; use raw IDs only for debug dashboards.
 - Add or update focused Worker tests before shipping.
 
-The Worker fails at module load time if an allowlisted module or control is
-missing its Chinese label. This keeps AI-assisted feature work from silently
-breaking the Chinese dashboard.
+The Worker fails at module load time if an allowlisted module, control, or
+Skill/MCP quarantine action/result enum is missing its Chinese label. This keeps
+AI-assisted feature work from silently breaking the Chinese dashboard.
 
 ## Deploy
 

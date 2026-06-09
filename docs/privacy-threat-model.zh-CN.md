@@ -79,8 +79,8 @@ OpenRelix 应保护：
 
 - 只有配置了 `OPENRELIX_ANALYTICS_ENDPOINT` 的 macOS panel client 会联网发送埋点；该产品路径默认开启。
 - 用户可以在 OpenRelix 菜单中关闭，也可以通过 `OPENRELIX_ANALYTICS_ENABLED=0` 或 `OPENRELIX_ANALYTICS_DISABLED=1` 启动关闭。
-- 允许字段仅限随机 install ID、单次启动 session ID、app 版本、粗粒度 macOS 版本、固定事件名、白名单模块/控件 ID、停留毫秒数和 panel 语言。
-- 禁止发送 prompt、模型回答、memory/review 正文、窗口标题、项目名、文件路径、用户名、主机名、token、Cookie、connector 内容、本地报告、raw state 或生成后的 panel 内容。
+- 允许字段仅限随机 install ID、单次启动 session ID、app 版本、粗粒度 macOS 版本、固定事件名、白名单模块/控件 ID、停留毫秒数、panel 语言，以及 Skill/MCP 小黑屋 action/result/bucket 枚举和受限计数。
+- 禁止发送 prompt、模型回答、memory/review 正文、窗口标题、项目名、skill/MCP 名称、entity key、文件路径、用户名、主机名、token、Cookie、connector 内容、本地报告、raw state、原始错误全文或生成后的 panel 内容。
 - 客户端发送前必须丢弃未知事件和未知属性，失败的埋点 payload 不落盘。
 - 嵌入 macOS app 的 token 只能视为客户端 ingest token，不能当服务端密钥；高权限 analytics 凭证必须留在采集 endpoint 后面。
 

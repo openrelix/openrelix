@@ -13,6 +13,7 @@ const ALLOWED_EVENTS = new Set([
   "module_visible",
   "module_hidden",
   "control_click",
+  "skill_quarantine_action",
 ]);
 
 const ALLOWED_MODULES = new Set([
@@ -34,6 +35,7 @@ const ALLOWED_MODULES = new Set([
   "asset_stats",
   "top_assets",
   "mcp_usage",
+  "skill_quarantine",
   "discovered_assets",
   "reviews",
   "usage_events",
@@ -61,6 +63,7 @@ const MODULE_LABELS_ZH = new Map([
   ["asset_stats", "资产统计"],
   ["top_assets", "高频资产"],
   ["mcp_usage", "MCP 使用"],
+  ["skill_quarantine", "Skill/MCP 小黑屋"],
   ["discovered_assets", "已发现资产"],
   ["reviews", "复盘"],
   ["usage_events", "使用事件"],
@@ -94,6 +97,16 @@ const ALLOWED_CONTROLS = new Set([
   "window_resume_claude",
   "window_resume_copy",
   "window_review_copy",
+  "skill_quarantine_open_folder",
+  "skill_quarantine_block_all_suggested",
+  "skill_quarantine_block_all_optional",
+  "skill_quarantine_block_item",
+  "skill_quarantine_unblock_item",
+  "skill_quarantine_delete_open",
+  "skill_quarantine_delete_confirm",
+  "skill_quarantine_delete_cancel",
+  "skill_quarantine_project_root_add",
+  "skill_quarantine_project_root_remove",
 ]);
 
 const CONTROL_LABELS_ZH = new Map([
@@ -121,6 +134,60 @@ const CONTROL_LABELS_ZH = new Map([
   ["window_resume_claude", "用 Claude 续聊"],
   ["window_resume_copy", "复制续聊内容"],
   ["window_review_copy", "复制复盘内容"],
+  ["skill_quarantine_open_folder", "打开小黑屋文件夹"],
+  ["skill_quarantine_block_all_suggested", "一键隔离建议项"],
+  ["skill_quarantine_block_all_optional", "一键隔离可选项"],
+  ["skill_quarantine_block_item", "隔离单项"],
+  ["skill_quarantine_unblock_item", "放行单项"],
+  ["skill_quarantine_delete_open", "打开删除确认"],
+  ["skill_quarantine_delete_confirm", "确认删除"],
+  ["skill_quarantine_delete_cancel", "取消删除"],
+  ["skill_quarantine_project_root_add", "添加项目 skill 路径"],
+  ["skill_quarantine_project_root_remove", "移除项目 skill 路径"],
+]);
+
+const ALLOWED_SKILL_QUARANTINE_ACTIONS = new Set([
+  "block",
+  "unblock",
+  "delete",
+  "block_all",
+  "block_grace_all",
+  "add_project_skill_root",
+  "remove_project_skill_root",
+]);
+
+const SKILL_QUARANTINE_ACTION_LABELS_ZH = new Map([
+  ["block", "隔离单项"],
+  ["unblock", "放行单项"],
+  ["delete", "删除小黑屋记录"],
+  ["block_all", "一键隔离建议项"],
+  ["block_grace_all", "一键隔离可选项"],
+  ["add_project_skill_root", "添加项目 skill 路径"],
+  ["remove_project_skill_root", "移除项目 skill 路径"],
+]);
+
+const ALLOWED_SKILL_QUARANTINE_RESULTS = new Set([
+  "accepted",
+  "warning",
+  "partial",
+  "stale",
+  "failed",
+]);
+
+const SKILL_QUARANTINE_RESULT_LABELS_ZH = new Map([
+  ["accepted", "已受理"],
+  ["warning", "已受理但有提示"],
+  ["partial", "部分成功"],
+  ["stale", "面板待刷新"],
+  ["failed", "失败"],
+]);
+
+const ALLOWED_SKILL_QUARANTINE_BUCKETS = new Set([
+  "suggested",
+  "optional",
+  "item",
+  "quarantined",
+  "project_roots",
 ]);
 
 const ALLOWED_REASONS = new Set([
@@ -142,6 +209,16 @@ function assertLabelCoverage(ids, labels, labelName) {
 
 assertLabelCoverage(ALLOWED_MODULES, MODULE_LABELS_ZH, "module_label_zh");
 assertLabelCoverage(ALLOWED_CONTROLS, CONTROL_LABELS_ZH, "control_label_zh");
+assertLabelCoverage(
+  ALLOWED_SKILL_QUARANTINE_ACTIONS,
+  SKILL_QUARANTINE_ACTION_LABELS_ZH,
+  "skill_quarantine_action_label_zh",
+);
+assertLabelCoverage(
+  ALLOWED_SKILL_QUARANTINE_RESULTS,
+  SKILL_QUARANTINE_RESULT_LABELS_ZH,
+  "skill_quarantine_result_label_zh",
+);
 
 function jsonResponse(payload, status = 200) {
   return new Response(JSON.stringify(payload), {
@@ -287,6 +364,38 @@ function sanitizeProperties(properties) {
   const sessionDurationMs = boundedInteger(source.session_duration_ms, 24 * 60 * 60 * 1000);
   if (sessionDurationMs !== null) {
     clean.session_duration_ms = sessionDurationMs;
+  }
+
+  const skillQuarantineAction = cleanString(source.skill_quarantine_action, 80);
+  if (ALLOWED_SKILL_QUARANTINE_ACTIONS.has(skillQuarantineAction)) {
+    clean.skill_quarantine_action = skillQuarantineAction;
+    clean.skill_quarantine_action_label_zh = SKILL_QUARANTINE_ACTION_LABELS_ZH.get(skillQuarantineAction) || skillQuarantineAction;
+  }
+
+  const skillQuarantineResult = cleanString(source.skill_quarantine_result, 80);
+  if (ALLOWED_SKILL_QUARANTINE_RESULTS.has(skillQuarantineResult)) {
+    clean.skill_quarantine_result = skillQuarantineResult;
+    clean.skill_quarantine_result_label_zh = SKILL_QUARANTINE_RESULT_LABELS_ZH.get(skillQuarantineResult) || skillQuarantineResult;
+  }
+
+  const skillQuarantineBucket = cleanString(source.skill_quarantine_bucket, 80);
+  if (ALLOWED_SKILL_QUARANTINE_BUCKETS.has(skillQuarantineBucket)) {
+    clean.skill_quarantine_bucket = skillQuarantineBucket;
+  }
+
+  const skillQuarantineCount = boundedInteger(source.skill_quarantine_count, 500);
+  if (skillQuarantineCount !== null) {
+    clean.skill_quarantine_count = skillQuarantineCount;
+  }
+
+  const skillQuarantineFailedCount = boundedInteger(source.skill_quarantine_failed_count, 500);
+  if (skillQuarantineFailedCount !== null) {
+    clean.skill_quarantine_failed_count = skillQuarantineFailedCount;
+  }
+
+  const skillQuarantineWarningCount = boundedInteger(source.skill_quarantine_warning_count, 500);
+  if (skillQuarantineWarningCount !== null) {
+    clean.skill_quarantine_warning_count = skillQuarantineWarningCount;
   }
 
   return clean;

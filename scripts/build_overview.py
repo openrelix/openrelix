@@ -30460,6 +30460,86 @@ def build_html(data):
         return (currentLanguage === "en" ? en : zh)[key] || key;
       }}
 
+      function postPanelAnalyticsEvent(eventName, properties) {{
+        const handler = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.openrelixAnalytics;
+        if (!handler) {{
+          return;
+        }}
+        try {{
+          handler.postMessage({{
+            event: eventName,
+            properties: Object.assign({{ panel_language: currentLanguage }}, properties || {{}})
+          }});
+        }} catch (_error) {{
+        }}
+      }}
+
+      function skillQuarantineAnalyticsAction(action) {{
+        const labels = {{
+          "block": "block",
+          "unblock": "unblock",
+          "delete": "delete",
+          "block-all": "block_all",
+          "block-grace-all": "block_grace_all",
+          "add-project-skill-root": "add_project_skill_root",
+          "remove-project-skill-root": "remove_project_skill_root"
+        }};
+        return labels[action] || "";
+      }}
+
+      function skillQuarantineAnalyticsBucket(action, bucket) {{
+        if (bucket === "suggested") {{
+          return "suggested";
+        }}
+        if (bucket === "grace") {{
+          return "optional";
+        }}
+        if (action === "block") {{
+          return "item";
+        }}
+        if (action === "unblock" || action === "delete") {{
+          return "quarantined";
+        }}
+        if (action === "add-project-skill-root" || action === "remove-project-skill-root") {{
+          return "project_roots";
+        }}
+        return "";
+      }}
+
+      function skillQuarantineAnalyticsCount(value, fallback) {{
+        const number = Number(value);
+        if (Number.isFinite(number)) {{
+          return Math.min(Math.max(Math.round(number), 0), 500);
+        }}
+        const fallbackNumber = Number(fallback);
+        return Number.isFinite(fallbackNumber) ? Math.min(Math.max(Math.round(fallbackNumber), 0), 500) : 0;
+      }}
+
+      function postSkillQuarantineAnalytics(action, result, payload, applyResult, bucket) {{
+        const analyticsAction = skillQuarantineAnalyticsAction(action);
+        if (!analyticsAction) {{
+          return;
+        }}
+        const sourcePayload = payload && typeof payload === "object" ? payload : {{}};
+        const sourceApply = applyResult && typeof applyResult === "object" ? applyResult : {{}};
+        const properties = {{
+          module_id: "skill_quarantine",
+          skill_quarantine_action: analyticsAction,
+          skill_quarantine_result: result || "accepted",
+          skill_quarantine_count: skillQuarantineAnalyticsCount(
+            sourceApply.expectedCount,
+            sourcePayload.blocked_count || (action === "block" || action === "unblock" || action === "delete" ? 1 : 0)
+          ),
+          skill_quarantine_failed_count: skillQuarantineAnalyticsCount(sourcePayload.failed_count, 0),
+          skill_quarantine_warning_count: skillQuarantineAnalyticsCount(skillQuarantinePayloadWarningCount(sourcePayload), 0)
+        }};
+        const analyticsBucket = skillQuarantineAnalyticsBucket(action, bucket);
+        if (analyticsBucket) {{
+          properties.skill_quarantine_bucket = analyticsBucket;
+        }}
+        postPanelAnalyticsEvent("skill_quarantine_action", properties);
+      }}
+
       function skillQuarantineEmptyText() {{
         return currentLanguage === "en" ? "No items." : "暂无条目。";
       }}
@@ -31103,7 +31183,9 @@ def build_html(data):
             }}
             const warningCount = skillQuarantinePayloadWarningCount(payload);
             const failedCount = payload && Number.isFinite(Number(payload.failed_count)) ? Number(payload.failed_count) : 0;
+            let analyticsResult = "accepted";
             if (failedCount > 0) {{
+              analyticsResult = "partial";
               setSkillQuarantineStatus(
                 skillQuarantineMessage("partial")
                   .replace("{{count}}", String(applyResult.movedCount || payload.blocked_count || 0))
@@ -31116,8 +31198,10 @@ def build_html(data):
               }}
               setSkillQuarantineStatus(skillQuarantineMessage("projectSaved"), "success");
             }} else if (applyResult.stale) {{
+              analyticsResult = "stale";
               setSkillQuarantineStatus(skillQuarantineMessage("stale"), "warning");
             }} else if (warningCount > 0) {{
+              analyticsResult = "warning";
               setSkillQuarantineStatus(
                 skillQuarantineMessage("savedWithWarnings").replace("{{count}}", String(warningCount)),
                 "warning"
@@ -31132,6 +31216,7 @@ def build_html(data):
             }} else {{
               setSkillQuarantineStatus(skillQuarantineMessage("saved"), "success");
             }}
+            postSkillQuarantineAnalytics(action, analyticsResult, payload, applyResult, bulkBucket);
           }})
           .catch(function (error) {{
             const detail = error && error.message ? (": " + error.message) : "";
@@ -31139,6 +31224,9 @@ def build_html(data):
               ? "projectFailed"
               : "failed";
             setSkillQuarantineStatus(skillQuarantineMessage(failedKey) + detail, "error");
+            postSkillQuarantineAnalytics(action, "failed", {{ failed_count: 1 }}, {{
+              expectedCount: bulkBucket ? skillQuarantineKeysForBucket(bulkBucket).length : 1
+            }}, bulkBucket);
             if (button) {{
               button.disabled = false;
               button.textContent = originalLabel;
