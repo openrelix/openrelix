@@ -85,13 +85,17 @@ Allowed analytics fields:
 - Random install ID and per-launch session ID.
 - App version and coarse macOS version.
 - Fixed event names: app launch, app quit, panel load state, panel ready,
-  module visible/hidden, and core control click.
+  module visible/hidden, core control click, and Skill/MCP quarantine action
+  outcomes.
 - Fixed module/control IDs from a whitelist.
 - Dwell duration in milliseconds and panel language (`zh` or `en`).
+- Skill/MCP quarantine action/result/bucket enum values plus bounded aggregate
+  counts for affected items, failures, and migration notices.
 
 Analytics must not include prompts, model responses, memory/review text, window
-titles, project names, file paths, usernames, hostnames, tokens, cookies,
-connector content, local reports, raw state files, or generated panel content.
+titles, project names, skill/MCP names, entity keys, file paths, usernames,
+hostnames, tokens, cookies, connector content, local reports, raw state files,
+raw error messages, or generated panel content.
 The client should drop unrecognized event/property keys before sending and
 should not persist failed analytics payloads to disk. Any token embedded in the
 macOS app must be treated as a client-side ingestion token, not a service secret;

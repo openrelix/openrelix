@@ -271,10 +271,11 @@ macOS 上可以用 `openrelix app` 构建并打开一个轻量原生客户端，
 macOS 客户端内置了面向 panel 的隐私边界内产品埋点。配置
 `OPENRELIX_ANALYTICS_ENDPOINT` 后，匿名使用指标默认开启，帮助维护者判断 DAU、
 模块好用程度和产品卡点。事件包括 app 启动、panel 加载状态、固定 panel 模块的曝光
-和停留时长、核心控件点击、app 退出。payload 使用随机 install ID 和单次启动
-session ID，并包含 app 版本、粗粒度 macOS 版本；不会上报 prompt、memory/review
-正文、窗口标题、文件路径、用户名、主机名、token、Cookie、本地报告或原始
-OpenRelix state。用户可在 OpenRelix 菜单里通过 `Share Anonymous Usage Metrics`
+和停留时长、核心控件点击、Skill/MCP 小黑屋动作结果、app 退出。payload 使用随机
+install ID 和单次启动 session ID，并包含 app 版本、粗粒度 macOS 版本；不会上报 prompt、
+memory/review 正文、窗口标题、skill/MCP 名称、entity key、文件路径、用户名、
+主机名、token、Cookie、本地报告、原始错误全文或原始 OpenRelix state。用户可在
+OpenRelix 菜单里通过 `Share Anonymous Usage Metrics`
 关闭，也可以用 `OPENRELIX_ANALYTICS_ENABLED=0` 或
 `OPENRELIX_ANALYTICS_DISABLED=1` 启动来关闭。endpoint 可以在构建时通过
 `scripts/build_macos_client.sh --analytics-endpoint <url>` 写入 app bundle，也可以在启动时

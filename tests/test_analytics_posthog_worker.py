@@ -152,6 +152,74 @@ class PostHogWorkerTests(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 0, result.stderr)
 
+    def test_skill_quarantine_action_event_is_sanitized_and_labeled(self):
+        result = run_node(
+            """
+            import assert from "node:assert/strict";
+            import worker from "./analytics/posthog-worker/worker.mjs";
+
+            const env = {
+              OPENRELIX_ANALYTICS_INGEST_TOKEN: "ingest-test-token",
+              POSTHOG_API_KEY: "phc_test_project_token",
+            };
+            let captured = null;
+            globalThis.fetch = async (url, options) => {
+              captured = { url: String(url), body: JSON.parse(options.body) };
+              return new Response(JSON.stringify({ ok: true }), { status: 200 });
+            };
+
+            const response = await worker.fetch(new Request("https://collector.example/events", {
+              method: "POST",
+              headers: {
+                authorization: "Bearer ingest-test-token",
+                "content-type": "application/json",
+              },
+              body: JSON.stringify({
+                events: [{
+                  schema_version: 1,
+                  app: "openrelix_macos",
+                  event: "skill_quarantine_action",
+                  install_id: "12345678-1234-1234-1234-123456789abc",
+                  session_id: "abcdef12-3456-7890-abcd-ef1234567890",
+                  properties: {
+                    module_id: "skill_quarantine",
+                    panel_language: "zh",
+                    skill_quarantine_action: "block_grace_all",
+                    skill_quarantine_result: "warning",
+                    skill_quarantine_bucket: "optional",
+                    skill_quarantine_count: 9999,
+                    skill_quarantine_failed_count: 2,
+                    skill_quarantine_warning_count: 3,
+                    entity_key: "skill:must-not-forward",
+                    path: "/private/tmp/must-not-forward",
+                    error: "raw error must be dropped",
+                  },
+                }],
+              }),
+            }), env);
+            const payload = await response.json();
+
+            assert.equal(response.status, 200);
+            assert.deepEqual(payload, { ok: true, accepted: 1, rejected: 0 });
+            const posthogEvent = captured.body.batch[0];
+            assert.equal(posthogEvent.event, "openrelix_skill_quarantine_action");
+            assert.equal(posthogEvent.properties.module_id, "skill_quarantine");
+            assert.equal(posthogEvent.properties.module_label_zh, "Skill/MCP 小黑屋");
+            assert.equal(posthogEvent.properties.skill_quarantine_action, "block_grace_all");
+            assert.equal(posthogEvent.properties.skill_quarantine_action_label_zh, "一键隔离可选项");
+            assert.equal(posthogEvent.properties.skill_quarantine_result, "warning");
+            assert.equal(posthogEvent.properties.skill_quarantine_result_label_zh, "已受理但有提示");
+            assert.equal(posthogEvent.properties.skill_quarantine_bucket, "optional");
+            assert.equal(posthogEvent.properties.skill_quarantine_count, 500);
+            assert.equal(posthogEvent.properties.skill_quarantine_failed_count, 2);
+            assert.equal(posthogEvent.properties.skill_quarantine_warning_count, 3);
+            assert.equal(posthogEvent.properties.entity_key, undefined);
+            assert.equal(posthogEvent.properties.path, undefined);
+            assert.equal(posthogEvent.properties.error, undefined);
+            """
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_unknown_event_is_rejected_without_forwarding(self):
         result = run_node(
             """

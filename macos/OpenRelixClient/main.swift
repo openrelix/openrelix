@@ -287,6 +287,7 @@ private let panelUsageAnalyticsScript = """
     "asset-stats-snapshot-section": "asset_stats",
     "top-assets-section": "top_assets",
     "mcp-usage-section": "mcp_usage",
+    "skill-quarantine-section": "skill_quarantine",
     "discovered-assets-section": "discovered_assets",
     "reviews-section": "reviews",
     "usage-events-section": "usage_events",
@@ -319,7 +320,17 @@ private let panelUsageAnalyticsScript = """
     ["[data-window-resume-open]", "window_resume_codex"],
     ["[data-window-resume-claude-desktop]", "window_resume_claude"],
     ["[data-window-resume-copy]", "window_resume_copy"],
-    ["[data-window-review-copy]", "window_review_copy"]
+    ["[data-window-review-copy]", "window_review_copy"],
+    [".skill-quarantine-open-folder", "skill_quarantine_open_folder"],
+    ['[data-skill-quarantine-confirm-submit="true"]', "skill_quarantine_delete_confirm"],
+    ['[data-skill-quarantine-action="cancel-delete"]', "skill_quarantine_delete_cancel"],
+    ['[data-skill-quarantine-action="block-all"]', "skill_quarantine_block_all_suggested"],
+    ['[data-skill-quarantine-action="block-grace-all"]', "skill_quarantine_block_all_optional"],
+    ['[data-skill-quarantine-action="block"]', "skill_quarantine_block_item"],
+    ['[data-skill-quarantine-action="unblock"]', "skill_quarantine_unblock_item"],
+    ['[data-skill-quarantine-action="delete"]', "skill_quarantine_delete_open"],
+    ['[data-skill-quarantine-action="add-project-skill-root"]', "skill_quarantine_project_root_add"],
+    ['[data-skill-quarantine-action="remove-project-skill-root"]', "skill_quarantine_project_root_remove"]
   ];
 
   function currentPanelLanguage() {
@@ -474,6 +485,7 @@ private final class PanelAnalytics {
         "module_visible",
         "module_hidden",
         "control_click",
+        "skill_quarantine_action",
     ]
     private let allowedModules: Set<String> = [
         "overview",
@@ -494,6 +506,7 @@ private final class PanelAnalytics {
         "asset_stats",
         "top_assets",
         "mcp_usage",
+        "skill_quarantine",
         "discovered_assets",
         "reviews",
         "usage_events",
@@ -526,6 +539,39 @@ private final class PanelAnalytics {
         "window_resume_claude",
         "window_resume_copy",
         "window_review_copy",
+        "skill_quarantine_open_folder",
+        "skill_quarantine_block_all_suggested",
+        "skill_quarantine_block_all_optional",
+        "skill_quarantine_block_item",
+        "skill_quarantine_unblock_item",
+        "skill_quarantine_delete_open",
+        "skill_quarantine_delete_confirm",
+        "skill_quarantine_delete_cancel",
+        "skill_quarantine_project_root_add",
+        "skill_quarantine_project_root_remove",
+    ]
+    private let allowedSkillQuarantineActions: Set<String> = [
+        "block",
+        "unblock",
+        "delete",
+        "block_all",
+        "block_grace_all",
+        "add_project_skill_root",
+        "remove_project_skill_root",
+    ]
+    private let allowedSkillQuarantineResults: Set<String> = [
+        "accepted",
+        "warning",
+        "partial",
+        "stale",
+        "failed",
+    ]
+    private let allowedSkillQuarantineBuckets: Set<String> = [
+        "suggested",
+        "optional",
+        "item",
+        "quarantined",
+        "project_roots",
     ]
     private let allowedReasons: Set<String> = [
         "intersection",
@@ -665,6 +711,27 @@ private final class PanelAnalytics {
         }
         if let sessionDurationMs = integerProperty(properties["session_duration_ms"]) {
             clean["session_duration_ms"] = min(max(sessionDurationMs, 0), 24 * 60 * 60 * 1000)
+        }
+        if let action = properties["skill_quarantine_action"] as? String,
+           allowedSkillQuarantineActions.contains(action) {
+            clean["skill_quarantine_action"] = action
+        }
+        if let result = properties["skill_quarantine_result"] as? String,
+           allowedSkillQuarantineResults.contains(result) {
+            clean["skill_quarantine_result"] = result
+        }
+        if let bucket = properties["skill_quarantine_bucket"] as? String,
+           allowedSkillQuarantineBuckets.contains(bucket) {
+            clean["skill_quarantine_bucket"] = bucket
+        }
+        if let count = integerProperty(properties["skill_quarantine_count"]) {
+            clean["skill_quarantine_count"] = min(max(count, 0), 500)
+        }
+        if let failedCount = integerProperty(properties["skill_quarantine_failed_count"]) {
+            clean["skill_quarantine_failed_count"] = min(max(failedCount, 0), 500)
+        }
+        if let warningCount = integerProperty(properties["skill_quarantine_warning_count"]) {
+            clean["skill_quarantine_warning_count"] = min(max(warningCount, 0), 500)
         }
         return clean
     }

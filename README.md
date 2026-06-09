@@ -285,10 +285,12 @@ The macOS client includes privacy-bounded product analytics for the panel. When
 `OPENRELIX_ANALYTICS_ENDPOINT` is configured, anonymous usage metrics are shared
 by default so maintainers can understand daily active use, module usefulness,
 and product friction. Events cover app launch, panel load state, fixed panel
-module visibility and dwell time, core control clicks, and app quit. Payloads
-use a random install ID and per-launch session ID plus app/coarse macOS version;
-they do not include prompts, memory or review text, window titles, file paths,
-usernames, hostnames, tokens, cookies, local reports, or raw OpenRelix state.
+module visibility and dwell time, core control clicks, Skill/MCP quarantine
+action outcomes, and app quit. Payloads use a random install ID and per-launch
+session ID plus app/coarse macOS version; they do not include prompts, memory or
+review text, window titles, skill/MCP names, entity keys, file paths, usernames,
+hostnames, tokens, cookies, local reports, raw error messages, or raw OpenRelix
+state.
 Users can turn this off from the OpenRelix app menu with `Share Anonymous Usage
 Metrics`, or by launching with `OPENRELIX_ANALYTICS_ENABLED=0` /
 `OPENRELIX_ANALYTICS_DISABLED=1`. The endpoint can be embedded at build time
