@@ -1,0 +1,12 @@
+name = "openrelix-posthog-analytics"
+main = "worker.mjs"
+compatibility_date = "2026-06-05"
+
+[vars]
+# Use https://eu.i.posthog.com for EU Cloud, or your self-hosted PostHog host.
+POSTHOG_HOST = "https://us.i.posthog.com"
+OPENRELIX_ANALYTICS_RATE_LIMIT_PER_MINUTE = "180"
+
+# Configure secrets with:
+#   wrangler secret put POSTHOG_API_KEY
+#   wrangler secret put OPENRELIX_ANALYTICS_INGEST_TOKEN

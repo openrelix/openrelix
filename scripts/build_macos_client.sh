@@ -12,6 +12,8 @@ APP_ICON_SOURCE="${OPENRELIX_APP_ICON_SOURCE:-$REPO_ROOT/macos/OpenRelixClient/A
 APP_ICON_BASENAME="OpenRelixAppIcon"
 STATE_ROOT="${AI_ASSET_STATE_DIR:-}"
 LANGUAGE="${AI_ASSET_LANGUAGE:-en}"
+ANALYTICS_ENDPOINT="${OPENRELIX_ANALYTICS_ENDPOINT:-}"
+ANALYTICS_TOKEN="${OPENRELIX_ANALYTICS_TOKEN:-}"
 OPEN_AFTER=0
 
 normalize_language_code() {
@@ -52,6 +54,10 @@ usage() {
 选项：
   --output PATH       将 .app bundle 写入 PATH。
   --state-root PATH   写入 App 使用的 OpenRelix 状态目录。
+  --analytics-endpoint URL
+                      写入匿名使用埋点 endpoint。
+  --analytics-token TOKEN
+                      写入可选的埋点 bearer token。
   --icon PATH         使用 PATH 作为 App 图标源 PNG。
   --open              构建后打开 App。
   -h, --help          显示此帮助。
@@ -66,6 +72,10 @@ shell that loads the local reports/panel.html with WKWebView.
 Options:
   --output PATH       Write the .app bundle to PATH.
   --state-root PATH   Embed the OpenRelix state root used by the app.
+  --analytics-endpoint URL
+                      Embed the anonymous usage analytics endpoint.
+  --analytics-token TOKEN
+                      Embed the optional analytics bearer token.
   --icon PATH         Use PATH as the source PNG for the app icon.
   --open              Open the app after building.
   -h, --help          Show this help.
@@ -128,6 +138,30 @@ while (( $# )); do
       ;;
     --state-root=*)
       STATE_ROOT="${1#--state-root=}"
+      shift
+      ;;
+    --analytics-endpoint)
+      if (( $# < 2 )); then
+        echo "$(localized_text "--analytics-endpoint 缺少取值" "Missing value for --analytics-endpoint")" >&2
+        exit 2
+      fi
+      ANALYTICS_ENDPOINT="$2"
+      shift 2
+      ;;
+    --analytics-endpoint=*)
+      ANALYTICS_ENDPOINT="${1#--analytics-endpoint=}"
+      shift
+      ;;
+    --analytics-token)
+      if (( $# < 2 )); then
+        echo "$(localized_text "--analytics-token 缺少取值" "Missing value for --analytics-token")" >&2
+        exit 2
+      fi
+      ANALYTICS_TOKEN="$2"
+      shift 2
+      ;;
+    --analytics-token=*)
+      ANALYTICS_TOKEN="${1#--analytics-token=}"
       shift
       ;;
     --icon)
@@ -210,6 +244,12 @@ swiftc -O \
 
 chmod +x "$MACOS_DIR/$APP_EXECUTABLE"
 printf '%s\n' "$STATE_ROOT" > "$RESOURCES_DIR/OpenRelixStateRoot.txt"
+if [[ -n "$ANALYTICS_ENDPOINT" ]]; then
+  printf '%s\n' "$ANALYTICS_ENDPOINT" > "$RESOURCES_DIR/OpenRelixAnalyticsEndpoint.txt"
+fi
+if [[ -n "$ANALYTICS_TOKEN" ]]; then
+  printf '%s\n' "$ANALYTICS_TOKEN" > "$RESOURCES_DIR/OpenRelixAnalyticsToken.txt"
+fi
 printf 'APPL????' > "$CONTENTS_DIR/PkgInfo"
 
 if [[ -f "$APP_ICON_SOURCE" ]]; then

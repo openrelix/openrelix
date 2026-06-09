@@ -72,6 +72,31 @@ Before adding or expanding a connector such as Feishu docs, chat, calendar, meet
 
 Connector imports should produce sanitized summaries, evidence references, or asset candidates. They should not turn OpenRelix into a raw cloud mirror.
 
+## Product Analytics Policy
+
+The macOS panel client may send privacy-bounded product analytics when
+`OPENRELIX_ANALYTICS_ENDPOINT` is configured. Analytics are enabled by default in
+that configured product path, with an in-app menu toggle and environment
+kill-switches (`OPENRELIX_ANALYTICS_ENABLED=0` or
+`OPENRELIX_ANALYTICS_DISABLED=1`).
+
+Allowed analytics fields:
+
+- Random install ID and per-launch session ID.
+- App version and coarse macOS version.
+- Fixed event names: app launch, app quit, panel load state, panel ready,
+  module visible/hidden, and core control click.
+- Fixed module/control IDs from a whitelist.
+- Dwell duration in milliseconds and panel language (`zh` or `en`).
+
+Analytics must not include prompts, model responses, memory/review text, window
+titles, project names, file paths, usernames, hostnames, tokens, cookies,
+connector content, local reports, raw state files, or generated panel content.
+The client should drop unrecognized event/property keys before sending and
+should not persist failed analytics payloads to disk. Any token embedded in the
+macOS app must be treated as a client-side ingestion token, not a service secret;
+privileged analytics credentials belong behind the collection endpoint.
+
 ## Host Context Policy
 
 OpenRelix may write bounded summaries into enabled host-native contexts, but only through managed blocks.
