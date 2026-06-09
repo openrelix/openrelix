@@ -984,7 +984,7 @@ def build_parser():
     skill_quarantine_block.add_argument("--no-apply", action="store_true", help=localized("只记录状态，不搬移 skill 或改 MCP JSON 配置。", "Only record state; do not move skills or edit MCP JSON config."))
     skill_quarantine_unblock = skill_quarantine_subparsers.add_parser(
         "unblock",
-        help=localized("从小黑屋放行。", "Restore an item from quarantine."),
+        help=localized("从小黑屋恢复使用。", "Restore an item from quarantine."),
     )
     skill_quarantine_unblock.add_argument("entity", help=localized("项目 ID，例如 skill:foo 或 mcp:playwright。", "Entity ID, for example skill:foo or mcp:playwright."))
     skill_quarantine_unblock.add_argument("--type", choices=["skill", "mcp"], help=localized("未写前缀时指定类型。", "Type to use when the entity has no prefix."))
@@ -4949,7 +4949,7 @@ def command_skill_quarantine(args):
                 apply=not getattr(args, "no_apply", False),
                 codex_homes=codex_homes,
             )
-        print(localized("已放行: {}", "Restored: {}").format(result.get("entity_key")))
+        print(localized("已恢复使用: {}", "Restored: {}").format(result.get("entity_key")))
         print("- ok: {}".format(result.get("ok")))
         return
     if subcommand in {"block-all", "auto-clean"}:
