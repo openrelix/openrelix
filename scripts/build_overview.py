@@ -30423,6 +30423,7 @@ def build_html(data):
           failed: "小黑屋更新失败",
           stale: "小黑屋已更新，但当前面板没有跟上，请刷新面板",
           deleted: "已移到废纸篓，并从小黑屋移除",
+          retrying: "本地后台已重启，正在重试小黑屋操作...",
           partial: "已隔离 {{count}} 项，{{failed}} 项失败",
           service: "本地服务未启动。",
           confirmAll: "确认隔离所有建议项？",
@@ -30444,6 +30445,7 @@ def build_html(data):
           failed: "Quarantine update failed",
           stale: "Quarantine updated, but this panel is stale. Please reload",
           deleted: "Moved to Trash and removed from quarantine",
+          retrying: "Local background service restarted; retrying quarantine action...",
           partial: "Quarantined {{count}} items; {{failed}} failed",
           service: "Local service is not running.",
           confirmAll: "Quarantine all suggested items?",
@@ -31077,6 +31079,23 @@ def build_html(data):
         return button.getAttribute("data-label") || button.textContent || "";
       }}
 
+      function isSkillQuarantineKnownAction(action) {{
+        return [
+          "block",
+          "unblock",
+          "delete",
+          "block-all",
+          "block-grace-all",
+          "add-project-skill-root",
+          "remove-project-skill-root"
+        ].indexOf(action) !== -1;
+      }}
+
+      function isSkillQuarantineStaleBackendError(action, error) {{
+        const message = String((error && error.message) || "");
+        return isSkillQuarantineKnownAction(action) && message === "unsupported_action";
+      }}
+
       function removeSkillQuarantineDeletePopovers() {{
         document.querySelectorAll(".skill-quarantine-delete-popover-row").forEach(function (row) {{
           row.remove();
@@ -31157,12 +31176,13 @@ def build_html(data):
         if (bulkBucket) {{
           requestPayload.entity_keys = skillQuarantineKeysForBucket(bulkBucket);
         }}
-        fetch(endpoint, {{
-          method: "POST",
-          headers: headers,
-          body: JSON.stringify(requestPayload)
-        }})
-          .then(function (response) {{
+        function runSkillQuarantineRequest(retriedAfterRestart) {{
+          fetch(endpoint, {{
+            method: "POST",
+            headers: headers,
+            body: JSON.stringify(requestPayload)
+          }})
+            .then(function (response) {{
             return response.json().catch(function () {{
               return null;
             }}).then(function (payload) {{
@@ -31171,8 +31191,8 @@ def build_html(data):
               }}
               return payload;
             }});
-          }})
-          .then(function (payload) {{
+            }})
+            .then(function (payload) {{
             const applyResult = applySkillQuarantineSuccess(action, button, payload) || {{}};
             if (button && bulkBucket) {{
               button.textContent = originalLabel;
@@ -31217,8 +31237,18 @@ def build_html(data):
               setSkillQuarantineStatus(skillQuarantineMessage("saved"), "success");
             }}
             postSkillQuarantineAnalytics(action, analyticsResult, payload, applyResult, bulkBucket);
-          }})
-          .catch(function (error) {{
+            }})
+            .catch(function (error) {{
+            if (!retriedAfterRestart && isSkillQuarantineStaleBackendError(action, error)) {{
+              const requestedRestart = requestNativeTokenServiceStart("skill-quarantine", endpoint, true);
+              if (requestedRestart) {{
+                setSkillQuarantineStatus(skillQuarantineMessage("retrying"), "loading");
+                window.setTimeout(function () {{
+                  runSkillQuarantineRequest(true);
+                }}, 1800);
+                return;
+              }}
+            }}
             const detail = error && error.message ? (": " + error.message) : "";
             const failedKey = action === "add-project-skill-root" || action === "remove-project-skill-root"
               ? "projectFailed"
@@ -31231,7 +31261,9 @@ def build_html(data):
               button.disabled = false;
               button.textContent = originalLabel;
             }}
-          }});
+            }});
+        }}
+        runSkillQuarantineRequest(false);
       }}
 
       function wireSkillQuarantineActions() {{
@@ -34114,9 +34146,9 @@ def build_html(data):
           message.includes("networkerror");
       }}
 
-      function requestNativeTokenServiceStart() {{
+      function requestNativeTokenServiceStart(source, endpoint, force) {{
         const now = Date.now();
-        if (now - Number(state.tokenServiceStartRequestedAt || 0) < 30000) {{
+        if (!force && now - Number(state.tokenServiceStartRequestedAt || 0) < 30000) {{
           return false;
         }}
         try {{
@@ -34128,8 +34160,8 @@ def build_html(data):
           }}
           state.tokenServiceStartRequestedAt = now;
           handler.postMessage({{
-            source: "token-refresh",
-            endpoint: config.liveEndpoint,
+            source: source || "token-refresh",
+            endpoint: endpoint || config.liveEndpoint,
           }});
           return true;
         }} catch (error) {{

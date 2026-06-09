@@ -952,7 +952,7 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessag
         let serviceTarget = "\(domain)/\(tokenLiveLabel)"
         DispatchQueue.global(qos: .utility).async {
             self.runLaunchctl(["bootstrap", domain, plistPath])
-            self.runLaunchctl(["kickstart", serviceTarget])
+            self.runLaunchctl(["kickstart", "-k", serviceTarget])
         }
     }
 
