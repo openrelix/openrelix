@@ -15,10 +15,10 @@ def normalize_reveal_path(raw_path):
     path = Path(text).expanduser()
     if not path.is_absolute():
         return None
-    if not path.exists():
+    if not path.exists() and not path.is_symlink():
         return None
     try:
-        return path.resolve(strict=False)
+        return path.absolute()
     except OSError:
         return path
 

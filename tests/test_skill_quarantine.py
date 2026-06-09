@@ -69,12 +69,73 @@ class SkillQuarantineTests(unittest.TestCase):
             self.assertEqual(restored["items"][0]["entity_key"], "skill:demo")
             self.assertIn("cached_at", restored)
 
+    def test_quarantine_view_exposes_quarantine_root_for_finder(self):
+        with TemporaryDirectory() as tmp:
+            paths = runtime_paths_for_fixture(Path(tmp))
+
+            view = skill_quarantine.build_quarantine_view(
+                paths,
+                today="2026-06-05",
+                mcp_usage_view={"servers": []},
+                codex_homes=[paths.codex_home],
+            )
+
+            self.assertEqual(view["quarantine_root"], str(skill_quarantine.quarantine_root(paths)))
+            self.assertTrue(skill_quarantine.quarantine_root(paths).is_dir())
+
     def test_action_lock_uses_runtime_lock_file(self):
         with TemporaryDirectory() as tmp:
             paths = runtime_paths_for_fixture(Path(tmp))
 
             with skill_quarantine.quarantine_action_lock(paths):
                 self.assertTrue(skill_quarantine.quarantine_action_lock_path(paths).is_file())
+
+    def test_project_skill_root_state_adds_and_removes_paths(self):
+        with TemporaryDirectory() as tmp:
+            paths = runtime_paths_for_fixture(Path(tmp))
+            project_root = Path(tmp) / "project-a"
+            project_root.mkdir()
+
+            result = skill_quarantine.add_project_skill_root(paths, project_root)
+            second = skill_quarantine.add_project_skill_root(paths, project_root)
+
+            self.assertTrue(result["changed"])
+            self.assertEqual(len(second["project_skill_roots"]), 1)
+            self.assertEqual(skill_quarantine.configured_project_skill_roots(paths), [project_root.resolve().as_posix()])
+
+            removed = skill_quarantine.remove_project_skill_root(paths, project_root)
+
+            self.assertTrue(removed["changed"])
+            self.assertEqual(skill_quarantine.configured_project_skill_roots(paths), [])
+
+    def test_quarantine_view_discovers_project_claude_skills(self):
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = runtime_paths_for_fixture(root)
+            home = root / "home"
+            home.mkdir(parents=True, exist_ok=True)
+            project_root = root / "project-a"
+            claude_skill = project_root / ".claude" / "skills" / "project-claude-helper"
+            aiden_skill = project_root / ".aiden" / "skills" / "ignored-aiden-helper"
+            claude_skill.mkdir(parents=True)
+            aiden_skill.mkdir(parents=True)
+            (claude_skill / "SKILL.md").write_text("---\nname: project-claude-helper\n---\n", encoding="utf-8")
+            (aiden_skill / "SKILL.md").write_text("---\nname: ignored-aiden-helper\n---\n", encoding="utf-8")
+            skill_quarantine.add_project_skill_root(paths, project_root)
+
+            with mock.patch.object(skill_quarantine.asset_discovery.Path, "home", return_value=home):
+                view = skill_quarantine.build_quarantine_view(
+                    paths,
+                    today="2026-06-05",
+                    mcp_usage_view={"servers": []},
+                    codex_homes=[paths.codex_home],
+                )
+
+            keys = {row["entity_key"] for row in view["items"]}
+            project_roots = view["project_skill_roots"]
+            self.assertIn("skill:project-claude-helper", keys)
+            self.assertNotIn("skill:ignored-aiden-helper", keys)
+            self.assertEqual(project_roots[0]["path"], project_root.resolve().as_posix())
 
     def test_block_and_unblock_skill_moves_directory_without_deleting(self):
         with TemporaryDirectory() as tmp:
@@ -112,6 +173,92 @@ class SkillQuarantineTests(unittest.TestCase):
 
             self.assertTrue(result["ok"])
             self.assertTrue((skill_dir / "SKILL.md").is_file())
+            self.assertFalse(skill_quarantine.read_state(paths)["entries"])
+
+    def test_delete_quarantined_skill_moves_isolated_copy_to_trash_and_removes_state(self):
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = runtime_paths_for_fixture(root)
+            skill_dir = paths.codex_home / "skills" / "delete-me"
+            skill_dir.mkdir(parents=True)
+            (skill_dir / "SKILL.md").write_text("# Delete Me\n", encoding="utf-8")
+            view = {
+                "items": [
+                    {
+                        "entity_key": "skill:delete-me",
+                        "entity_type": "skill",
+                        "identifier": "delete-me",
+                        "display_name": "delete-me",
+                        "usage_30d": 0,
+                        "sources": [{"kind": "codex", "manifest_abspath": str(skill_dir / "SKILL.md")}],
+                    }
+                ]
+            }
+            entry = skill_quarantine.block_entity(paths, "skill:delete-me", view=view)
+            quarantine_path = Path(entry["isolation_targets"][0]["quarantine_path"])
+            trash_root = root / "home" / ".Trash"
+
+            result = skill_quarantine.delete_quarantined_entity(
+                paths,
+                "skill:delete-me",
+                trash_root=trash_root,
+            )
+
+            self.assertTrue(result["ok"])
+            self.assertFalse(quarantine_path.exists())
+            self.assertFalse(skill_dir.exists())
+            self.assertFalse(skill_quarantine.read_state(paths)["entries"])
+            self.assertEqual(result["trash_targets"][0]["status"], "trashed")
+            trashed_path = Path(result["trash_targets"][0]["trash_path"])
+            self.assertTrue((trashed_path / "SKILL.md").is_file())
+
+    def test_block_and_unblock_symlink_skill_moves_link_not_target(self):
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = runtime_paths_for_fixture(root)
+            source_dir = root / "repo" / "Douyin" / ".aiden" / "skills" / "bits-oapi-cli"
+            source_dir.mkdir(parents=True)
+            (source_dir / "SKILL.md").write_text("# Bits OAPI CLI\n", encoding="utf-8")
+            link_dir = paths.codex_home / "skills" / "bits-oapi-cli"
+            link_dir.parent.mkdir(parents=True)
+            link_dir.symlink_to(source_dir, target_is_directory=True)
+            view = {
+                "items": [
+                    {
+                        "entity_key": "skill:bits-oapi-cli",
+                        "entity_type": "skill",
+                        "identifier": "bits-oapi-cli",
+                        "display_name": "bits-oapi-cli",
+                        "usage_30d": 0,
+                        "sources": [
+                            {
+                                "kind": "codex_skill",
+                                "manifest_abspath": str(source_dir / "SKILL.md"),
+                                "source_root": "~/.codex/skills",
+                            }
+                        ],
+                    }
+                ]
+            }
+
+            entry = skill_quarantine.block_entity(paths, "skill:bits-oapi-cli", view=view)
+
+            target = entry["isolation_targets"][0]
+            quarantine_path = Path(target["quarantine_path"])
+            self.assertEqual(entry["isolation_status"], "moved")
+            self.assertEqual(target["original_snapshot"]["kind"], "symlink")
+            self.assertEqual(target["original_snapshot"]["link_target"], str(source_dir))
+            self.assertFalse(link_dir.exists())
+            self.assertFalse(link_dir.is_symlink())
+            self.assertTrue((source_dir / "SKILL.md").is_file())
+            self.assertTrue(quarantine_path.is_symlink())
+
+            result = skill_quarantine.unblock_entity(paths, "skill:bits-oapi-cli")
+
+            self.assertTrue(result["ok"])
+            self.assertTrue(link_dir.is_symlink())
+            self.assertEqual(os.readlink(link_dir), str(source_dir))
+            self.assertTrue((source_dir / "SKILL.md").is_file())
             self.assertFalse(skill_quarantine.read_state(paths)["entries"])
 
     def test_block_entity_records_move_failure_warning(self):

@@ -32,11 +32,15 @@ from openrelix_overview.finder import FINDER_REVEAL_PATH, reveal_path_in_finder
 from openrelix_overview.memory_feedback import append_memory_feedback
 from openrelix_overview.pipeline_status import load_status as load_pipeline_status
 from openrelix_overview.skill_quarantine import (
+    add_project_skill_root,
     block_all_grace,
     block_all_suggestions,
     block_entity,
+    build_quarantine_view,
+    delete_quarantined_entity,
     quarantine_action_lock,
     read_view_cache,
+    remove_project_skill_root,
     unblock_entity,
 )
 from openrelix_overview.token_fetcher import (
@@ -133,6 +137,160 @@ def skill_quarantine_block_result_warning_count(result):
     if not isinstance(result, dict):
         return 0
     return sum(skill_quarantine_warning_count(entry) for entry in result.get("blocked", []) or [])
+
+
+def skill_quarantine_response_entry(entry):
+    if not isinstance(entry, dict):
+        return {}
+    allowed = (
+        "entity_key",
+        "entity_type",
+        "identifier",
+        "display_name",
+        "reason",
+        "last_used_at",
+        "usage_30d",
+        "isolation_status",
+        "migration_warning_count",
+        "migration_warnings",
+    )
+    return {key: entry.get(key) for key in allowed if key in entry}
+
+
+def skill_quarantine_response_entries(entries):
+    return [row for row in (skill_quarantine_response_entry(entry) for entry in entries or []) if row]
+
+
+def selected_skill_quarantine_keys(payload, limit=500):
+    raw_keys = payload.get("entity_keys")
+    if not isinstance(raw_keys, list):
+        return []
+    keys = []
+    seen = set()
+    for raw_key in raw_keys:
+        key = str(raw_key or "").strip()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        keys.append(key)
+        if len(keys) >= limit:
+            break
+    return keys
+
+
+def block_selected_skill_quarantine_entities(keys, apply=True, cached_view=None):
+    blocked = []
+    failed = []
+    active_view = cached_view
+    fresh_view = None
+    for key in keys:
+        try:
+            blocked.append(block_entity(PATHS, key, apply=apply, view=active_view))
+            continue
+        except ValueError as first_exc:
+            if fresh_view is None:
+                fresh_view = build_quarantine_view(PATHS)
+            try:
+                blocked.append(block_entity(PATHS, key, apply=apply, view=fresh_view))
+                active_view = fresh_view
+                continue
+            except ValueError as second_exc:
+                failed.append({"entity_key": key, "error": str(second_exc or first_exc)})
+    return {"blocked": blocked, "failed": failed, "dry_run": False}
+
+
+BACKGROUND_SKILL_QUARANTINE_ACTIONS = {"block", "unblock", "delete", "block-all", "block-grace-all"}
+
+
+def skill_quarantine_cached_rows(cached_view, bucket):
+    if not isinstance(cached_view, dict):
+        return []
+    rows = cached_view.get(bucket)
+    return rows if isinstance(rows, list) else []
+
+
+def skill_quarantine_cached_row(cached_view, entity_key):
+    key = str(entity_key or "").strip()
+    if not key:
+        return {}
+    for bucket in ("suggested", "grace", "quarantined", "items", "active"):
+        for row in skill_quarantine_cached_rows(cached_view, bucket):
+            if isinstance(row, dict) and row.get("entity_key") == key:
+                return row
+    return {}
+
+
+def skill_quarantine_pending_entry(entity_key, cached_view=None):
+    key = str(entity_key or "").strip()
+    row = skill_quarantine_cached_row(cached_view, key)
+    entry = skill_quarantine_response_entry(row)
+    entry["entity_key"] = key
+    entry.setdefault("isolation_status", "state_only")
+    entry.setdefault("migration_warning_count", 0)
+    return entry
+
+
+def skill_quarantine_bulk_keys(action, entity_keys, cached_view):
+    keys = list(entity_keys or [])
+    if keys:
+        return keys
+    bucket = "suggested" if action == "block-all" else "grace"
+    return [
+        str(row.get("entity_key") or "").strip()
+        for row in skill_quarantine_cached_rows(cached_view, bucket)
+        if isinstance(row, dict) and str(row.get("entity_key") or "").strip()
+    ]
+
+
+def skill_quarantine_accepted_response(action, entity_key="", entity_keys=None, payload=None, cached_view=None):
+    if action == "block":
+        key = str(entity_key or "").strip()
+        if not key:
+            raise ValueError("missing_entity")
+        entry = skill_quarantine_pending_entry(key, cached_view)
+        return {
+            "ok": True,
+            "status": "accepted",
+            "action": action,
+            "entry": entry,
+            "migration_warning_count": 0,
+        }
+    if action == "unblock":
+        key = str(entity_key or "").strip()
+        if not key:
+            raise ValueError("missing_entity")
+        return {
+            "ok": True,
+            "status": "accepted",
+            "action": action,
+            "result": {"ok": True, "entity_key": key},
+            "migration_warning_count": 0,
+        }
+    if action == "delete":
+        key = str(entity_key or "").strip()
+        if not key:
+            raise ValueError("missing_entity")
+        return {
+            "ok": True,
+            "status": "accepted",
+            "action": action,
+            "result": {"ok": True, "entity_key": key},
+            "migration_warning_count": 0,
+        }
+    if action in {"block-all", "block-grace-all"}:
+        keys = skill_quarantine_bulk_keys(action, entity_keys, cached_view)
+        entries = [skill_quarantine_pending_entry(key, cached_view) for key in keys]
+        return {
+            "ok": True,
+            "status": "accepted",
+            "action": action,
+            "blocked_count": len(entries),
+            "blocked": entries,
+            "failed": [],
+            "failed_count": 0,
+            "migration_warning_count": 0,
+        }
+    raise ValueError("unsupported_action")
 
 
 def get_update_token():
@@ -701,6 +859,197 @@ def start_manual_pipeline_refresh(target_date=None, asset_layer_only=False):
         "asset_layer_only": bool(asset_layer_only),
         "pid": proc.pid,
     })
+    return True, snapshot
+
+
+def start_manual_pipeline_refresh_background(target_date=None, asset_layer_only=False):
+    target_date = str(target_date or current_local_datetime().date().isoformat())
+    current = load_pipeline_status(PATHS)
+    if current.get("status") == "running":
+        snapshot = dict(current)
+        snapshot["ok"] = True
+        snapshot["started_now"] = False
+        snapshot["asset_layer_only"] = bool(asset_layer_only)
+        snapshot["target_date"] = snapshot.get("target_date") or target_date
+        return False, snapshot
+
+    snapshot = {
+        "ok": True,
+        "status": "queued",
+        "started_now": True,
+        "target_date": target_date,
+        "asset_layer_only": bool(asset_layer_only),
+    }
+
+    def worker():
+        try:
+            start_manual_pipeline_refresh(target_date=target_date, asset_layer_only=asset_layer_only)
+        except Exception:
+            pass
+
+    try:
+        thread = threading.Thread(
+            target=worker,
+            name="openrelix-skill-quarantine-refresh",
+            daemon=True,
+        )
+        thread.start()
+    except Exception as exc:
+        failed = dict(snapshot)
+        failed.update({
+            "ok": False,
+            "status": "failed",
+            "started_now": False,
+            "error": str(exc),
+        })
+        return False, failed
+    return True, snapshot
+
+
+def skill_quarantine_response_needs_refresh(action, response):
+    if not response.get("ok"):
+        return False
+    if action in {"block", "unblock", "delete"}:
+        return True
+    if action in {"block-all", "block-grace-all"}:
+        return int(response.get("blocked_count") or 0) > 0
+    if action in {"add-project-skill-root", "remove-project-skill-root"}:
+        return bool(response.get("changed"))
+    return False
+
+
+def perform_skill_quarantine_action(action, entity_key="", entity_keys=None, payload=None, cached_view=None):
+    payload = payload if isinstance(payload, dict) else {}
+    with quarantine_action_lock(PATHS):
+        if action == "block":
+            result = block_entity(PATHS, entity_key, apply=True, view=cached_view)
+            return {
+                "ok": True,
+                "action": action,
+                "entry": result,
+                "migration_warning_count": skill_quarantine_warning_count(result),
+            }
+        if action == "unblock":
+            result = unblock_entity(PATHS, entity_key, apply=True, view=cached_view)
+            return {
+                "ok": bool(result.get("ok")),
+                "action": action,
+                "result": result,
+                "migration_warning_count": skill_quarantine_warning_count(result),
+            }
+        if action == "delete":
+            result = delete_quarantined_entity(PATHS, entity_key)
+            return {
+                "ok": bool(result.get("ok")),
+                "action": action,
+                "result": result,
+                "migration_warning_count": skill_quarantine_warning_count(result),
+            }
+        if action == "block-all":
+            result = (
+                block_selected_skill_quarantine_entities(entity_keys or [], apply=True, cached_view=cached_view)
+                if entity_keys
+                else block_all_suggestions(PATHS, apply=True, view=cached_view)
+            )
+        elif action == "block-grace-all":
+            result = (
+                block_selected_skill_quarantine_entities(entity_keys or [], apply=True, cached_view=cached_view)
+                if entity_keys
+                else block_all_grace(PATHS, apply=True, view=cached_view)
+            )
+        elif action == "add-project-skill-root":
+            result = add_project_skill_root(PATHS, payload.get("path", ""))
+            return {
+                "ok": True,
+                "action": action,
+                "project_root": result.get("project_root", {}),
+                "project_skill_roots": result.get("project_skill_roots", []),
+                "changed": bool(result.get("changed")),
+                "migration_warning_count": 0,
+            }
+        elif action == "remove-project-skill-root":
+            result = remove_project_skill_root(PATHS, payload.get("path", ""))
+            return {
+                "ok": True,
+                "action": action,
+                "project_skill_roots": result.get("project_skill_roots", []),
+                "changed": bool(result.get("changed")),
+                "migration_warning_count": 0,
+            }
+        else:
+            raise ValueError("unsupported_action")
+
+        blocked_entries = skill_quarantine_response_entries(result.get("blocked", []))
+        failed_entries = result.get("failed", [])
+        return {
+            "ok": bool(blocked_entries) or not failed_entries,
+            "action": action,
+            "blocked_count": len(result.get("blocked", [])),
+            "blocked": blocked_entries,
+            "failed": failed_entries,
+            "failed_count": len(failed_entries),
+            "migration_warning_count": skill_quarantine_block_result_warning_count(result),
+        }
+
+
+def run_skill_quarantine_action(action, entity_key="", entity_keys=None, payload=None, cached_view=None):
+    try:
+        result = perform_skill_quarantine_action(
+            action,
+            entity_key=entity_key,
+            entity_keys=entity_keys,
+            payload=payload,
+            cached_view=cached_view,
+        )
+    except Exception as exc:
+        result = {
+            "ok": False,
+            "action": action,
+            "error": str(exc),
+        }
+        try:
+            sys.stderr.write("openrelix skill quarantine action failed: {}\n".format(str(exc)))
+        except Exception:
+            pass
+    if action in BACKGROUND_SKILL_QUARANTINE_ACTIONS or skill_quarantine_response_needs_refresh(action, result):
+        start_manual_pipeline_refresh_background(asset_layer_only=True)
+    return result
+
+
+def start_skill_quarantine_action_async(action, entity_key="", entity_keys=None, payload=None, cached_view=None):
+    snapshot = {
+        "ok": True,
+        "status": "queued",
+        "started_now": True,
+        "action": action,
+        "accepted_at": time.time(),
+    }
+
+    def worker():
+        run_skill_quarantine_action(
+            action,
+            entity_key=entity_key,
+            entity_keys=list(entity_keys or []),
+            payload=dict(payload or {}),
+            cached_view=cached_view if isinstance(cached_view, dict) else None,
+        )
+
+    try:
+        thread = threading.Thread(
+            target=worker,
+            name="openrelix-skill-quarantine-action",
+            daemon=True,
+        )
+        thread.start()
+    except Exception as exc:
+        failed = dict(snapshot)
+        failed.update({
+            "ok": False,
+            "status": "failed",
+            "started_now": False,
+            "error": str(exc),
+        })
+        return False, failed
     return True, snapshot
 
 
@@ -1490,48 +1839,54 @@ class TokenLiveHandler(BaseHTTPRequestHandler):
                 payload = {}
             action = str(payload.get("action") or "").strip()
             entity_key = str(payload.get("entity_key") or "").strip()
+            entity_keys = selected_skill_quarantine_keys(payload)
             cached_view = read_view_cache(PATHS) or None
             try:
-                with quarantine_action_lock(PATHS):
-                    if action == "block":
-                        result = block_entity(PATHS, entity_key, apply=True, view=cached_view)
-                        response = {
-                            "ok": True,
-                            "action": action,
-                            "entry": result,
-                            "migration_warning_count": skill_quarantine_warning_count(result),
-                        }
-                    elif action == "unblock":
-                        result = unblock_entity(PATHS, entity_key, apply=True, view=cached_view)
-                        response = {
-                            "ok": bool(result.get("ok")),
-                            "action": action,
-                            "result": result,
-                            "migration_warning_count": skill_quarantine_warning_count(result),
-                        }
-                    elif action == "block-all":
-                        result = block_all_suggestions(PATHS, apply=True, view=cached_view)
-                        response = {
-                            "ok": True,
-                            "action": action,
-                            "blocked_count": len(result.get("blocked", [])),
-                            "migration_warning_count": skill_quarantine_block_result_warning_count(result),
-                        }
-                    elif action == "block-grace-all":
-                        result = block_all_grace(PATHS, apply=True, view=cached_view)
-                        response = {
-                            "ok": True,
-                            "action": action,
-                            "blocked_count": len(result.get("blocked", [])),
-                            "migration_warning_count": skill_quarantine_block_result_warning_count(result),
-                        }
-                    else:
+                if action in BACKGROUND_SKILL_QUARANTINE_ACTIONS:
+                    response = skill_quarantine_accepted_response(
+                        action,
+                        entity_key=entity_key,
+                        entity_keys=entity_keys,
+                        payload=payload,
+                        cached_view=cached_view,
+                    )
+                    if action in {"block-all", "block-grace-all"} and int(response.get("blocked_count") or 0) <= 0:
+                        response["task"] = {"ok": True, "status": "skipped", "started_now": False}
+                        response["refresh"] = {"ok": True, "status": "skipped", "started_now": False}
+                        response["refresh_started_now"] = False
+                        self._send_json(200, response, allow_origin=origin or None)
+                        return
+                    task_started, task_snapshot = start_skill_quarantine_action_async(
+                        action,
+                        entity_key=entity_key,
+                        entity_keys=entity_keys,
+                        payload=payload,
+                        cached_view=cached_view,
+                    )
+                    if not task_started:
                         self._send_json(
-                            400,
-                            {"ok": False, "error": "unsupported_action"},
+                            503,
+                            {
+                                "ok": False,
+                                "status": "failed",
+                                "action": action,
+                                "error": task_snapshot.get("error") or "worker_start_failed",
+                            },
                             allow_origin=origin or None,
                         )
                         return
+                    response["task"] = task_snapshot
+                    response["refresh"] = {"ok": True, "status": "pending", "started_now": False}
+                    response["refresh_started_now"] = False
+                    self._send_json(202, response, allow_origin=origin or None)
+                    return
+                response = perform_skill_quarantine_action(
+                    action,
+                    entity_key=entity_key,
+                    entity_keys=entity_keys,
+                    payload=payload,
+                    cached_view=cached_view,
+                )
             except ValueError as exc:
                 self._send_json(
                     400,
@@ -1539,7 +1894,11 @@ class TokenLiveHandler(BaseHTTPRequestHandler):
                     allow_origin=origin or None,
                 )
                 return
-            refresh_started, refresh_snapshot = start_manual_pipeline_refresh(asset_layer_only=True)
+            if skill_quarantine_response_needs_refresh(action, response):
+                refresh_started, refresh_snapshot = start_manual_pipeline_refresh_background(asset_layer_only=True)
+            else:
+                refresh_started = False
+                refresh_snapshot = {"ok": True, "status": "skipped", "started_now": False}
             response["refresh"] = refresh_snapshot
             response["refresh_started_now"] = refresh_started
             self._send_json(200 if response.get("ok") else 409, response, allow_origin=origin or None)

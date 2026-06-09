@@ -7854,11 +7854,18 @@ Native Codex profile.
         apply_source = source[apply_start:apply_end]
 
         self.assertIn("applySkillQuarantineSuccess(action, button, payload)", handler_source)
-        self.assertIn('action === "block-grace-all"', handler_source)
-        self.assertIn('skillQuarantineMessage("confirmGraceAll")', handler_source)
+        self.assertIn('action === "block-grace-all"', source)
         self.assertIn("skillQuarantinePayloadWarningCount(payload)", handler_source)
         self.assertIn('skillQuarantineMessage("savedWithWarnings")', handler_source)
+        self.assertIn("skillQuarantineActionButtonLabel(action, button)", handler_source)
+        self.assertIn("skillQuarantineKeysForBucket(bulkBucket)", handler_source)
+        self.assertIn("requestPayload.entity_keys", handler_source)
+        self.assertIn('skillQuarantineMessage("stale")', handler_source)
+        self.assertIn('skillQuarantineMessage("partial")', handler_source)
+        self.assertNotIn("window.confirm", handler_source)
         self.assertIn('applySkillQuarantineBlockAllSuccess(payload, "grace")', apply_source)
+        self.assertIn("skillQuarantineBlockedEntries(payload)", source)
+        self.assertIn("findSkillQuarantineRow(entityKey)", source)
         self.assertIn("rememberSkillQuarantineAction", source)
         self.assertIn("applyStoredSkillQuarantineActions()", source)
         self.assertIn("skill-quarantine-warning-panel", source)
@@ -7868,23 +7875,191 @@ Native Codex profile.
         self.assertIn("skillQuarantineCountText", source)
         self.assertIn("Skill/MCP 小黑屋", source)
         self.assertIn("一键隔离可选项", source)
+        self.assertIn("打开小黑屋文件夹", source)
+        self.assertIn('data-label-zh="打开小黑屋文件夹"', source)
+        self.assertIn("隔离目录", source)
+        self.assertIn("skill-quarantine-metric-action", source)
+        self.assertIn("skill-quarantine-path-hint", source)
+        self.assertIn("grid-template-rows: auto auto", source)
+        self.assertIn("justify-content: center", source)
+        self.assertIn(".skill-quarantine-metric-body > span", source)
+        self.assertIn(".skill-quarantine-metric-action .action-button span", source)
+        self.assertIn("opacity: 1", source)
+        self.assertNotIn(".skill-quarantine-metric span,", source)
+        self.assertIn("skill_quarantine_display_path", source)
+        self.assertLess(source.index("{suggested_metric}"), source.index("{grace_metric}"))
+        self.assertLess(source.index("{grace_metric}"), source.index("{quarantined_metric}"))
+        self.assertNotIn("skill-quarantine-actions", source)
+        self.assertNotIn("skill-quarantine-action-set", source)
+        self.assertNotIn(".skill-quarantine-metric.is-quarantined strong", source)
+        self.assertIn("只登记小黑屋状态", source)
+        self.assertIn("来源不在可安全搬移目录，未搬文件", source)
+        self.assertIn("隔离提示", source)
+        self.assertGreater(source.index("{warning_summary}"), source.index("{quarantined_rows}</tbody>"))
         self.assertIn("创建天数", source)
         self.assertIn("超过 7 天保护期且近 30 天未使用", source)
         self.assertIn("新增 7 天内未使用", source)
         self.assertIn("已停用且默认不再注入", source)
+        self.assertIn("确认删除这条小黑屋记录", source)
+        self.assertIn('data-skill-quarantine-action="delete"', source)
+        self.assertIn('action === "delete"', source)
+        self.assertIn("applySkillQuarantineDeleteSuccess", source)
+        self.assertIn("已提交 {{count}} 项，后台处理中", source)
         self.assertNotIn("skill-quarantine-table-head span", source)
         self.assertNotIn("一键隔离" + "缓" + "冲期项", source)
         self.assertIn("migration_warnings", source)
         self.assertNotIn("window.location.reload()", handler_source)
 
-    def test_skill_quarantine_refresh_uses_lightweight_asset_layer_rebuild(self):
+    def test_skill_quarantine_actions_are_accepted_into_background_worker(self):
         source = (ROOT / "scripts" / "token_live_server.py").read_text(encoding="utf-8")
 
         self.assertIn("start_manual_pipeline_refresh(target_date=None, asset_layer_only=False)", source)
-        self.assertIn("start_manual_pipeline_refresh(asset_layer_only=True)", source)
+        self.assertIn("start_manual_pipeline_refresh_background(asset_layer_only=True)", source)
+        self.assertIn("skill_quarantine_response_needs_refresh(action, response)", source)
+        self.assertIn("BACKGROUND_SKILL_QUARANTINE_ACTIONS", source)
+        self.assertIn("skill_quarantine_accepted_response(", source)
+        self.assertIn("start_skill_quarantine_action_async(", source)
+        self.assertIn('response["task"] = task_snapshot', source)
+        self.assertIn("self._send_json(202, response", source)
         self.assertIn("with quarantine_action_lock(PATHS):", source)
         self.assertIn("skill_quarantine_block_result_warning_count(result)", source)
         self.assertIn('"migration_warning_count"', source)
+        self.assertIn("selected_skill_quarantine_keys(payload)", source)
+        self.assertIn("block_selected_skill_quarantine_entities(entity_keys", source)
+        self.assertIn("delete_quarantined_entity(PATHS, entity_key)", source)
+        self.assertIn('"blocked"', source)
+        self.assertIn('"failed_count"', source)
+
+    def test_skill_quarantine_refresh_is_only_needed_after_state_changes(self):
+        self.assertTrue(token_live_server.skill_quarantine_response_needs_refresh("block", {"ok": True}))
+        self.assertTrue(token_live_server.skill_quarantine_response_needs_refresh("unblock", {"ok": True}))
+        self.assertTrue(token_live_server.skill_quarantine_response_needs_refresh("delete", {"ok": True}))
+        self.assertTrue(
+            token_live_server.skill_quarantine_response_needs_refresh(
+                "block-grace-all",
+                {"ok": True, "blocked_count": 1},
+            )
+        )
+        self.assertTrue(
+            token_live_server.skill_quarantine_response_needs_refresh(
+                "remove-project-skill-root",
+                {"ok": True, "changed": True},
+            )
+        )
+        self.assertFalse(
+            token_live_server.skill_quarantine_response_needs_refresh(
+                "block-grace-all",
+                {"ok": True, "blocked_count": 0},
+            )
+        )
+        self.assertFalse(
+            token_live_server.skill_quarantine_response_needs_refresh(
+                "add-project-skill-root",
+                {"ok": True, "changed": False},
+            )
+        )
+        self.assertFalse(token_live_server.skill_quarantine_response_needs_refresh("block", {"ok": False}))
+
+    def test_skill_quarantine_accepted_response_returns_rows_for_optimistic_ui(self):
+        cached_view = {
+            "grace": [
+                {
+                    "entity_key": "skill:optional-a",
+                    "entity_type": "skill",
+                    "identifier": "optional-a",
+                    "display_name": "optional-a",
+                    "usage_30d": 0,
+                },
+                {
+                    "entity_key": "skill:optional-b",
+                    "entity_type": "skill",
+                    "identifier": "optional-b",
+                    "display_name": "optional-b",
+                    "usage_30d": 0,
+                },
+            ]
+        }
+
+        response = token_live_server.skill_quarantine_accepted_response(
+            "block-grace-all",
+            entity_keys=["skill:optional-a"],
+            cached_view=cached_view,
+        )
+        fallback_response = token_live_server.skill_quarantine_accepted_response(
+            "block-grace-all",
+            entity_keys=[],
+            cached_view=cached_view,
+        )
+        delete_response = token_live_server.skill_quarantine_accepted_response(
+            "delete",
+            entity_key="skill:optional-a",
+            cached_view=cached_view,
+        )
+
+        self.assertTrue(response["ok"])
+        self.assertEqual(response["status"], "accepted")
+        self.assertEqual(response["blocked_count"], 1)
+        self.assertEqual(response["blocked"][0]["entity_key"], "skill:optional-a")
+        self.assertEqual(response["blocked"][0]["isolation_status"], "state_only")
+        self.assertEqual(fallback_response["blocked_count"], 2)
+        self.assertEqual(delete_response["status"], "accepted")
+        self.assertEqual(delete_response["result"]["entity_key"], "skill:optional-a")
+
+    def test_skill_quarantine_action_worker_returns_before_action_finishes(self):
+        release_worker = token_live_server.threading.Event()
+        worker_started = token_live_server.threading.Event()
+        calls = []
+
+        def fake_action(action, entity_key="", entity_keys=None, payload=None, cached_view=None):
+            calls.append((action, entity_key, tuple(entity_keys or [])))
+            worker_started.set()
+            release_worker.wait(1)
+            return {"ok": True, "action": action}
+
+        with mock.patch.object(token_live_server, "run_skill_quarantine_action", side_effect=fake_action):
+            started_at = token_live_server.time.monotonic()
+            started, snapshot = token_live_server.start_skill_quarantine_action_async(
+                "block-grace-all",
+                entity_keys=["skill:optional-a"],
+            )
+            elapsed = token_live_server.time.monotonic() - started_at
+            self.assertTrue(worker_started.wait(0.2))
+
+        release_worker.set()
+        self.assertTrue(started)
+        self.assertEqual(snapshot["status"], "queued")
+        self.assertLess(elapsed, 0.2)
+        self.assertEqual(calls[0], ("block-grace-all", "", ("skill:optional-a",)))
+
+    def test_skill_quarantine_background_refresh_returns_before_worker_finishes(self):
+        release_worker = token_live_server.threading.Event()
+        worker_started = token_live_server.threading.Event()
+        calls = []
+
+        def fake_refresh(target_date=None, asset_layer_only=False):
+            calls.append((target_date, asset_layer_only))
+            worker_started.set()
+            release_worker.wait(1)
+            return True, {"ok": True, "status": "running"}
+
+        with mock.patch.object(token_live_server, "load_pipeline_status", return_value={"status": "completed"}), mock.patch.object(
+            token_live_server,
+            "start_manual_pipeline_refresh",
+            side_effect=fake_refresh,
+        ):
+            started_at = token_live_server.time.monotonic()
+            started, snapshot = token_live_server.start_manual_pipeline_refresh_background(
+                target_date="2026-06-08",
+                asset_layer_only=True,
+            )
+            elapsed = token_live_server.time.monotonic() - started_at
+            self.assertTrue(worker_started.wait(0.2))
+
+        release_worker.set()
+        self.assertTrue(started)
+        self.assertEqual(snapshot["status"], "queued")
+        self.assertLess(elapsed, 0.2)
+        self.assertEqual(snapshot["target_date"], "2026-06-08")
 
     def test_build_html_uses_light_system_dashboard_style(self):
         source = (ROOT / "scripts" / "build_overview.py").read_text(encoding="utf-8")
@@ -9816,7 +9991,27 @@ Native Codex profile.
         self.assertEqual(result["status"], "opening")
         command = popen.call_args.args[0]
         self.assertEqual(command[:2], ["/usr/bin/open", "-R"])
-        self.assertEqual(command[2], str(target.resolve()))
+        self.assertEqual(command[2], str(target.absolute()))
+
+    def test_finder_reveal_preserves_symlink_entry_path(self):
+        with TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            target = root / "real-skill"
+            target.mkdir()
+            link = root / "isolated-skill"
+            link.symlink_to(target, target_is_directory=True)
+            process = mock.Mock()
+            with mock.patch.object(overview_finder.sys, "platform", "darwin"), mock.patch.object(
+                overview_finder.subprocess,
+                "Popen",
+                return_value=process,
+            ) as popen:
+                result = overview_finder.reveal_path_in_finder(str(link))
+
+        self.assertTrue(result["ok"])
+        command = popen.call_args.args[0]
+        self.assertEqual(command[:2], ["/usr/bin/open", "-R"])
+        self.assertEqual(command[2], str(link.absolute()))
 
     def test_finder_reveal_rejects_missing_or_relative_path(self):
         with TemporaryDirectory() as tmpdir:

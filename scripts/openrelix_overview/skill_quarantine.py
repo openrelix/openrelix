@@ -11,6 +11,7 @@ import json
 import os
 import re
 import shutil
+import time
 from contextlib import contextmanager
 from collections import OrderedDict
 from datetime import date as date_cls
@@ -32,8 +33,10 @@ SCHEMA_VERSION = 1
 STATE_FILENAME = "skill-mcp-quarantine.json"
 VIEW_CACHE_FILENAME = "skill-mcp-quarantine-view.json"
 LEGACY_STATE_FILENAME = "skill-mcp-" + "blackroom.json"
+PROJECT_SKILL_ROOTS_KEY = "project_skill_roots"
 DEFAULT_LOOKBACK_DAYS = 30
 DEFAULT_GRACE_DAYS = 7
+SKILL_FILENAME = "SKILL.md"
 SKILL_TYPE = "skill"
 MCP_TYPE = "mcp"
 SUPPORTED_TYPES = {SKILL_TYPE, MCP_TYPE}
@@ -49,12 +52,14 @@ MIGRATION_WARNING_STATUSES = {
     "move_failed",
     "config_failed",
     "toml_failed",
+    "trash_failed",
     "restore_failed",
     "restore_conflict",
     "restore_missing",
 }
 STATE_ONLY_WARNING_NOTES = {
     "repo_skill_not_moved",
+    "project_skill_not_moved",
     "not_in_known_global_skill_root",
     "toml_config_not_mutated",
     "no_movable_skill_sources",
@@ -124,17 +129,43 @@ def quarantine_root(paths):
     return paths.runtime_dir / "skill-mcp-quarantine"
 
 
+def ensure_quarantine_root(paths):
+    root = quarantine_root(paths)
+    try:
+        root.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        pass
+    return root
+
+
 @contextmanager
-def quarantine_action_lock(paths):
+def quarantine_action_lock(paths, timeout_seconds=None, poll_seconds=0.05):
     paths.runtime_dir.mkdir(parents=True, exist_ok=True)
     lock_path = quarantine_action_lock_path(paths)
     with lock_path.open("a+", encoding="utf-8") as handle:
+        locked = False
         if fcntl is not None:
-            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+            if timeout_seconds is None:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+                locked = True
+            else:
+                deadline = time.monotonic() + max(float(timeout_seconds or 0), 0.0)
+                while True:
+                    try:
+                        fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                        locked = True
+                        break
+                    except BlockingIOError:
+                        remaining = deadline - time.monotonic()
+                        if remaining <= 0:
+                            raise TimeoutError("quarantine_lock_timeout")
+                        time_to_sleep = max(min(float(poll_seconds or 0.05), remaining), 0.0)
+                        if time_to_sleep:
+                            time.sleep(time_to_sleep)
         try:
             yield
         finally:
-            if fcntl is not None:
+            if fcntl is not None and locked:
                 fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
 
@@ -159,6 +190,7 @@ def _empty_state():
     return {
         "schema_version": SCHEMA_VERSION,
         "updated_at": "",
+        PROJECT_SKILL_ROOTS_KEY: [],
         "observed": {},
         "entries": {},
     }
@@ -188,9 +220,13 @@ def read_state(paths):
     observed = payload.get("observed")
     if not isinstance(observed, dict):
         observed = {}
+    project_skill_roots = payload.get(PROJECT_SKILL_ROOTS_KEY)
+    if not isinstance(project_skill_roots, list):
+        project_skill_roots = []
     normalized = _empty_state()
     normalized.update(payload)
     normalized["schema_version"] = SCHEMA_VERSION
+    normalized[PROJECT_SKILL_ROOTS_KEY] = _normalize_project_skill_root_records(project_skill_roots)
     normalized["observed"] = {
         key: row
         for key, row in observed.items()
@@ -214,6 +250,9 @@ def write_state(paths, state):
     normalized["observed"] = observed if isinstance(observed, dict) else {}
     entries = normalized.get("entries")
     normalized["entries"] = entries if isinstance(entries, dict) else {}
+    normalized[PROJECT_SKILL_ROOTS_KEY] = _normalize_project_skill_root_records(
+        normalized.get(PROJECT_SKILL_ROOTS_KEY)
+    )
     atomic_write_json(quarantine_state_path(paths), normalized)
     return normalized
 
@@ -225,6 +264,135 @@ def _resolved(path):
         return Path(path).expanduser()
 
 
+def _absolute_entry_path(path):
+    try:
+        return Path(path).expanduser().absolute()
+    except OSError:
+        return Path(path).expanduser()
+
+
+def _project_root_label(path):
+    path = _resolved(path)
+    return path.name or path.as_posix()
+
+
+def _project_root_key(path):
+    return _resolved(path).as_posix()
+
+
+def _normalize_project_skill_root_record(record):
+    if isinstance(record, dict):
+        raw_path = record.get("path")
+        added_at = str(record.get("added_at") or "").strip()
+        last_refresh_requested_at = str(record.get("last_refresh_requested_at") or "").strip()
+    else:
+        raw_path = record
+        added_at = ""
+        last_refresh_requested_at = ""
+    text = str(raw_path or "").strip()
+    if not text:
+        return None
+    path = _resolved(text)
+    normalized = {
+        "path": path.as_posix(),
+        "label": _project_root_label(path),
+        "added_at": added_at,
+    }
+    if last_refresh_requested_at:
+        normalized["last_refresh_requested_at"] = last_refresh_requested_at
+    return normalized
+
+
+def _normalize_project_skill_root_records(records):
+    normalized = []
+    seen = set()
+    for record in records or []:
+        row = _normalize_project_skill_root_record(record)
+        if not row:
+            continue
+        key = _project_root_key(row["path"])
+        if key in seen:
+            continue
+        seen.add(key)
+        normalized.append(row)
+    return normalized
+
+
+def list_project_skill_roots(paths):
+    return list(read_state(paths).get(PROJECT_SKILL_ROOTS_KEY) or [])
+
+
+def configured_project_skill_roots(paths):
+    return [row["path"] for row in list_project_skill_roots(paths) if row.get("path")]
+
+
+def add_project_skill_root(paths, raw_path):
+    text = str(raw_path or "").strip()
+    if not text:
+        raise ValueError("missing_project_path")
+    path = _resolved(text)
+    if not path.exists():
+        raise ValueError("project_path_not_found")
+    if not path.is_dir():
+        raise ValueError("project_path_not_directory")
+    state = read_state(paths)
+    roots = list(state.get(PROJECT_SKILL_ROOTS_KEY) or [])
+    key = _project_root_key(path)
+    now = _now_iso()
+    changed = False
+    next_roots = []
+    seen = set()
+    for record in roots:
+        row = _normalize_project_skill_root_record(record)
+        if not row:
+            continue
+        row_key = _project_root_key(row["path"])
+        if row_key in seen:
+            continue
+        if row_key == key:
+            row["last_refresh_requested_at"] = now
+            changed = True
+        seen.add(row_key)
+        next_roots.append(row)
+    if key not in seen:
+        next_roots.append(
+            {
+                "path": path.as_posix(),
+                "label": _project_root_label(path),
+                "added_at": now,
+                "last_refresh_requested_at": now,
+            }
+        )
+        changed = True
+    state[PROJECT_SKILL_ROOTS_KEY] = next_roots
+    if changed:
+        write_state(paths, state)
+    return {
+        "project_root": next(row for row in next_roots if _project_root_key(row["path"]) == key),
+        "project_skill_roots": next_roots,
+        "changed": changed,
+    }
+
+
+def remove_project_skill_root(paths, raw_path):
+    text = str(raw_path or "").strip()
+    if not text:
+        raise ValueError("missing_project_path")
+    key = _project_root_key(text)
+    state = read_state(paths)
+    roots = list(state.get(PROJECT_SKILL_ROOTS_KEY) or [])
+    next_roots = [
+        row
+        for row in _normalize_project_skill_root_records(roots)
+        if _project_root_key(row["path"]) != key
+    ]
+    changed = len(next_roots) != len(_normalize_project_skill_root_records(roots))
+    state[PROJECT_SKILL_ROOTS_KEY] = next_roots
+    if changed:
+        write_state(paths, state)
+    return {"project_skill_roots": next_roots, "changed": changed}
+
+
 def _is_relative_to(path, root):
     try:
         _resolved(path).relative_to(_resolved(root))
@@ -233,11 +401,20 @@ def _is_relative_to(path, root):
         return False
 
 
-def _path_date(path):
+def _is_entry_relative_to(path, root):
+    try:
+        _absolute_entry_path(path).relative_to(_absolute_entry_path(root))
+        return True
+    except ValueError:
+        return False
+
+
+def _path_date(path, follow_symlinks=True):
     if not path:
         return ""
     try:
-        stat = Path(path).stat()
+        path = Path(path)
+        stat = path.stat() if follow_symlinks else path.lstat()
     except OSError:
         return ""
     try:
@@ -275,21 +452,36 @@ def _manifest_parent(path):
 def _source_added_at(sources):
     dates = []
     for source in sources or []:
-        path = source.get("manifest_abspath") if isinstance(source, dict) else ""
+        if not isinstance(source, dict):
+            continue
+        path = source.get("manifest_entry_abspath") or source.get("manifest_abspath") or ""
         parent = _manifest_parent(path)
-        date_value = _path_date(parent or path)
+        date_value = _path_date(parent or path, follow_symlinks=False)
         if date_value:
             dates.append(date_value)
     return max(dates) if dates else ""
 
 
-def _skill_items(paths, today, installed_assets=None, activation_snapshot=None, codex_homes=None):
+def _skill_items(
+    paths,
+    today,
+    installed_assets=None,
+    activation_snapshot=None,
+    codex_homes=None,
+    project_skill_roots=None,
+):
     anchor = _coerce_date(today)
+    if project_skill_roots is None:
+        project_skill_roots = configured_project_skill_roots(paths)
     if activation_snapshot is None:
         installed_assets = (
             installed_assets
             if installed_assets is not None
-            else asset_discovery.discover_installed_assets(paths, codex_homes=codex_homes)
+            else asset_discovery.discover_installed_assets(
+                paths,
+                codex_homes=codex_homes,
+                project_skill_roots=project_skill_roots,
+            )
         )
         activation_snapshot = asset_discovery.compute_activation_snapshot(
             paths,
@@ -297,6 +489,7 @@ def _skill_items(paths, today, installed_assets=None, activation_snapshot=None, 
             anchor,
             monthly_months=0,
             codex_homes=codex_homes,
+            project_skill_roots=project_skill_roots,
         )
     rows = asset_discovery.aggregate_renderable_assets(
         activation_snapshot.get("assets", []),
@@ -580,16 +773,20 @@ def build_quarantine_view(
     activation_snapshot=None,
     mcp_usage_view=None,
     codex_homes=None,
+    project_skill_roots=None,
 ):
     anchor = _coerce_date(today)
     state = read_state(paths)
     entries = state.get("entries", {})
+    if project_skill_roots is None:
+        project_skill_roots = configured_project_skill_roots(paths)
     items = _skill_items(
         paths,
         anchor,
         installed_assets=installed_assets,
         activation_snapshot=activation_snapshot,
         codex_homes=codex_homes,
+        project_skill_roots=project_skill_roots,
     )
     items.extend(
         _mcp_items(
@@ -633,6 +830,8 @@ def build_quarantine_view(
     return {
         "schema_version": SCHEMA_VERSION,
         "state_path": str(quarantine_state_path(paths)),
+        "quarantine_root": str(ensure_quarantine_root(paths)),
+        "project_skill_roots": list_project_skill_roots(paths),
         "lookback_days": int(lookback_days or DEFAULT_LOOKBACK_DAYS),
         "grace_days": int(grace_days or DEFAULT_GRACE_DAYS),
         "generated_at": _now_iso(),
@@ -815,34 +1014,112 @@ def _restore_toml_mcp_target(target):
     return True, "restored"
 
 
+def _path_snapshot(path):
+    text = str(path or "").strip()
+    snapshot = {
+        "path": text,
+        "exists": False,
+        "is_symlink": False,
+        "kind": "missing",
+    }
+    if not text:
+        return snapshot
+    path = Path(text)
+    try:
+        snapshot["is_symlink"] = path.is_symlink()
+        snapshot["exists"] = path.exists() or snapshot["is_symlink"]
+        if snapshot["is_symlink"]:
+            snapshot["kind"] = "symlink"
+            try:
+                snapshot["link_target"] = os.readlink(path)
+            except OSError:
+                snapshot["link_target"] = ""
+            snapshot["link_target_resolved"] = _resolved(path).as_posix()
+        elif path.is_dir():
+            snapshot["kind"] = "directory"
+        elif path.is_file():
+            snapshot["kind"] = "file"
+        elif snapshot["exists"]:
+            snapshot["kind"] = "other"
+        try:
+            stat = path.lstat()
+            snapshot["mode"] = oct(stat.st_mode & 0o777)
+            snapshot["mtime"] = datetime.fromtimestamp(float(stat.st_mtime)).isoformat(timespec="seconds")
+            if snapshot["kind"] in {"file", "symlink"}:
+                snapshot["size"] = int(stat.st_size)
+        except OSError:
+            pass
+    except OSError:
+        return snapshot
+    return snapshot
+
+
+def _fallback_skill_manifest_entry(paths, item, source):
+    if not isinstance(source, dict):
+        return ""
+    identifier = _safe_identifier(item.get("identifier") or source.get("identifier"))
+    if not identifier:
+        return ""
+    kind = str(source.get("kind") or "")
+    source_root = str(source.get("source_root") or "")
+    candidates = []
+    if kind in {"codex", "codex_skill"}:
+        if "memories/skills" in source_root:
+            candidates.append(paths.codex_home / "memories" / "skills" / identifier / SKILL_FILENAME)
+        candidates.append(paths.codex_home / "skills" / identifier / SKILL_FILENAME)
+    elif kind == "claude_skill":
+        candidates.append(Path.home() / ".claude" / "skills" / identifier / SKILL_FILENAME)
+    elif kind == "agent_skill":
+        candidates.append(Path.home() / ".agents" / "skills" / identifier / SKILL_FILENAME)
+    for candidate in candidates:
+        parent = candidate.parent
+        if candidate.exists() or candidate.is_symlink() or parent.exists() or parent.is_symlink():
+            return candidate.as_posix()
+    return ""
+
+
 def _skill_source_target(paths, item, source):
-    manifest = source.get("manifest_abspath", "") if isinstance(source, dict) else ""
-    parent = _manifest_parent(manifest)
+    if isinstance(source, dict):
+        manifest = source.get("manifest_abspath", "")
+        manifest_entry = source.get("manifest_entry_abspath") or _fallback_skill_manifest_entry(paths, item, source) or manifest
+    else:
+        manifest = ""
+        manifest_entry = ""
+    resolved_parent = _manifest_parent(manifest)
+    entry_parent = _manifest_parent(manifest_entry) or resolved_parent
     target = {
         "type": SKILL_TYPE,
         "kind": source.get("kind", "") if isinstance(source, dict) else "",
-        "original_path": str(parent or ""),
+        "original_path": str(entry_parent or ""),
+        "original_resolved_path": str(_resolved(resolved_parent or entry_parent)) if (resolved_parent or entry_parent) else "",
         "status": STATE_ONLY_STATUS,
     }
-    if not parent:
+    if entry_parent:
+        target["original_snapshot"] = _path_snapshot(entry_parent)
+    if not entry_parent:
         target["note"] = "missing_manifest_path"
         return target
-    if _is_relative_to(parent, paths.repo_root):
-        target["note"] = "repo_skill_not_moved"
-        return target
+    source_kind = str(source.get("kind", "") if isinstance(source, dict) else "")
     allowed_roots = [
         paths.codex_home / "skills",
         paths.codex_home / "memories" / "skills",
         Path.home() / ".claude" / "skills",
         Path.home() / ".agents" / "skills",
     ]
-    if not any(_is_relative_to(parent, root) for root in allowed_roots):
+    is_global_entry = any(_is_entry_relative_to(entry_parent, root) for root in allowed_roots)
+    if _is_relative_to(resolved_parent or entry_parent, paths.repo_root) and not is_global_entry:
+        target["note"] = "repo_skill_not_moved"
+        return target
+    if source_kind in {"project_skill", "external_repo_skill"} and not is_global_entry:
+        target["note"] = "project_skill_not_moved"
+        return target
+    if not is_global_entry:
         target["note"] = "not_in_known_global_skill_root"
         return target
     target["quarantine_path"] = str(
         quarantine_root(paths)
         / "skills"
-        / _target_slug(source.get("kind", "skill"), item.get("identifier"), parent)
+        / _target_slug(source.get("kind", "skill"), item.get("identifier"), entry_parent)
     )
     return target
 
@@ -856,6 +1133,7 @@ def _apply_skill_quarantine(paths, item):
         if not quarantine_path:
             targets.append(target)
             continue
+        target["original_snapshot"] = _path_snapshot(original)
         quarantine = Path(quarantine_path)
         if not original.exists() and not original.is_symlink():
             target["status"] = "already_moved" if quarantine.exists() or quarantine.is_symlink() else "missing"
@@ -1155,11 +1433,19 @@ def block_all_grace(
 def _restore_skill_target(target):
     original = Path(target.get("original_path") or "")
     quarantine = Path(target.get("quarantine_path") or "")
+    snapshot = target.get("original_snapshot") if isinstance(target.get("original_snapshot"), dict) else {}
     if target.get("status") not in {"moved", "already_moved"}:
         return True, target.get("status", STATE_ONLY_STATUS)
     if original.exists() or original.is_symlink():
         return False, "restore_conflict"
     if not quarantine.exists() and not quarantine.is_symlink():
+        if snapshot.get("kind") == "symlink" and snapshot.get("link_target"):
+            original.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                os.symlink(str(snapshot.get("link_target")), original)
+            except OSError:
+                return False, "restore_missing"
+            return True, "restored"
         return False, "restore_missing"
     original.parent.mkdir(parents=True, exist_ok=True)
     shutil.move(str(quarantine), str(original))
@@ -1183,6 +1469,115 @@ def _restore_mcp_target(target):
     servers[server] = target.get("saved_config", {})
     atomic_write_json(path, payload)
     return True, "restored"
+
+
+def _trash_destination(path, trash_root):
+    trash_root = Path(trash_root)
+    timestamp = datetime.now().astimezone().strftime("%Y%m%dT%H%M%S")
+    digest = hashlib.sha1(str(path).encode("utf-8")).hexdigest()[:10]
+    stem = "{}-{}-{}".format(Path(path).name or "openrelix-item", timestamp, digest)
+    candidate = trash_root / stem
+    if not candidate.exists() and not candidate.is_symlink():
+        return candidate
+    for index in range(1, 1000):
+        next_candidate = trash_root / "{}-{}".format(stem, index)
+        if not next_candidate.exists() and not next_candidate.is_symlink():
+            return next_candidate
+    return trash_root / "{}-{}".format(stem, hashlib.sha1(_now_iso().encode("utf-8")).hexdigest()[:10])
+
+
+def _move_path_to_trash(path, trash_root=None):
+    path = Path(path)
+    if not path.exists() and not path.is_symlink():
+        return {"path": str(path), "status": "missing"}
+    trash_root = Path(trash_root or (Path.home() / ".Trash"))
+    trash_root.mkdir(parents=True, exist_ok=True)
+    destination = _trash_destination(path, trash_root)
+    shutil.move(str(path), str(destination))
+    return {"path": str(path), "trash_path": str(destination), "status": "trashed"}
+
+
+def _deletable_target_paths(paths, target):
+    root = quarantine_root(paths)
+    root_entry = _absolute_entry_path(root)
+    values = []
+    seen = set()
+    for field in ("quarantine_path", "archived_quarantine_path", "backup_path"):
+        raw_path = str(target.get(field) or "").strip()
+        if not raw_path:
+            continue
+        candidate = Path(raw_path)
+        try:
+            candidate_entry = _absolute_entry_path(candidate)
+            candidate_entry.relative_to(root_entry)
+        except ValueError:
+            continue
+        if candidate_entry == root_entry:
+            continue
+        key = candidate_entry.as_posix()
+        if key in seen:
+            continue
+        seen.add(key)
+        values.append(candidate)
+    return values
+
+
+def _entity_key_from_reference(reference, entity_type=None):
+    raw = str(reference or "").strip()
+    if ":" in raw:
+        key_type, identifier = split_entity_key(raw)
+        key = entity_key(key_type, identifier)
+    else:
+        key = entity_key(entity_type, raw)
+    if not key:
+        raise ValueError("invalid entity key: {}".format(raw))
+    return key
+
+
+def delete_quarantined_entity(paths, reference, entity_type=None, trash_root=None):
+    state = read_state(paths)
+    key = _entity_key_from_reference(reference, entity_type=entity_type)
+    entry = state.get("entries", {}).get(key)
+    if not entry:
+        raise ValueError("entity is not quarantined: {}".format(reference))
+    trash_results = []
+    ok = True
+    for target in entry.get("isolation_targets", []) or []:
+        if not isinstance(target, dict):
+            continue
+        for path in _deletable_target_paths(paths, target):
+            try:
+                trash_results.append(_move_path_to_trash(path, trash_root=trash_root))
+            except OSError as exc:
+                ok = False
+                trash_results.append({
+                    "path": str(path),
+                    "status": "trash_failed",
+                    "error": str(exc),
+                })
+    if ok:
+        state.get("entries", {}).pop(key, None)
+    else:
+        failed_targets = [
+            {"type": entry.get("entity_type"), "status": row.get("status"), "error": row.get("error"), "path": row.get("path")}
+            for row in trash_results
+            if row.get("status") == "trash_failed"
+        ]
+        entry["migration_warnings"] = _migration_warnings(failed_targets)
+        entry["migration_warning_count"] = len(entry["migration_warnings"])
+        state.setdefault("entries", {})[key] = entry
+    write_state(paths, state)
+    return {
+        "ok": ok,
+        "entity_key": key,
+        "deleted": ok,
+        "trash_targets": trash_results,
+        "migration_warnings": _migration_warnings([
+            {"type": entry.get("entity_type"), "status": row.get("status"), "error": row.get("error")}
+            for row in trash_results
+            if row.get("status") == "trash_failed"
+        ]),
+    }
 
 
 def unblock_entity(paths, reference, entity_type=None, apply=True, today=None, view=None, codex_homes=None):
