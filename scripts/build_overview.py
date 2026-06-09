@@ -19830,6 +19830,44 @@ def build_html(data):
       opacity: 0.62;
     }}
 
+    .skill-quarantine-delete-popover-row td {{
+      padding: 0 14px 12px;
+      border-top: 0;
+      background: color-mix(in srgb, var(--rose) 4%, transparent);
+    }}
+
+    .skill-quarantine-delete-popover {{
+      width: min(320px, 100%);
+      margin-left: auto;
+      padding: 10px 12px;
+      border: 1px solid color-mix(in srgb, var(--rose) 30%, var(--line));
+      border-radius: 8px;
+      background: var(--panel);
+      box-shadow: 0 12px 28px rgba(0, 0, 0, 0.12);
+    }}
+
+    .skill-quarantine-delete-popover strong {{
+      display: block;
+      color: var(--ink);
+      font-size: 13px;
+      line-height: 1.35;
+    }}
+
+    .skill-quarantine-delete-popover small {{
+      display: block;
+      margin-top: 3px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.35;
+    }}
+
+    .skill-quarantine-delete-popover-actions {{
+      display: flex;
+      justify-content: flex-end;
+      gap: 6px;
+      margin-top: 8px;
+    }}
+
     .asset-discovery-summary {{
       display: flex;
       flex-wrap: wrap;
@@ -30390,6 +30428,10 @@ def build_html(data):
           confirmAll: "确认隔离所有建议项？",
           confirmGraceAll: "确认隔离所有可选项？",
           confirmDelete: "确认删除这条小黑屋记录？隔离副本会移到废纸篓，删除后不能从小黑屋一键放行。",
+          confirmDeleteTitle: "确认删除这条小黑屋记录？",
+          confirmDeleteNote: "隔离副本会移到废纸篓，删除后不能从小黑屋一键放行。",
+          confirmDeleteButton: "确认删除",
+          cancelDeleteButton: "取消",
           pathRequired: "请先输入项目路径",
           projectSaved: "常用项目路径已更新，正在后台增量扫描",
           projectFailed: "常用项目路径更新失败"
@@ -30407,6 +30449,10 @@ def build_html(data):
           confirmAll: "Quarantine all suggested items?",
           confirmGraceAll: "Quarantine all optional items?",
           confirmDelete: "Delete this quarantine record? The isolated copy will move to Trash and cannot be restored from quarantine afterward.",
+          confirmDeleteTitle: "Delete this quarantine record?",
+          confirmDeleteNote: "The isolated copy moves to Trash. It cannot be restored from quarantine afterward.",
+          confirmDeleteButton: "Confirm delete",
+          cancelDeleteButton: "Cancel",
           pathRequired: "Enter a project path first",
           projectSaved: "Project skill paths updated. Incremental scan is running",
           projectFailed: "Project skill path update failed"
@@ -30951,6 +30997,58 @@ def build_html(data):
         return button.getAttribute("data-label") || button.textContent || "";
       }}
 
+      function removeSkillQuarantineDeletePopovers() {{
+        document.querySelectorAll(".skill-quarantine-delete-popover-row").forEach(function (row) {{
+          row.remove();
+        }});
+      }}
+
+      function showSkillQuarantineDeletePopover(button) {{
+        if (!button) {{
+          return;
+        }}
+        const sourceRow = button.closest("tr[data-skill-quarantine-row]");
+        if (!sourceRow) {{
+          return;
+        }}
+        const entityKey = sourceRow.getAttribute("data-skill-quarantine-row") || "";
+        removeSkillQuarantineDeletePopovers();
+        const row = document.createElement("tr");
+        row.className = "skill-quarantine-delete-popover-row";
+        row.setAttribute("data-skill-quarantine-delete-popover-for", entityKey);
+        const cell = document.createElement("td");
+        cell.colSpan = 7;
+        const popover = document.createElement("div");
+        popover.className = "skill-quarantine-delete-popover";
+        const title = document.createElement("strong");
+        title.textContent = skillQuarantineMessage("confirmDeleteTitle");
+        const note = document.createElement("small");
+        note.textContent = skillQuarantineMessage("confirmDeleteNote");
+        const actions = document.createElement("div");
+        actions.className = "skill-quarantine-delete-popover-actions";
+        const cancel = document.createElement("button");
+        cancel.className = "skill-quarantine-action";
+        cancel.type = "button";
+        cancel.setAttribute("data-skill-quarantine-action", "cancel-delete");
+        cancel.textContent = skillQuarantineMessage("cancelDeleteButton");
+        const confirm = document.createElement("button");
+        confirm.className = "skill-quarantine-action is-danger";
+        confirm.type = "button";
+        confirm.setAttribute("data-skill-quarantine-action", "delete");
+        confirm.setAttribute("data-skill-quarantine-confirm-submit", "true");
+        confirm.setAttribute("data-skill-quarantine-key", entityKey);
+        confirm.textContent = skillQuarantineMessage("confirmDeleteButton");
+        actions.appendChild(cancel);
+        actions.appendChild(confirm);
+        popover.appendChild(title);
+        popover.appendChild(note);
+        popover.appendChild(actions);
+        cell.appendChild(popover);
+        row.appendChild(cell);
+        sourceRow.after(row);
+        confirm.focus();
+      }}
+
       function submitSkillQuarantineAction(action, entityKey, button, extraPayload) {{
         const endpoint = config.skillQuarantineEndpoint;
         const token = openrelixMetaAttr("data-update-token");
@@ -31057,7 +31155,20 @@ def build_html(data):
           event.preventDefault();
           event.stopPropagation();
           const action = button.getAttribute("data-skill-quarantine-action") || "";
+          if (action === "cancel-delete") {{
+            removeSkillQuarantineDeletePopovers();
+            return;
+          }}
+          if (action === "delete" && button.getAttribute("data-skill-quarantine-confirm-submit") === "true") {{
+            const entityKey = button.getAttribute("data-skill-quarantine-key") || "";
+            const sourceRow = findSkillQuarantineRow(entityKey);
+            const sourceButton = sourceRow ? sourceRow.querySelector('[data-skill-quarantine-action="delete"]') : button;
+            removeSkillQuarantineDeletePopovers();
+            submitSkillQuarantineAction("delete", entityKey, sourceButton);
+            return;
+          }}
           if (action === "remove-project-skill-root") {{
+            removeSkillQuarantineDeletePopovers();
             submitSkillQuarantineAction(
               action,
               "",
@@ -31066,8 +31177,11 @@ def build_html(data):
             );
             return;
           }}
-          if (action === "delete" && !window.confirm(skillQuarantineMessage("confirmDelete"))) {{
+          if (action === "delete") {{
+            showSkillQuarantineDeletePopover(button);
             return;
+          }} else {{
+            removeSkillQuarantineDeletePopovers();
           }}
           submitSkillQuarantineAction(
             action,
