@@ -138,7 +138,7 @@ const CONTROL_LABELS_ZH = new Map([
   ["skill_quarantine_block_all_suggested", "一键隔离建议项"],
   ["skill_quarantine_block_all_optional", "一键隔离可选项"],
   ["skill_quarantine_block_item", "隔离单项"],
-  ["skill_quarantine_unblock_item", "放行单项"],
+  ["skill_quarantine_unblock_item", "恢复使用"],
   ["skill_quarantine_delete_open", "打开删除确认"],
   ["skill_quarantine_delete_confirm", "确认删除"],
   ["skill_quarantine_delete_cancel", "取消删除"],
@@ -158,7 +158,7 @@ const ALLOWED_SKILL_QUARANTINE_ACTIONS = new Set([
 
 const SKILL_QUARANTINE_ACTION_LABELS_ZH = new Map([
   ["block", "隔离单项"],
-  ["unblock", "放行单项"],
+  ["unblock", "恢复使用"],
   ["delete", "删除小黑屋记录"],
   ["block_all", "一键隔离建议项"],
   ["block_grace_all", "一键隔离可选项"],

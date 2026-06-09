@@ -7902,6 +7902,8 @@ Native Codex profile.
         self.assertIn("已停用且默认不再注入", source)
         self.assertIn("确认删除这条小黑屋记录", source)
         self.assertIn("确认删除", source)
+        self.assertIn("恢复使用", source)
+        self.assertNotIn("放行", source)
         self.assertIn("skill-quarantine-delete-popover-row", source)
         self.assertIn("skill-quarantine-delete-popover-actions", source)
         self.assertIn('data-skill-quarantine-confirm-submit", "true"', source)

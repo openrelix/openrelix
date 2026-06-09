@@ -12345,7 +12345,7 @@ def make_skill_quarantine_rows(rows, action):
         action_value = "block"
         action_label_plain = "Quarantine"
     elif action == "unblock":
-        action_label = panel_language_text_html("放行", "Restore")
+        action_label = panel_language_text_html("恢复使用", "Restore")
         action_value = "unblock"
         action_label_plain = "Restore"
     else:
@@ -12392,7 +12392,7 @@ def make_skill_quarantine_rows(rows, action):
               </div>
             """.format(
                 key=escape(key, quote=True),
-                restore_label=panel_language_text_html("放行", "Restore"),
+                restore_label=panel_language_text_html("恢复使用", "Restore"),
                 delete_label=panel_language_text_html("删除", "Delete"),
             )
         elif action in {"block", "grace"}:
@@ -12660,7 +12660,7 @@ def make_skill_quarantine_panel(view):
         grace_title=panel_language_text_html("可选隔离", "Optional Isolation"),
         grace_note=panel_language_text_html("新增 7 天内未使用，可手动提前隔离。", "New and unused within 7 days; can be manually isolated early."),
         quarantine_title=panel_language_text_html("小黑屋", "Quarantine"),
-        quarantine_note=panel_language_text_html("已停用且默认不再注入，需要时可随时放行。", "Disabled and excluded by default; restore when needed."),
+        quarantine_note=panel_language_text_html("已停用且默认不再注入，需要时可随时恢复使用。", "Disabled and excluded by default; restore when needed."),
         suggested_count=skill_quarantine_count_label(suggested_count),
         grace_count=skill_quarantine_count_label(grace_count),
         quarantined_count=skill_quarantine_count_label(quarantined_count),
@@ -30428,9 +30428,9 @@ def build_html(data):
           service: "本地服务未启动。",
           confirmAll: "确认隔离所有建议项？",
           confirmGraceAll: "确认隔离所有可选项？",
-          confirmDelete: "确认删除这条小黑屋记录？隔离副本会移到废纸篓，删除后不能从小黑屋一键放行。",
+          confirmDelete: "确认删除这条小黑屋记录？隔离副本会移到废纸篓，删除后不能从小黑屋一键恢复使用。",
           confirmDeleteTitle: "确认删除这条小黑屋记录？",
-          confirmDeleteNote: "隔离副本会移到废纸篓，删除后不能从小黑屋一键放行。",
+          confirmDeleteNote: "隔离副本会移到废纸篓，删除后不能从小黑屋一键恢复使用。",
           confirmDeleteButton: "确认删除",
           cancelDeleteButton: "取消",
           pathRequired: "请先输入项目路径",
@@ -30747,7 +30747,7 @@ def build_html(data):
         button.setAttribute("data-skill-quarantine-action", "unblock");
         button.setAttribute("data-skill-quarantine-key", entityKey || "");
         button.setAttribute("data-label", "Restore");
-        button.textContent = currentLanguage === "en" ? "Restore" : "放行";
+        button.textContent = currentLanguage === "en" ? "Restore" : "恢复使用";
         const deleteButton = document.createElement("button");
         deleteButton.className = "skill-quarantine-action is-danger";
         deleteButton.type = "button";
@@ -31064,7 +31064,7 @@ def build_html(data):
       function skillQuarantineActionButtonLabel(action, button) {{
         const labels = {{
           "block": ["隔离", "Quarantine"],
-          "unblock": ["放行", "Restore"],
+          "unblock": ["恢复使用", "Restore"],
           "delete": ["删除", "Delete"],
           "block-all": ["一键隔离建议项", "Quarantine suggested"],
           "block-grace-all": ["一键隔离可选项", "Quarantine optional"],
