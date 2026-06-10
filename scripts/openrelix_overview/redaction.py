@@ -42,9 +42,21 @@ LOCAL_EXECUTION_ATTR_PATTERNS = (
 LOCAL_EXECUTION_ATTR_PLACEHOLDER_RE = re.compile(
     r"\x00OPENRELIX_LOCAL_ATTR_\d+_[0-9a-f]{32}\x00"
 )
+LOCAL_EXECUTION_ATTR_RES = tuple(
+    re.compile(pattern) for pattern in LOCAL_EXECUTION_ATTR_PATTERNS
+)
+FILE_URL_HOME_RE = re.compile(r"file:///(?:Users|home)/[^/\\\s<>\"']+")
+LOCAL_HOME_PATH_RE = re.compile(r"(?:/Users|/home)/[^/\\\s<>\"']+")
+HTTP_URL_RE = re.compile(r"https?://[^\\\s<>\"']+")
+LEGACY_APA_RE = re.compile(r"\bAPA\b")
 
 
 def protect_local_execution_attrs(text):
+    # Every protected attribute pattern requires one of these literals, so
+    # plain text (the overwhelmingly common case) can skip all regex work.
+    if "file://" not in text and "data-" not in text:
+        return text, []
+
     protected = []
 
     def protect(match):
@@ -55,8 +67,8 @@ def protect_local_execution_attrs(text):
         protected.append((placeholder, match.group(0)))
         return placeholder
 
-    for pattern in LOCAL_EXECUTION_ATTR_PATTERNS:
-        text = re.sub(pattern, protect, text)
+    for pattern in LOCAL_EXECUTION_ATTR_RES:
+        text = pattern.sub(protect, text)
     return text, protected
 
 
@@ -124,8 +136,10 @@ def redact_personal_text(
     if protect_local_attrs:
         text, protected_local_attrs = protect_local_execution_attrs(text)
 
-    text = re.sub(r"file:///(?:Users|home)/[^/\\\s<>\"']+", "file://~", text)
-    text = re.sub(r"(?:/Users|/home)/[^/\\\s<>\"']+", "~", text)
+    if "file:///" in text:
+        text = FILE_URL_HOME_RE.sub("file://~", text)
+    if "/Users/" in text or "/home/" in text:
+        text = LOCAL_HOME_PATH_RE.sub("~", text)
 
     def redact_url(match):
         url = match.group(0)
@@ -141,7 +155,8 @@ def redact_personal_text(
             return url
         return "<link>"
 
-    text = re.sub(r"https?://[^\\\s<>\"']+", redact_url, text)
+    if "http" in text:
+        text = HTTP_URL_RE.sub(redact_url, text)
     for pattern in patterns:
         text = pattern.sub(redaction_label, text)
     return restore_protected_text(text, protected_local_attrs)
@@ -165,7 +180,8 @@ def normalize_brand_display_text(
         text = text.replace(source, target)
     for phrase in legacy_phrases:
         text = text.replace(phrase, brand_display_name)
-    text = re.sub(r"\bAPA\b", brand_display_name, text)
+    if "APA" in text:
+        text = LEGACY_APA_RE.sub(brand_display_name, text)
     text = redact_personal_text(
         text,
         patterns=patterns,
