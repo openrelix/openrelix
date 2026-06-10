@@ -89,6 +89,7 @@ def discover_running_codex_profiles(timeout=0.75):
         result = subprocess.run(
             ["ps", "axeww", "-o", "pid=", "-o", "command="],
             text=True,
+            errors="replace",
             capture_output=True,
             timeout=timeout,
         )
