@@ -34,6 +34,23 @@ STATE_FILENAME = "skill-mcp-quarantine.json"
 VIEW_CACHE_FILENAME = "skill-mcp-quarantine-view.json"
 LEGACY_STATE_FILENAME = "skill-mcp-" + "blackroom.json"
 PROJECT_SKILL_ROOTS_KEY = "project_skill_roots"
+PROJECT_SKILL_ROOT_CANDIDATE_LIMIT = 12
+PROJECT_SKILL_ROOT_CANDIDATE_CHILD_SCAN_LIMIT = 80
+PROJECT_SKILL_ROOT_CANDIDATE_HOME_DIRS = (
+    "openrelix",
+    "OpenRelix",
+    "OpenViking",
+    "AI-Personal-Assets",
+)
+PROJECT_SKILL_ROOT_CANDIDATE_PARENT_DIRS = (
+    "repo",
+    "repos",
+    "workspace",
+    "workspaces",
+    "projects",
+    "Developer",
+    "code",
+)
 DEFAULT_LOOKBACK_DAYS = 30
 DEFAULT_GRACE_DAYS = 7
 SKILL_FILENAME = "SKILL.md"
@@ -326,6 +343,105 @@ def configured_project_skill_roots(paths):
     return [row["path"] for row in list_project_skill_roots(paths) if row.get("path")]
 
 
+def _iter_child_dirs(root, limit=PROJECT_SKILL_ROOT_CANDIDATE_CHILD_SCAN_LIMIT):
+    count = 0
+    try:
+        with os.scandir(root) as entries:
+            for entry in entries:
+                if count >= limit:
+                    break
+                if str(entry.name or "").startswith("."):
+                    continue
+                try:
+                    if not entry.is_dir():
+                        continue
+                except OSError:
+                    continue
+                count += 1
+                yield Path(entry.path)
+    except OSError:
+        return
+
+
+def _project_skill_dir_matches(project_root):
+    root = _resolved(project_root)
+    matches = []
+    if root.name == "skills" and root.is_dir():
+        matches.append(root.name)
+    for rel in asset_discovery.PROJECT_SKILL_SUBDIRS:
+        candidate = root / rel
+        try:
+            if candidate.is_dir():
+                matches.append(rel)
+        except OSError:
+            continue
+    return list(dict.fromkeys(matches))
+
+
+def _is_project_skill_root_candidate_allowed(project_root):
+    root = _resolved(project_root)
+    parts = set(root.parts)
+    if "node_modules" in parts:
+        return False
+    if ".npm" in parts and "_npx" in parts:
+        return False
+    if ".pnpm" in parts:
+        return False
+    return True
+
+
+def _project_skill_root_candidate_paths(paths):
+    home = Path.home()
+    candidates = []
+
+    def add(path):
+        if not path:
+            return
+        candidates.append(_resolved(path))
+
+    add(getattr(paths, "repo_root", None))
+    add(Path.cwd())
+    for name in PROJECT_SKILL_ROOT_CANDIDATE_HOME_DIRS:
+        add(home / name)
+    for name in PROJECT_SKILL_ROOT_CANDIDATE_PARENT_DIRS:
+        parent = home / name
+        add(parent)
+        for child in _iter_child_dirs(parent):
+            add(child)
+    return candidates
+
+
+def list_project_skill_root_candidates(paths, limit=PROJECT_SKILL_ROOT_CANDIDATE_LIMIT):
+    configured_keys = {
+        _project_root_key(row.get("path"))
+        for row in list_project_skill_roots(paths)
+        if isinstance(row, dict) and row.get("path")
+    }
+    rows = []
+    seen = set()
+    for path in _project_skill_root_candidate_paths(paths):
+        key = _project_root_key(path)
+        if key in seen:
+            continue
+        seen.add(key)
+        if not _is_project_skill_root_candidate_allowed(path):
+            continue
+        matches = _project_skill_dir_matches(path)
+        if not matches:
+            continue
+        rows.append(
+            {
+                "path": key,
+                "label": _project_root_label(path),
+                "skill_dirs": matches,
+                "already_added": key in configured_keys,
+            }
+        )
+        if len(rows) >= int(limit or PROJECT_SKILL_ROOT_CANDIDATE_LIMIT):
+            break
+    return rows
+
+
 def add_project_skill_root(paths, raw_path):
     text = str(raw_path or "").strip()
     if not text:
@@ -462,6 +578,143 @@ def _source_added_at(sources):
     return max(dates) if dates else ""
 
 
+_GENERIC_SOURCE_LABELS = {"项目本地", "Project-local", "跨仓库", "External repo"}
+
+
+def _path_tag_label(value):
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    try:
+        path = Path(text).expanduser()
+    except (OSError, RuntimeError, ValueError):
+        return text
+    if not path.is_absolute():
+        return text
+    try:
+        rel = path.relative_to(Path.home())
+        return "~/" + rel.as_posix()
+    except ValueError:
+        pass
+    parts = [part for part in path.parts if part and part != os.sep]
+    if len(parts) > 4:
+        return ".../" + "/".join(parts[-4:])
+    return path.as_posix()
+
+
+def _source_root_label(value):
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    if text.startswith("project:"):
+        return text.split(":", 1)[1].strip() or text
+    return text
+
+
+def _skill_root_label_from_manifest(value):
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    try:
+        path = Path(text).expanduser()
+    except (OSError, RuntimeError, ValueError):
+        return text
+    root = path
+    if path.name == SKILL_FILENAME:
+        root = path.parent.parent
+    elif path.name:
+        root = path.parent
+    return _path_tag_label(root)
+
+
+def _source_label_pair_from_skill_source(source):
+    if not isinstance(source, dict):
+        return "", ""
+    label = str(source.get("source_label") or "").strip()
+    label_en = str(source.get("source_label_en") or "").strip() or label
+    root_label = _source_root_label(source.get("source_root"))
+    if root_label and (not label or label in _GENERIC_SOURCE_LABELS):
+        return root_label, root_label
+    if label:
+        return label, label_en
+    kind = str(source.get("kind") or "")
+    if kind in {"codex", "codex_skill"}:
+        return "~/.codex/skills", "~/.codex/skills"
+    if kind == "claude_skill":
+        return "~/.claude/skills", "~/.claude/skills"
+    if kind == "agent_skill":
+        return "~/.agents/skills", "~/.agents/skills"
+    manifest = source.get("manifest_path") or source.get("manifest_abspath") or source.get("manifest_entry_abspath")
+    fallback = _skill_root_label_from_manifest(manifest)
+    return fallback, fallback
+
+
+def _source_label_pair_from_mcp_source(source):
+    if not isinstance(source, dict):
+        return "", ""
+    path_label = _path_tag_label(source.get("path"))
+    if path_label:
+        return path_label, path_label
+    host = str(source.get("host") or "").strip()
+    labels = {
+        "codex": ("Codex MCP 配置", "Codex MCP config"),
+        "claude": ("Claude MCP 配置", "Claude MCP config"),
+        "claude_desktop": ("Claude Desktop 配置", "Claude Desktop config"),
+    }
+    return labels.get(host, (host, host))
+
+
+def _source_label_rows(pairs):
+    rows = []
+    seen = set()
+    for label, label_en in pairs:
+        label = str(label or "").strip()
+        label_en = str(label_en or "").strip() or label
+        if not label:
+            continue
+        key = (label, label_en)
+        if key in seen:
+            continue
+        seen.add(key)
+        rows.append({"label": label, "label_en": label_en})
+    return rows
+
+
+def _source_labels_for_sources(sources):
+    return _source_label_rows(_source_label_pair_from_skill_source(source) for source in sources or [])
+
+
+def _source_labels_for_config_sources(sources):
+    return _source_label_rows(_source_label_pair_from_mcp_source(source) for source in sources or [])
+
+
+def _source_labels_for_isolation_targets(targets):
+    pairs = []
+    for target in targets or []:
+        if not isinstance(target, dict):
+            continue
+        if target.get("type") == MCP_TYPE:
+            pairs.append(_source_label_pair_from_mcp_source(target))
+        else:
+            original_path = target.get("original_path") or target.get("original_resolved_path")
+            label = _skill_root_label_from_manifest(original_path)
+            pairs.append((label, label))
+    return _source_label_rows(pairs)
+
+
+def _source_labels_for_item(item):
+    if not isinstance(item, dict):
+        return []
+    existing = item.get("source_labels")
+    if item.get("entity_type") == MCP_TYPE:
+        return _source_labels_for_config_sources(item.get("config_sources", [])) or (
+            existing if isinstance(existing, list) else []
+        )
+    return _source_labels_for_sources(item.get("sources", [])) or (
+        existing if isinstance(existing, list) else []
+    )
+
+
 def _skill_items(
     paths,
     today,
@@ -506,6 +759,7 @@ def _skill_items(
         sources = list(row.get("sources") or [])
         added_at = _source_added_at(sources)
         usage_30d = int(row.get("read_events_30d") or row.get("windows_30d") or 0)
+        source_labels = _source_labels_for_sources(sources) or list(row.get("source_labels") or [])
         items.append(
             {
                 "entity_key": key,
@@ -520,6 +774,7 @@ def _skill_items(
                 "added_at": added_at,
                 "age_days": _age_days(anchor, added_at),
                 "sources": sources,
+                "source_labels": source_labels,
                 "click_target": row.get("click_target") or "",
             }
         )
@@ -666,6 +921,7 @@ def _mcp_items(paths, today, mcp_usage_view=None, codex_homes=None, lookback_day
         server = row["server"]
         usage = usage_by_server.get(server, {})
         calls = int(usage.get("calls") or 0)
+        config_sources = row.get("config_sources", [])
         items.append(
             {
                 "entity_key": row["entity_key"],
@@ -679,7 +935,8 @@ def _mcp_items(paths, today, mcp_usage_view=None, codex_homes=None, lookback_day
                 "last_used_at": usage.get("last_seen") or "",
                 "added_at": "",
                 "age_days": None,
-                "config_sources": row.get("config_sources", []),
+                "config_sources": config_sources,
+                "source_labels": _source_labels_for_config_sources(config_sources),
             }
         )
     return items
@@ -740,6 +997,11 @@ def _status_for_item(item, entries, grace_days):
 def _merge_entry_item(item, entry):
     migration_warnings = _migration_warnings(entry.get("isolation_targets", []))
     merged = dict(item or {})
+    source_labels = (
+        merged.get("source_labels")
+        or entry.get("source_labels")
+        or _source_labels_for_isolation_targets(entry.get("isolation_targets", []))
+    )
     merged.update(
         {
             "entity_key": entry.get("entity_key") or merged.get("entity_key", ""),
@@ -754,6 +1016,7 @@ def _merge_entry_item(item, entry):
             "isolation_targets": entry.get("isolation_targets", []),
             "migration_warnings": migration_warnings,
             "migration_warning_count": len(migration_warnings),
+            "source_labels": source_labels,
             "status": "quarantined",
         }
     )
@@ -832,6 +1095,7 @@ def build_quarantine_view(
         "state_path": str(quarantine_state_path(paths)),
         "quarantine_root": str(ensure_quarantine_root(paths)),
         "project_skill_roots": list_project_skill_roots(paths),
+        "project_skill_root_candidates": list_project_skill_root_candidates(paths),
         "lookback_days": int(lookback_days or DEFAULT_LOOKBACK_DAYS),
         "grace_days": int(grace_days or DEFAULT_GRACE_DAYS),
         "generated_at": _now_iso(),
@@ -1094,8 +1358,10 @@ def _skill_source_target(paths, item, source):
         "original_resolved_path": str(_resolved(resolved_parent or entry_parent)) if (resolved_parent or entry_parent) else "",
         "status": STATE_ONLY_STATUS,
     }
+    snapshot = {}
     if entry_parent:
-        target["original_snapshot"] = _path_snapshot(entry_parent)
+        snapshot = _path_snapshot(entry_parent)
+        target["original_snapshot"] = snapshot
     if not entry_parent:
         target["note"] = "missing_manifest_path"
         return target
@@ -1107,10 +1373,26 @@ def _skill_source_target(paths, item, source):
         Path.home() / ".agents" / "skills",
     ]
     is_global_entry = any(_is_entry_relative_to(entry_parent, root) for root in allowed_roots)
+    is_project_like_source = source_kind in {"project_skill", "external_repo_skill"}
+    is_symlink_entry = snapshot.get("kind") == "symlink"
+    project_quarantine_path = (
+        quarantine_root(paths)
+        / "skills"
+        / _target_slug(source_kind or "skill", item.get("identifier"), entry_parent)
+    )
+    if is_project_like_source and (
+        is_symlink_entry
+        or (
+            not bool(snapshot.get("exists"))
+            and (project_quarantine_path.exists() or project_quarantine_path.is_symlink())
+        )
+    ):
+        target["quarantine_path"] = str(project_quarantine_path)
+        return target
     if _is_relative_to(resolved_parent or entry_parent, paths.repo_root) and not is_global_entry:
         target["note"] = "repo_skill_not_moved"
         return target
-    if source_kind in {"project_skill", "external_repo_skill"} and not is_global_entry:
+    if is_project_like_source and not is_global_entry:
         target["note"] = "project_skill_not_moved"
         return target
     if not is_global_entry:
@@ -1258,16 +1540,66 @@ def _migration_warnings(targets):
     return warnings
 
 
+def _path_exists_or_link(value):
+    text = str(value or "").strip()
+    if not text:
+        return False
+    path = Path(text)
+    return path.exists() or path.is_symlink()
+
+
+def _is_live_moved_skill_target(target):
+    if not isinstance(target, dict):
+        return False
+    if target.get("type") != SKILL_TYPE:
+        return False
+    if target.get("status") not in {"moved", "already_moved"}:
+        return False
+    if not _path_exists_or_link(target.get("quarantine_path")):
+        return False
+    return not _path_exists_or_link(target.get("original_path"))
+
+
+def _preserve_live_moved_skill_targets(previous_targets, next_targets):
+    if _isolation_status(next_targets) != STATE_ONLY_STATUS:
+        return next_targets
+    previous = [target for target in previous_targets or [] if _is_live_moved_skill_target(target)]
+    if not previous:
+        return next_targets
+    return previous_targets
+
+
+def _cached_live_moved_skill_targets(paths):
+    cached = read_view_cache(paths)
+    if not isinstance(cached, dict):
+        return {}
+    rows = cached.get("quarantined") if isinstance(cached.get("quarantined"), list) else []
+    result = {}
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        key = row.get("entity_key")
+        targets = row.get("isolation_targets", [])
+        if not key or not any(_is_live_moved_skill_target(target) for target in targets or []):
+            continue
+        result[key] = targets
+    return result
+
+
 def _reapply_quarantined_sources(paths, state, items):
     entries = state.setdefault("entries", {})
+    cached_moved_targets = _cached_live_moved_skill_targets(paths)
     changed = False
     for item in items:
         key = item.get("entity_key")
         entry = entries.get(key)
         if not entry:
             continue
+        source_labels = _source_labels_for_item(item)
         if item.get("entity_type") == SKILL_TYPE:
             targets = _apply_skill_quarantine(paths, item)
+            targets = _preserve_live_moved_skill_targets(entry.get("isolation_targets", []), targets)
+            targets = _preserve_live_moved_skill_targets(cached_moved_targets.get(key, []), targets)
         elif item.get("entity_type") == MCP_TYPE:
             targets = _apply_mcp_quarantine(paths, item)
         else:
@@ -1279,6 +1611,10 @@ def _reapply_quarantined_sources(paths, state, items):
             entry["migration_warnings"] = _migration_warnings(targets)
             entry["migration_warning_count"] = len(entry["migration_warnings"])
             entry["last_reapplied_at"] = _now_iso()
+            entries[key] = entry
+            changed = True
+        if source_labels and source_labels != entry.get("source_labels"):
+            entry["source_labels"] = source_labels
             entries[key] = entry
             changed = True
     if changed:
@@ -1304,6 +1640,7 @@ def block_entity(
     entries = state.setdefault("entries", {})
     key = item["entity_key"]
     entry = dict(entries.get(key) or {})
+    source_labels = _source_labels_for_item(item) or entry.get("source_labels", [])
     entry.update(
         {
             "entity_key": key,
@@ -1330,6 +1667,7 @@ def block_entity(
     entry["isolation_status"] = _isolation_status(targets)
     entry["migration_warnings"] = _migration_warnings(targets)
     entry["migration_warning_count"] = len(entry["migration_warnings"])
+    entry["source_labels"] = source_labels or _source_labels_for_isolation_targets(targets)
     entries[key] = entry
     write_state(paths, state)
     return entry

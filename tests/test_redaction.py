@@ -34,6 +34,26 @@ class RedactionTests(unittest.TestCase):
         self.assertEqual(len(protected), 2)
         self.assertEqual(redaction.restore_protected_text(protected_html, protected), html)
 
+    def test_quarantine_project_path_attrs_are_kept_executable(self):
+        path = sample_home_path().rsplit("/", 1)[0]
+        html = (
+            f'<li data-skill-quarantine-project-root="{path}">'
+            f'<button data-skill-quarantine-project-path="{path}">'
+            f"{path}"
+            "</button>"
+            f'<button data-skill-quarantine-project-candidate="{path}">'
+            "Candidate"
+            "</button>"
+            "</li>"
+        )
+
+        normalized = redaction.normalize_brand_display_text(html)
+
+        self.assertIn(f'data-skill-quarantine-project-root="{path}"', normalized)
+        self.assertIn(f'data-skill-quarantine-project-path="{path}"', normalized)
+        self.assertIn(f'data-skill-quarantine-project-candidate="{path}"', normalized)
+        self.assertIn(">~/Project<", normalized)
+
     def test_normalize_brand_display_keeps_action_attrs_while_redacting_visible_text(self):
         path = sample_home_path()
         html = (
