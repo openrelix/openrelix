@@ -11624,6 +11624,24 @@ def make_source_tag_row(row):
     return '<div class="asset-source-tags">{}</div>'.format(", ".join(tags))
 
 
+def make_skill_quarantine_source_tags(row):
+    tags = []
+    for source in (row.get("source_labels") or [])[:4]:
+        if not isinstance(source, dict):
+            continue
+        label = str(source.get("label") or "").strip()
+        if not label:
+            continue
+        tags.append(
+            '<span class="asset-source-tag">{}</span>'.format(
+                panel_language_text_html(label, source.get("label_en", "") or label)
+            )
+        )
+    if not tags:
+        return ""
+    return '<div class="asset-source-tags skill-quarantine-source-tags">{}</div>'.format(", ".join(tags))
+
+
 def make_discovered_asset_table_rows(rows):
     def stat_cells(row):
         if row.get("type") != "skill":
@@ -12309,32 +12327,128 @@ def make_skill_quarantine_project_root_rows(project_roots):
         if not path:
             continue
         label = str(root.get("label") or Path(path).name or path)
+        display_path = skill_quarantine_display_path(path) or path
         rows.append(
             """
-            <li class="skill-quarantine-project-root" data-skill-quarantine-project-root="{path_attr}">
+            <li class="skill-quarantine-project-root is-added" data-skill-quarantine-project-root="{path_attr}">
               <div>
                 <strong>{label}</strong>
                 <code>{path}</code>
               </div>
-              <button
-                class="skill-quarantine-project-remove"
-                type="button"
-                data-skill-quarantine-action="remove-project-skill-root"
-                data-skill-quarantine-project-path="{path_attr}"
-                data-label="Remove"
-              >{remove_label}</button>
+              <div class="skill-quarantine-project-actions">
+                <button
+                  class="skill-quarantine-project-open"
+                  type="button"
+                  data-open-finder-path="{path_attr}"
+                  data-label="{open_label_plain}"
+                  data-label-zh="打开文件夹"
+                  data-label-en="Open folder"
+                  title="{open_title}"
+                >{open_label}</button>
+                <button
+                  class="skill-quarantine-project-remove"
+                  type="button"
+                  data-skill-quarantine-action="remove-project-skill-root"
+                  data-skill-quarantine-project-path="{path_attr}"
+                  data-label="Remove"
+                >{remove_label}</button>
+              </div>
             </li>
             """.format(
                 path_attr=escape(path, quote=True),
                 label=escape(label),
-                path=escape(path),
+                path=escape(display_path),
+                open_label_plain=escape("打开文件夹", quote=True),
+                open_title=escape("打开 {}".format(display_path), quote=True),
+                open_label=panel_language_text_html("打开文件夹", "Open folder"),
                 remove_label=panel_language_text_html("移除", "Remove"),
             )
         )
     return "".join(rows) or make_skill_quarantine_project_root_rows([])
 
 
-def make_skill_quarantine_rows(rows, action):
+def make_skill_quarantine_project_candidate_rows(candidates):
+    if not candidates:
+        return """
+          <li class="skill-quarantine-project-root is-empty">
+            <div>
+              <strong>{empty}</strong>
+              <code>{hint}</code>
+            </div>
+          </li>
+        """.format(
+            empty=panel_language_text_html("暂无可用候选路径", "No project candidates"),
+            hint=panel_language_text_html("可展开手动输入作为兜底。", "Use manual entry as a fallback."),
+        )
+    rows = []
+    for candidate in candidates:
+        if not isinstance(candidate, dict):
+            continue
+        path = str(candidate.get("path") or "").strip()
+        if not path:
+            continue
+        label = str(candidate.get("label") or Path(path).name or path)
+        display_path = skill_quarantine_display_path(path) or path
+        skill_dirs = [str(item) for item in candidate.get("skill_dirs") or [] if str(item or "").strip()]
+        skill_dir_text = " · ".join(skill_dirs) if skill_dirs else "skills"
+        already_added = bool(candidate.get("already_added"))
+        add_disabled = " disabled" if already_added else ""
+        add_label = (
+            panel_language_text_html("已添加", "Added")
+            if already_added
+            else panel_language_text_html("添加并扫描", "Add and scan")
+        )
+        rows.append(
+            """
+            <li class="skill-quarantine-project-root is-candidate{added_class}" data-skill-quarantine-project-candidate="{path_attr}">
+              <div>
+                <strong>{label}</strong>
+                <code>{path}</code>
+                <small>{skill_dirs}</small>
+              </div>
+              <div class="skill-quarantine-project-actions">
+                <button
+                  class="skill-quarantine-project-open"
+                  type="button"
+                  data-open-finder-path="{path_attr}"
+                  data-label="{open_label_plain}"
+                  data-label-zh="打开文件夹"
+                  data-label-en="Open folder"
+                  title="{open_title}"
+                >{open_label}</button>
+                <button
+                  class="skill-quarantine-action skill-quarantine-project-add"
+                  type="button"
+                  data-skill-quarantine-action="add-project-skill-root"
+                  data-skill-quarantine-project-path="{path_attr}"
+                  data-label="Add and scan"
+                  {add_disabled}
+                >{add_label}</button>
+              </div>
+            </li>
+            """.format(
+                added_class=" is-added" if already_added else "",
+                path_attr=escape(path, quote=True),
+                label=escape(label),
+                path=escape(display_path),
+                skill_dirs=panel_language_text_html(
+                    "将扫描：{}".format(skill_dir_text),
+                    "Will scan: {}".format(skill_dir_text),
+                ),
+                open_label_plain=escape("打开文件夹", quote=True),
+                open_title=escape("打开 {}".format(display_path), quote=True),
+                open_label=panel_language_text_html("打开文件夹", "Open folder"),
+                add_disabled=add_disabled,
+                add_label=add_label,
+            )
+        )
+    return "".join(rows) or make_skill_quarantine_project_candidate_rows([])
+
+
+SKILL_QUARANTINE_QUARANTINED_VISIBLE_COUNT = 5
+
+
+def make_skill_quarantine_rows(rows, action, visible_count=None):
     if not rows:
         return '<tr><td colspan="7" class="empty-cell">{}</td></tr>'.format(
             panel_language_text_html("暂无条目。", "No items.")
@@ -12352,12 +12466,12 @@ def make_skill_quarantine_rows(rows, action):
         action_label = panel_language_text_html("可选中", "Optional")
         action_value = action
         action_label_plain = "Optional"
-    rendered = []
-    for row in rows:
+    def render_row(row, row_class="", group_id="", hidden_attr=""):
         key = str(row.get("entity_key") or "")
         name = str(row.get("display_name") or row.get("identifier") or key)
         entity_type = str(row.get("entity_type") or "")
         reason = str(row.get("reason") or "")
+        source_tags = make_skill_quarantine_source_tags(row)
         usage_30d = safe_int(row.get("usage_30d", 0))
         last_used = str(row.get("last_used_at") or "—")
         isolation = skill_quarantine_isolation_label(str(row.get("isolation_status") or ""))
@@ -12412,12 +12526,18 @@ def make_skill_quarantine_rows(rows, action):
             )
         else:
             action_cell = '<span class="skill-quarantine-muted-action">{}</span>'.format(action_label)
-        rendered.append(
-            """
-            <tr data-skill-quarantine-row="{key}">
+        row_attrs = ['data-skill-quarantine-row="{}"'.format(escape(key, quote=True))]
+        if row_class:
+            row_attrs.append('class="{}"'.format(escape(row_class, quote=True)))
+        if group_id:
+            row_attrs.append('data-expand-group="{}"'.format(escape(group_id, quote=True)))
+        if hidden_attr:
+            row_attrs.append("hidden")
+        return """
+            <tr {row_attrs}>
               <td>
                 <div class="asset-discovery-name skill-quarantine-name">{name}</div>
-                <div class="table-subtle">{key}</div>
+                {source_tags}
               </td>
               <td>{entity_type}</td>
               <td>{usage_30d}</td>
@@ -12427,8 +12547,9 @@ def make_skill_quarantine_rows(rows, action):
               <td>{action_cell}</td>
             </tr>
             """.format(
-                key=escape(key, quote=True),
+                row_attrs=" ".join(row_attrs),
                 name=escape(name),
+                source_tags=source_tags,
                 entity_type=escape(skill_quarantine_type_label(entity_type)),
                 usage_30d=escape(str(usage_30d)),
                 last_used=escape(last_used),
@@ -12436,8 +12557,18 @@ def make_skill_quarantine_rows(rows, action):
                 status=status_cell,
                 action_cell=action_cell,
             )
+
+    if visible_count and len(rows) > visible_count:
+        return make_table_expand_rows(
+            rows,
+            render_row,
+            int(visible_count),
+            7,
+            "条小黑屋记录",
+            "收起更多记录",
+            "skill-quarantine-quarantined-rows",
         )
-    return "".join(rendered)
+    return "".join(render_row(row) for row in rows)
 
 
 def make_skill_quarantine_panel(view):
@@ -12446,6 +12577,8 @@ def make_skill_quarantine_panel(view):
     suggested = list(view.get("suggested") or [])
     quarantined = list(view.get("quarantined") or [])
     grace = list(view.get("grace") or [])
+    project_skill_roots = list(view.get("project_skill_roots") or [])
+    project_skill_root_candidates = list(view.get("project_skill_root_candidates") or [])
     lookback_days = safe_int(view.get("lookback_days", 30))
     grace_days = safe_int(view.get("grace_days", 7))
     suggested_count = safe_int(counts.get("suggested", len(suggested)))
@@ -12528,10 +12661,82 @@ def make_skill_quarantine_panel(view):
         quarantine_root_hint_html=quarantine_root_hint,
         quarantine_root_display=escape(quarantine_root_display or "—"),
     )
+    project_settings_button_html = """
+      <button
+        class="action-button skill-quarantine-settings-toggle"
+        type="button"
+        id="skill-quarantine-settings-toggle"
+        data-label="设置项目路径"
+        aria-expanded="false"
+        aria-controls="skill-quarantine-settings"
+      >{settings_label}</button>
+    """.format(
+        settings_label=panel_language_text_html("设置项目路径", "Set project paths"),
+    )
+    header_html = """
+      <div class="panel-head skill-quarantine-head">
+        <div class="skill-quarantine-head-primary">
+          <h2>{title}</h2>
+          {settings_button}
+        </div>
+        <div class="panel-head-meta">
+          <div class="panel-note">{note}</div>
+        </div>
+      </div>
+    """.format(
+        title=escape(panel_display_text("Skill/MCP 小黑屋")),
+        settings_button=project_settings_button_html,
+        note=panel_language_text_html(
+            "基于近 {} 天真实 skill 读取和 MCP 调用识别低频项；新增项 {} 天内进入可选隔离。小黑屋只做可逆停用，不删除源文件。".format(lookback_days, grace_days),
+            "Uses real skill reads and MCP calls from the last {} days; new items get a {}-day optional isolation period. Quarantine is reversible isolation, not deletion.".format(lookback_days, grace_days),
+        ),
+    )
     warning_summary = make_skill_quarantine_warning_summary(quarantined)
     return """
     <section class="panel skill-quarantine-panel" id="skill-quarantine-section" data-discovered-assets-label="Skill/MCP Quarantine">
       {header_html}
+      <div class="skill-quarantine-settings" id="skill-quarantine-settings" hidden>
+        <div class="skill-quarantine-settings-head">
+          <div>
+            <strong>{project_settings_title}</strong>
+            <small>{project_settings_note}</small>
+          </div>
+          <span class="skill-quarantine-table-count" id="skill-quarantine-project-root-count">{project_root_count}</span>
+        </div>
+        <div class="skill-quarantine-project-shortcuts">
+          <div class="skill-quarantine-project-section-head">
+            <strong>{project_candidate_title}</strong>
+            <small>{project_candidate_note}</small>
+          </div>
+          <ul class="skill-quarantine-project-roots is-candidates" id="skill-quarantine-project-candidates">
+            {project_candidate_rows}
+          </ul>
+        </div>
+        <details class="skill-quarantine-manual-entry">
+          <summary>{project_manual_summary}</summary>
+          <form class="skill-quarantine-project-form" id="skill-quarantine-project-form">
+            <input
+              class="skill-quarantine-project-input"
+              id="skill-quarantine-project-path"
+              name="project_path"
+              type="text"
+              autocomplete="off"
+              spellcheck="false"
+              placeholder="{project_path_placeholder}"
+            />
+            <button class="skill-quarantine-action" type="submit" data-label="添加并扫描">{project_add_label}</button>
+          </form>
+        </details>
+        <div class="skill-quarantine-project-shortcuts">
+          <div class="skill-quarantine-project-section-head">
+            <strong>{project_root_title}</strong>
+            <small>{project_root_note}</small>
+          </div>
+          <ul class="skill-quarantine-project-roots" id="skill-quarantine-project-roots">
+            {project_root_rows}
+          </ul>
+        </div>
+      </div>
       <div class="skill-quarantine-toolbar">
         <div class="skill-quarantine-metrics">
           {suggested_metric}
@@ -12620,13 +12825,28 @@ def make_skill_quarantine_panel(view):
       </div>
     </section>
     """.format(
-        header_html=make_panel_header(
-            "Skill/MCP 小黑屋",
-            note_content_html=panel_language_text_html(
-                "基于近 {} 天真实 skill 读取和 MCP 调用识别低频项；新增项 {} 天内进入可选隔离。小黑屋只做可逆停用，不删除源文件。".format(lookback_days, grace_days),
-                "Uses real skill reads and MCP calls from the last {} days; new items get a {}-day optional isolation period. Quarantine is reversible isolation, not deletion.".format(lookback_days, grace_days),
-            ),
+        header_html=header_html,
+        project_settings_title=panel_language_text_html("常用项目路径", "Project Skill Paths"),
+        project_settings_note=panel_language_text_html(
+            "优先点选候选项目；扫描 skills、.agents/skills、.codex/skills、.claude/skills。",
+            "Pick a candidate first; scans skills, .agents/skills, .codex/skills, and .claude/skills.",
         ),
+        project_root_count=skill_quarantine_count_label(len(project_skill_roots)),
+        project_candidate_title=panel_language_text_html("常用目录", "Common Directories"),
+        project_candidate_note=panel_language_text_html(
+            "先打开文件夹预览，确认后添加并扫描。",
+            "Open the folder to preview, then add and scan.",
+        ),
+        project_candidate_rows=make_skill_quarantine_project_candidate_rows(project_skill_root_candidates),
+        project_manual_summary=panel_language_text_html("手动输入路径", "Manual path entry"),
+        project_path_placeholder=escape("/path/to/project", quote=True),
+        project_add_label=panel_language_text_html("添加并扫描", "Add and scan"),
+        project_root_title=panel_language_text_html("已添加路径", "Added Paths"),
+        project_root_note=panel_language_text_html(
+            "这些项目会在后续刷新中增量纳入 skill 扫描。",
+            "These projects are included in incremental skill scans on refresh.",
+        ),
+        project_root_rows=make_skill_quarantine_project_root_rows(project_skill_roots),
         suggested_metric=make_skill_quarantine_metric(
             "建议隔离",
             "Suggested",
@@ -12674,7 +12894,11 @@ def make_skill_quarantine_panel(view):
         action_header=panel_language_text_html("操作", "Action"),
         suggested_rows=make_skill_quarantine_rows(suggested, "block"),
         grace_rows=make_skill_quarantine_rows(grace, "grace"),
-        quarantined_rows=make_skill_quarantine_rows(quarantined, "unblock"),
+        quarantined_rows=make_skill_quarantine_rows(
+            quarantined,
+            "unblock",
+            visible_count=SKILL_QUARANTINE_QUARANTINED_VISIBLE_COUNT,
+        ),
     )
 
 
@@ -18446,7 +18670,7 @@ def build_html(data):
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="openrelix:version" content="{current_version}" data-pkg="{npm_package}" data-update-endpoint="{update_endpoint}" data-update-status-endpoint="{update_status_endpoint}" data-asset-refresh-endpoint="{asset_refresh_endpoint}" data-window-search-endpoint="{window_search_endpoint}" data-codex-desktop-endpoint="{codex_desktop_endpoint}" data-memory-feedback-endpoint="{memory_feedback_endpoint}" data-claude-desktop-endpoint="{claude_desktop_endpoint}" data-finder-open-endpoint="{finder_open_endpoint}" data-update-token="{update_token}">
+  <meta name="openrelix:version" content="{current_version}" data-pkg="{npm_package}" data-update-endpoint="{update_endpoint}" data-update-status-endpoint="{update_status_endpoint}" data-asset-refresh-endpoint="{asset_refresh_endpoint}" data-window-search-endpoint="{window_search_endpoint}" data-skill-quarantine-view-endpoint="{skill_quarantine_view_endpoint}" data-codex-desktop-endpoint="{codex_desktop_endpoint}" data-memory-feedback-endpoint="{memory_feedback_endpoint}" data-claude-desktop-endpoint="{claude_desktop_endpoint}" data-finder-open-endpoint="{finder_open_endpoint}" data-update-token="{update_token}">
   <title>{document_title}</title>
   <script>
     (function () {{
@@ -19509,6 +19733,222 @@ def build_html(data):
       gap: 14px;
     }}
 
+    .skill-quarantine-head {{
+      align-items: flex-start;
+    }}
+
+    .skill-quarantine-head-primary {{
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-width: 0;
+    }}
+
+    .skill-quarantine-head-primary h2 {{
+      margin: 0;
+      white-space: nowrap;
+    }}
+
+    .skill-quarantine-settings-toggle {{
+      min-width: 116px;
+      min-height: 34px;
+      padding: 0 14px;
+      font-size: 13px;
+      white-space: nowrap;
+    }}
+
+    .skill-quarantine-settings[hidden] {{
+      display: none;
+    }}
+
+    .skill-quarantine-settings {{
+      display: grid;
+      gap: 10px;
+      padding: 12px 14px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: color-mix(in srgb, var(--control) 62%, transparent);
+    }}
+
+    .skill-quarantine-settings-head {{
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 10px;
+      min-width: 0;
+    }}
+
+    .skill-quarantine-settings-head strong {{
+      display: block;
+      color: var(--ink);
+      font-size: 13px;
+      font-weight: 820;
+      line-height: 1.3;
+    }}
+
+    .skill-quarantine-settings-head small {{
+      display: block;
+      margin-top: 2px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.35;
+    }}
+
+    .skill-quarantine-project-shortcuts {{
+      display: grid;
+      gap: 8px;
+      min-width: 0;
+    }}
+
+    .skill-quarantine-project-section-head {{
+      display: grid;
+      gap: 2px;
+      min-width: 0;
+    }}
+
+    .skill-quarantine-project-section-head strong {{
+      color: var(--ink);
+      font-size: 12px;
+      font-weight: 820;
+      line-height: 1.35;
+    }}
+
+    .skill-quarantine-project-section-head small {{
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.35;
+    }}
+
+    .skill-quarantine-manual-entry {{
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: var(--panel);
+      padding: 8px 10px;
+    }}
+
+    .skill-quarantine-manual-entry summary {{
+      color: var(--teal);
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 820;
+      line-height: 1.35;
+    }}
+
+    .skill-quarantine-manual-entry[open] summary {{
+      margin-bottom: 8px;
+    }}
+
+    .skill-quarantine-project-form {{
+      display: grid;
+      grid-template-columns: minmax(220px, 1fr) auto;
+      gap: 8px;
+      min-width: 0;
+    }}
+
+    .skill-quarantine-project-input {{
+      min-width: 0;
+      height: 34px;
+      padding: 0 10px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: var(--panel);
+      color: var(--ink);
+      font: inherit;
+      font-size: 13px;
+    }}
+
+    .skill-quarantine-project-roots {{
+      display: grid;
+      gap: 6px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }}
+
+    .skill-quarantine-project-root {{
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 8px;
+      align-items: center;
+      min-width: 0;
+      padding: 8px 10px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: var(--panel);
+    }}
+
+    .skill-quarantine-project-root strong,
+    .skill-quarantine-project-root code,
+    .skill-quarantine-project-root small {{
+      display: block;
+      min-width: 0;
+      overflow-wrap: anywhere;
+    }}
+
+    .skill-quarantine-project-root strong {{
+      color: var(--ink);
+      font-size: 12px;
+      font-weight: 820;
+      line-height: 1.3;
+    }}
+
+    .skill-quarantine-project-root code {{
+      margin-top: 2px;
+      color: var(--muted);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 11px;
+      line-height: 1.35;
+    }}
+
+    .skill-quarantine-project-root small {{
+      margin-top: 3px;
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.35;
+    }}
+
+    .skill-quarantine-project-root.is-empty {{
+      grid-template-columns: 1fr;
+    }}
+
+    .skill-quarantine-project-root.is-candidate {{
+      background: color-mix(in srgb, var(--panel) 78%, var(--control));
+    }}
+
+    .skill-quarantine-project-root.is-added {{
+      border-color: color-mix(in srgb, var(--teal) 42%, var(--line));
+    }}
+
+    .skill-quarantine-project-actions {{
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 6px;
+      min-width: 0;
+    }}
+
+    .skill-quarantine-project-remove,
+    .skill-quarantine-project-open,
+    .skill-quarantine-project-add {{
+      min-height: 30px;
+      padding: 0 10px;
+      border: 1px solid color-mix(in srgb, var(--teal) 52%, var(--line));
+      border-radius: 7px;
+      background: color-mix(in srgb, var(--teal) 8%, transparent);
+      color: var(--teal);
+      font: inherit;
+      font-size: 12px;
+      font-weight: 800;
+      cursor: pointer;
+      white-space: nowrap;
+    }}
+
+    .skill-quarantine-project-open {{
+      color: var(--muted);
+      border-color: var(--line);
+      background: color-mix(in srgb, var(--control) 72%, transparent);
+    }}
+
     .skill-quarantine-toolbar {{
       display: grid;
       grid-template-columns: minmax(0, 1fr);
@@ -19866,6 +20306,57 @@ def build_html(data):
       justify-content: flex-end;
       gap: 6px;
       margin-top: 8px;
+    }}
+
+    .skill-quarantine-refresh-dialog {{
+      position: fixed;
+      inset: 0;
+      z-index: 1200;
+      display: grid;
+      place-items: center;
+      padding: 20px;
+      background: rgba(15, 23, 42, 0.24);
+      backdrop-filter: blur(8px);
+    }}
+
+    .skill-quarantine-refresh-dialog[hidden] {{
+      display: none;
+    }}
+
+    .skill-quarantine-refresh-card {{
+      width: min(420px, 100%);
+      padding: 18px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      box-shadow: var(--shadow);
+    }}
+
+    body[data-theme="dark"] .skill-quarantine-refresh-card {{
+      background: #111827;
+    }}
+
+    .skill-quarantine-refresh-card strong {{
+      display: block;
+      color: var(--ink);
+      font-size: 18px;
+      font-weight: 880;
+      line-height: 1.25;
+    }}
+
+    .skill-quarantine-refresh-card p {{
+      margin: 8px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+    }}
+
+    .skill-quarantine-refresh-actions {{
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      margin-top: 16px;
+      flex-wrap: wrap;
     }}
 
     .asset-discovery-summary {{
@@ -25801,6 +26292,26 @@ def build_html(data):
         grid-template-columns: 1fr;
       }}
 
+      .skill-quarantine-head-primary {{
+        flex-wrap: wrap;
+        align-items: flex-start;
+      }}
+
+      .skill-quarantine-settings-toggle {{
+        width: 100%;
+        justify-content: center;
+      }}
+
+      .skill-quarantine-project-form,
+      .skill-quarantine-project-root {{
+        grid-template-columns: 1fr;
+      }}
+
+      .skill-quarantine-project-actions {{
+        justify-content: flex-start;
+        flex-wrap: wrap;
+      }}
+
       .panel h2 {{
         font-size: 21px;
       }}
@@ -26522,6 +27033,7 @@ def build_html(data):
         liveEndpoint: {live_token_endpoint},
         windowSearchEndpoint: "{window_search_endpoint}",
         skillQuarantineEndpoint: "http://127.0.0.1:8765/skill-quarantine",
+        skillQuarantineViewEndpoint: "{skill_quarantine_view_endpoint}",
         pipelineEndpoint: "http://127.0.0.1:8765/pipeline-status",
         livePollMs: {live_token_poll_ms},
         requestTimeoutMs: {live_token_timeout_ms},
@@ -26621,6 +27133,10 @@ def build_html(data):
         selectedWindowOverviewDate: snapshot.window_overview_default_date || "",
         pipelineStatus: snapshot.pipeline_status || null,
         pipelineHistoryExpanded: false,
+        skillQuarantineRefreshPromptTimer: null,
+        skillQuarantineRefreshPromptStartedAt: 0,
+        skillQuarantineRefreshPromptSawActive: false,
+        skillQuarantineRefreshPromptShown: false,
         refreshStatusKind: "",
         refreshStatusMessageKey: "",
       }};
@@ -26697,6 +27213,13 @@ def build_html(data):
         assetRefreshLabel: document.getElementById("asset-layer-refresh-label"),
         assetRefreshStatus: document.getElementById("asset-layer-refresh-status"),
         skillQuarantineStatus: document.getElementById("skill-quarantine-status"),
+        skillQuarantineSettingsToggle: document.getElementById("skill-quarantine-settings-toggle"),
+        skillQuarantineSettings: document.getElementById("skill-quarantine-settings"),
+        skillQuarantineProjectForm: document.getElementById("skill-quarantine-project-form"),
+        skillQuarantineProjectInput: document.getElementById("skill-quarantine-project-path"),
+        skillQuarantineProjectCandidates: document.getElementById("skill-quarantine-project-candidates"),
+        skillQuarantineProjectRoots: document.getElementById("skill-quarantine-project-roots"),
+        skillQuarantineProjectRootCount: document.getElementById("skill-quarantine-project-root-count"),
         pipelinePanel: document.getElementById("pipeline-section"),
         pipelineTitle: document.getElementById("pipeline-live-title"),
         pipelineMessage: document.getElementById("pipeline-live-message"),
@@ -27430,6 +27953,10 @@ def build_html(data):
         match = text.match(/^查看更多 (\\d+) 个 MCP 工具$/);
         if (match) {{
           return "Show " + match[1] + " more MCP tools";
+        }}
+        match = text.match(/^查看更多 (\\d+) 条小黑屋记录$/);
+        if (match) {{
+          return "Show " + match[1] + " more quarantine records";
         }}
         match = text.match(/^直接读取 (.+) 的“What's in Memory”记忆条目(?:，.+)?。$/);
         if (match) {{
@@ -30435,6 +30962,12 @@ def build_html(data):
           cancelDeleteButton: "取消",
           pathRequired: "请先输入项目路径",
           projectSaved: "常用项目路径已更新，正在后台增量扫描",
+          projectScanDone: "项目 skills 扫描完成，刷新后可查看最新结果",
+          projectScanFailed: "项目 skills 扫描失败，请稍后重试或查看后台运行监控",
+          projectRefreshTitle: "项目扫描完成",
+          projectRefreshNote: "新增或移除的项目路径已完成增量扫描，刷新面板后即可看到最新 skills 结果。",
+          projectRefreshNow: "立即刷新",
+          projectRefreshLater: "稍后",
           projectFailed: "常用项目路径更新失败"
         }};
         const en = {{
@@ -30457,6 +30990,12 @@ def build_html(data):
           cancelDeleteButton: "Cancel",
           pathRequired: "Enter a project path first",
           projectSaved: "Project skill paths updated. Incremental scan is running",
+          projectScanDone: "Project skill scan completed. Reload to view the latest results",
+          projectScanFailed: "Project skill scan failed. Try again later or check Background Monitor",
+          projectRefreshTitle: "Project scan completed",
+          projectRefreshNote: "Incremental scanning for the changed project paths is complete. Reload the panel to view the latest skill results.",
+          projectRefreshNow: "Reload now",
+          projectRefreshLater: "Later",
           projectFailed: "Project skill path update failed"
         }};
         return (currentLanguage === "en" ? en : zh)[key] || key;
@@ -30627,6 +31166,120 @@ def build_html(data):
         return item;
       }}
 
+      function skillQuarantineProjectCandidateEmptyItem() {{
+        const item = document.createElement("li");
+        item.className = "skill-quarantine-project-root is-empty";
+        const label = document.createElement("span");
+        label.textContent = currentLanguage === "en" ? "No project candidates" : "暂无可用候选路径";
+        const note = document.createElement("small");
+        note.textContent = currentLanguage === "en"
+          ? "Use manual entry as a fallback."
+          : "可展开手动输入作为兜底。";
+        item.appendChild(label);
+        item.appendChild(note);
+        return item;
+      }}
+
+      function skillQuarantineProjectPathSet(projectRoots) {{
+        const roots = Array.isArray(projectRoots) ? projectRoots : [];
+        return new Set(roots.map(function (root) {{
+          return root && root.path ? String(root.path) : "";
+        }}).filter(Boolean));
+      }}
+
+      function skillQuarantineProjectSkillDirsText(skillDirs) {{
+        const dirs = Array.isArray(skillDirs)
+          ? skillDirs.map(function (item) {{ return String(item || "").trim(); }}).filter(Boolean)
+          : [];
+        const text = dirs.length ? dirs.join(" · ") : "skills";
+        return currentLanguage === "en" ? ("Will scan: " + text) : ("将扫描：" + text);
+      }}
+
+      function syncSkillQuarantineProjectCandidateButtons(projectRoots) {{
+        const paths = skillQuarantineProjectPathSet(projectRoots);
+        document.querySelectorAll('[data-skill-quarantine-project-candidate]').forEach(function (item) {{
+          const path = item.getAttribute("data-skill-quarantine-project-candidate") || "";
+          const addButton = item.querySelector('[data-skill-quarantine-action="add-project-skill-root"][data-skill-quarantine-project-path]');
+          const isAdded = paths.has(path);
+          item.classList.toggle("is-added", isAdded);
+          if (addButton) {{
+            addButton.disabled = isAdded;
+            addButton.textContent = isAdded
+              ? (currentLanguage === "en" ? "Added" : "已添加")
+              : (currentLanguage === "en" ? "Add and scan" : "添加并扫描");
+          }}
+        }});
+      }}
+
+      function renderSkillQuarantineProjectCandidates(candidates, projectRoots) {{
+        const list = elements.skillQuarantineProjectCandidates;
+        if (!list) {{
+          return;
+        }}
+        const rows = Array.isArray(candidates) ? candidates : [];
+        const addedPaths = skillQuarantineProjectPathSet(projectRoots);
+        list.textContent = "";
+        if (!rows.length) {{
+          list.appendChild(skillQuarantineProjectCandidateEmptyItem());
+          return;
+        }}
+        rows.forEach(function (candidate) {{
+          if (!candidate || typeof candidate !== "object") {{
+            return;
+          }}
+          const path = String(candidate.path || "");
+          if (!path) {{
+            return;
+          }}
+          const isAdded = Boolean(candidate.already_added) || addedPaths.has(path);
+          const item = document.createElement("li");
+          item.className = "skill-quarantine-project-root is-candidate" + (isAdded ? " is-added" : "");
+          item.setAttribute("data-skill-quarantine-project-candidate", path);
+
+          const text = document.createElement("div");
+          const title = document.createElement("strong");
+          title.textContent = String(candidate.label || path || "Project");
+          const note = document.createElement("code");
+          note.textContent = path;
+          const skillDirs = document.createElement("small");
+          skillDirs.textContent = skillQuarantineProjectSkillDirsText(candidate.skill_dirs || []);
+          text.appendChild(title);
+          text.appendChild(note);
+          text.appendChild(skillDirs);
+
+          const actions = document.createElement("div");
+          actions.className = "skill-quarantine-project-actions";
+          const openButton = document.createElement("button");
+          openButton.className = "skill-quarantine-project-open";
+          openButton.type = "button";
+          openButton.setAttribute("data-open-finder-path", path);
+          openButton.setAttribute("data-label", "Open folder");
+          openButton.setAttribute("data-label-zh", "打开文件夹");
+          openButton.setAttribute("data-label-en", "Open folder");
+          openButton.textContent = currentLanguage === "en" ? "Open folder" : "打开文件夹";
+
+          const addButton = document.createElement("button");
+          addButton.className = "skill-quarantine-action skill-quarantine-project-add";
+          addButton.type = "button";
+          addButton.setAttribute("data-skill-quarantine-action", "add-project-skill-root");
+          addButton.setAttribute("data-skill-quarantine-project-path", path);
+          addButton.setAttribute("data-label", "Add and scan");
+          addButton.disabled = isAdded;
+          addButton.textContent = isAdded
+            ? (currentLanguage === "en" ? "Added" : "已添加")
+            : (currentLanguage === "en" ? "Add and scan" : "添加并扫描");
+          actions.appendChild(openButton);
+          actions.appendChild(addButton);
+
+          item.appendChild(text);
+          item.appendChild(actions);
+          list.appendChild(item);
+        }});
+        if (!list.children.length) {{
+          list.appendChild(skillQuarantineProjectCandidateEmptyItem());
+        }}
+      }}
+
       function renderSkillQuarantineProjectRoots(projectRoots) {{
         const list = elements.skillQuarantineProjectRoots;
         if (!list) {{
@@ -30643,7 +31296,7 @@ def build_html(data):
             }}
             const path = String(root.path || "");
             const item = document.createElement("li");
-            item.className = "skill-quarantine-project-root";
+            item.className = "skill-quarantine-project-root is-added";
             item.setAttribute("data-skill-quarantine-project-root", path);
 
             const text = document.createElement("div");
@@ -30654,6 +31307,17 @@ def build_html(data):
             text.appendChild(title);
             text.appendChild(note);
 
+            const actions = document.createElement("div");
+            actions.className = "skill-quarantine-project-actions";
+            const openButton = document.createElement("button");
+            openButton.className = "skill-quarantine-project-open";
+            openButton.type = "button";
+            openButton.setAttribute("data-open-finder-path", path);
+            openButton.setAttribute("data-label", "Open folder");
+            openButton.setAttribute("data-label-zh", "打开文件夹");
+            openButton.setAttribute("data-label-en", "Open folder");
+            openButton.textContent = currentLanguage === "en" ? "Open folder" : "打开文件夹";
+
             const button = document.createElement("button");
             button.className = "skill-quarantine-project-remove";
             button.type = "button";
@@ -30661,9 +31325,11 @@ def build_html(data):
             button.setAttribute("data-skill-quarantine-project-path", path);
             button.setAttribute("data-label", "Remove");
             button.textContent = currentLanguage === "en" ? "Remove" : "移除";
+            actions.appendChild(openButton);
+            actions.appendChild(button);
 
             item.appendChild(text);
-            item.appendChild(button);
+            item.appendChild(actions);
             list.appendChild(item);
           }});
           if (!list.children.length) {{
@@ -30673,6 +31339,7 @@ def build_html(data):
         if (elements.skillQuarantineProjectRootCount) {{
           elements.skillQuarantineProjectRootCount.textContent = skillQuarantineCountText(roots.length);
         }}
+        syncSkillQuarantineProjectCandidateButtons(roots);
       }}
 
       function adjustSkillQuarantineBucket(bucket, delta) {{
@@ -31055,7 +31722,11 @@ def build_html(data):
         }} else if (action === "block-grace-all") {{
           return applySkillQuarantineBlockAllSuccess(payload, "grace");
         }} else if (action === "add-project-skill-root" || action === "remove-project-skill-root") {{
-          renderSkillQuarantineProjectRoots(payload && payload.project_skill_roots ? payload.project_skill_roots : []);
+          const projectRoots = payload && payload.project_skill_roots ? payload.project_skill_roots : [];
+          if (payload && payload.project_skill_root_candidates) {{
+            renderSkillQuarantineProjectCandidates(payload.project_skill_root_candidates, projectRoots);
+          }}
+          renderSkillQuarantineProjectRoots(projectRoots);
           return {{ movedCount: 0, expectedCount: 0, stale: false, projectRootsChanged: true }};
         }}
         return {{ movedCount: 0, expectedCount: 0, stale: false }};
@@ -31068,6 +31739,7 @@ def build_html(data):
           "delete": ["删除", "Delete"],
           "block-all": ["一键隔离建议项", "Quarantine suggested"],
           "block-grace-all": ["一键隔离可选项", "Quarantine optional"],
+          "add-project-skill-root": ["添加并扫描", "Add and scan"],
           "remove-project-skill-root": ["移除", "Remove"]
         }};
         if (labels[action]) {{
@@ -31148,6 +31820,243 @@ def build_html(data):
         confirm.focus();
       }}
 
+      function clearSkillQuarantineRefreshPromptTimer() {{
+        if (state.skillQuarantineRefreshPromptTimer) {{
+          window.clearTimeout(state.skillQuarantineRefreshPromptTimer);
+          state.skillQuarantineRefreshPromptTimer = null;
+        }}
+      }}
+
+      function ensureSkillQuarantineRefreshDialog() {{
+        let dialog = document.getElementById("skill-quarantine-refresh-dialog");
+        if (dialog) {{
+          return dialog;
+        }}
+        dialog = document.createElement("div");
+        dialog.className = "skill-quarantine-refresh-dialog";
+        dialog.id = "skill-quarantine-refresh-dialog";
+        dialog.hidden = true;
+        dialog.setAttribute("role", "dialog");
+        dialog.setAttribute("aria-modal", "true");
+
+        const card = document.createElement("div");
+        card.className = "skill-quarantine-refresh-card";
+        const title = document.createElement("strong");
+        title.setAttribute("data-skill-quarantine-refresh-title", "true");
+        const note = document.createElement("p");
+        note.setAttribute("data-skill-quarantine-refresh-note", "true");
+        const actions = document.createElement("div");
+        actions.className = "skill-quarantine-refresh-actions";
+        const later = document.createElement("button");
+        later.className = "skill-quarantine-action";
+        later.type = "button";
+        later.setAttribute("data-skill-quarantine-refresh-later", "true");
+        const reload = document.createElement("button");
+        reload.className = "skill-quarantine-action";
+        reload.type = "button";
+        reload.setAttribute("data-skill-quarantine-refresh-now", "true");
+
+        later.addEventListener("click", function () {{
+          dialog.hidden = true;
+        }});
+        reload.addEventListener("click", function () {{
+          reload.disabled = true;
+          reload.textContent = currentLanguage === "en" ? "Reloading..." : "正在刷新...";
+          window.location.reload();
+        }});
+        actions.appendChild(later);
+        actions.appendChild(reload);
+        card.appendChild(title);
+        card.appendChild(note);
+        card.appendChild(actions);
+        dialog.appendChild(card);
+        document.body.appendChild(dialog);
+        return dialog;
+      }}
+
+      function showSkillQuarantineRefreshDialog() {{
+        if (state.skillQuarantineRefreshPromptShown) {{
+          return;
+        }}
+        state.skillQuarantineRefreshPromptShown = true;
+        const dialog = ensureSkillQuarantineRefreshDialog();
+        const title = dialog.querySelector("[data-skill-quarantine-refresh-title]");
+        const note = dialog.querySelector("[data-skill-quarantine-refresh-note]");
+        const later = dialog.querySelector("[data-skill-quarantine-refresh-later]");
+        const reload = dialog.querySelector("[data-skill-quarantine-refresh-now]");
+        if (title) {{
+          title.textContent = skillQuarantineMessage("projectRefreshTitle");
+        }}
+        if (note) {{
+          note.textContent = skillQuarantineMessage("projectRefreshNote");
+        }}
+        if (later) {{
+          later.textContent = skillQuarantineMessage("projectRefreshLater");
+        }}
+        if (reload) {{
+          reload.textContent = skillQuarantineMessage("projectRefreshNow");
+          reload.disabled = false;
+        }}
+        dialog.hidden = false;
+        if (reload) {{
+          reload.focus();
+        }}
+      }}
+
+      function skillQuarantinePipelineStatusIsActive(payload) {{
+        const status = String((payload && payload.status) || "");
+        return status === "queued" || status === "running";
+      }}
+
+      function skillQuarantinePipelineStatusIsDone(payload) {{
+        return String((payload && payload.status) || "") === "completed";
+      }}
+
+      function skillQuarantinePipelineStatusIsFailed(payload) {{
+        return String((payload && payload.status) || "") === "failed";
+      }}
+
+      function skillQuarantineRefreshPromptRequestTime() {{
+        return Number(state.skillQuarantineRefreshPromptRequestedAt || state.skillQuarantineRefreshPromptStartedAt || 0);
+      }}
+
+      function skillQuarantinePipelineStatusBelongsToPrompt(payload) {{
+        const requestedAt = skillQuarantineRefreshPromptRequestTime();
+        if (!requestedAt) {{
+          return true;
+        }}
+        const expectedRunId = String(state.skillQuarantineRefreshPromptRunId || "");
+        const runId = String((payload && payload.run_id) || "");
+        if (expectedRunId && runId && expectedRunId === runId) {{
+          return true;
+        }}
+        const startedAt = Number((payload && payload.started_at) || 0);
+        if (startedAt) {{
+          return startedAt >= requestedAt - 2;
+        }}
+        const updatedAt = Number((payload && (payload.updated_at || payload.ended_at)) || 0);
+        return updatedAt >= requestedAt - 2;
+      }}
+
+      function scheduleSkillQuarantineRefreshPromptPoll(delayMs) {{
+        clearSkillQuarantineRefreshPromptTimer();
+        state.skillQuarantineRefreshPromptTimer = window.setTimeout(function () {{
+          pollSkillQuarantineRefreshPrompt();
+        }}, Math.max(Number(delayMs) || 0, 500));
+      }}
+
+      function pollSkillQuarantineRefreshPrompt() {{
+        if (!config.pipelineEndpoint || !window.fetch) {{
+          return;
+        }}
+        fetchWithTimeout(config.pipelineEndpoint, Math.min(config.requestTimeoutMs, 5000))
+          .then(function (response) {{
+            if (!response.ok) {{
+              throw new Error("HTTP " + response.status);
+            }}
+            return response.json();
+          }})
+          .then(function (payload) {{
+            updatePipelineStatus(payload);
+            const elapsedSeconds = Date.now() / 1000 - Number(state.skillQuarantineRefreshPromptStartedAt || 0);
+            if (skillQuarantinePipelineStatusIsActive(payload)) {{
+              if (skillQuarantinePipelineStatusBelongsToPrompt(payload)) {{
+                state.skillQuarantineRefreshPromptSawActive = true;
+                state.skillQuarantineRefreshPromptRunId = String((payload && payload.run_id) || state.skillQuarantineRefreshPromptRunId || "");
+              }}
+              scheduleSkillQuarantineRefreshPromptPoll(2500);
+              return;
+            }}
+            if (skillQuarantinePipelineStatusIsDone(payload)) {{
+              const startedAt = Number((payload && payload.started_at) || 0);
+              if (
+                skillQuarantinePipelineStatusBelongsToPrompt(payload) &&
+                (state.skillQuarantineRefreshPromptSawActive || startedAt >= skillQuarantineRefreshPromptRequestTime() - 2)
+              ) {{
+                clearSkillQuarantineRefreshPromptTimer();
+                setSkillQuarantineStatus(skillQuarantineMessage("projectScanDone"), "success");
+                showSkillQuarantineRefreshDialog();
+                return;
+              }}
+            }}
+            if (skillQuarantinePipelineStatusIsFailed(payload)) {{
+              if (skillQuarantinePipelineStatusBelongsToPrompt(payload)) {{
+                clearSkillQuarantineRefreshPromptTimer();
+                setSkillQuarantineStatus(skillQuarantineMessage("projectScanFailed"), "error");
+                return;
+              }}
+            }}
+            if (elapsedSeconds < 600) {{
+              scheduleSkillQuarantineRefreshPromptPoll(2500);
+            }} else {{
+              clearSkillQuarantineRefreshPromptTimer();
+              setSkillQuarantineStatus(skillQuarantineMessage("projectScanFailed"), "error");
+            }}
+          }})
+          .catch(function () {{
+            const elapsedSeconds = Date.now() / 1000 - Number(state.skillQuarantineRefreshPromptStartedAt || 0);
+            if (elapsedSeconds < 600) {{
+              scheduleSkillQuarantineRefreshPromptPoll(3500);
+            }}
+          }});
+      }}
+
+      function watchSkillQuarantineProjectScan(payload) {{
+        const refresh = payload && payload.refresh && typeof payload.refresh === "object" ? payload.refresh : {{}};
+        const status = String(refresh.status || "");
+        if (status === "skipped") {{
+          return;
+        }}
+        clearSkillQuarantineRefreshPromptTimer();
+        state.skillQuarantineRefreshPromptStartedAt = Date.now() / 1000;
+        state.skillQuarantineRefreshPromptRequestedAt = Number(refresh.requested_at || refresh.accepted_at || state.skillQuarantineRefreshPromptStartedAt || 0);
+        state.skillQuarantineRefreshPromptRunId = "";
+        state.skillQuarantineRefreshPromptSawActive = false;
+        if (
+          !refresh.started_now &&
+          skillQuarantinePipelineStatusIsActive(refresh) &&
+          skillQuarantinePipelineStatusBelongsToPrompt(refresh)
+        ) {{
+          state.skillQuarantineRefreshPromptSawActive = true;
+          state.skillQuarantineRefreshPromptRunId = String(refresh.run_id || "");
+        }}
+        state.skillQuarantineRefreshPromptShown = false;
+        scheduleSkillQuarantineRefreshPromptPoll(1000);
+      }}
+
+      function hydrateSkillQuarantineProjectView() {{
+        const endpoint = config.skillQuarantineViewEndpoint || openrelixMetaAttr("data-skill-quarantine-view-endpoint");
+        const token = openrelixMetaAttr("data-update-token");
+        if (!endpoint || !token || !window.fetch) {{
+          return;
+        }}
+        const headers = {{}};
+        headers["X-OpenRelix-Token"] = token;
+        fetchWithTimeout(endpoint, Math.min(config.requestTimeoutMs, 5000), {{
+          headers: headers,
+        }})
+          .then(function (response) {{
+            return response.json().catch(function () {{
+              return null;
+            }}).then(function (payload) {{
+              if (!response.ok || !payload || payload.ok === false) {{
+                throw new Error((payload && payload.error) || ("HTTP " + response.status));
+              }}
+              return payload;
+            }});
+          }})
+          .then(function (payload) {{
+            const projectRoots = payload && payload.project_skill_roots ? payload.project_skill_roots : [];
+            if (payload && payload.project_skill_root_candidates) {{
+              renderSkillQuarantineProjectCandidates(payload.project_skill_root_candidates, projectRoots);
+            }}
+            renderSkillQuarantineProjectRoots(projectRoots);
+          }})
+          .catch(function () {{
+            // The static panel remains usable when the local service is offline.
+          }});
+      }}
+
       function submitSkillQuarantineAction(action, entityKey, button, extraPayload) {{
         const endpoint = config.skillQuarantineEndpoint;
         const token = openrelixMetaAttr("data-update-token");
@@ -31198,8 +32107,12 @@ def build_html(data):
               button.textContent = originalLabel;
               syncSkillQuarantineBlockAllButton();
             }} else if (button && applyResult.projectRootsChanged) {{
-              button.disabled = false;
-              button.textContent = originalLabel;
+              const candidatePath = button.getAttribute("data-skill-quarantine-project-path") || "";
+              const isCandidateAdd = action === "add-project-skill-root" && candidatePath;
+              if (!isCandidateAdd && document.body.contains(button)) {{
+                button.disabled = false;
+                button.textContent = originalLabel;
+              }}
             }}
             const warningCount = skillQuarantinePayloadWarningCount(payload);
             const failedCount = payload && Number.isFinite(Number(payload.failed_count)) ? Number(payload.failed_count) : 0;
@@ -31217,6 +32130,7 @@ def build_html(data):
                 elements.skillQuarantineProjectInput.value = "";
               }}
               setSkillQuarantineStatus(skillQuarantineMessage("projectSaved"), "success");
+              watchSkillQuarantineProjectScan(payload);
             }} else if (applyResult.stale) {{
               analyticsResult = "stale";
               setSkillQuarantineStatus(skillQuarantineMessage("stale"), "warning");
@@ -31272,9 +32186,12 @@ def build_html(data):
           if (!button) {{
             return;
           }}
+          const action = button.getAttribute("data-skill-quarantine-action") || "";
+          if (action === "add-project-skill-root" && !button.getAttribute("data-skill-quarantine-project-path")) {{
+            return;
+          }}
           event.preventDefault();
           event.stopPropagation();
-          const action = button.getAttribute("data-skill-quarantine-action") || "";
           if (action === "cancel-delete") {{
             removeSkillQuarantineDeletePopovers();
             return;
@@ -31297,6 +32214,16 @@ def build_html(data):
             );
             return;
           }}
+          if (action === "add-project-skill-root") {{
+            removeSkillQuarantineDeletePopovers();
+            submitSkillQuarantineAction(
+              action,
+              "",
+              button,
+              {{ path: button.getAttribute("data-skill-quarantine-project-path") || "" }}
+            );
+            return;
+          }}
           if (action === "delete") {{
             showSkillQuarantineDeletePopover(button);
             return;
@@ -31309,6 +32236,34 @@ def build_html(data):
             button
           );
         }});
+        if (elements.skillQuarantineSettingsToggle && elements.skillQuarantineSettings) {{
+          elements.skillQuarantineSettingsToggle.addEventListener("click", function () {{
+            const isHidden = elements.skillQuarantineSettings.hasAttribute("hidden");
+            if (isHidden) {{
+              elements.skillQuarantineSettings.removeAttribute("hidden");
+            }} else {{
+              elements.skillQuarantineSettings.setAttribute("hidden", "");
+            }}
+            elements.skillQuarantineSettingsToggle.setAttribute("aria-expanded", isHidden ? "true" : "false");
+          }});
+        }}
+        if (elements.skillQuarantineProjectForm) {{
+          elements.skillQuarantineProjectForm.addEventListener("submit", function (event) {{
+            event.preventDefault();
+            const path = elements.skillQuarantineProjectInput
+              ? (elements.skillQuarantineProjectInput.value || "").trim()
+              : "";
+            if (!path) {{
+              setSkillQuarantineStatus(skillQuarantineMessage("pathRequired"), "warning");
+              if (elements.skillQuarantineProjectInput) {{
+                elements.skillQuarantineProjectInput.focus();
+              }}
+              return;
+            }}
+            const button = elements.skillQuarantineProjectForm.querySelector('button[type="submit"]');
+            submitSkillQuarantineAction("add-project-skill-root", "", button, {{ path: path }});
+          }});
+        }}
       }}
 
       function resetButtonLabelLater(button, label) {{
@@ -32034,6 +32989,9 @@ def build_html(data):
             }}
             if (group === "top-skill-rows" || group === "mcp-usage-rows") {{
               return;
+            }}
+            if (group === "skill-quarantine-quarantined-rows") {{
+              removeSkillQuarantineDeletePopovers();
             }}
             const rows = Array.from(document.querySelectorAll('.content-more-extra-row[data-expand-group="' + group + '"]'));
             const expanded = button.getAttribute("aria-expanded") === "true";
@@ -34348,6 +35306,7 @@ def build_html(data):
       wireTokenFilters();
       applyTheme(readStoredTheme(), false);
       applyLanguage(defaultLanguage);
+      hydrateSkillQuarantineProjectView();
       applyStoredMemoryFeedback();
       if (elements.refreshButton) {{
         elements.refreshButton.addEventListener("click", function () {{
@@ -34923,6 +35882,10 @@ def build_html(data):
         update_status_endpoint=escape("http://{}:{}/update-status".format(LIVE_TOKEN_HOST, LIVE_TOKEN_PORT), quote=True),
         asset_refresh_endpoint=escape("http://{}:{}/run-refresh".format(LIVE_TOKEN_HOST, LIVE_TOKEN_PORT), quote=True),
         window_search_endpoint=escape(WINDOW_SEARCH_ENDPOINT, quote=True),
+        skill_quarantine_view_endpoint=escape(
+            "http://{}:{}/skill-quarantine-view".format(LIVE_TOKEN_HOST, LIVE_TOKEN_PORT),
+            quote=True,
+        ),
         codex_desktop_endpoint=escape(
             "http://{}:{}{}".format(
                 LIVE_TOKEN_HOST,

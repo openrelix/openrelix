@@ -38,10 +38,13 @@ from openrelix_overview.skill_quarantine import (
     block_entity,
     build_quarantine_view,
     delete_quarantined_entity,
+    list_project_skill_root_candidates,
+    list_project_skill_roots,
     quarantine_action_lock,
     read_view_cache,
     remove_project_skill_root,
     unblock_entity,
+    write_view_cache,
 )
 from openrelix_overview.token_fetcher import (
     fetch_ccusage_daily,
@@ -80,8 +83,10 @@ UPDATE_TIMEOUT_SECONDS = 600
 UPDATE_LOG_TAIL_LINES = 12
 PANEL_REFRESH_PATH = "/run-refresh"
 SKILL_QUARANTINE_PATH = "/skill-quarantine"
+SKILL_QUARANTINE_VIEW_PATH = "/skill-quarantine-view"
 PANEL_REFRESH_TIMEOUT_SECONDS = 180
 PANEL_REFRESH_LOG_TAIL_LINES = 20
+PROJECT_SKILL_REFRESH_WAIT_SECONDS = 10 * 60
 MEMORY_FEEDBACK_PATH = "/memory-feedback"
 WINDOW_SEARCH_PATH = "/window-search"
 WINDOW_SEARCH_DEFAULT_LIMIT = 100
@@ -120,7 +125,7 @@ TRUSTED_POST_PATHS = {
     FINDER_REVEAL_PATH,
     SKILL_QUARANTINE_PATH,
 }
-SENSITIVE_GET_PATHS = {WINDOW_SEARCH_PATH}
+SENSITIVE_GET_PATHS = {WINDOW_SEARCH_PATH, SKILL_QUARANTINE_VIEW_PATH}
 
 
 def skill_quarantine_warning_count(payload):
@@ -291,6 +296,29 @@ def skill_quarantine_accepted_response(action, entity_key="", entity_keys=None, 
             "migration_warning_count": 0,
         }
     raise ValueError("unsupported_action")
+
+
+def skill_quarantine_project_view_payload(cached_view=None):
+    view = cached_view if isinstance(cached_view, dict) else {}
+    return {
+        "ok": True,
+        "schema_version": view.get("schema_version"),
+        "generated_at": view.get("generated_at"),
+        "cached_at": view.get("cached_at"),
+        "project_skill_roots": list_project_skill_roots(PATHS),
+        "project_skill_root_candidates": list_project_skill_root_candidates(PATHS),
+    }
+
+
+def refresh_skill_quarantine_project_view_cache():
+    cached_view = read_view_cache(PATHS)
+    payload = skill_quarantine_project_view_payload(cached_view)
+    if isinstance(cached_view, dict) and cached_view:
+        next_view = dict(cached_view)
+        next_view["project_skill_roots"] = payload["project_skill_roots"]
+        next_view["project_skill_root_candidates"] = payload["project_skill_root_candidates"]
+        payload = skill_quarantine_project_view_payload(write_view_cache(PATHS, next_view))
+    return payload
 
 
 def get_update_token():
@@ -806,11 +834,13 @@ def memory_feedback_accepted_payload(feedback, refresh_snapshot, refresh_started
 
 def start_manual_pipeline_refresh(target_date=None, asset_layer_only=False):
     target_date = str(target_date or current_local_datetime().date().isoformat())
+    requested_at = time.time()
     current = load_pipeline_status(PATHS)
     if current.get("status") == "running":
         snapshot = dict(current)
         snapshot["ok"] = False
         snapshot["started_now"] = False
+        snapshot["requested_at"] = requested_at
         snapshot["error"] = "pipeline_already_running"
         return False, snapshot
 
@@ -821,6 +851,7 @@ def start_manual_pipeline_refresh(target_date=None, asset_layer_only=False):
             "status": "failed",
             "started_now": False,
             "target_date": target_date,
+            "requested_at": requested_at,
             "error": "refresh_script_not_found",
         }
 
@@ -847,6 +878,7 @@ def start_manual_pipeline_refresh(target_date=None, asset_layer_only=False):
             "status": "failed",
             "started_now": False,
             "target_date": target_date,
+            "requested_at": requested_at,
             "error": str(exc),
         }
 
@@ -857,20 +889,28 @@ def start_manual_pipeline_refresh(target_date=None, asset_layer_only=False):
         "started_now": True,
         "target_date": target_date,
         "asset_layer_only": bool(asset_layer_only),
+        "requested_at": requested_at,
         "pid": proc.pid,
     })
     return True, snapshot
 
 
-def start_manual_pipeline_refresh_background(target_date=None, asset_layer_only=False):
+def start_manual_pipeline_refresh_background(
+    target_date=None,
+    asset_layer_only=False,
+    wait_if_running=False,
+    wait_timeout_seconds=PROJECT_SKILL_REFRESH_WAIT_SECONDS,
+):
     target_date = str(target_date or current_local_datetime().date().isoformat())
+    requested_at = time.time()
     current = load_pipeline_status(PATHS)
-    if current.get("status") == "running":
+    if current.get("status") == "running" and not wait_if_running:
         snapshot = dict(current)
         snapshot["ok"] = True
         snapshot["started_now"] = False
         snapshot["asset_layer_only"] = bool(asset_layer_only)
         snapshot["target_date"] = snapshot.get("target_date") or target_date
+        snapshot["requested_at"] = requested_at
         return False, snapshot
 
     snapshot = {
@@ -879,13 +919,25 @@ def start_manual_pipeline_refresh_background(target_date=None, asset_layer_only=
         "started_now": True,
         "target_date": target_date,
         "asset_layer_only": bool(asset_layer_only),
+        "requested_at": requested_at,
+        "waiting_for_running_pipeline": bool(current.get("status") == "running"),
     }
 
     def worker():
-        try:
-            start_manual_pipeline_refresh(target_date=target_date, asset_layer_only=asset_layer_only)
-        except Exception:
-            pass
+        deadline = requested_at + max(float(wait_timeout_seconds or 0), 0.0)
+        while True:
+            try:
+                started, result = start_manual_pipeline_refresh(
+                    target_date=target_date,
+                    asset_layer_only=asset_layer_only,
+                )
+            except Exception:
+                return
+            if started or result.get("error") != "pipeline_already_running":
+                return
+            if time.time() >= deadline:
+                return
+            time.sleep(2)
 
     try:
         thread = threading.Thread(
@@ -959,20 +1011,24 @@ def perform_skill_quarantine_action(action, entity_key="", entity_keys=None, pay
             )
         elif action == "add-project-skill-root":
             result = add_project_skill_root(PATHS, payload.get("path", ""))
+            project_view = refresh_skill_quarantine_project_view_cache()
             return {
                 "ok": True,
                 "action": action,
                 "project_root": result.get("project_root", {}),
-                "project_skill_roots": result.get("project_skill_roots", []),
+                "project_skill_roots": project_view.get("project_skill_roots", result.get("project_skill_roots", [])),
+                "project_skill_root_candidates": project_view.get("project_skill_root_candidates", []),
                 "changed": bool(result.get("changed")),
                 "migration_warning_count": 0,
             }
         elif action == "remove-project-skill-root":
             result = remove_project_skill_root(PATHS, payload.get("path", ""))
+            project_view = refresh_skill_quarantine_project_view_cache()
             return {
                 "ok": True,
                 "action": action,
-                "project_skill_roots": result.get("project_skill_roots", []),
+                "project_skill_roots": project_view.get("project_skill_roots", result.get("project_skill_roots", [])),
+                "project_skill_root_candidates": project_view.get("project_skill_root_candidates", []),
                 "changed": bool(result.get("changed")),
                 "migration_warning_count": 0,
             }
@@ -1689,6 +1745,23 @@ class TokenLiveHandler(BaseHTTPRequestHandler):
             self._send_json(200, load_pipeline_status(PATHS))
             return
 
+        if parsed.path == SKILL_QUARANTINE_VIEW_PATH:
+            if not self._client_is_local():
+                self._send_json(403, {"ok": False, "error": "forbidden_address"}, allow_origin=None)
+                return
+            origin = self.headers.get("Origin", "").strip()
+            if origin and not is_allowed_panel_origin(origin):
+                self._send_json(403, {"ok": False, "error": "forbidden_origin"}, allow_origin=None)
+                return
+            provided_token = self.headers.get("X-OpenRelix-Token", "").strip()
+            expected_token = get_update_token()
+            if not (expected_token and provided_token and secrets.compare_digest(provided_token, expected_token)):
+                self._send_json(403, {"ok": False, "error": "forbidden_token"}, allow_origin=None)
+                return
+            payload = skill_quarantine_project_view_payload(read_view_cache(PATHS) or {})
+            self._send_json(200, payload, allow_origin=origin or None)
+            return
+
         if parsed.path == WINDOW_SEARCH_PATH:
             if not self._client_is_local():
                 self._send_json(403, {"ok": False, "error": "forbidden_address"}, allow_origin=None)
@@ -1895,7 +1968,10 @@ class TokenLiveHandler(BaseHTTPRequestHandler):
                 )
                 return
             if skill_quarantine_response_needs_refresh(action, response):
-                refresh_started, refresh_snapshot = start_manual_pipeline_refresh_background(asset_layer_only=True)
+                refresh_started, refresh_snapshot = start_manual_pipeline_refresh_background(
+                    asset_layer_only=True,
+                    wait_if_running=action in {"add-project-skill-root", "remove-project-skill-root"},
+                )
             else:
                 refresh_started = False
                 refresh_snapshot = {"ok": True, "status": "skipped", "started_now": False}

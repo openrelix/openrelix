@@ -133,9 +133,56 @@ class SkillQuarantineTests(unittest.TestCase):
 
             keys = {row["entity_key"] for row in view["items"]}
             project_roots = view["project_skill_roots"]
+            project_item = next(row for row in view["items"] if row["entity_key"] == "skill:project-claude-helper")
+            project_labels = {row["label"] for row in project_item["source_labels"]}
             self.assertIn("skill:project-claude-helper", keys)
             self.assertNotIn("skill:ignored-aiden-helper", keys)
+            self.assertIn("project-a/.claude/skills", project_labels)
             self.assertEqual(project_roots[0]["path"], project_root.resolve().as_posix())
+
+    def test_quarantine_view_lists_common_project_skill_root_candidates(self):
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = runtime_paths_for_fixture(root)
+            home = root / "home"
+            installed_package_root = home / "node_modules" / "openrelix"
+            installed_package_skill_root = installed_package_root / ".agents" / "skills"
+            installed_package_skill_root.mkdir(parents=True)
+            paths = replace(paths, repo_root=installed_package_root)
+            project_root = home / "repo" / "candidate-app"
+            claude_skill_root = project_root / ".claude" / "skills"
+            ignored_aiden_root = project_root / ".aiden" / "skills"
+            claude_skill_root.mkdir(parents=True)
+            ignored_aiden_root.mkdir(parents=True)
+
+            with mock.patch.object(skill_quarantine.Path, "home", return_value=home), mock.patch.object(
+                skill_quarantine.asset_discovery.Path,
+                "home",
+                return_value=home,
+            ):
+                view = skill_quarantine.build_quarantine_view(
+                    paths,
+                    today="2026-06-05",
+                    mcp_usage_view={"servers": []},
+                    codex_homes=[paths.codex_home],
+                )
+
+                candidates = view["project_skill_root_candidates"]
+                candidate_paths = {row["path"] for row in candidates}
+                self.assertNotIn(installed_package_root.resolve().as_posix(), candidate_paths)
+                candidate = next(
+                    row for row in candidates if row["path"] == project_root.resolve().as_posix()
+                )
+                self.assertIn(".claude/skills", candidate["skill_dirs"])
+                self.assertNotIn(".aiden/skills", candidate["skill_dirs"])
+                self.assertFalse(candidate["already_added"])
+
+                skill_quarantine.add_project_skill_root(paths, project_root)
+                refreshed = skill_quarantine.list_project_skill_root_candidates(paths)
+                refreshed_candidate = next(
+                    row for row in refreshed if row["path"] == project_root.resolve().as_posix()
+                )
+                self.assertTrue(refreshed_candidate["already_added"])
 
     def test_block_and_unblock_skill_moves_directory_without_deleting(self):
         with TemporaryDirectory() as tmp:
@@ -164,10 +211,19 @@ class SkillQuarantineTests(unittest.TestCase):
             entry = skill_quarantine.block_entity(paths, "skill:unused-skill", view=view)
 
             self.assertEqual(entry["isolation_status"], "moved")
+            self.assertEqual(entry["source_labels"][0]["label"], "~/.codex/skills")
             quarantine_path = Path(entry["isolation_targets"][0]["quarantine_path"])
             self.assertFalse(skill_dir.exists())
             self.assertTrue((quarantine_path / "SKILL.md").is_file())
             self.assertIn("skill:unused-skill", skill_quarantine.read_state(paths)["entries"])
+            refreshed = skill_quarantine.build_quarantine_view(
+                paths,
+                today="2026-06-05",
+                mcp_usage_view={"servers": []},
+                codex_homes=[paths.codex_home],
+            )
+            quarantined = next(row for row in refreshed["quarantined"] if row["entity_key"] == "skill:unused-skill")
+            self.assertEqual(quarantined["source_labels"][0]["label"], "~/.codex/skills")
 
             result = skill_quarantine.unblock_entity(paths, "skill:unused-skill")
 
@@ -254,6 +310,136 @@ class SkillQuarantineTests(unittest.TestCase):
             self.assertTrue(quarantine_path.is_symlink())
 
             result = skill_quarantine.unblock_entity(paths, "skill:bits-oapi-cli")
+
+            self.assertTrue(result["ok"])
+            self.assertTrue(link_dir.is_symlink())
+            self.assertEqual(os.readlink(link_dir), str(source_dir))
+            self.assertTrue((source_dir / "SKILL.md").is_file())
+            self.assertFalse(skill_quarantine.read_state(paths)["entries"])
+
+    def test_project_symlink_skill_moves_link_not_target(self):
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths = runtime_paths_for_fixture(root)
+            project_root = root / "repo" / "Douyin"
+            source_dir = project_root / ".iac" / "ai" / "skills" / "android-build-project"
+            source_dir.mkdir(parents=True)
+            (source_dir / "SKILL.md").write_text("# Android Build Project\n", encoding="utf-8")
+            link_dir = project_root / ".claude" / "skills" / "android-build-project"
+            link_dir.parent.mkdir(parents=True)
+            link_dir.symlink_to(source_dir, target_is_directory=True)
+            view = {
+                "items": [
+                    {
+                        "entity_key": "skill:android-build-project",
+                        "entity_type": "skill",
+                        "identifier": "android-build-project",
+                        "display_name": "android-build-project",
+                        "usage_30d": 0,
+                        "sources": [
+                            {
+                                "kind": "project_skill",
+                                "manifest_abspath": str(source_dir / "SKILL.md"),
+                                "manifest_entry_abspath": str(link_dir / "SKILL.md"),
+                            }
+                        ],
+                    }
+                ]
+            }
+
+            entry = skill_quarantine.block_entity(paths, "skill:android-build-project", view=view)
+
+            target = entry["isolation_targets"][0]
+            quarantine_path = Path(target["quarantine_path"])
+            self.assertEqual(entry["isolation_status"], "moved")
+            self.assertEqual(entry["migration_warning_count"], 0)
+            self.assertEqual(target["original_snapshot"]["kind"], "symlink")
+            self.assertEqual(target["original_snapshot"]["link_target"], str(source_dir))
+            self.assertFalse(link_dir.exists())
+            self.assertFalse(link_dir.is_symlink())
+            self.assertTrue((source_dir / "SKILL.md").is_file())
+            self.assertTrue(quarantine_path.is_symlink())
+            self.assertEqual(os.readlink(quarantine_path), str(source_dir))
+
+            skill_quarantine._reapply_quarantined_sources(paths, skill_quarantine.read_state(paths), view["items"])
+            reapplied = skill_quarantine.read_state(paths)["entries"]["skill:android-build-project"]
+            self.assertEqual(reapplied["isolation_status"], "moved")
+            self.assertEqual(reapplied["migration_warning_count"], 0)
+            self.assertEqual(reapplied["isolation_targets"][0]["quarantine_path"], str(quarantine_path))
+
+            downgraded_state = skill_quarantine.read_state(paths)
+            downgraded = downgraded_state["entries"]["skill:android-build-project"]
+            downgraded["isolation_status"] = skill_quarantine.STATE_ONLY_STATUS
+            downgraded["isolation_targets"] = [
+                {
+                    "type": "skill",
+                    "kind": "project_skill",
+                    "original_path": str(source_dir),
+                    "status": skill_quarantine.STATE_ONLY_STATUS,
+                    "note": "project_skill_not_moved",
+                }
+            ]
+            skill_quarantine.write_state(paths, downgraded_state)
+            skill_quarantine._reapply_quarantined_sources(paths, skill_quarantine.read_state(paths), view["items"])
+            repaired = skill_quarantine.read_state(paths)["entries"]["skill:android-build-project"]
+            self.assertEqual(repaired["isolation_status"], "moved")
+            self.assertEqual(repaired["migration_warning_count"], 0)
+            self.assertEqual(repaired["isolation_targets"][0]["status"], "already_moved")
+
+            skill_quarantine.write_view_cache(
+                paths,
+                {
+                    "schema_version": skill_quarantine.SCHEMA_VERSION,
+                    "quarantined": [
+                        {
+                            "entity_key": "skill:android-build-project",
+                            "isolation_targets": entry["isolation_targets"],
+                        }
+                    ],
+                },
+            )
+            downgraded_state = skill_quarantine.read_state(paths)
+            downgraded = downgraded_state["entries"]["skill:android-build-project"]
+            downgraded["isolation_status"] = skill_quarantine.STATE_ONLY_STATUS
+            downgraded["isolation_targets"] = [
+                {
+                    "type": "skill",
+                    "kind": "project_skill",
+                    "original_path": str(source_dir),
+                    "status": skill_quarantine.STATE_ONLY_STATUS,
+                    "note": "project_skill_not_moved",
+                }
+            ]
+            skill_quarantine.write_state(paths, downgraded_state)
+            real_dir_view = {
+                "items": [
+                    {
+                        "entity_key": "skill:android-build-project",
+                        "entity_type": "skill",
+                        "identifier": "android-build-project",
+                        "display_name": "android-build-project",
+                        "usage_30d": 0,
+                        "sources": [
+                            {
+                                "kind": "project_skill",
+                                "manifest_abspath": str(source_dir / "SKILL.md"),
+                                "manifest_entry_abspath": str(source_dir / "SKILL.md"),
+                            }
+                        ],
+                    }
+                ]
+            }
+            skill_quarantine._reapply_quarantined_sources(
+                paths,
+                skill_quarantine.read_state(paths),
+                real_dir_view["items"],
+            )
+            cache_repaired = skill_quarantine.read_state(paths)["entries"]["skill:android-build-project"]
+            self.assertEqual(cache_repaired["isolation_status"], "moved")
+            self.assertEqual(cache_repaired["migration_warning_count"], 0)
+            self.assertEqual(cache_repaired["isolation_targets"][0]["quarantine_path"], str(quarantine_path))
+
+            result = skill_quarantine.unblock_entity(paths, "skill:android-build-project")
 
             self.assertTrue(result["ok"])
             self.assertTrue(link_dir.is_symlink())

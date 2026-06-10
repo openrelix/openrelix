@@ -7872,8 +7872,29 @@ Native Codex profile.
         self.assertIn("skill-quarantine-warning-inline", source)
         self.assertIn("skill-quarantine-table-title", source)
         self.assertIn("skill-quarantine-table-count", source)
+        self.assertIn("make_skill_quarantine_source_tags", source)
+        self.assertIn("skill-quarantine-source-tags", source)
+        self.assertNotIn('<div class="table-subtle">{key}</div>', source)
         self.assertIn("skillQuarantineCountText", source)
         self.assertIn("Skill/MCP 小黑屋", source)
+        self.assertIn("设置项目路径", source)
+        self.assertIn("skill-quarantine-settings-toggle", source)
+        self.assertIn("skill-quarantine-settings", source)
+        self.assertIn("skill-quarantine-project-form", source)
+        self.assertIn("常用目录", source)
+        self.assertIn("skill-quarantine-project-candidates", source)
+        self.assertIn("project_skill_root_candidates", source)
+        self.assertIn("make_skill_quarantine_project_candidate_rows", source)
+        self.assertIn("skillQuarantineViewEndpoint", source)
+        self.assertIn('data-skill-quarantine-view-endpoint', source)
+        self.assertIn("hydrateSkillQuarantineProjectView", source)
+        self.assertIn("renderSkillQuarantineProjectCandidates", source)
+        self.assertIn("skillQuarantineProjectCandidateEmptyItem", source)
+        self.assertIn('openrelixMetaAttr("data-skill-quarantine-view-endpoint")', source)
+        self.assertIn("打开文件夹", source)
+        self.assertIn("syncSkillQuarantineProjectCandidateButtons", source)
+        self.assertIn('action === "add-project-skill-root"', source)
+        self.assertIn('data-skill-quarantine-project-path', source)
         self.assertIn("一键隔离可选项", source)
         self.assertIn("打开小黑屋文件夹", source)
         self.assertIn('data-label-zh="打开小黑屋文件夹"', source)
@@ -7906,6 +7927,14 @@ Native Codex profile.
         self.assertNotIn("放行", source)
         self.assertIn("skill-quarantine-delete-popover-row", source)
         self.assertIn("skill-quarantine-delete-popover-actions", source)
+        self.assertIn("skill-quarantine-refresh-dialog", source)
+        self.assertIn("showSkillQuarantineRefreshDialog", source)
+        self.assertIn("watchSkillQuarantineProjectScan(payload)", source)
+        self.assertIn("pollSkillQuarantineRefreshPrompt", source)
+        self.assertIn('skillQuarantineMessage("projectScanDone")', source)
+        self.assertIn("项目 skills 扫描完成", source)
+        self.assertIn("立即刷新", source)
+        self.assertIn("window.location.reload()", source)
         self.assertIn('data-skill-quarantine-confirm-submit", "true"', source)
         self.assertIn('data-skill-quarantine-action", "cancel-delete"', source)
         self.assertIn("showSkillQuarantineDeletePopover(button)", source)
@@ -7933,11 +7962,57 @@ Native Codex profile.
         self.assertNotIn('setSkillQuarantineStatus(skillQuarantineMessage("confirmDelete")', source)
         self.assertNotIn("window.location.reload()", handler_source)
 
+    def test_skill_quarantine_rows_show_source_tags_not_internal_key_line(self):
+        html = build_overview.make_skill_quarantine_rows(
+            [
+                {
+                    "entity_key": "skill:unused-skill",
+                    "entity_type": "skill",
+                    "identifier": "unused-skill",
+                    "display_name": "unused-skill",
+                    "usage_30d": 0,
+                    "reason": "unused_30d",
+                    "source_labels": [{"label": "~/.codex/skills", "label_en": "~/.codex/skills"}],
+                }
+            ],
+            "block",
+        )
+
+        self.assertIn("skill-quarantine-source-tags", html)
+        self.assertIn("~/.codex/skills", html)
+        self.assertNotIn('<div class="table-subtle">skill:unused-skill</div>', html)
+
+    def test_skill_quarantine_rows_collapse_quarantined_after_five(self):
+        rows = []
+        for index in range(7):
+            rows.append(
+                {
+                    "entity_key": "skill:item-{}".format(index),
+                    "entity_type": "skill",
+                    "identifier": "item-{}".format(index),
+                    "display_name": "item-{}".format(index),
+                    "usage_30d": 0,
+                    "isolation_status": "state_only",
+                    "source_labels": [{"label": "project/.claude/skills", "label_en": "project/.claude/skills"}],
+                }
+            )
+
+        html = build_overview.make_skill_quarantine_rows(rows, "unblock", visible_count=5)
+
+        self.assertIn("查看更多 2 条小黑屋记录", html)
+        self.assertIn("收起更多记录", html)
+        self.assertIn('data-expand-group="skill-quarantine-quarantined-rows"', html)
+        self.assertEqual(html.count('class="content-more-extra-row"'), 2)
+        self.assertEqual(html.count("hidden"), 2)
+        self.assertLess(html.index("item-4"), html.index("item-5"))
+        self.assertLess(html.index("item-5"), html.index("查看更多 2 条小黑屋记录"))
+
     def test_skill_quarantine_actions_are_accepted_into_background_worker(self):
         source = (ROOT / "scripts" / "token_live_server.py").read_text(encoding="utf-8")
 
         self.assertIn("start_manual_pipeline_refresh(target_date=None, asset_layer_only=False)", source)
-        self.assertIn("start_manual_pipeline_refresh_background(asset_layer_only=True)", source)
+        self.assertIn("start_manual_pipeline_refresh_background(", source)
+        self.assertIn("wait_if_running=action in", source)
         self.assertIn("skill_quarantine_response_needs_refresh(action, response)", source)
         self.assertIn("BACKGROUND_SKILL_QUARANTINE_ACTIONS", source)
         self.assertIn("skill_quarantine_accepted_response(", source)
@@ -9793,6 +9868,54 @@ Native Codex profile.
         self.assertEqual(payload["status"], "accepted")
         self.assertEqual(payload["task"]["status"], "queued")
         start_action.assert_called_once()
+
+    def test_skill_quarantine_view_get_hydrates_project_paths(self):
+        with TemporaryDirectory() as tmpdir:
+            paths = make_runtime_paths_for_test(tmpdir)
+            project_root = Path(tmpdir) / "project-app"
+            (project_root / ".claude" / "skills" / "demo").mkdir(parents=True)
+            token_live_server.add_project_skill_root(paths, project_root.as_posix())
+            server = token_live_server.ThreadingHTTPServer(("127.0.0.1", 0), token_live_server.TokenLiveHandler)
+            thread = token_live_server.threading.Thread(target=server.serve_forever, daemon=True)
+            with mock.patch.object(token_live_server, "PATHS", paths), mock.patch.object(
+                token_live_server,
+                "get_update_token",
+                return_value="test-token",
+            ):
+                thread.start()
+                try:
+                    connection = http.client.HTTPConnection("127.0.0.1", server.server_address[1], timeout=5)
+                    connection.request(
+                        "GET",
+                        token_live_server.SKILL_QUARANTINE_VIEW_PATH,
+                        headers={"Origin": "null", "X-OpenRelix-Token": "test-token"},
+                    )
+                    response = connection.getresponse()
+                    body = response.read().decode("utf-8")
+                    connection.close()
+
+                    connection = http.client.HTTPConnection("127.0.0.1", server.server_address[1], timeout=5)
+                    connection.request(
+                        "GET",
+                        token_live_server.SKILL_QUARANTINE_VIEW_PATH,
+                        headers={"Origin": "null"},
+                    )
+                    rejected = connection.getresponse()
+                    rejected_body = rejected.read().decode("utf-8")
+                    connection.close()
+                finally:
+                    server.shutdown()
+                    server.server_close()
+                    thread.join(timeout=5)
+
+            self.assertIn(token_live_server.SKILL_QUARANTINE_VIEW_PATH, token_live_server.SENSITIVE_GET_PATHS)
+            self.assertEqual(response.status, 200, body)
+            self.assertEqual(response.getheader("Access-Control-Allow-Origin"), "null")
+            payload = json.loads(body)
+            self.assertTrue(payload["ok"])
+            self.assertEqual(payload["project_skill_roots"][0]["path"], project_root.resolve().as_posix())
+            self.assertIsInstance(payload["project_skill_root_candidates"], list)
+            self.assertEqual(rejected.status, 403, rejected_body)
 
     def test_ensure_token_live_service_bootstraps_when_health_check_fails(self):
         with TemporaryDirectory() as tmpdir:
