@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import copy
 import csv
 import hashlib
 import json
@@ -163,7 +164,24 @@ def redact_personal_text(value):
     )
 
 
+@lru_cache(maxsize=131072)
+def _normalize_brand_display_text_cached(value):
+    return overview_redaction.normalize_brand_display_text(
+        value,
+        brand_replacements=BRAND_DISPLAY_REPLACEMENTS,
+        legacy_phrases=LEGACY_BRAND_PHRASES,
+        brand_display_name=BRAND_DISPLAY_NAME,
+        patterns=personal_redaction_patterns(),
+        redaction_label=PERSONAL_REDACTION_LABEL,
+    )
+
+
 def normalize_brand_display_text(value):
+    # The same labels, paths, and summaries are normalized millions of times
+    # per build (once per language pass per view); memoize the common short
+    # strings and keep large blobs out of the cache to bound memory.
+    if isinstance(value, str) and len(value) <= 4096:
+        return _normalize_brand_display_text_cached(value)
     return overview_redaction.normalize_brand_display_text(
         value,
         brand_replacements=BRAND_DISPLAY_REPLACEMENTS,
@@ -8379,6 +8397,7 @@ def build_context_window_overview_for_days(
     latest_nightly=None,
     language=None,
     nightly_candidates=None,
+    window_items_cache=None,
 ):
     language = current_language(language)
     scanned_dates = date_strings_ending_at(anchor_date, days)
@@ -8389,26 +8408,40 @@ def build_context_window_overview_for_days(
     summary_candidates = nightly_candidates
 
     for date_str in scanned_dates:
-        daily_capture = load_daily_capture(date_str)
-        if not daily_capture:
-            continue
-        if summary_candidates is None:
-            summary_candidates = load_nightly_summary_candidates()
-        capture_latest_nightly = select_context_nightly_summary_for_date(
-            date_str,
-            latest_nightly=latest_nightly,
-            candidates=summary_candidates,
-        )
-        date_windows = build_window_items_from_daily_capture(
-            daily_capture,
-            capture_latest_nightly,
-            language=language,
-        )
+        cached = None if window_items_cache is None else window_items_cache.get(date_str)
+        if cached is None:
+            daily_capture = load_daily_capture(date_str)
+            if daily_capture:
+                if summary_candidates is None:
+                    summary_candidates = load_nightly_summary_candidates()
+                capture_latest_nightly = select_context_nightly_summary_for_date(
+                    date_str,
+                    latest_nightly=latest_nightly,
+                    candidates=summary_candidates,
+                )
+                cached = (
+                    build_window_items_from_daily_capture(
+                        daily_capture,
+                        capture_latest_nightly,
+                        language=language,
+                    ),
+                    daily_capture.get("excluded_window_count", 0),
+                    daily_capture.get("review_like_window_count", 0),
+                )
+            else:
+                cached = ([], 0, 0)
+            if window_items_cache is not None:
+                window_items_cache[date_str] = cached
+        if window_items_cache is not None:
+            # Downstream steps assign per-overview keys onto each window item,
+            # so the pristine cached items must be copied before every use.
+            cached = (copy.deepcopy(cached[0]), cached[1], cached[2])
+        date_windows, date_excluded, date_review_like = cached
         if date_windows:
             source_dates.append(date_str)
             windows.extend(date_windows)
-        excluded_window_count += daily_capture.get("excluded_window_count", 0)
-        review_like_window_count += daily_capture.get("review_like_window_count", 0)
+        excluded_window_count += date_excluded
+        review_like_window_count += date_review_like
 
     windows.sort(
         key=lambda item: (
@@ -8447,6 +8480,7 @@ def build_project_context_views(
 ):
     language = current_language(language)
     views = {}
+    window_items_cache = {}
     for days in range(1, max_days + 1):
         window_overview = build_context_window_overview_for_days(
             anchor_date,
@@ -8454,6 +8488,7 @@ def build_project_context_views(
             latest_nightly=latest_nightly,
             language=language,
             nightly_candidates=nightly_candidates,
+            window_items_cache=window_items_cache,
         )
         contexts = build_project_contexts(window_overview, language=language)
         views[str(days)] = {
@@ -9441,19 +9476,12 @@ def build_data(assets, usage_events, reviews, language=None):
         window_filter_start_date,
         window_filter_end_date,
     )
-    project_context_views_zh = build_project_context_views(
+    project_context_views = build_project_context_views(
         project_context_anchor_date,
         latest_nightly=window_anchor_nightly,
-        language="zh",
+        language="en" if is_english(language) else "zh",
         nightly_candidates=nightly_candidates,
     )
-    project_context_views_en = build_project_context_views(
-        project_context_anchor_date,
-        latest_nightly=window_anchor_nightly,
-        language="en",
-        nightly_candidates=nightly_candidates,
-    )
-    project_context_views = project_context_views_en if is_english(language) else project_context_views_zh
     project_contexts = build_project_contexts(window_filter_default_overview, language=language)
     asset_type_guide = build_asset_type_guide(enriched_assets)
     summary_term_views = build_summary_term_views(
@@ -9508,19 +9536,6 @@ def build_data(assets, usage_events, reviews, language=None):
         if today_capture or today_has_history
         else ((window_overview or {}).get("date", "") or daily_summary_default_date or today_date_str)
     )
-    window_overview_views = build_window_overview_views(
-        nightly_candidates,
-        selected_date=window_overview_default_date,
-        language=language,
-    )
-    window_overview_views = ensure_window_overview_view(
-        window_overview_views,
-        window_overview,
-        selected_date=window_overview_default_date,
-        language=language,
-    )
-    if not window_overview_default_date and window_overview_views:
-        window_overview_default_date = window_overview_views[0].get("date", "")
     generated_now = current_local_datetime()
     generated_at = generated_now.strftime("%Y-%m-%d %H:%M:%S")
     generated_at_iso = generated_now.isoformat()
@@ -9822,7 +9837,6 @@ def build_data(assets, usage_events, reviews, language=None):
         "asset_filter_start_date": asset_filter_start_date,
         "asset_filter_end_date": asset_filter_end_date,
         "asset_filter_default_days": ASSET_FILTER_DEFAULT_DAYS,
-        "window_overview_views": window_overview_views,
         "window_overview_default_date": window_overview_default_date,
         "memory_usage_window_days": MEMORY_USAGE_WINDOW_DAYS,
         "memory_usage_window": {
@@ -9845,8 +9859,6 @@ def build_data(assets, usage_events, reviews, language=None):
         "window_overview_title": window_overview_title,
         "project_contexts": project_contexts,
         "project_context_views": project_context_views,
-        "project_context_views_zh": project_context_views_zh,
-        "project_context_views_en": project_context_views_en,
         "project_context_default_days": PROJECT_CONTEXT_DEFAULT_DAYS,
         "window_filter_start_date": window_filter_start_date,
         "window_filter_end_date": window_filter_end_date,
@@ -17570,63 +17582,6 @@ def build_window_overview_heading_note(window_overview, title, language=None):
     return heading, note
 
 
-def build_window_overview_view(window_overview, title_zh="当日窗口概览", title_en="Daily Window Overview"):
-    window_overview = window_overview or {}
-    heading_zh, note_zh = build_window_overview_heading_note(window_overview, title_zh, language="zh")
-    heading_en, note_en = build_window_overview_heading_note(window_overview, title_en, language="en")
-    return {
-        "date": window_overview.get("date", ""),
-        "window_count": window_overview.get("window_count", 0),
-        "source_kind": window_overview.get("source_kind", ""),
-        "heading": heading_zh,
-        "heading_zh": heading_zh,
-        "heading_en": heading_en,
-        "note": note_zh,
-        "note_zh": note_zh,
-        "note_en": note_en,
-        "cards_html": make_window_summary_cards(window_overview, language="zh"),
-        "cards_html_zh": make_window_summary_cards(window_overview, language="zh"),
-        "cards_html_en": make_window_summary_cards(window_overview, language="en"),
-    }
-
-
-def build_window_overview_views(candidates, selected_date="", language=None):
-    dates = set(list_daily_capture_dates()) | set(list_codex_history_dates())
-    for payload in candidates or []:
-        parsed = parse_nightly_summary_date(payload)
-        if parsed is not None:
-            dates.add(parsed.isoformat())
-
-    views = []
-    for date_str in sorted(dates, reverse=True):
-        nightly = select_best_nightly_summary_for_date(candidates or [], date_str)
-        window_overview = build_window_overview(nightly, target_date=date_str, language=language)
-        if not window_overview:
-            continue
-        views.append(build_window_overview_view(window_overview))
-
-    if selected_date and not any(view.get("date") == selected_date for view in views):
-        nightly = select_best_nightly_summary_for_date(candidates or [], selected_date)
-        window_overview = build_window_overview(nightly, target_date=selected_date, language=language)
-        if window_overview:
-            views.insert(0, build_window_overview_view(window_overview))
-    return views
-
-
-def ensure_window_overview_view(window_views, window_overview, selected_date="", language=None):
-    views = list(window_views or [])
-    window_overview = window_overview or {}
-    date_str = window_overview.get("date", "") or selected_date
-    if not date_str or not window_overview.get("windows"):
-        return views
-    if any(view.get("date") == date_str for view in views):
-        return views
-    view_source = dict(window_overview)
-    view_source["date"] = date_str
-    views.insert(0, build_window_overview_view(view_source))
-    return views
-
-
 def build_metric_help_sections(metric):
     key = metric.get("key", "")
     caption = metric.get("caption", "")
@@ -17899,12 +17854,6 @@ def build_html(data):
         data.get("window_detail_visible_count", WINDOW_DETAIL_VISIBLE_COUNT)
     ) or WINDOW_DETAIL_VISIBLE_COUNT
     window_overview_default_date = data.get("window_overview_default_date", "")
-    window_overview_views = ensure_window_overview_view(
-        data.get("window_overview_views", []),
-        window_overview,
-        selected_date=window_overview_default_date,
-        language=language,
-    )
     snapshot_payload = json.dumps(
         {
             "generated_at": data["generated_at"],
@@ -17915,7 +17864,6 @@ def build_html(data):
             "daily_summary_select_dates": data.get("daily_summary_select_dates", []),
             "today_date": data.get("today_date", ""),
             "backfill": data.get("backfill", {}),
-            "window_overviews": window_overview_views,
             "window_overview_default_date": window_overview_default_date,
             "window_filter_start_date": window_filter_start_date,
             "window_filter_end_date": window_filter_end_date,
@@ -17981,8 +17929,6 @@ def build_html(data):
     active_nightly_note = data.get("active_nightly_note", "")
     nightly_window_title = data.get("window_overview_title", derive_nightly_window_title(data["nightly_title"]))
     project_context_views = data.get("project_context_views") or {}
-    project_context_views_zh = data.get("project_context_views_zh") or project_context_views
-    project_context_views_en = data.get("project_context_views_en") or project_context_views
     project_context_default_days = data.get("project_context_default_days", PROJECT_CONTEXT_DEFAULT_DAYS)
     project_context_note = "按同一窗口筛选范围聚合；追溯入口会联动到下方窗口明细"
     project_context_note_en = "Grouped by the same window filters; trace links sync with window details"

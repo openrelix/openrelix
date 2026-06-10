@@ -1839,9 +1839,10 @@ def stop_stale_token_live_processes(
             ["ps", "-axo", "pid=,command="],
             capture_output=True,
             text=True,
+            errors="replace",
             check=False,
         )
-    except OSError:
+    except (OSError, UnicodeDecodeError):
         return []
 
     alive_func = alive_func or (lambda pid: token_live_pid_alive(pid, kill_func=kill_func))

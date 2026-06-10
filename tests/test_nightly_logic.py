@@ -251,7 +251,6 @@ class NightlyLogicTests(unittest.TestCase):
                     "today_breakdown": [],
                 },
                 "window_overview": {},
-                "window_overview_views": [],
                 "memory_registry": [],
                 "memory_policy_views": {},
                 "nightly_memory_views": {},
@@ -292,7 +291,6 @@ class NightlyLogicTests(unittest.TestCase):
             "pipeline_status": {},
             "token_usage": {"available": False, "daily_rows": [], "today_breakdown": []},
             "window_overview": {},
-            "window_overview_views": [],
             "memory_registry": [],
             "memory_policy_views": {},
             "nightly_memory_views": {},
@@ -9259,44 +9257,6 @@ Native Codex profile.
         self.assertIn("Codex CLI history/session", overview["windows"][0]["activity_source_label"])
         self.assertIn("首次安装时展示历史窗口", overview["windows"][0]["question_summary"])
 
-    def test_window_overview_views_include_codex_history_dates(self):
-        history_capture = {
-            "source_kind": "history_fallback",
-            "date": "2026-05-03",
-            "stage": "manual",
-            "collection_source": "history",
-            "window_count": 1,
-            "excluded_window_count": 0,
-            "review_like_window_count": 0,
-            "windows": [
-                {
-                    "date": "2026-05-03",
-                    "window_id": "w-history",
-                    "cwd": "/tmp/OpenRelix",
-                    "source": "history",
-                    "started_at": "2026-05-03T09:00:00+08:00",
-                    "prompt_count": 1,
-                    "conclusion_count": 1,
-                    "prompts": [{"local_time": "2026-05-03T09:01:00+08:00", "text": "历史窗口"}],
-                    "conclusions": [{"completed_at": "2026-05-03T09:02:00+08:00", "text": "历史结论"}],
-                }
-            ],
-        }
-
-        with mock.patch.object(build_overview, "list_daily_capture_dates", return_value=[]), mock.patch.object(
-            build_overview,
-            "list_codex_history_dates",
-            return_value=["2026-05-03"],
-        ), mock.patch.object(build_overview, "load_daily_capture", return_value=None), mock.patch.object(
-            build_overview,
-            "load_history_fallback_daily_capture",
-            return_value=history_capture,
-        ):
-            views = build_overview.build_window_overview_views([], selected_date="2026-05-03")
-
-        self.assertEqual([view["date"] for view in views], ["2026-05-03"])
-        self.assertIn("历史窗口", views[0]["cards_html"])
-
     def test_english_window_cards_localize_source_and_chinese_summaries(self):
         html = build_overview.make_window_summary_cards(
             {
@@ -13977,20 +13937,6 @@ Native Codex profile.
                 "window_detail_visible_count": 20,
                 "window_filter_overview": window_filter_overview,
                 "window_filter_default_overview": window_filter_overview,
-                "window_overview_views": [
-                    {
-                        "date": "2026-04-26",
-                        "heading": "当日窗口概览 · 1",
-                        "heading_zh": "当日窗口概览 · 1",
-                        "heading_en": "Daily Window Overview · 1",
-                        "note": "共 1 个窗口，按最新活动排序，可点开看详情",
-                        "note_zh": "共 1 个窗口，按最新活动排序，可点开看详情",
-                        "note_en": "1 window sorted by latest activity. Open a card for details",
-                        "cards_html": "<p>旧窗口</p>",
-                        "cards_html_zh": "<p>旧窗口</p>",
-                        "cards_html_en": "<p>Old window</p>",
-                    }
-                ],
                 "window_overview_default_date": "2026-04-26",
                 "memory_registry": [],
                 "nightly_memory_views": {"durable": [], "session": [], "low_priority": []},

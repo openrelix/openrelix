@@ -501,7 +501,7 @@ Current contract validation lives in `scripts/openrelix_overview/contract.py`. R
 ```text
 schema_version, language, generated_at, summary, metrics, mix,
 assets, reviews, usage_events, summary_terms, summary_term_views,
-pipeline_status, token_usage, window_overview, window_overview_views,
+pipeline_status, token_usage, window_overview,
 memory_registry, memory_policy_views, nightly_memory_views,
 codex_native_memory, codex_native_memory_counts,
 claude_native_memory, claude_native_memory_counts
