@@ -38,8 +38,8 @@
 ## Git / Merge Rules
 
 - Feature development and bug fixes do not require a dedicated git worktree by default. Use the current checkout or a normal branch unless the task explicitly needs release isolation, dirty-state isolation, or parallel checkout isolation.
-- When finishing development from a branch and preparing to merge remotely, merge through local `main` and target `origin/main`; do not merge into other remote branches such as `origin/xxx`.
-- After a branch has been merged into both local `main` and `origin/main`, delete the corresponding local branch. If a separate worktree was intentionally created and is clean, remove it too.
+- When finishing development from a branch and preparing to merge remotely, merge through local `main` and target `origin/main`; do not merge into other remote branches such as `origin/xxx`. Exception: pushes to long-lived `bugfix/version_*` lines auto-backmerge to `main` via the Bugfix Backmerge workflow after its checks pass, so no manual merge is needed there.
+- Long-lived version lines such as `bugfix/version_*` are never deleted. The delete-after-merge rule applies only to short-lived task branches (for example `claude/<task>` or `codex/<task>` pulled from a version line): after such a branch has been merged into both local `main` and `origin/main`, delete the local branch, and if a separate worktree was intentionally created for it and is clean, remove that worktree too.
 
 ## Commit Checks
 
