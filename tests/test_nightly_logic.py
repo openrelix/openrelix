@@ -8005,6 +8005,39 @@ Native Codex profile.
         self.assertLess(html.index("item-4"), html.index("item-5"))
         self.assertLess(html.index("item-5"), html.index("查看更多 2 条小黑屋记录"))
 
+    def test_skill_quarantine_rows_collapse_suggested_and_grace_after_five(self):
+        def build_rows(prefix):
+            return [
+                {
+                    "entity_key": "skill:{}-{}".format(prefix, index),
+                    "entity_type": "skill",
+                    "identifier": "{}-{}".format(prefix, index),
+                    "display_name": "{}-{}".format(prefix, index),
+                    "usage_30d": 0,
+                    "reason": "unused_30d",
+                    "source_labels": [{"label": "~/.codex/skills", "label_en": "~/.codex/skills"}],
+                }
+                for index in range(7)
+            ]
+
+        suggested_html = build_overview.make_skill_quarantine_rows(
+            build_rows("suggested"), "block", visible_count=5
+        )
+        self.assertIn("查看更多 2 条建议隔离记录", suggested_html)
+        self.assertIn('data-expand-group="skill-quarantine-suggested-rows"', suggested_html)
+        self.assertEqual(suggested_html.count('class="content-more-extra-row"'), 2)
+
+        grace_html = build_overview.make_skill_quarantine_rows(
+            build_rows("grace"), "grace", visible_count=5
+        )
+        self.assertIn("查看更多 2 条可选隔离记录", grace_html)
+        self.assertIn('data-expand-group="skill-quarantine-grace-rows"', grace_html)
+        self.assertEqual(grace_html.count('class="content-more-extra-row"'), 2)
+
+    def test_skill_quarantine_panel_truncates_all_three_lists(self):
+        source = (ROOT / "scripts" / "build_overview.py").read_text(encoding="utf-8")
+        self.assertEqual(source.count("visible_count=SKILL_QUARANTINE_VISIBLE_COUNT"), 3)
+
     def test_skill_quarantine_actions_are_accepted_into_background_worker(self):
         source = (ROOT / "scripts" / "token_live_server.py").read_text(encoding="utf-8")
 
@@ -14011,7 +14044,9 @@ Native Codex profile.
         self.assertIn('"window_detail_visible_count":20', html)
         self.assertIn('"window_overview_project_visible_count":3', html)
         self.assertIn("function applyWindowFilters()", html)
-        self.assertIn("function windowFilterNeedsBackfillHint(filters)", html)
+        self.assertIn("function windowFilterNeedsBackfillHint(filters, matchedCount)", html)
+        self.assertIn("function windowRangeHasUnbackfilledDate(start, end)", html)
+        self.assertIn('"window_backfill_covered_dates"', html)
         self.assertIn("function windowBackfillSearchWarning(filters)", html)
         self.assertIn("function windowSearchStatusText(baseText, filters)", html)
         self.assertIn("function renderWindowBackfillHint(filters, matchedCount)", html)
