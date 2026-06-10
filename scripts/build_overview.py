@@ -9464,6 +9464,15 @@ def build_data(assets, usage_events, reviews, language=None):
         window_filter_end_date,
         WINDOW_FILTER_DEFAULT_DAYS,
     )
+    window_backfill_covered_dates = sorted(
+        {
+            parsed.isoformat()
+            for parsed in (
+                parse_nightly_summary_date(payload) for payload in nightly_candidates
+            )
+            if parsed is not None
+        }
+    )
     window_filter_overview = build_context_window_overview_for_days(
         window_filter_end_date,
         WINDOW_FILTER_MAX_DAYS,
@@ -9864,6 +9873,7 @@ def build_data(assets, usage_events, reviews, language=None):
         "window_filter_end_date": window_filter_end_date,
         "window_filter_default_days": WINDOW_FILTER_DEFAULT_DAYS,
         "window_filter_max_days": WINDOW_FILTER_MAX_DAYS,
+        "window_backfill_covered_dates": window_backfill_covered_dates,
         "token_filter_start_date": token_filter_start_date,
         "token_filter_end_date": token_filter_end_date,
         "token_filter_default_days": TOKEN_FILTER_DEFAULT_DAYS,
@@ -12457,7 +12467,13 @@ def make_skill_quarantine_project_candidate_rows(candidates):
     return "".join(rows) or make_skill_quarantine_project_candidate_rows([])
 
 
-SKILL_QUARANTINE_QUARANTINED_VISIBLE_COUNT = 5
+SKILL_QUARANTINE_VISIBLE_COUNT = 5
+
+SKILL_QUARANTINE_EXPAND_VARIANTS = {
+    "block": ("条建议隔离记录", "skill-quarantine-suggested-rows"),
+    "grace": ("条可选隔离记录", "skill-quarantine-grace-rows"),
+    "unblock": ("条小黑屋记录", "skill-quarantine-quarantined-rows"),
+}
 
 
 def make_skill_quarantine_rows(rows, action, visible_count=None):
@@ -12571,14 +12587,18 @@ def make_skill_quarantine_rows(rows, action, visible_count=None):
             )
 
     if visible_count and len(rows) > visible_count:
+        item_label, group_id = SKILL_QUARANTINE_EXPAND_VARIANTS.get(
+            action,
+            ("条记录", "skill-quarantine-{}-rows".format(action)),
+        )
         return make_table_expand_rows(
             rows,
             render_row,
             int(visible_count),
             7,
-            "条小黑屋记录",
+            item_label,
             "收起更多记录",
-            "skill-quarantine-quarantined-rows",
+            group_id,
         )
     return "".join(render_row(row) for row in rows)
 
@@ -12904,12 +12924,20 @@ def make_skill_quarantine_panel(view):
         reason_header=panel_language_text_html("原因", "Reason"),
         isolation_header=panel_language_text_html("隔离状态", "Isolation"),
         action_header=panel_language_text_html("操作", "Action"),
-        suggested_rows=make_skill_quarantine_rows(suggested, "block"),
-        grace_rows=make_skill_quarantine_rows(grace, "grace"),
+        suggested_rows=make_skill_quarantine_rows(
+            suggested,
+            "block",
+            visible_count=SKILL_QUARANTINE_VISIBLE_COUNT,
+        ),
+        grace_rows=make_skill_quarantine_rows(
+            grace,
+            "grace",
+            visible_count=SKILL_QUARANTINE_VISIBLE_COUNT,
+        ),
         quarantined_rows=make_skill_quarantine_rows(
             quarantined,
             "unblock",
-            visible_count=SKILL_QUARANTINE_QUARANTINED_VISIBLE_COUNT,
+            visible_count=SKILL_QUARANTINE_VISIBLE_COUNT,
         ),
     )
 
@@ -17869,6 +17897,7 @@ def build_html(data):
             "window_filter_end_date": window_filter_end_date,
             "window_filter_default_days": data.get("window_filter_default_days", WINDOW_FILTER_DEFAULT_DAYS),
             "window_filter_max_days": data.get("window_filter_max_days", WINDOW_FILTER_MAX_DAYS),
+            "window_backfill_covered_dates": data.get("window_backfill_covered_dates", []),
             "context_window_link_visible_count": data.get("context_window_link_visible_count", CONTEXT_WINDOW_LINK_VISIBLE_COUNT),
             "project_context_topic_visible_count": PROJECT_CONTEXT_TOPIC_VISIBLE_COUNT,
             "asset_filter_start_date": data.get("asset_filter_start_date", ""),
@@ -29955,7 +29984,32 @@ def build_html(data):
         return start;
       }}
 
-      function windowFilterNeedsBackfillHint(filters) {{
+      function windowRangeHasUnbackfilledDate(start, end) {{
+        if (!start || !end) {{
+          return false;
+        }}
+        const coveredDates = Array.isArray(snapshot.window_backfill_covered_dates)
+          ? snapshot.window_backfill_covered_dates.map(String)
+          : [];
+        const coveredSet = new Set(coveredDates);
+        const today = parseWindowDateValue(snapshotTodayDate());
+        let lastDay = new Date(end);
+        if (today && lastDay > today) {{
+          lastDay = today;
+        }}
+        const cursor = new Date(start);
+        let guard = 0;
+        while (cursor <= lastDay && guard < 400) {{
+          if (!coveredSet.has(tokenDateInputValue(cursor))) {{
+            return true;
+          }}
+          cursor.setDate(cursor.getDate() + 1);
+          guard += 1;
+        }}
+        return false;
+      }}
+
+      function windowFilterNeedsBackfillHint(filters, matchedCount) {{
         const activeFilters = normalizeWindowFilters(filters);
         const start = parseWindowDateValue(activeFilters.startDate);
         const end = parseWindowDateValue(activeFilters.endDate);
@@ -29969,7 +30023,13 @@ def build_html(data):
         }}
         const selectedStart = start || end;
         const coverageStart = windowBackfillCoverageStartDate();
-        return Boolean(selectedStart && selectedStart < coverageStart);
+        if (selectedStart && selectedStart < coverageStart) {{
+          return true;
+        }}
+        if (typeof matchedCount === "number" && matchedCount <= 0) {{
+          return windowRangeHasUnbackfilledDate(start || end, end || start);
+        }}
+        return false;
       }}
 
       function windowBackfillCommand(filters, stage) {{
@@ -30019,7 +30079,7 @@ def build_html(data):
           return;
         }}
         const activeFilters = normalizeWindowFilters(filters);
-        const shouldShow = windowFilterNeedsBackfillHint(activeFilters);
+        const shouldShow = windowFilterNeedsBackfillHint(activeFilters, matchedCount);
         elements.windowBackfillHint.hidden = !shouldShow;
         if (!shouldShow) {{
           if (elements.windowBackfillStatus) {{
