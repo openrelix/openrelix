@@ -20,7 +20,8 @@ from asset_runtime import atomic_write_json, get_runtime_paths
 
 SCHEMA_VERSION = 1
 STATUS_FILE_NAME = "pipeline-status.json"
-RECENT_LIMIT = 24
+RECENT_RETENTION_DAYS = 14
+RECENT_LIMIT = 400
 STALE_RUNNING_SECONDS = 12 * 60 * 60
 
 # Stages that actually call the model and therefore can burn tokens. Quick
@@ -375,10 +376,26 @@ def next_scheduled_run(paths=None, now=None):
     return rows[0] if rows else {}
 
 
-def _sanitize_recent_runs(rows):
+def _recent_run_anchor(row):
+    return (
+        _coerce_epoch(row.get("ended_at"))
+        or _coerce_epoch(row.get("updated_at"))
+        or _coerce_epoch(row.get("started_at"))
+    )
+
+
+def _sanitize_recent_runs(rows, now=None):
     sanitized = []
+    cutoff = 0.0
+    if now is not None:
+        cutoff = _coerce_epoch(now) - RECENT_RETENTION_DAYS * 24 * 60 * 60
+    elif rows:
+        cutoff = now_epoch() - RECENT_RETENTION_DAYS * 24 * 60 * 60
     for row in rows or []:
         if not isinstance(row, dict):
+            continue
+        anchor = _recent_run_anchor(row)
+        if cutoff and anchor and anchor < cutoff:
             continue
         sanitized.append({
             "run_id": str(row.get("run_id") or "")[:80],

@@ -92,7 +92,8 @@ ASSET_STATS_LATEST_PATH = REPORTS_DIR / "asset-stats-latest.json"
 CODEX_NATIVE_DISPLAY_CACHE_PATH = PATHS.runtime_dir / "codex-native-display-cache.json"
 AUTO_REFRESH_SECONDS = 3600
 PIPELINE_HISTORY_COLLAPSED_LIMIT = 4
-PIPELINE_HISTORY_EXPANDED_LIMIT = 24
+PIPELINE_HISTORY_EXPANDED_LIMIT = 400
+PIPELINE_TOKEN_DAILY_WINDOW_DAYS = 14
 BACKFILL_LOOKBACK_DAYS = 14
 BACKFILL_LEARN_WINDOW_DAYS = 7
 PROJECT_GITHUB_URL = "https://github.com/openrelix/openrelix"
@@ -17236,6 +17237,273 @@ def _recent_run_token_record(row):
     }
 
 
+def pipeline_token_run_day(row):
+    row = row or {}
+    target_date = str(row.get("target_date") or "").strip()
+    if re.match(r"^\d{4}-\d{2}-\d{2}$", target_date):
+        return target_date
+    for key in ("started_at_iso", "ended_at_iso"):
+        value = str(row.get(key) or "").strip()
+        match = re.match(r"^(\d{4}-\d{2}-\d{2})", value)
+        if match:
+            return match.group(1)
+    return ""
+
+
+def pipeline_token_daily_rows(rows, window_days=PIPELINE_TOKEN_DAILY_WINDOW_DAYS):
+    end_day = current_local_datetime().date()
+    token_rows = []
+    for row in rows or []:
+        if _classify_recent_run(row) != "deep":
+            continue
+        record = _recent_run_token_record(row)
+        if not record:
+            continue
+        day = pipeline_token_run_day(row)
+        if not day:
+            continue
+        token_rows.append((day, record))
+    for day, _record in token_rows:
+        try:
+            parsed = datetime.fromisoformat(day).date()
+        except ValueError:
+            continue
+        if parsed > end_day:
+            end_day = parsed
+    start_day = end_day - timedelta(days=max(window_days, 1) - 1)
+    buckets = {}
+    cursor = start_day
+    while cursor <= end_day:
+        iso_day = cursor.isoformat()
+        buckets[iso_day] = {
+            "date": iso_day,
+            "label": cursor.strftime("%m/%d"),
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "runs": 0,
+        }
+        cursor += timedelta(days=1)
+    for day, record in token_rows:
+        bucket = buckets.get(day)
+        if not bucket:
+            continue
+        bucket["input_tokens"] += record["input_tokens"]
+        bucket["output_tokens"] += record["output_tokens"]
+        bucket["total_tokens"] += record["total_tokens"]
+        bucket["runs"] += 1
+    return [buckets[key] for key in sorted(buckets)]
+
+
+def make_pipeline_token_chart(daily_rows):
+    rows = list(daily_rows or [])
+    if not rows:
+        return ""
+    max_value = max(
+        [
+            safe_int(row.get(key, 0))
+            for row in rows
+            for key in ("input_tokens", "output_tokens", "total_tokens")
+        ]
+        or [0]
+    )
+    max_value = max(max_value, 1)
+    width = 1000
+    height = 250
+    left = 58
+    right = 22
+    top = 18
+    bottom = 42
+    plot_width = width - left - right
+    plot_height = height - top - bottom
+    step = plot_width / max(len(rows) - 1, 1)
+    baseline = top + plot_height
+
+    def point(index, value):
+        x = left + step * index
+        y = top + (1 - safe_int(value) / max_value) * plot_height
+        return x, y
+
+    def point_string(coords):
+        return "{:.2f},{:.2f}".format(coords[0], coords[1])
+
+    def series_points(key):
+        return [point(index, row.get(key, 0)) for index, row in enumerate(rows)]
+
+    def smooth_curve_commands(points):
+        if len(points) < 2:
+            return ""
+        commands = []
+        tension = 0.9
+        for index in range(len(points) - 1):
+            p0 = points[index - 1] if index > 0 else points[index]
+            p1 = points[index]
+            p2 = points[index + 1]
+            p3 = points[index + 2] if index + 2 < len(points) else p2
+            cp1x = p1[0] + (p2[0] - p0[0]) * tension / 6
+            cp1y = p1[1] + (p2[1] - p0[1]) * tension / 6
+            cp2x = p2[0] - (p3[0] - p1[0]) * tension / 6
+            cp2y = p2[1] - (p3[1] - p1[1]) * tension / 6
+            cp1y = min(max(cp1y, top), baseline)
+            cp2y = min(max(cp2y, top), baseline)
+            commands.append(
+                "C {:.2f},{:.2f} {:.2f},{:.2f} {:.2f},{:.2f}".format(
+                    cp1x,
+                    cp1y,
+                    cp2x,
+                    cp2y,
+                    p2[0],
+                    p2[1],
+                )
+            )
+        return " ".join(commands)
+
+    def smooth_path(points):
+        if not points:
+            return ""
+        return "M {} {}".format(point_string(points[0]), smooth_curve_commands(points)).strip()
+
+    def area_path(points):
+        if not points:
+            return ""
+        first = points[0]
+        last = points[-1]
+        return "M {first_x:.2f},{baseline:.2f} L {first_point} {curve} L {last_x:.2f},{baseline:.2f} Z".format(
+            first_x=first[0],
+            baseline=baseline,
+            first_point=point_string(first),
+            curve=smooth_curve_commands(points),
+            last_x=last[0],
+        )
+
+    total_points = series_points("total_tokens")
+    input_points = series_points("input_tokens")
+    output_points = series_points("output_tokens")
+    total_path = smooth_path(total_points)
+    input_path = smooth_path(input_points)
+    output_path = smooth_path(output_points)
+    total_area_path = area_path(total_points)
+    grid_rows = []
+    for value in (max_value, max_value // 2, 0):
+        _, y = point(0, value)
+        grid_rows.append(
+            """
+            <g class="pipeline-token-chart-grid-line">
+              <line x1="{left}" y1="{y:.2f}" x2="{right}" y2="{y:.2f}"></line>
+              <text x="{label_x}" y="{text_y:.2f}">{label}</text>
+            </g>
+            """.format(
+                left=left,
+                right=width - right,
+                y=y,
+                label_x=left - 10,
+                text_y=y + 4,
+                label=escape(compact_token(value)),
+            )
+        )
+    x_labels = []
+    hit_areas = []
+    hit_width = max(step, 22)
+    for index, row in enumerate(rows):
+        x, _ = point(index, 0)
+        total_x, total_y = point(index, row.get("total_tokens", 0))
+        _, input_y = point(index, row.get("input_tokens", 0))
+        _, output_y = point(index, row.get("output_tokens", 0))
+        x_labels.append(
+            '<text class="pipeline-token-chart-x-label" x="{x:.2f}" y="{y}">{label}</text>'.format(
+                x=x,
+                y=height - 14,
+                label=escape(str(row.get("label") or row.get("date") or "")),
+            )
+        )
+        date_label = str(row.get("date") or row.get("label") or "")
+        aria_label = "{} · {} {}".format(
+            date_label,
+            compact_token(row.get("total_tokens", 0)),
+            "tokens",
+        )
+        hit_areas.append(
+            """
+            <rect class="pipeline-token-chart-hit"
+              x="{hit_x:.2f}" y="{top:.2f}" width="{hit_width:.2f}" height="{plot_height:.2f}"
+              data-pipeline-token-point="1" tabindex="0" role="button"
+              aria-label="{aria_label}"
+              data-date="{date}" data-label="{label}" data-runs="{runs}"
+              data-input="{input_tokens}" data-output="{output_tokens}" data-total="{total_tokens}"
+              data-x="{x:.2f}" data-y-input="{input_y:.2f}" data-y-output="{output_y:.2f}" data-y-total="{total_y:.2f}">
+            </rect>
+            """.format(
+                hit_x=max(left, total_x - hit_width / 2),
+                top=top,
+                hit_width=(
+                    hit_width / 2
+                    if len(rows) > 1 and index in (0, len(rows) - 1)
+                    else hit_width
+                ),
+                plot_height=plot_height,
+                aria_label=escape(aria_label, quote=True),
+                date=escape(str(row.get("date") or ""), quote=True),
+                label=escape(str(row.get("label") or row.get("date") or ""), quote=True),
+                runs=escape(str(safe_int(row.get("runs", 0))), quote=True),
+                input_tokens=escape(str(safe_int(row.get("input_tokens", 0))), quote=True),
+                output_tokens=escape(str(safe_int(row.get("output_tokens", 0))), quote=True),
+                total_tokens=escape(str(safe_int(row.get("total_tokens", 0))), quote=True),
+                x=total_x,
+                input_y=input_y,
+                output_y=output_y,
+                total_y=total_y,
+            )
+        )
+    return """
+      <div class="pipeline-token-chart-wrap">
+        <svg class="pipeline-token-chart" viewBox="0 0 {width} {height}" role="img" aria-label="{aria_label}">
+          <defs>
+            <linearGradient id="pipelineTokenTotalFill" x1="0" x2="0" y1="0" y2="1">
+              <stop offset="5%" stop-color="#2f74b5" stop-opacity="0.32"></stop>
+              <stop offset="95%" stop-color="#2f74b5" stop-opacity="0.07"></stop>
+            </linearGradient>
+          </defs>
+          <g class="pipeline-token-chart-grid">{grid_rows}</g>
+          <path class="pipeline-token-chart-area" d="{total_area_path}"></path>
+          <path class="pipeline-token-chart-line is-total" d="{total_path}"></path>
+          <path class="pipeline-token-chart-line is-input" d="{input_path}"></path>
+          <path class="pipeline-token-chart-line is-output" d="{output_path}"></path>
+          <g class="pipeline-token-hover" aria-hidden="true">
+            <line class="pipeline-token-hover-line" x1="{left}" y1="{top}" x2="{left}" y2="{baseline}"></line>
+            <circle class="pipeline-token-hover-dot is-total" data-pipeline-token-hover-dot="total" cx="{left}" cy="{baseline}" r="4.8"></circle>
+            <circle class="pipeline-token-hover-dot is-input" data-pipeline-token-hover-dot="input" cx="{left}" cy="{baseline}" r="4.3"></circle>
+            <circle class="pipeline-token-hover-dot is-output" data-pipeline-token-hover-dot="output" cx="{left}" cy="{baseline}" r="4.3"></circle>
+          </g>
+          <g class="pipeline-token-chart-x-axis">{x_labels}</g>
+          <g class="pipeline-token-chart-hits">{hit_areas}</g>
+        </svg>
+        <div class="pipeline-token-tooltip" data-pipeline-token-tooltip hidden></div>
+        <div class="pipeline-token-chart-legend">
+          <span class="pipeline-token-legend-item is-total">{total_label}</span>
+          <span class="pipeline-token-legend-item is-input">{input_label}</span>
+          <span class="pipeline-token-legend-item is-output">{output_label}</span>
+        </div>
+      </div>
+    """.format(
+        width=width,
+        height=height,
+        aria_label=escape("Deep backfill daily token usage", quote=True),
+        left="{:.2f}".format(left),
+        top="{:.2f}".format(top),
+        baseline="{:.2f}".format(baseline),
+        grid_rows="".join(grid_rows),
+        total_area_path=escape(total_area_path, quote=True),
+        total_path=escape(total_path, quote=True),
+        input_path=escape(input_path, quote=True),
+        output_path=escape(output_path, quote=True),
+        x_labels="".join(x_labels),
+        hit_areas="".join(hit_areas),
+        total_label=panel_language_text_html("合计 tokens", "Total tokens"),
+        input_label=panel_language_text_html("输入 tokens", "Input tokens"),
+        output_label=panel_language_text_html("输出 tokens", "Output tokens"),
+    )
+
+
 def make_pipeline_token_summary(rows):
     """Token summary card for the deep backfill bucket.
 
@@ -17256,9 +17524,8 @@ def make_pipeline_token_summary(rows):
         runs_with_tokens += 1
         total_input += record["input_tokens"]
         total_output += record["output_tokens"]
-    if not runs_with_tokens:
-        return ""
     total_tokens = total_input + total_output
+    daily_rows = pipeline_token_daily_rows(deep_rows)
     input_display_zh = compact_token(total_input, language="zh")
     input_display_en = compact_token(total_input, language="en")
     output_display_zh = compact_token(total_output, language="zh")
@@ -17331,6 +17598,15 @@ def make_pipeline_token_summary(rows):
                 total_en=escape(total_disp_en),
             )
         )
+    if not rows_html:
+        rows_html.append(
+            '<div class="pipeline-token-empty">{}</div>'.format(
+                panel_language_text_html(
+                    "最近的深度回溯还没有记录到 token 明细。",
+                    "Recent deep backfill runs have no recorded token details yet.",
+                )
+            )
+        )
     return """
     <div class="pipeline-token-summary" id="pipeline-token-summary">
       <div class="pipeline-token-summary-header">
@@ -17353,6 +17629,8 @@ def make_pipeline_token_summary(rows):
           </span>
         </span>
       </div>
+      <div class="pipeline-token-summary-note">{note}</div>
+      {chart}
       <div class="pipeline-token-rows">{rows}</div>
     </div>
     """.format(
@@ -17369,6 +17647,19 @@ def make_pipeline_token_summary(rows):
         output_en=escape(output_display_en),
         total_zh=escape(total_display_zh),
         total_en=escape(total_display_en),
+        note=panel_language_text_html(
+            (
+                "最近 14 天按天统计，只包含完整/手动深度回溯记录；快速回溯不消耗模型 token。"
+                if runs_with_tokens
+                else "最近 14 天暂无已记录的深度回溯 token 明细；后续完整/手动回溯完成后会自动累积。"
+            ),
+            (
+                "Daily stats for the latest 14 days; only full/manual deep backfill runs are counted. Quick backfill does not consume model tokens."
+                if runs_with_tokens
+                else "No recorded deep backfill token details in the latest 14 days yet; future full/manual backfills will accumulate here."
+            ),
+        ),
+        chart=make_pipeline_token_chart(daily_rows),
         rows="".join(rows_html),
     )
 
@@ -21594,6 +21885,13 @@ def build_html(data):
       font-weight: 780;
     }}
 
+    .pipeline-token-summary-note {{
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 650;
+      line-height: 1.45;
+    }}
+
     .pipeline-token-summary-totals {{
       display: inline-flex;
       flex-wrap: wrap;
@@ -21628,6 +21926,215 @@ def build_html(data):
       display: none;
     }}
 
+    .pipeline-token-chart-wrap {{
+      position: relative;
+      display: grid;
+      gap: 8px;
+      min-width: 0;
+      padding: 10px;
+      border-radius: 12px;
+      background: color-mix(in srgb, var(--card) 68%, transparent);
+      overflow: visible;
+    }}
+
+    .pipeline-token-chart {{
+      display: block;
+      width: 100%;
+      min-height: 190px;
+      overflow: visible;
+    }}
+
+    .pipeline-token-chart-grid-line line {{
+      stroke: color-mix(in srgb, var(--muted) 20%, transparent);
+      stroke-width: 1;
+      vector-effect: non-scaling-stroke;
+    }}
+
+    .pipeline-token-chart-grid-line text,
+    .pipeline-token-chart-x-label {{
+      fill: var(--muted);
+      font-size: 12px;
+      font-weight: 650;
+    }}
+
+    .pipeline-token-chart-grid-line text {{
+      text-anchor: end;
+    }}
+
+    .pipeline-token-chart-x-label {{
+      text-anchor: middle;
+    }}
+
+    .pipeline-token-chart-area {{
+      fill: url(#pipelineTokenTotalFill);
+    }}
+
+    .pipeline-token-chart-line {{
+      fill: none;
+      stroke-width: 2.4;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      vector-effect: non-scaling-stroke;
+    }}
+
+    .pipeline-token-chart-line.is-total {{
+      stroke: #2f74b5;
+    }}
+
+    .pipeline-token-chart-line.is-input {{
+      stroke: #0096c7;
+    }}
+
+    .pipeline-token-chart-line.is-output {{
+      stroke: #00a896;
+    }}
+
+    .pipeline-token-chart-hit {{
+      fill: transparent;
+      cursor: crosshair;
+      pointer-events: all;
+    }}
+
+    .pipeline-token-hover-line {{
+      stroke: color-mix(in srgb, var(--ink) 18%, transparent);
+      stroke-width: 1;
+      opacity: 0;
+      vector-effect: non-scaling-stroke;
+      transition: opacity 120ms ease;
+    }}
+
+    .pipeline-token-hover-dot {{
+      opacity: 0;
+      stroke: var(--card);
+      stroke-width: 2.2;
+      vector-effect: non-scaling-stroke;
+      transition: opacity 120ms ease;
+    }}
+
+    .pipeline-token-hover-dot.is-total {{
+      fill: #2f74b5;
+    }}
+
+    .pipeline-token-hover-dot.is-input {{
+      fill: #0096c7;
+    }}
+
+    .pipeline-token-hover-dot.is-output {{
+      fill: #00a896;
+    }}
+
+    .pipeline-token-chart-wrap.is-active .pipeline-token-hover-line,
+    .pipeline-token-chart-wrap.is-active .pipeline-token-hover-dot {{
+      opacity: 1;
+    }}
+
+    .pipeline-token-tooltip {{
+      position: absolute;
+      z-index: 8;
+      min-width: 224px;
+      max-width: min(280px, calc(100% - 16px));
+      padding: 12px 14px;
+      border: 1px solid color-mix(in srgb, var(--line) 78%, transparent);
+      border-radius: 12px;
+      background: color-mix(in srgb, var(--card) 94%, transparent);
+      box-shadow: 0 18px 45px color-mix(in srgb, #000 14%, transparent);
+      color: var(--ink);
+      font-size: 12px;
+      line-height: 1.35;
+      pointer-events: none;
+      backdrop-filter: blur(12px);
+    }}
+
+    .pipeline-token-tooltip[hidden] {{
+      display: none;
+    }}
+
+    .pipeline-token-tooltip-title {{
+      color: var(--ink);
+      font-weight: 780;
+      font-variant-numeric: tabular-nums;
+    }}
+
+    .pipeline-token-tooltip-runs {{
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 680;
+    }}
+
+    .pipeline-token-tooltip-list {{
+      display: grid;
+      gap: 8px;
+      margin-top: 10px;
+      padding-top: 10px;
+      border-top: 1px solid color-mix(in srgb, var(--line) 78%, transparent);
+    }}
+
+    .pipeline-token-tooltip-row {{
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      gap: 8px;
+      align-items: center;
+    }}
+
+    .pipeline-token-tooltip-dot {{
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: var(--accent);
+    }}
+
+    .pipeline-token-tooltip-label {{
+      min-width: 0;
+      overflow: hidden;
+      color: var(--muted);
+      font-weight: 660;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }}
+
+    .pipeline-token-tooltip-value {{
+      color: var(--ink);
+      font-weight: 780;
+      font-variant-numeric: tabular-nums;
+    }}
+
+    .pipeline-token-chart-legend {{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: center;
+    }}
+
+    .pipeline-token-legend-item {{
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 720;
+    }}
+
+    .pipeline-token-legend-item::before {{
+      content: "";
+      width: 10px;
+      height: 10px;
+      border-radius: 999px;
+      background: var(--accent);
+    }}
+
+    .pipeline-token-legend-item.is-total::before {{
+      background: #2f74b5;
+    }}
+
+    .pipeline-token-legend-item.is-input::before {{
+      background: #0096c7;
+    }}
+
+    .pipeline-token-legend-item.is-output::before {{
+      background: #00a896;
+    }}
+
     .pipeline-token-rows {{
       display: grid;
       gap: 8px;
@@ -21639,6 +22146,16 @@ def build_html(data):
       padding: 10px 12px;
       border-radius: 10px;
       background: var(--card);
+    }}
+
+    .pipeline-token-empty {{
+      padding: 10px 12px;
+      border-radius: 10px;
+      background: var(--card);
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 680;
+      line-height: 1.45;
     }}
 
     .pipeline-token-row-title {{
@@ -27433,6 +27950,359 @@ def build_html(data):
         }};
       }}
 
+      function pipelineTokenRunDay(row) {{
+        const targetDate = String((row && row.target_date) || "").trim();
+        if (/^\\d{{4}}-\\d{{2}}-\\d{{2}}$/.test(targetDate)) {{
+          return targetDate;
+        }}
+        const candidates = [
+          String((row && row.started_at_iso) || "").trim(),
+          String((row && row.ended_at_iso) || "").trim(),
+        ];
+        for (const value of candidates) {{
+          const match = value.match(/^(\\d{{4}}-\\d{{2}}-\\d{{2}})/);
+          if (match) return match[1];
+        }}
+        return "";
+      }}
+
+      function localIsoDate(date) {{
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, "0");
+        const day = String(date.getDate()).padStart(2, "0");
+        return year + "-" + month + "-" + day;
+      }}
+
+      function pipelineTokenDailyRows(rows) {{
+        const tokenRows = [];
+        (rows || []).forEach(function (row) {{
+          if (classifyPipelineRun(row) !== "deep") return;
+          const record = pipelineRunTokenRecord(row);
+          if (!record) return;
+          const day = pipelineTokenRunDay(row);
+          if (!day) return;
+          tokenRows.push({{ day: day, record: record }});
+        }});
+        let endDate = new Date();
+        tokenRows.forEach(function (item) {{
+          const parsed = new Date(item.day + "T00:00:00");
+          if (!Number.isNaN(parsed.getTime()) && parsed > endDate) {{
+            endDate = parsed;
+          }}
+        }});
+        const startDate = new Date(endDate.getTime());
+        startDate.setDate(startDate.getDate() - {pipeline_token_daily_window_days} + 1);
+        const buckets = {{}};
+        const cursor = new Date(startDate.getTime());
+        while (cursor <= endDate) {{
+          const iso = localIsoDate(cursor);
+          buckets[iso] = {{
+            date: iso,
+            label: String(cursor.getMonth() + 1).padStart(2, "0") + "/" + String(cursor.getDate()).padStart(2, "0"),
+            input_tokens: 0,
+            output_tokens: 0,
+            total_tokens: 0,
+            runs: 0,
+          }};
+          cursor.setDate(cursor.getDate() + 1);
+        }}
+        tokenRows.forEach(function (item) {{
+          const bucket = buckets[item.day];
+          if (!bucket) return;
+          bucket.input_tokens += item.record.input_tokens;
+          bucket.output_tokens += item.record.output_tokens;
+          bucket.total_tokens += item.record.total_tokens;
+          bucket.runs += 1;
+        }});
+        return Object.keys(buckets).sort().map(function (key) {{
+          return buckets[key];
+        }});
+      }}
+
+      function pipelineTokenPointString(point) {{
+        return Number(point[0]).toFixed(2) + "," + Number(point[1]).toFixed(2);
+      }}
+
+      function pipelineTokenCurveCommands(points, topBound, bottomBound) {{
+        if (!points || points.length < 2) return "";
+        const commands = [];
+        const tension = 0.9;
+        const topLimit = Number(topBound) || 0;
+        const bottomLimit = Number(bottomBound) || 0;
+        for (let index = 0; index < points.length - 1; index += 1) {{
+          const p0 = index > 0 ? points[index - 1] : points[index];
+          const p1 = points[index];
+          const p2 = points[index + 1];
+          const p3 = index + 2 < points.length ? points[index + 2] : p2;
+          const cp1x = p1[0] + (p2[0] - p0[0]) * tension / 6;
+          const rawCp1y = p1[1] + (p2[1] - p0[1]) * tension / 6;
+          const cp2x = p2[0] - (p3[0] - p1[0]) * tension / 6;
+          const rawCp2y = p2[1] - (p3[1] - p1[1]) * tension / 6;
+          const cp1y = Math.min(Math.max(rawCp1y, topLimit), bottomLimit);
+          const cp2y = Math.min(Math.max(rawCp2y, topLimit), bottomLimit);
+          commands.push(
+            "C " + cp1x.toFixed(2) + "," + cp1y.toFixed(2) +
+            " " + cp2x.toFixed(2) + "," + cp2y.toFixed(2) +
+            " " + p2[0].toFixed(2) + "," + p2[1].toFixed(2)
+          );
+        }}
+        return commands.join(" ");
+      }}
+
+      function smoothPipelineTokenPath(points, topBound, bottomBound) {{
+        if (!points || !points.length) return "";
+        return ("M " + pipelineTokenPointString(points[0]) + " " +
+          pipelineTokenCurveCommands(points, topBound, bottomBound)).trim();
+      }}
+
+      function pipelineTokenAreaPath(points, baseline, topBound) {{
+        if (!points || !points.length) return "";
+        const first = points[0];
+        const last = points[points.length - 1];
+        return (
+          "M " + first[0].toFixed(2) + "," + baseline.toFixed(2) +
+          " L " + pipelineTokenPointString(first) + " " +
+          pipelineTokenCurveCommands(points, topBound, baseline) +
+          " L " + last[0].toFixed(2) + "," + baseline.toFixed(2) + " Z"
+        );
+      }}
+
+      function renderPipelineTokenChart(rows) {{
+        if (!rows || !rows.length) return "";
+        const maxValue = Math.max(1, rows.reduce(function (currentMax, row) {{
+          return Math.max(
+            currentMax,
+            Number(row.input_tokens) || 0,
+            Number(row.output_tokens) || 0,
+            Number(row.total_tokens) || 0
+          );
+        }}, 0));
+        const width = 1000;
+        const height = 250;
+        const left = 58;
+        const right = 22;
+        const top = 18;
+        const bottom = 42;
+        const plotWidth = width - left - right;
+        const plotHeight = height - top - bottom;
+        const step = plotWidth / Math.max(rows.length - 1, 1);
+        function point(index, value) {{
+          const x = left + step * index;
+          const y = top + (1 - ((Number(value) || 0) / maxValue)) * plotHeight;
+          return [x, y];
+        }}
+        function pointList(key) {{
+          return rows.map(function (row, index) {{
+            return point(index, row[key]);
+          }});
+        }}
+        const baseline = top + plotHeight;
+        const totalPoints = pointList("total_tokens");
+        const inputPoints = pointList("input_tokens");
+        const outputPoints = pointList("output_tokens");
+        const totalPath = smoothPipelineTokenPath(totalPoints, top, baseline);
+        const inputPath = smoothPipelineTokenPath(inputPoints, top, baseline);
+        const outputPath = smoothPipelineTokenPath(outputPoints, top, baseline);
+        const areaPath = pipelineTokenAreaPath(totalPoints, baseline, top);
+        const gridRows = [maxValue, Math.floor(maxValue / 2), 0].map(function (value) {{
+          const y = point(0, value)[1];
+          return (
+            '<g class="pipeline-token-chart-grid-line">' +
+              '<line x1="' + left + '" y1="' + y.toFixed(2) + '" x2="' + (width - right) + '" y2="' + y.toFixed(2) + '"></line>' +
+              '<text x="' + (left - 10) + '" y="' + (y + 4).toFixed(2) + '">' + escapeHtml(compactTokenValue(value)) + '</text>' +
+            '</g>'
+          );
+        }}).join("");
+        const xLabels = rows.map(function (row, index) {{
+          const x = point(index, 0)[0];
+          return '<text class="pipeline-token-chart-x-label" x="' + x.toFixed(2) + '" y="' + (height - 14) + '">' + escapeHtml(row.label || row.date || "") + '</text>';
+        }}).join("");
+        const hitWidth = Math.max(step, 22);
+        const hitAreas = rows.map(function (row, index) {{
+          const totalPoint = point(index, row.total_tokens);
+          const inputPoint = point(index, row.input_tokens);
+          const outputPoint = point(index, row.output_tokens);
+          const edgeWidth = rows.length > 1 && (index === 0 || index === rows.length - 1)
+            ? hitWidth / 2
+            : hitWidth;
+          const hitX = Math.max(left, totalPoint[0] - hitWidth / 2);
+          const date = row.date || "";
+          const label = row.label || row.date || "";
+          const ariaLabel = (date || label) + " · " + compactTokenValue(row.total_tokens || 0) + " tokens";
+          return (
+            '<rect class="pipeline-token-chart-hit" ' +
+              'x="' + hitX.toFixed(2) + '" y="' + top.toFixed(2) + '" width="' + edgeWidth.toFixed(2) + '" height="' + plotHeight.toFixed(2) + '" ' +
+              'data-pipeline-token-point="1" tabindex="0" role="button" ' +
+              'aria-label="' + escapeHtml(ariaLabel) + '" ' +
+              'data-date="' + escapeHtml(date) + '" data-label="' + escapeHtml(label) + '" data-runs="' + escapeHtml(String(row.runs || 0)) + '" ' +
+              'data-input="' + escapeHtml(String(row.input_tokens || 0)) + '" data-output="' + escapeHtml(String(row.output_tokens || 0)) + '" data-total="' + escapeHtml(String(row.total_tokens || 0)) + '" ' +
+              'data-x="' + totalPoint[0].toFixed(2) + '" data-y-input="' + inputPoint[1].toFixed(2) + '" data-y-output="' + outputPoint[1].toFixed(2) + '" data-y-total="' + totalPoint[1].toFixed(2) + '">' +
+            '</rect>'
+          );
+        }}).join("");
+        return (
+          '<div class="pipeline-token-chart-wrap">' +
+            '<svg class="pipeline-token-chart" viewBox="0 0 ' + width + ' ' + height + '" role="img" aria-label="Deep backfill daily token usage">' +
+              '<defs>' +
+                '<linearGradient id="pipelineTokenTotalFill" x1="0" x2="0" y1="0" y2="1">' +
+                  '<stop offset="5%" stop-color="#2f74b5" stop-opacity="0.32"></stop>' +
+                  '<stop offset="95%" stop-color="#2f74b5" stop-opacity="0.07"></stop>' +
+                '</linearGradient>' +
+              '</defs>' +
+              '<g class="pipeline-token-chart-grid">' + gridRows + '</g>' +
+              '<path class="pipeline-token-chart-area" d="' + areaPath + '"></path>' +
+              '<path class="pipeline-token-chart-line is-total" d="' + totalPath + '"></path>' +
+              '<path class="pipeline-token-chart-line is-input" d="' + inputPath + '"></path>' +
+              '<path class="pipeline-token-chart-line is-output" d="' + outputPath + '"></path>' +
+              '<g class="pipeline-token-hover" aria-hidden="true">' +
+                '<line class="pipeline-token-hover-line" x1="' + left.toFixed(2) + '" y1="' + top.toFixed(2) + '" x2="' + left.toFixed(2) + '" y2="' + baseline.toFixed(2) + '"></line>' +
+                '<circle class="pipeline-token-hover-dot is-total" data-pipeline-token-hover-dot="total" cx="' + left.toFixed(2) + '" cy="' + baseline.toFixed(2) + '" r="4.8"></circle>' +
+                '<circle class="pipeline-token-hover-dot is-input" data-pipeline-token-hover-dot="input" cx="' + left.toFixed(2) + '" cy="' + baseline.toFixed(2) + '" r="4.3"></circle>' +
+                '<circle class="pipeline-token-hover-dot is-output" data-pipeline-token-hover-dot="output" cx="' + left.toFixed(2) + '" cy="' + baseline.toFixed(2) + '" r="4.3"></circle>' +
+              '</g>' +
+              '<g class="pipeline-token-chart-x-axis">' + xLabels + '</g>' +
+              '<g class="pipeline-token-chart-hits">' + hitAreas + '</g>' +
+            '</svg>' +
+            '<div class="pipeline-token-tooltip" data-pipeline-token-tooltip hidden></div>' +
+            '<div class="pipeline-token-chart-legend">' +
+              '<span class="pipeline-token-legend-item is-total">' + escapeHtml(currentLanguage === "en" ? "Total tokens" : "合计 tokens") + '</span>' +
+              '<span class="pipeline-token-legend-item is-input">' + escapeHtml(currentLanguage === "en" ? "Input tokens" : "输入 tokens") + '</span>' +
+              '<span class="pipeline-token-legend-item is-output">' + escapeHtml(currentLanguage === "en" ? "Output tokens" : "输出 tokens") + '</span>' +
+            '</div>' +
+          '</div>'
+        );
+      }}
+
+      function formatPipelineTokenTooltipNumber(value) {{
+        const number = Number(value) || 0;
+        try {{
+          return number.toLocaleString(currentLanguage === "en" ? "en-US" : "zh-CN");
+        }} catch (_) {{
+          return String(Math.round(number));
+        }}
+      }}
+
+      function renderPipelineTokenTooltipContent(pointEl) {{
+        const runs = Number(pointEl.dataset.runs || 0) || 0;
+        const series = [
+          {{
+            key: "total",
+            color: "#2f74b5",
+            label: currentLanguage === "en" ? "Total tokens" : "合计 tokens",
+            value: Number(pointEl.dataset.total || 0) || 0,
+          }},
+          {{
+            key: "input",
+            color: "#0096c7",
+            label: currentLanguage === "en" ? "Input tokens" : "输入 tokens",
+            value: Number(pointEl.dataset.input || 0) || 0,
+          }},
+          {{
+            key: "output",
+            color: "#00a896",
+            label: currentLanguage === "en" ? "Output tokens" : "输出 tokens",
+            value: Number(pointEl.dataset.output || 0) || 0,
+          }},
+        ];
+        const dateLabel = pointEl.dataset.date || pointEl.dataset.label || "";
+        const runsLabel = runs
+          ? (currentLanguage === "en"
+            ? (runs + (runs === 1 ? " deep backfill run" : " deep backfill runs"))
+            : ("深度回溯 " + runs + " 次"))
+          : (currentLanguage === "en" ? "No deep backfill runs" : "无深度回溯记录");
+        const rowsHtml = series.map(function (item) {{
+          return (
+            '<div class="pipeline-token-tooltip-row">' +
+              '<span class="pipeline-token-tooltip-dot" style="background:' + item.color + '"></span>' +
+              '<span class="pipeline-token-tooltip-label">' + escapeHtml(item.label) + '</span>' +
+              '<span class="pipeline-token-tooltip-value">' + escapeHtml(formatPipelineTokenTooltipNumber(item.value)) + '</span>' +
+            '</div>'
+          );
+        }}).join("");
+        return (
+          '<div class="pipeline-token-tooltip-title">' + escapeHtml(dateLabel) + '</div>' +
+          '<div class="pipeline-token-tooltip-runs">' + escapeHtml(runsLabel) + '</div>' +
+          '<div class="pipeline-token-tooltip-list">' + rowsHtml + '</div>'
+        );
+      }}
+
+      function wirePipelineTokenChartInteractions(root) {{
+        root = root || document;
+        if (!root.querySelectorAll) return;
+        Array.from(root.querySelectorAll(".pipeline-token-chart-wrap")).forEach(function (wrap) {{
+          if (wrap.dataset.pipelineTokenWired === "1") return;
+          const svg = wrap.querySelector(".pipeline-token-chart");
+          const tooltip = wrap.querySelector("[data-pipeline-token-tooltip]");
+          const hoverLine = wrap.querySelector(".pipeline-token-hover-line");
+          const dots = {{
+            total: wrap.querySelector("[data-pipeline-token-hover-dot='total']"),
+            input: wrap.querySelector("[data-pipeline-token-hover-dot='input']"),
+            output: wrap.querySelector("[data-pipeline-token-hover-dot='output']"),
+          }};
+          if (!svg || !tooltip || !hoverLine) return;
+          wrap.dataset.pipelineTokenWired = "1";
+
+          function show(pointEl) {{
+            const x = Number(pointEl.dataset.x || 0) || 0;
+            const yTotal = Number(pointEl.dataset.yTotal || 0) || 0;
+            const yInput = Number(pointEl.dataset.yInput || 0) || 0;
+            const yOutput = Number(pointEl.dataset.yOutput || 0) || 0;
+            hoverLine.setAttribute("x1", x.toFixed(2));
+            hoverLine.setAttribute("x2", x.toFixed(2));
+            [
+              ["total", yTotal],
+              ["input", yInput],
+              ["output", yOutput],
+            ].forEach(function (item) {{
+              const dot = dots[item[0]];
+              if (!dot) return;
+              dot.setAttribute("cx", x.toFixed(2));
+              dot.setAttribute("cy", Number(item[1] || 0).toFixed(2));
+            }});
+            tooltip.innerHTML = renderPipelineTokenTooltipContent(pointEl);
+            tooltip.hidden = false;
+            wrap.classList.add("is-active");
+
+            const viewBox = String(svg.getAttribute("viewBox") || "0 0 1000 250")
+              .split(/\\s+/)
+              .map(function (value) {{ return Number(value) || 0; }});
+            const viewWidth = viewBox[2] || 1000;
+            const viewHeight = viewBox[3] || 250;
+            const svgRect = svg.getBoundingClientRect();
+            const wrapRect = wrap.getBoundingClientRect();
+            const scaleX = svgRect.width / viewWidth;
+            const scaleY = svgRect.height / viewHeight;
+            const anchorX = svgRect.left - wrapRect.left + x * scaleX;
+            const anchorY = svgRect.top - wrapRect.top + Math.min(yTotal, yInput, yOutput) * scaleY;
+            const tooltipWidth = tooltip.offsetWidth || 240;
+            const tooltipHeight = tooltip.offsetHeight || 120;
+            let leftPx = anchorX + 16;
+            if (leftPx + tooltipWidth > wrap.clientWidth - 8) {{
+              leftPx = anchorX - tooltipWidth - 16;
+            }}
+            const maxLeft = Math.max(8, wrap.clientWidth - tooltipWidth - 8);
+            leftPx = Math.max(8, Math.min(leftPx, maxLeft));
+            let topPx = anchorY - tooltipHeight / 2;
+            const maxTop = Math.max(8, wrap.clientHeight - tooltipHeight - 8);
+            topPx = Math.max(8, Math.min(topPx, maxTop));
+            tooltip.style.left = leftPx + "px";
+            tooltip.style.top = topPx + "px";
+          }}
+
+          function hide() {{
+            wrap.classList.remove("is-active");
+            tooltip.hidden = true;
+          }}
+
+          Array.from(wrap.querySelectorAll("[data-pipeline-token-point]")).forEach(function (pointEl) {{
+            pointEl.addEventListener("mouseenter", function () {{ show(pointEl); }});
+            pointEl.addEventListener("focus", function () {{ show(pointEl); }});
+            pointEl.addEventListener("blur", hide);
+          }});
+          wrap.addEventListener("mouseleave", hide);
+        }});
+      }}
+
       function renderPipelineTokenSummary(rows) {{
         const deepRows = (rows || []).filter(function (row) {{
           return classifyPipelineRun(row) === "deep";
@@ -27496,8 +28366,17 @@ def build_html(data):
             '</div>'
           );
         }});
-        if (!runsWithTokens) return "";
         const totalTokens = totalInput + totalOutput;
+        const dailyRows = pipelineTokenDailyRows(deepRows);
+        if (!detailRows.length) {{
+          detailRows.push(
+            '<div class="pipeline-token-empty">' +
+              escapeHtml(currentLanguage === "en"
+                ? "Recent deep backfill runs have no recorded token details yet."
+                : "最近的深度回溯还没有记录到 token 明细。") +
+            '</div>'
+          );
+        }}
         const titleText = currentLanguage === "en"
           ? "Deep Backfill Token Usage"
           : "深度回溯 Token 消耗";
@@ -27529,6 +28408,16 @@ def build_html(data):
                 '</span>' +
               '</span>' +
             '</div>' +
+            '<div class="pipeline-token-summary-note">' +
+              escapeHtml(currentLanguage === "en"
+                ? (runsWithTokens
+                  ? "Daily stats for the latest 14 days; only full/manual deep backfill runs are counted. Quick backfill does not consume model tokens."
+                  : "No recorded deep backfill token details in the latest 14 days yet; future full/manual backfills will accumulate here.")
+                : (runsWithTokens
+                  ? "最近 14 天按天统计，只包含完整/手动深度回溯记录；快速回溯不消耗模型 token。"
+                  : "最近 14 天暂无已记录的深度回溯 token 明细；后续完整/手动回溯完成后会自动累积。")) +
+            '</div>' +
+            renderPipelineTokenChart(dailyRows) +
             '<div class="pipeline-token-rows">' + detailRows.join("") + '</div>' +
           '</div>'
         );
@@ -27720,7 +28609,9 @@ def build_html(data):
         if (html) {{
           const wrapper = document.createElement("div");
           wrapper.innerHTML = html;
-          summary.replaceWith(wrapper.firstElementChild);
+          const nextSummary = wrapper.firstElementChild;
+          summary.replaceWith(nextSummary);
+          wirePipelineTokenChartInteractions(nextSummary);
         }} else if (summary.parentNode) {{
           summary.parentNode.removeChild(summary);
         }}
@@ -34812,9 +35703,13 @@ def build_html(data):
       function prepareTokenUsageForPanel(tokenUsage, relativeUpdate, groupBy) {{
         const prepared = deriveTokenUsageForGroup(tokenUsage, groupBy, relativeUpdate);
         const allDailyRows = Array.isArray(prepared.daily_rows) ? prepared.daily_rows : [];
+        const requestedDayDisplayLimit = Math.max(
+          tokenDateRangeDays(state.tokenFilters || {{}}) || 0,
+          {token_daily_display_days}
+        );
         const displayLimit = normalizeTokenGroupBy(prepared.group_by) === "month"
           ? Math.min(Math.max(allDailyRows.length, 1), 12)
-          : Math.min(Math.max(allDailyRows.length, {token_daily_display_days}), 31);
+          : Math.min(Math.max(allDailyRows.length, requestedDayDisplayLimit), requestedDayDisplayLimit);
         const dailyRows = allDailyRows.slice(-displayLimit);
         const dailyMax = dailyRows.reduce(function (currentMax, row) {{
           return Math.max(currentMax, Number(row.value) || 0);
@@ -35310,6 +36205,7 @@ def build_html(data):
       wireSideNav();
       wireHorizontalScrollLock();
       wireTokenFilters();
+      wirePipelineTokenChartInteractions(document);
       applyTheme(readStoredTheme(), false);
       applyLanguage(defaultLanguage);
       hydrateSkillQuarantineProjectView();
@@ -35952,6 +36848,7 @@ def build_html(data):
         auto_refresh_ms=AUTO_REFRESH_SECONDS * 1000,
         pipeline_history_collapsed_limit=PIPELINE_HISTORY_COLLAPSED_LIMIT,
         pipeline_history_expanded_limit=PIPELINE_HISTORY_EXPANDED_LIMIT,
+        pipeline_token_daily_window_days=PIPELINE_TOKEN_DAILY_WINDOW_DAYS,
         live_token_endpoint=json.dumps(LIVE_TOKEN_ENDPOINT),
         live_token_poll_ms=LIVE_TOKEN_POLL_SECONDS * 1000,
         live_token_timeout_ms=LIVE_TOKEN_TIMEOUT_MS,

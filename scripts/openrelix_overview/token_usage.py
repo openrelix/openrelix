@@ -478,6 +478,44 @@ def ensure_token_end_period_row(parsed_rows, end_date, group_by="day", provider=
     return rows
 
 
+def ensure_token_daily_range_rows(parsed_rows, start_date, end_date, provider="", provider_label="", language=None):
+    if not start_date or not end_date:
+        return list(parsed_rows)
+    start_day = start_date.date() if isinstance(start_date, datetime) else start_date
+    end_day = end_date.date() if isinstance(end_date, datetime) else end_date
+    if not isinstance(start_day, date) or not isinstance(end_day, date):
+        return list(parsed_rows)
+    if start_day > end_day:
+        start_day, end_day = end_day, start_day
+
+    rows_by_day = {}
+    passthrough_rows = []
+    for row in parsed_rows or []:
+        parsed_day = row.get("parsed_date")
+        row_day = parsed_day.date() if isinstance(parsed_day, datetime) else None
+        if row_day is None:
+            passthrough_rows.append(row)
+            continue
+        rows_by_day[row_day] = row
+
+    rows = []
+    current_day = start_day
+    while current_day <= end_day:
+        rows.append(
+            rows_by_day.get(current_day)
+            or make_empty_token_daily_row(
+                current_day,
+                provider=provider,
+                provider_label=provider_label,
+                language=language,
+            )
+        )
+        current_day += timedelta(days=1)
+    rows.extend(passthrough_rows)
+    rows.sort(key=lambda item: item.get("sort_key") or item.get("raw_date") or "")
+    return rows
+
+
 def build_token_usage_view(
     ccusage_result,
     language=None,
@@ -600,17 +638,25 @@ def build_token_usage_view(
         language=language,
     )
 
-    if requested_start:
-        effective_start = requested_start
-    elif parsed_rows and parsed_rows[0].get("parsed_date"):
-        effective_start = parsed_rows[0]["parsed_date"]
-    else:
-        effective_start = datetime.combine(now.date() - timedelta(days=window_days - 1), datetime.min.time())
-
     if requested_end:
         effective_end = requested_end
     else:
         effective_end = datetime.combine(now.date(), datetime.min.time())
+
+    if requested_start:
+        effective_start = requested_start
+    else:
+        effective_start = effective_end - timedelta(days=window_days - 1)
+
+    if group_by == "day":
+        parsed_rows = ensure_token_daily_range_rows(
+            parsed_rows,
+            effective_start,
+            effective_end,
+            provider=ccusage_result.get("provider", "codex"),
+            provider_label=ccusage_result.get("provider_label", "ccusage"),
+            language=language,
+        )
 
     display_rows = aggregate_monthly_token_rows(parsed_rows, language=language) if group_by == "month" else parsed_rows
     max_daily_tokens = max((row["totalTokens"] for row in display_rows), default=0)
