@@ -54,6 +54,19 @@ jobs:
         if: steps.npm_version.outputs.published != 'true'
         run: python3 scripts/check_personal_info.py
 
+      - name: Inject analytics client token
+        if: steps.npm_version.outputs.published != 'true'
+        shell: bash
+        env:
+          OPENRELIX_ANALYTICS_CLIENT_TOKEN: ${{ secrets.OPENRELIX_ANALYTICS_CLIENT_TOKEN }}
+        run: |
+          if [[ -z "$OPENRELIX_ANALYTICS_CLIENT_TOKEN" ]]; then
+            echo "::error::OPENRELIX_ANALYTICS_CLIENT_TOKEN is required for official npm packages."
+            exit 1
+          fi
+          install -d install/analytics
+          printf '%s\n' "$OPENRELIX_ANALYTICS_CLIENT_TOKEN" > install/analytics/OpenRelixAnalyticsToken.txt
+
       - name: Verify package contents
         if: steps.npm_version.outputs.published != 'true'
         run: npm pack --dry-run --json

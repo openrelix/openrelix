@@ -5200,6 +5200,31 @@ def default_macos_client_app_path():
     return Path.home() / "Applications" / MACOS_CLIENT_APP_NAME
 
 
+def first_config_line(path):
+    if not path.exists() or not path.is_file():
+        return ""
+    try:
+        for line in path.read_text(encoding="utf-8").splitlines():
+            value = line.strip()
+            if value and not value.startswith("#"):
+                return value
+    except (OSError, UnicodeDecodeError):
+        return ""
+    return ""
+
+
+def inherit_macos_client_analytics_env(env, app_path):
+    resources = Path(app_path) / "Contents" / "Resources"
+    if not env.get("OPENRELIX_ANALYTICS_ENDPOINT"):
+        endpoint = first_config_line(resources / "OpenRelixAnalyticsEndpoint.txt")
+        if endpoint:
+            env["OPENRELIX_ANALYTICS_ENDPOINT"] = endpoint
+    if not env.get("OPENRELIX_ANALYTICS_TOKEN"):
+        token = first_config_line(resources / "OpenRelixAnalyticsToken.txt")
+        if token:
+            env["OPENRELIX_ANALYTICS_TOKEN"] = token
+
+
 def remove_macos_client_app(path):
     if path.is_symlink() or path.is_file():
         path.unlink()
@@ -5741,6 +5766,7 @@ def command_app(args):
         env = os.environ.copy()
         env.setdefault("AI_ASSET_STATE_DIR", str(PATHS.state_root))
         build_output_path = app_path if output_explicit else staged_macos_client_app_path()
+        inherit_macos_client_analytics_env(env, app_path)
         subprocess.run(
             [
                 str(BUILD_MACOS_CLIENT_SCRIPT),

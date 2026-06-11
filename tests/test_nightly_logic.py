@@ -12342,6 +12342,13 @@ Native Codex profile.
         self.assertIn("normalize_language_code()", mac_client_builder)
         self.assertIn('localized_text "已构建" "Built"', mac_client_builder)
         self.assertIn('localized_text "状态目录" "State root"', mac_client_builder)
+        self.assertIn("DEFAULT_ANALYTICS_ENDPOINT", mac_client_builder)
+        self.assertIn("OPENRELIX_ANALYTICS_DEFAULT_ENABLED", mac_client_builder)
+        self.assertIn("PACKAGED_ANALYTICS_DIR", mac_client_builder)
+        self.assertIn("inherit_existing_analytics_config", mac_client_builder)
+        self.assertIn("inherit_macos_client_analytics_env(env, app_path)", openrelix_cli)
+        self.assertIn("MAC_CLIENT_ANALYTICS_TOKEN", installer)
+        self.assertIn("install/analytics/", (ROOT / "package.json").read_text(encoding="utf-8"))
         self.assertNotIn('echo "Built $OUTPUT_PATH"', mac_client_builder)
         self.assertNotIn('echo "State root $STATE_ROOT"', mac_client_builder)
         self.assertIn("已跳过：未找到记忆索引、已有摘要或个人记忆登记册", memory_summary_builder)
@@ -12393,6 +12400,12 @@ Native Codex profile.
         zh_privacy_model = (ROOT / "docs" / "privacy-threat-model.zh-CN.md").read_text(
             encoding="utf-8"
         )
+        analytics_install_readme = (ROOT / "install" / "analytics" / "README.md").read_text(
+            encoding="utf-8"
+        )
+        publish_workflow = (ROOT / ".github" / "workflows" / "publish.yml").read_text(
+            encoding="utf-8"
+        )
 
         self.assertIn("OPENRELIX_ANALYTICS_ENDPOINT", mac_client)
         self.assertIn("OPENRELIX_ANALYTICS_ENABLED", mac_client)
@@ -12418,6 +12431,13 @@ Native Codex profile.
         self.assertIn('id="usage-events-section"', panel_builder)
         self.assertIn("--analytics-endpoint", mac_client_builder)
         self.assertIn("OpenRelixAnalyticsEndpoint.txt", mac_client_builder)
+        self.assertIn("https://openrelix-posthog-analytics.qingzhuzhifeng.workers.dev/events", mac_client_builder)
+        self.assertIn("OPENRELIX_ANALYTICS_DEFAULT_ENABLED", mac_client_builder)
+        self.assertIn("PACKAGED_ANALYTICS_DIR", mac_client_builder)
+        self.assertIn("OpenRelixAnalyticsEndpoint.txt", mac_client_builder)
+        self.assertIn("OPENRELIX_ANALYTICS_CLIENT_TOKEN", publish_workflow)
+        self.assertIn("install/analytics/OpenRelixAnalyticsToken.txt", publish_workflow)
+        self.assertIn("OPENRELIX_ANALYTICS_CLIENT_TOKEN", analytics_install_readme)
         self.assertIn("OPENRELIX_ANALYTICS_ENDPOINT", readme)
         self.assertIn("--analytics-endpoint <url>", readme)
         self.assertIn("Share Anonymous Usage", readme)

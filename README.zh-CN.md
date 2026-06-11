@@ -274,15 +274,17 @@ macOS 客户端内置了面向 panel 的隐私边界内产品埋点。配置
 和停留时长、核心控件点击、Skill/MCP 小黑屋动作结果、app 退出。payload 使用随机
 install ID 和单次启动 session ID，并包含 app 版本、粗粒度 macOS 版本；不会上报 prompt、
 memory/review 正文、窗口标题、skill/MCP 名称、entity key、文件路径、用户名、
-主机名、token、Cookie、本地报告、原始错误全文或原始 OpenRelix state。用户可在
-OpenRelix 菜单里通过 `Share Anonymous Usage Metrics`
+主机名、token、Cookie、本地报告、原始错误全文或原始 OpenRelix state。官方 app
+构建会内置 OpenRelix analytics endpoint 和客户端 ingest token，用户首次安装或更新新版后
+无需额外命令、设置即可默认上报这些匿名使用指标。用户可在 OpenRelix 菜单里通过 `Share Anonymous Usage Metrics`
 关闭，也可以用 `OPENRELIX_ANALYTICS_ENABLED=0` 或
-`OPENRELIX_ANALYTICS_DISABLED=1` 启动来关闭。endpoint 可以在构建时通过
+`OPENRELIX_ANALYTICS_DISABLED=1` 启动来关闭。自定义 endpoint 可以在构建时通过
 `scripts/build_macos_client.sh --analytics-endpoint <url>` 写入 app bundle，也可以在启动时
-用 `OPENRELIX_ANALYTICS_ENDPOINT` 覆盖。`OPENRELIX_ANALYTICS_TOKEN` 或
-`--analytics-token` 是可选项；若存在，会作为 bearer token 发给配置的 endpoint。
-嵌入客户端的 token 只能当客户端 ingest token，不能当服务端密钥；高权限 analytics key
-应保留在服务端。
+用 `OPENRELIX_ANALYTICS_ENDPOINT` 覆盖；自定义构建也可用
+`OPENRELIX_ANALYTICS_DEFAULT_ENABLED=0` 关闭 endpoint fallback。`OPENRELIX_ANALYTICS_TOKEN`
+或 `--analytics-token` 是发给配置 endpoint 的客户端 ingest token，会作为 bearer token
+随埋点请求发送。嵌入客户端的 token 只能当客户端 ingest token，不能当服务端密钥；高权限
+analytics key 应保留在服务端。
 
 以 800 DAU 的第一阶段规模，仓库里提供了 PostHog + Cloudflare Worker collector
 模板和看板配置建议：`analytics/posthog-worker/README.md`。这个 collector 只把

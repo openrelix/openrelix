@@ -31,6 +31,7 @@ test-results/
 *.jpg
 *.jpeg
 *.webp
+install/analytics/OpenRelixAnalyticsToken.txt
 !macos/OpenRelixClient/AppIcon.png
 !docs/openrelix-icon.png
 !docs/assets/

@@ -46,6 +46,7 @@
     "install/*.js",
     "install/*.py",
     "install/*.sh",
+    "install/analytics/",
     "install/templates/",
     "macos/",
     "ops/",
