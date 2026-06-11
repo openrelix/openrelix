@@ -62,6 +62,7 @@ npm pack --dry-run --json
 - 包含 `package.json`、public installer、public plugin bundle、public docs。
 - 不包含 `.github/`、`tests/fixtures/`、raw state、logs、runtime cache、generated reports、private screenshots。
 - 不包含 development-only harness skills，除非 release 决策明确改变 package surface。
+- 不包含 secret、Cookie、账号标识、私有路径、内部 URL 或专有片段。唯一允许进入正式 npm 包的 token-like 文件是 `install/analytics/OpenRelixAnalyticsToken.txt`，由官方 publish workflow 从 `OPENRELIX_ANALYTICS_CLIENT_TOKEN` 注入，作为客户端 ingest token；高权限 analytics key 仍必须保留在包外。
 
 ## GitHub Release
 
@@ -70,8 +71,9 @@ npm pack --dry-run --json
 3. 如果发布 `x.y.0` 大版本，确认上一个版本线分支，例如 `bugfix/version_0_3`，已经合回 `main`。
 4. push branch 和 tag。
 5. 使用配置好的 GitHub release workflow 或 release draft 流程。
-6. 验证 npm publish 或 trusted-publishing 输出。
-7. 在干净上下文中验证 `npx openrelix --version` 或 package metadata。
+6. 确认发布仓库已经配置 GitHub Actions secret：`OPENRELIX_ANALYTICS_CLIENT_TOKEN`，这样正式 npm 包会内置 macOS 埋点客户端 ingest token。
+7. 验证 npm publish 或 trusted-publishing 输出。
+8. 在干净上下文中验证 `npx openrelix --version` 或 package metadata。
 
 `create-release.yml` 可以从 `main` 或指定维护分支（例如 `bugfix/version_0_3`）运行。它会读取所选 ref 上的 `package.json` 并在该 ref 上创建 release tag，然后用同一个 ref 触发 `publish.yml`，因此 patch 版本可以从维护分支发布。它也会自动执行版本线规则：发布 `x.y.0` 时，如果上一个 `bugfix/version_<x>_<y>` 分支还有未合入 `main` 的提交，会阻断 release；release 创建后，会在当前 release commit 上创建或复用新的远端维护分支 `bugfix/version_<x>_<y>`。
 

@@ -62,7 +62,7 @@ Inspect `npm pack --dry-run --json` output and confirm:
 - Only intended source, docs, installer, public plugin, templates, ops, and allowed scripts are included.
 - No state root, `raw/`, `reports/`, `runtime/`, `log/`, real reviews, local registry rows, or generated panel files from a private machine are included.
 - Development-only OpenRelix harness skills remain outside `plugins/openrelix/` and the npm allowlist unless there is an explicit release decision.
-- No secrets, tokens, cookies, account identifiers, private paths, internal URLs, or proprietary snippets appear in package files.
+- No secrets, cookies, account identifiers, private paths, internal URLs, or proprietary snippets appear in package files. The only intended token-like package file is `install/analytics/OpenRelixAnalyticsToken.txt`, injected by the official publish workflow from `OPENRELIX_ANALYTICS_CLIENT_TOKEN` as a client ingest token; privileged analytics keys must remain outside the package.
 
 ## Publish Flow
 
@@ -73,8 +73,9 @@ Use the repository's configured release workflows where possible:
 3. Tag with `v<package.json version>` only after validation passes.
 4. Push the branch and tag.
 5. Use the GitHub release workflow or release draft process configured in `.github/workflows/`.
-6. Verify npm publish or trusted-publishing output.
-7. Verify a fresh `npx openrelix --version` or package metadata check in a clean context.
+6. Confirm the publishing repository has the `OPENRELIX_ANALYTICS_CLIENT_TOKEN` GitHub Actions secret so official npm packages include the macOS analytics client ingest token.
+7. Verify npm publish or trusted-publishing output.
+8. Verify a fresh `npx openrelix --version` or package metadata check in a clean context.
 
 The `create-release.yml` workflow can be run from `main` or from a selected maintenance branch such as `bugfix/version_0_3`. It reads `package.json` and creates the release tag from that selected ref, then dispatches `publish.yml` on the same ref so patch releases can publish from their maintenance branch. It also enforces the release-line rule for `x.y.0` versions: it blocks the release when the previous `bugfix/version_<x>_<y>` branch still has commits outside `main`, and after the release is created it creates or reuses the new remote branch `bugfix/version_<x>_<y>` at the release commit.
 

@@ -1,0 +1,1 @@
+https://openrelix-posthog-analytics.qingzhuzhifeng.workers.dev/events

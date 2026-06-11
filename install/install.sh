@@ -204,6 +204,22 @@ localized_text() {
   fi
 }
 
+first_config_line() {
+  local file="$1"
+  local line
+  if [[ ! -f "$file" ]]; then
+    return 0
+  fi
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    line="${line#"${line%%[![:space:]]*}"}"
+    line="${line%"${line##*[![:space:]]}"}"
+    if [[ -n "$line" && "$line" != \#* ]]; then
+      printf '%s\n' "$line"
+      return 0
+    fi
+  done < "$file"
+}
+
 INSTALL_CHILD_PID=""
 
 stop_install_child_process() {
@@ -1526,7 +1542,17 @@ if [[ "$OSTYPE" == darwin* ]] && (( INSTALL_MAC_CLIENT )); then
     printf '        %s\n' "$(localized_text "未找到 ditto；已跳过" "ditto not found; skipped")"
     step_skip
   else
-    "$REPO_ROOT/scripts/build_macos_client.sh" \
+    MAC_CLIENT_ANALYTICS_ENDPOINT="${OPENRELIX_ANALYTICS_ENDPOINT:-}"
+    MAC_CLIENT_ANALYTICS_TOKEN="${OPENRELIX_ANALYTICS_TOKEN:-}"
+    if [[ -z "$MAC_CLIENT_ANALYTICS_ENDPOINT" ]]; then
+      MAC_CLIENT_ANALYTICS_ENDPOINT="$(first_config_line "$INSTALLED_MAC_CLIENT_APP/Contents/Resources/OpenRelixAnalyticsEndpoint.txt")"
+    fi
+    if [[ -z "$MAC_CLIENT_ANALYTICS_TOKEN" ]]; then
+      MAC_CLIENT_ANALYTICS_TOKEN="$(first_config_line "$INSTALLED_MAC_CLIENT_APP/Contents/Resources/OpenRelixAnalyticsToken.txt")"
+    fi
+    OPENRELIX_ANALYTICS_ENDPOINT="$MAC_CLIENT_ANALYTICS_ENDPOINT" \
+      OPENRELIX_ANALYTICS_TOKEN="$MAC_CLIENT_ANALYTICS_TOKEN" \
+      "$REPO_ROOT/scripts/build_macos_client.sh" \
       --output "$STATE_DIR/runtime/mac-app/OpenRelix.app" \
       --state-root "$STATE_DIR"
     MAC_CLIENT_INSTALLED=1

@@ -48,6 +48,11 @@ window titles, project names, skill/MCP names, entity keys, file paths,
 usernames, hostnames, cookies, tokens, local reports, raw OpenRelix state, raw
 error messages, or generated panel content.
 
+Official OpenRelix app builds send to this Worker with a client ingest bearer
+token. The Worker also enforces the fixed schema, body-size limit, batch-size
+limit, and per-install/IP rate limiting; the PostHog project token remains only
+on the Worker.
+
 ## AI Development Guardrails
 
 When an AI or human developer adds a macOS panel module, button, filter, or

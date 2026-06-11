@@ -14,6 +14,9 @@ STATE_ROOT="${AI_ASSET_STATE_DIR:-}"
 LANGUAGE="${AI_ASSET_LANGUAGE:-en}"
 ANALYTICS_ENDPOINT="${OPENRELIX_ANALYTICS_ENDPOINT:-}"
 ANALYTICS_TOKEN="${OPENRELIX_ANALYTICS_TOKEN:-}"
+DEFAULT_ANALYTICS_ENDPOINT="${OPENRELIX_DEFAULT_ANALYTICS_ENDPOINT:-https://openrelix-posthog-analytics.qingzhuzhifeng.workers.dev/events}"
+ANALYTICS_DEFAULT_ENABLED="${OPENRELIX_ANALYTICS_DEFAULT_ENABLED:-1}"
+PACKAGED_ANALYTICS_DIR="$REPO_ROOT/install/analytics"
 OPEN_AFTER=0
 
 normalize_language_code() {
@@ -40,6 +43,66 @@ localized_text() {
     printf '%s' "$zh_text"
   else
     printf '%s' "$en_text"
+  fi
+}
+
+is_falsey_value() {
+  local raw="${1:l}"
+  case "$raw" in
+    0|false|no|off|disabled)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+first_config_line() {
+  local file="$1"
+  local line
+  if [[ ! -f "$file" ]]; then
+    return 0
+  fi
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    line="${line#"${line%%[![:space:]]*}"}"
+    line="${line%"${line##*[![:space:]]}"}"
+    if [[ -n "$line" && "$line" != \#* ]]; then
+      printf '%s\n' "$line"
+      return 0
+    fi
+  done < "$file"
+}
+
+inherit_existing_analytics_config() {
+  local existing_resources="$OUTPUT_PATH/Contents/Resources"
+  local inherited_endpoint=""
+  local inherited_token=""
+  local packaged_endpoint=""
+  local packaged_token=""
+  if [[ -z "$ANALYTICS_TOKEN" ]]; then
+    inherited_token="$(first_config_line "$existing_resources/OpenRelixAnalyticsToken.txt")"
+    if [[ -n "$inherited_token" ]]; then
+      ANALYTICS_TOKEN="$inherited_token"
+    else
+      packaged_token="$(first_config_line "$PACKAGED_ANALYTICS_DIR/OpenRelixAnalyticsToken.txt")"
+      if [[ -n "$packaged_token" ]]; then
+        ANALYTICS_TOKEN="$packaged_token"
+      fi
+    fi
+  fi
+  if [[ -z "$ANALYTICS_ENDPOINT" ]]; then
+    inherited_endpoint="$(first_config_line "$existing_resources/OpenRelixAnalyticsEndpoint.txt")"
+    if [[ -n "$inherited_endpoint" ]]; then
+      ANALYTICS_ENDPOINT="$inherited_endpoint"
+    elif [[ -n "$ANALYTICS_TOKEN" ]] && ! is_falsey_value "$ANALYTICS_DEFAULT_ENABLED"; then
+      packaged_endpoint="$(first_config_line "$PACKAGED_ANALYTICS_DIR/OpenRelixAnalyticsEndpoint.txt")"
+      if [[ -n "$packaged_endpoint" ]]; then
+        ANALYTICS_ENDPOINT="$packaged_endpoint"
+      else
+        ANALYTICS_ENDPOINT="$DEFAULT_ANALYTICS_ENDPOINT"
+      fi
+    fi
   fi
 }
 
@@ -229,6 +292,7 @@ fi
 OUTPUT_PATH="${OUTPUT_PATH:A}"
 STATE_ROOT="${STATE_ROOT:A}"
 APP_ICON_SOURCE="${APP_ICON_SOURCE:A}"
+inherit_existing_analytics_config
 CONTENTS_DIR="$OUTPUT_PATH/Contents"
 MACOS_DIR="$CONTENTS_DIR/MacOS"
 RESOURCES_DIR="$CONTENTS_DIR/Resources"

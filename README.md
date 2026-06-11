@@ -282,23 +282,26 @@ service. From a repo checkout, you can also run `./scripts/build_macos_client.sh
 --open` to build a local `dist/OpenRelix.app`.
 
 The macOS client includes privacy-bounded product analytics for the panel. When
-`OPENRELIX_ANALYTICS_ENDPOINT` is configured, anonymous usage metrics are shared
-by default so maintainers can understand daily active use, module usefulness,
-and product friction. Events cover app launch, panel load state, fixed panel
-module visibility and dwell time, core control clicks, Skill/MCP quarantine
-action outcomes, and app quit. Payloads use a random install ID and per-launch
-session ID plus app/coarse macOS version; they do not include prompts, memory or
-review text, window titles, skill/MCP names, entity keys, file paths, usernames,
+using the official app build, anonymous usage metrics are shared by default so
+maintainers can understand daily active use, module usefulness, and product
+friction. Events cover app launch, panel load state, fixed panel module
+visibility and dwell time, core control clicks, Skill/MCP quarantine action
+outcomes, and app quit. Payloads use a random install ID and per-launch session
+ID plus app/coarse macOS version; they do not include prompts, memory or review
+text, window titles, skill/MCP names, entity keys, file paths, usernames,
 hostnames, tokens, cookies, local reports, raw error messages, or raw OpenRelix
 state.
 Users can turn this off from the OpenRelix app menu with `Share Anonymous Usage
 Metrics`, or by launching with `OPENRELIX_ANALYTICS_ENABLED=0` /
-`OPENRELIX_ANALYTICS_DISABLED=1`. The endpoint can be embedded at build time
-with `scripts/build_macos_client.sh --analytics-endpoint <url>` or supplied at
-launch time with `OPENRELIX_ANALYTICS_ENDPOINT`. `OPENRELIX_ANALYTICS_TOKEN` or
-`--analytics-token` is optional and, when present, is sent as a bearer token to
-the configured endpoint. Treat embedded tokens as client-side ingestion tokens,
-not service secrets; keep privileged analytics keys server-side.
+`OPENRELIX_ANALYTICS_DISABLED=1`. Official builds include the OpenRelix
+analytics endpoint and client ingest token, so first-time installs and updates
+report by default without extra commands or settings. Custom builds can override
+the endpoint with `scripts/build_macos_client.sh --analytics-endpoint <url>` or
+launch-time `OPENRELIX_ANALYTICS_ENDPOINT`, and can disable the endpoint fallback
+with `OPENRELIX_ANALYTICS_DEFAULT_ENABLED=0`. `OPENRELIX_ANALYTICS_TOKEN` or
+`--analytics-token` is the client ingest token sent as a bearer token to the
+configured endpoint. Treat embedded tokens as client-side ingestion tokens, not
+service secrets; keep privileged analytics keys server-side.
 
 For an 800 DAU first pass, the repo includes a PostHog + Cloudflare Worker
 collector template and dashboard recipe at

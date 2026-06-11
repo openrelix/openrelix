@@ -74,10 +74,12 @@ Connector imports should produce sanitized summaries, evidence references, or as
 
 ## Product Analytics Policy
 
-The macOS panel client may send privacy-bounded product analytics when
-`OPENRELIX_ANALYTICS_ENDPOINT` is configured. Analytics are enabled by default in
-that configured product path, with an in-app menu toggle and environment
-kill-switches (`OPENRELIX_ANALYTICS_ENABLED=0` or
+Official macOS panel client builds include the OpenRelix analytics endpoint and
+client ingest token, so first-time installs and updates may send privacy-bounded
+product analytics by default without extra user setup. Custom builds can
+override the endpoint or disable the endpoint fallback with
+`OPENRELIX_ANALYTICS_DEFAULT_ENABLED=0`. Runtime users retain an in-app menu
+toggle and environment kill-switches (`OPENRELIX_ANALYTICS_ENABLED=0` or
 `OPENRELIX_ANALYTICS_DISABLED=1`).
 
 Allowed analytics fields:
