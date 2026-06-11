@@ -1,0 +1,552 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Skill/MCP 小黑屋 PRD | OpenRelix Developer Docs</title>
+  <link rel="icon" href="../../openrelix-icon.png">
+  <style>
+:root {
+  color-scheme: light;
+  --ink: #181a1f;
+  --muted: #626873;
+  --paper: #ffffff;
+  --paper-soft: #f7f8f5;
+  --line: #dedfd9;
+  --line-strong: #c9cbc4;
+  --accent: #0f766e;
+  --accent-soft: #e6f4f1;
+  --code-bg: #101827;
+  --code-fg: #f8fafc;
+  --radius: 8px;
+  --max: 1180px;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; background: var(--paper-soft); }
+body {
+  margin: 0;
+  color: var(--ink);
+  background: var(--paper-soft);
+  font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+  line-height: 1.68;
+}
+a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 3px; }
+code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 0.94em;
+}
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  border-bottom: 1px solid rgba(222, 223, 217, 0.9);
+  background: rgba(255,255,255,0.94);
+  backdrop-filter: blur(16px);
+}
+.topbar-inner {
+  width: min(var(--max), calc(100% - 32px));
+  min-height: 64px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--ink);
+  font-weight: 760;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.brand img { width: 30px; height: 30px; border-radius: 7px; }
+.topnav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.topnav::-webkit-scrollbar { display: none; }
+.topnav a,
+.lang-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--ink);
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+  background: #fff;
+}
+.topnav a:hover,
+.lang-link:hover,
+.lang-link.active {
+  border-color: #bddbd5;
+  background: var(--accent-soft);
+  color: #0f5f59;
+}
+.shell {
+  width: min(var(--max), calc(100% - 32px));
+  margin: 34px auto 72px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 260px;
+  gap: 28px;
+  align-items: start;
+}
+.article {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--paper);
+  padding: clamp(22px, 4vw, 46px);
+}
+.doc-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  align-items: center;
+  margin-bottom: 24px;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+.doc-meta code { color: var(--ink); background: #f0f1ed; padding: 2px 6px; border-radius: 5px; }
+.language-switch { display: inline-flex; flex-wrap: wrap; gap: 8px; margin-left: auto; }
+.content h1 {
+  margin: 0 0 18px;
+  font-size: clamp(2.1rem, 4vw, 3.2rem);
+  line-height: 1.08;
+  letter-spacing: 0;
+}
+.content h2 {
+  margin: 46px 0 12px;
+  padding-top: 6px;
+  font-size: clamp(1.5rem, 3vw, 2rem);
+  line-height: 1.18;
+  letter-spacing: 0;
+}
+.content h3 {
+  margin: 30px 0 8px;
+  font-size: 1.24rem;
+  line-height: 1.28;
+}
+.content h4 { margin: 24px 0 8px; font-size: 1.04rem; }
+.content p,
+.content li {
+  color: var(--muted);
+  font-size: 1.04rem;
+}
+.content p { margin: 12px 0; }
+.content ul,
+.content ol { padding-left: 1.35em; margin: 12px 0 18px; }
+.content li + li { margin-top: 6px; }
+.content blockquote {
+  margin: 20px 0;
+  padding: 14px 18px;
+  border-left: 4px solid var(--accent);
+  background: var(--accent-soft);
+  border-radius: 0 var(--radius) var(--radius) 0;
+}
+.content blockquote p { margin: 0; color: #33524d; }
+.content pre {
+  margin: 18px 0 24px;
+  padding: 18px;
+  overflow: auto;
+  border-radius: var(--radius);
+  background: var(--code-bg);
+  color: var(--code-fg);
+}
+.content pre code { color: inherit; font-size: 0.96rem; }
+.content :not(pre) > code {
+  color: #0f5f59;
+  background: #eef4f1;
+  border: 1px solid #d9e7e2;
+  padding: 1px 5px;
+  border-radius: 5px;
+}
+.content hr { border: 0; border-top: 1px solid var(--line); margin: 28px 0; }
+.table-wrap {
+  width: 100%;
+  margin: 18px 0 26px;
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 620px;
+  background: #fff;
+}
+th, td {
+  padding: 11px 13px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+th {
+  color: var(--ink);
+  background: #f3f5f0;
+  font-weight: 780;
+}
+td { color: var(--muted); }
+tr:last-child td { border-bottom: 0; }
+.toc {
+  position: sticky;
+  top: 86px;
+  max-height: calc(100vh - 112px);
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--paper);
+  padding: 18px;
+  scrollbar-width: thin;
+}
+.toc-title {
+  margin: 0 0 12px;
+  color: var(--ink);
+  font-size: 0.96rem;
+  font-weight: 800;
+}
+.toc-link {
+  display: block;
+  border-left: 3px solid transparent;
+  border-radius: 7px;
+  padding: 7px 8px 7px 10px;
+  color: var(--muted);
+  text-decoration: none;
+  font-weight: 650;
+  line-height: 1.35;
+}
+.toc-link.sub { padding-left: 24px; font-size: 0.94rem; }
+.toc-link.active,
+.toc-link:hover {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+.toc-link.active {
+  border-left-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
+  font-weight: 800;
+}
+.toc-empty { color: var(--muted); margin: 0; }
+.generated-note {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+@media (max-width: 860px) {
+  .topbar-inner { align-items: flex-start; flex-direction: column; padding: 12px 0; gap: 10px; }
+  .topnav { width: 100%; margin-left: 0; }
+  .shell { grid-template-columns: 1fr; margin-top: 18px; }
+  .toc { position: static; order: -1; }
+  .language-switch { margin-left: 0; }
+}
+</style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="../index.html">
+        <img src="../../openrelix-icon.png" alt="">
+        <span>OpenRelix</span>
+      </a>
+      <nav class="topnav" aria-label="Developer docs navigation">
+        <a href="../index.html">文档首页</a>
+        <a href="../developer-guide.html">图解指南</a>
+        <a href="developer-guide.html">开发者详细指南</a>
+      </nav>
+    </div>
+  </header>
+  <main class="shell">
+    <article class="article">
+      <div class="doc-meta">
+        <span>HTML 由 Markdown 生成</span>
+        <span>源文件 <code>docs/skill-quarantine-prd.md</code></span>
+        <span class="language-switch" aria-label="Language versions">
+          <a class="lang-link active" href="skill-quarantine-prd.html">中文</a>
+<a class="lang-link" href="skill-quarantine-prd.en.html">EN</a>
+        </span>
+      </div>
+      <div class="content">
+<h1 id="skill-mcp-prd">Skill/MCP 小黑屋 PRD</h1>
+<blockquote><p>语言版本：<a href="skill-quarantine-prd.en.html">English</a> | 简体中文</p></blockquote>
+<p>版本: 1.0 日期: 2026-06-05 状态: 已进入本地实现</p>
+<h2 id="1">1. 背景</h2>
+<p>OpenRelix 会把可复用 Skills、MCP 与资产热度展示到工作台，也会把一部分资产作为候选上下文交给 Codex/Claude。随着本机安装的 Skills/MCP 变多，长期没有使用的项目仍然可能出现在默认展示或注入候选里，带来三个问题：</p>
+<ul>
+<li>上下文噪音变高，真正高频使用的能力不够突出。</li>
+<li>面板里的 Skill/MCP 列表膨胀，用户需要手动判断哪些仍有价值。</li>
+<li>删除过于激进，用户希望先隔离，必要时再恢复。</li>
+</ul>
+<p>小黑屋功能的目标是提供一个可逆、可审计、低风险的隔离层：不删除原始能力，只让默认展示和默认注入绕开它们。</p>
+<h2 id="2">2. 目标</h2>
+<ul>
+<li>基于近 30 天使用频率识别低频 Skill/MCP。</li>
+<li>对新增不满 7 天的 Skill/MCP 归入可选隔离，不主动建议隔离。</li>
+<li>支持用户手动隔离、手动恢复使用。</li>
+<li>支持一键隔离所有建议项。</li>
+<li>隔离后默认不注入、不在默认资产热度里出现。</li>
+<li>不删除资产；可移动的全局 Skill 移入 runtime 隔离目录，可恢复；不可安全移动的项目做 state-only 隔离。</li>
+<li>MCP JSON 配置可从配置中移除并保存恢复 payload；Codex TOML MCP 可写入 <code>enabled = false</code> 并保存原始片段；未知格式做 state-only 隔离。</li>
+</ul>
+<h2 id="3">3. 非目标</h2>
+<ul>
+<li>不自动删除任何 Skill/MCP 文件。</li>
+<li>不把小黑屋状态上传到第三方服务。</li>
+<li>不修改仓库内 repo skill 的源文件位置。</li>
+<li>不承诺识别所有 host 的私有 MCP 配置格式；未知格式只做状态隔离。</li>
+</ul>
+<h2 id="4">4. 用户故事</h2>
+<h3 id="4-1">4.1 查看建议项</h3>
+<p>作为用户，我希望在 OpenRelix 工作台看到哪些 Skill/MCP 已经 30 天没有使用，从而快速判断是否需要隔离。</p>
+<p>验收标准：</p>
+<ul>
+<li>面板新增「Skill/MCP 小黑屋」区块。</li>
+<li>区块显示建议隔离、小黑屋、可选隔离、活跃数量。</li>
+<li>每一项显示类型、名称、30 天使用次数、最后使用时间、创建天数、原因。</li>
+<li>新增不满 7 天且 30 天使用为 0 的项目显示为可选隔离，而不是建议隔离。</li>
+</ul>
+<h3 id="4-2">4.2 手动隔离</h3>
+<p>作为用户，我希望对单个 Skill/MCP 点击隔离，并立即从默认候选中隐藏。</p>
+<p>验收标准：</p>
+<ul>
+<li>每个非隔离项提供「隔离」动作。</li>
+<li>隔离写入本地 runtime state。</li>
+<li>全局可移动 Skill 被移动到 runtime 小黑屋目录。</li>
+<li>repo skill、未知位置 skill 不强行移动，写 state-only 记录。</li>
+<li>Codex TOML MCP 写入 <code>enabled = false</code>，同时保存原始 TOML 片段用于恢复。</li>
+<li>操作后面板可刷新并看到隔离状态。</li>
+<li>如果搬移、配置写入或恢复失败，面板保留隔离 entry 并展示迁移提示。</li>
+</ul>
+<h3 id="4-3">4.3 一键全部隔离</h3>
+<p>作为用户，我希望一键隔离所有建议项，也可以在确认后批量隔离可选项，减少逐个操作的成本。</p>
+<p>验收标准：</p>
+<ul>
+<li>面板提供「一键隔离建议项」和「一键隔离可选项」按钮。</li>
+<li>建议项批量只处理 status 为 suggested 的项目；可选隔离批量只处理 status 为 grace 的项目。</li>
+<li>可选隔离批量需要独立确认，表示用户主动覆盖 7 天保护期。</li>
+<li>API 返回本次隔离数量和明细。</li>
+<li>操作失败时不影响已经成功隔离的项目。</li>
+</ul>
+<h3 id="4-4">4.4 手动恢复使用</h3>
+<p>作为用户，我希望从小黑屋恢复某个项目。</p>
+<p>验收标准：</p>
+<ul>
+<li>已隔离项提供「恢复使用」动作。</li>
+<li>被移动的 Skill 恢复到原路径。</li>
+<li>被隔离的 JSON MCP 配置恢复原 server payload。</li>
+<li>被禁用的 TOML MCP 恢复隔离前保存的原始配置片段。</li>
+<li>恢复冲突时保留小黑屋 entry，并显示失败状态，不覆盖用户现有文件。</li>
+</ul>
+<h2 id="5">5. 产品形态</h2>
+<h3 id="5-1">5.1 工作台区块</h3>
+<p>入口位于左侧导航「资产层」附近，名称为「小黑屋」。区块包含：</p>
+<ul>
+<li>顶部指标：建议隔离、小黑屋、可选隔离、活跃。</li>
+<li>操作区：一键隔离建议项。</li>
+<li>列表：按状态展示 Skill/MCP。</li>
+<li>单项动作：隔离、恢复使用。</li>
+</ul>
+<h3 id="5-2-cli">5.2 CLI</h3>
+<p>命令：</p>
+<pre><code class="language-bash">openrelix skill-quarantine list
+openrelix skill-quarantine suggest
+openrelix skill-quarantine blocked
+openrelix skill-quarantine block skill:&lt;id&gt;
+openrelix skill-quarantine unblock mcp:&lt;id&gt;
+openrelix skill-quarantine block-all
+openrelix skill-quarantine block-grace-all</code></pre>
+<p>所有命令支持 <code>--json</code> 供面板和自动化消费。</p>
+<h2 id="6">6. 规则</h2>
+<h3 id="6-1">6.1 建议规则</h3>
+<ul>
+<li>lookback: 30 天。</li>
+<li>grace: 7 天。</li>
+<li>Skill 使用次数来自 OpenRelix asset discovery/activation snapshot。</li>
+<li>MCP 使用次数来自 MCP usage view。</li>
+<li><code>usage_30d &gt; 0</code>: active。</li>
+<li><code>usage_30d == 0</code> 且 <code>age_days &lt; 7</code>: grace。</li>
+<li><code>usage_30d == 0</code> 且不在 grace: suggested。</li>
+<li>已在 state entries 中的项目: quarantined。</li>
+</ul>
+<h3 id="6-2">6.2 隔离规则</h3>
+<p>Skill：</p>
+<ul>
+<li>全局用户 skill 位于已知安全根目录时，移动到 <code>{runtime_dir}/skill-mcp-quarantine/skills/</code>。</li>
+<li>repo 内 skill 不移动，只写 state-only，避免改仓库结构。</li>
+<li>未知路径不移动，只写 state-only。</li>
+</ul>
+<p>MCP：</p>
+<ul>
+<li>JSON 配置中的 server entry 可移除，并保存 <code>saved_config</code> 用于恢复。</li>
+<li>Codex TOML MCP 配置可写入 <code>enabled = false</code>，并保存 <code>saved_config_text</code> 用于恢复。</li>
+<li>未知配置格式只写 state-only，不自动改写。</li>
+<li>发现逻辑不展示 command args/env 等敏感配置内容；恢复 payload 仅保存在本地 runtime state。</li>
+</ul>
+<h3 id="6-3">6.3 硬化规则</h3>
+<ul>
+<li>面板、CLI 的隔离/恢复使用动作共享本地 runtime lock，避免同时搬目录或同时写配置。</li>
+<li>修改 JSON/TOML MCP 配置前先写完整备份到 runtime 隔离目录。</li>
+<li>每个隔离 target 记录迁移结果；<code>move_failed</code>、<code>config_failed</code>、<code>toml_failed</code>、<code>restore_conflict</code> 等状态会汇总为 <code>migration_warnings</code>。</li>
+<li>面板在小黑屋展示迁移提示，单次点击也会即时显示提示数量。</li>
+</ul>
+<h3 id="6-4">6.4 过滤规则</h3>
+<ul>
+<li>asset rows 在默认展示前过滤已隔离 Skill。</li>
+<li>MCP usage view 在默认展示/注入候选前过滤已隔离 server。</li>
+<li>小黑屋区块仍显示已隔离项，供用户恢复使用。</li>
+</ul>
+<h2 id="7">7. 数据模型</h2>
+<p>状态文件：</p>
+<pre><code class="language-text">{runtime_dir}/skill-mcp-quarantine.json</code></pre>
+<p>示例：</p>
+<pre><code class="language-json">{
+  &quot;schema_version&quot;: 1,
+  &quot;updated_at&quot;: &quot;2026-06-05T12:00:00+08:00&quot;,
+  &quot;entries&quot;: {
+    &quot;skill:unused-skill&quot;: {
+      &quot;entity_key&quot;: &quot;skill:unused-skill&quot;,
+      &quot;entity_type&quot;: &quot;skill&quot;,
+      &quot;identifier&quot;: &quot;unused-skill&quot;,
+      &quot;display_name&quot;: &quot;unused-skill&quot;,
+      &quot;reason&quot;: &quot;unused_30d&quot;,
+      &quot;blocked_by&quot;: &quot;system&quot;,
+      &quot;blocked_at&quot;: &quot;2026-06-05T12:00:00+08:00&quot;,
+      &quot;usage_30d&quot;: 0,
+      &quot;isolation_status&quot;: &quot;moved&quot;,
+      &quot;migration_warning_count&quot;: 0,
+      &quot;migration_warnings&quot;: [],
+      &quot;isolation_targets&quot;: [
+        {
+          &quot;type&quot;: &quot;skill&quot;,
+          &quot;status&quot;: &quot;moved&quot;,
+          &quot;original_path&quot;: &quot;/path/to/skill&quot;,
+          &quot;quarantine_path&quot;: &quot;/runtime/skill-mcp-quarantine/skills/skill-unused&quot;
+        }
+      ]
+    }
+  }
+}</code></pre>
+<h2 id="8-api">8. API</h2>
+<p>本地 token server 新增：</p>
+<pre><code class="language-http">POST /skill-quarantine</code></pre>
+<p>请求：</p>
+<pre><code class="language-json">{
+  &quot;action&quot;: &quot;block|unblock|block-all|block-grace-all&quot;,
+  &quot;entity_key&quot;: &quot;skill:unused-skill&quot;
+}</code></pre>
+<p>响应：</p>
+<pre><code class="language-json">{
+  &quot;ok&quot;: true,
+  &quot;action&quot;: &quot;block&quot;,
+  &quot;entry&quot;: {},
+  &quot;migration_warning_count&quot;: 0,
+  &quot;refresh_started_now&quot;: true
+}</code></pre>
+<p>接口仅监听本机服务，并沿用 OpenRelix 本地面板的 token/本地访问边界。</p>
+<h2 id="9">9. 隐私与安全</h2>
+<ul>
+<li>小黑屋状态只写本地 runtime。</li>
+<li>面板展示 MCP server 名称，不展示 command args/env。</li>
+<li>JSON MCP 恢复 payload 仅用于本地恢复，不上传。</li>
+<li>JSON/TOML MCP 配置备份仅写入本地 runtime 隔离目录。</li>
+<li>repo skill 不自动移动，避免破坏项目 checkout。</li>
+<li>恢复时遇到路径冲突不覆盖现有内容。</li>
+</ul>
+<h2 id="10">10. 验证计划</h2>
+<ul>
+<li>单元测试：Skill 移动隔离与恢复。</li>
+<li>单元测试：JSON MCP 配置隔离与恢复。</li>
+<li>单元测试：TOML MCP 禁用、备份与恢复。</li>
+<li>单元测试：迁移失败与恢复冲突会记录迁移提示。</li>
+<li>单元测试：已隔离 Skill/MCP 从默认视图过滤。</li>
+<li>单元测试：本地 action 属性脱敏恢复性能修复不破坏按钮 payload。</li>
+<li>手工验证：<code>openrelix skill-quarantine list --json</code> 能返回建议/隔离状态。</li>
+<li>手工验证：刷新工作台后出现「小黑屋」导航和区块。</li>
+<li>性能验证：真实 100MB 级 overview-data 下，面板生成不再卡在超大 HTML 占位符逐个恢复。</li>
+</ul>
+      </div>
+    </article>
+    <aside class="toc" aria-label="Table of contents">
+      <p class="toc-title">本文导览</p>
+      <a class="toc-link" href="#1">1. 背景</a>
+<a class="toc-link" href="#2">2. 目标</a>
+<a class="toc-link" href="#3">3. 非目标</a>
+<a class="toc-link" href="#4">4. 用户故事</a>
+<a class="toc-link sub" href="#4-1">4.1 查看建议项</a>
+<a class="toc-link sub" href="#4-2">4.2 手动隔离</a>
+<a class="toc-link sub" href="#4-3">4.3 一键全部隔离</a>
+<a class="toc-link sub" href="#4-4">4.4 手动恢复使用</a>
+<a class="toc-link" href="#5">5. 产品形态</a>
+<a class="toc-link sub" href="#5-1">5.1 工作台区块</a>
+<a class="toc-link sub" href="#5-2-cli">5.2 CLI</a>
+<a class="toc-link" href="#6">6. 规则</a>
+<a class="toc-link sub" href="#6-1">6.1 建议规则</a>
+<a class="toc-link sub" href="#6-2">6.2 隔离规则</a>
+<a class="toc-link sub" href="#6-3">6.3 硬化规则</a>
+<a class="toc-link sub" href="#6-4">6.4 过滤规则</a>
+<a class="toc-link" href="#7">7. 数据模型</a>
+<a class="toc-link" href="#8-api">8. API</a>
+<a class="toc-link" href="#9">9. 隐私与安全</a>
+<a class="toc-link" href="#10">10. 验证计划</a>
+      <p class="generated-note">更新源 Markdown 后运行：<br><code>python3 scripts/build_local_docs.py</code><br>持续自动同步：<br><code>python3 scripts/build_local_docs.py --watch</code></p>
+    </aside>
+  </main>
+  <script>
+    (() => {
+      const toc = document.querySelector(".toc");
+      const links = Array.from(document.querySelectorAll(".toc-link"));
+      const headings = links
+        .map((link) => document.getElementById(decodeURIComponent(link.hash.slice(1))))
+        .filter(Boolean);
+      if (!links.length || !headings.length) return;
+      let lastActiveId = "";
+      const applyActive = (activeId) => {
+        let activeLink = null;
+        links.forEach((link) => {
+          const isActive = link.hash === "#" + activeId;
+          link.classList.toggle("active", isActive);
+          link.setAttribute("aria-current", isActive ? "true" : "false");
+          if (isActive) activeLink = link;
+        });
+        if (activeLink && toc && activeId !== lastActiveId) {
+          activeLink.scrollIntoView({ block: "nearest", inline: "nearest" });
+          lastActiveId = activeId;
+        }
+      };
+      const getScrollActiveId = () => {
+        const marker = Math.min(window.innerHeight * 0.42, 260);
+        let activeId = headings[0].id;
+        for (const heading of headings) {
+          if (heading.getBoundingClientRect().top <= marker) activeId = heading.id;
+          else break;
+        }
+        return activeId;
+      };
+      const setActive = () => applyActive(getScrollActiveId());
+      const setHashActive = () => {
+        const hashId = decodeURIComponent(window.location.hash.slice(1));
+        if (hashId && headings.some((heading) => heading.id === hashId)) {
+          applyActive(hashId);
+        }
+        requestAnimationFrame(setActive);
+        window.setTimeout(setActive, 160);
+        window.setTimeout(setActive, 520);
+      };
+      window.addEventListener("scroll", setActive, { passive: true });
+      window.addEventListener("resize", setActive);
+      window.addEventListener("hashchange", setHashActive);
+      setHashActive();
+    })();
+  </script>
+</body>
+</html>

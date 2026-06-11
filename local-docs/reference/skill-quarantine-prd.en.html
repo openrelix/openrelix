@@ -1,0 +1,497 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Skill/MCP Quarantine PRD | OpenRelix Local Docs</title>
+  <link rel="icon" href="../../docs/openrelix-icon.png">
+  <style>
+:root {
+  color-scheme: light;
+  --ink: #181a1f;
+  --muted: #626873;
+  --paper: #ffffff;
+  --paper-soft: #f7f8f5;
+  --line: #dedfd9;
+  --line-strong: #c9cbc4;
+  --accent: #0f766e;
+  --accent-soft: #e6f4f1;
+  --code-bg: #101827;
+  --code-fg: #f8fafc;
+  --radius: 8px;
+  --max: 1180px;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; background: var(--paper-soft); }
+body {
+  margin: 0;
+  color: var(--ink);
+  background: var(--paper-soft);
+  font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+  line-height: 1.68;
+}
+a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 3px; }
+code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 0.94em;
+}
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  border-bottom: 1px solid rgba(222, 223, 217, 0.9);
+  background: rgba(255,255,255,0.94);
+  backdrop-filter: blur(16px);
+}
+.topbar-inner {
+  width: min(var(--max), calc(100% - 32px));
+  min-height: 64px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--ink);
+  font-weight: 760;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.brand img { width: 30px; height: 30px; border-radius: 7px; }
+.topnav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.topnav::-webkit-scrollbar { display: none; }
+.topnav a,
+.lang-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--ink);
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+  background: #fff;
+}
+.topnav a:hover,
+.lang-link:hover,
+.lang-link.active {
+  border-color: #bddbd5;
+  background: var(--accent-soft);
+  color: #0f5f59;
+}
+.shell {
+  width: min(var(--max), calc(100% - 32px));
+  margin: 34px auto 72px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 260px;
+  gap: 28px;
+  align-items: start;
+}
+.article {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--paper);
+  padding: clamp(22px, 4vw, 46px);
+}
+.doc-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  align-items: center;
+  margin-bottom: 24px;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+.doc-meta code { color: var(--ink); background: #f0f1ed; padding: 2px 6px; border-radius: 5px; }
+.language-switch { display: inline-flex; flex-wrap: wrap; gap: 8px; margin-left: auto; }
+.content h1 {
+  margin: 0 0 18px;
+  font-size: clamp(2.1rem, 4vw, 3.2rem);
+  line-height: 1.08;
+  letter-spacing: 0;
+}
+.content h2 {
+  margin: 46px 0 12px;
+  padding-top: 6px;
+  font-size: clamp(1.5rem, 3vw, 2rem);
+  line-height: 1.18;
+  letter-spacing: 0;
+}
+.content h3 {
+  margin: 30px 0 8px;
+  font-size: 1.24rem;
+  line-height: 1.28;
+}
+.content h4 { margin: 24px 0 8px; font-size: 1.04rem; }
+.content p,
+.content li {
+  color: var(--muted);
+  font-size: 1.04rem;
+}
+.content p { margin: 12px 0; }
+.content ul,
+.content ol { padding-left: 1.35em; margin: 12px 0 18px; }
+.content li + li { margin-top: 6px; }
+.content blockquote {
+  margin: 20px 0;
+  padding: 14px 18px;
+  border-left: 4px solid var(--accent);
+  background: var(--accent-soft);
+  border-radius: 0 var(--radius) var(--radius) 0;
+}
+.content blockquote p { margin: 0; color: #33524d; }
+.content pre {
+  margin: 18px 0 24px;
+  padding: 18px;
+  overflow: auto;
+  border-radius: var(--radius);
+  background: var(--code-bg);
+  color: var(--code-fg);
+}
+.content pre code { color: inherit; font-size: 0.96rem; }
+.content :not(pre) > code {
+  color: #0f5f59;
+  background: #eef4f1;
+  border: 1px solid #d9e7e2;
+  padding: 1px 5px;
+  border-radius: 5px;
+}
+.content hr { border: 0; border-top: 1px solid var(--line); margin: 28px 0; }
+.table-wrap {
+  width: 100%;
+  margin: 18px 0 26px;
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 620px;
+  background: #fff;
+}
+th, td {
+  padding: 11px 13px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+th {
+  color: var(--ink);
+  background: #f3f5f0;
+  font-weight: 780;
+}
+td { color: var(--muted); }
+tr:last-child td { border-bottom: 0; }
+.toc {
+  position: sticky;
+  top: 86px;
+  max-height: calc(100vh - 112px);
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--paper);
+  padding: 18px;
+  scrollbar-width: thin;
+}
+.toc-title {
+  margin: 0 0 12px;
+  color: var(--ink);
+  font-size: 0.96rem;
+  font-weight: 800;
+}
+.toc-link {
+  display: block;
+  border-left: 3px solid transparent;
+  border-radius: 7px;
+  padding: 7px 8px 7px 10px;
+  color: var(--muted);
+  text-decoration: none;
+  font-weight: 650;
+  line-height: 1.35;
+}
+.toc-link.sub { padding-left: 24px; font-size: 0.94rem; }
+.toc-link.active,
+.toc-link:hover {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+.toc-link.active {
+  border-left-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
+  font-weight: 800;
+}
+.toc-empty { color: var(--muted); margin: 0; }
+.generated-note {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+@media (max-width: 860px) {
+  .topbar-inner { align-items: flex-start; flex-direction: column; padding: 12px 0; gap: 10px; }
+  .topnav { width: 100%; margin-left: 0; }
+  .shell { grid-template-columns: 1fr; margin-top: 18px; }
+  .toc { position: static; order: -1; }
+  .language-switch { margin-left: 0; }
+}
+</style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="../index.html">
+        <img src="../../docs/openrelix-icon.png" alt="">
+        <span>OpenRelix</span>
+      </a>
+      <nav class="topnav" aria-label="Local docs navigation">
+        <a href="../index.html">Docs home</a>
+        <a href="../developer-guide.html">Visual guide</a>
+        <a href="developer-guide.html">Detailed guide</a>
+      </nav>
+    </div>
+  </header>
+  <main class="shell">
+    <article class="article">
+      <div class="doc-meta">
+        <span>Generated from Markdown</span>
+        <span>Source <code>docs/skill-quarantine-prd.en.md</code></span>
+        <span class="language-switch" aria-label="Language versions">
+          <a class="lang-link" href="skill-quarantine-prd.html">中文</a>
+<a class="lang-link active" href="skill-quarantine-prd.en.html">EN</a>
+        </span>
+      </div>
+      <div class="content">
+<h1 id="skill-mcp-quarantine-prd">Skill/MCP Quarantine PRD</h1>
+<blockquote><p>Languages: English | <a href="skill-quarantine-prd.html">简体中文</a></p></blockquote>
+<p>Version: 1.0 Date: 2026-06-05 Status: Implemented locally</p>
+<h2 id="1-background">1. Background</h2>
+<p>OpenRelix discovers local Skills, MCP servers, and reusable assets, then surfaces them in the workbench and in host-context candidates for Codex/Claude. As the local installation grows, unused Skills/MCP servers can still appear in default views or injection candidates.</p>
+<p>The Quarantine feature adds a reversible quarantine layer. It does not delete assets. It makes inactive Skills/MCP servers opt-out by default, while keeping a clear path to restore them.</p>
+<h2 id="2-goals">2. Goals</h2>
+<ul>
+<li>Identify low-usage Skills/MCP servers from the last 30 days.</li>
+<li>Put newly added Skills/MCP servers into a 7-day optional isolation period.</li>
+<li>Support manual quarantine and restore.</li>
+<li>Support one-click quarantine for all suggested items.</li>
+<li>Hide quarantined items from default asset/MCP views and default injection candidates.</li>
+<li>Preserve source assets and local restore data.</li>
+<li>Move safe global Skills into a runtime quarantine directory; use state-only quarantine when mutation is unsafe.</li>
+<li>Isolate JSON MCP config entries with saved local restore payloads.</li>
+<li>Disable Codex TOML MCP servers with <code>enabled = false</code>, preserving the original TOML section for restore.</li>
+<li>Use state-only quarantine for unknown formats.</li>
+</ul>
+<h2 id="3-non-goals">3. Non-Goals</h2>
+<ul>
+<li>Do not delete Skill/MCP files.</li>
+<li>Do not upload quarantine state to third-party services.</li>
+<li>Do not move repository-owned Skills.</li>
+<li>Do not auto-edit unknown MCP config formats.</li>
+</ul>
+<h2 id="4-user-stories">4. User Stories</h2>
+<h3 id="4-1-suggested-items">4.1 Suggested Items</h3>
+<p>Users can open the OpenRelix workbench and see which Skills/MCP servers have not been used in the last 30 days.</p>
+<p>Acceptance criteria:</p>
+<ul>
+<li>A new Skill/MCP Quarantine section appears in the workbench.</li>
+<li>The section shows suggested, quarantined, optional-isolation, and active counts.</li>
+<li>Each row shows type, name, 30-day usage, last-used time, added/configured time, and reason.</li>
+<li>Newly added unused items younger than 7 days are marked as optional isolation instead of suggested.</li>
+</ul>
+<h3 id="4-2-manual-quarantine">4.2 Manual Quarantine</h3>
+<p>Users can quarantine a single Skill/MCP server and hide it from default candidates.</p>
+<p>Acceptance criteria:</p>
+<ul>
+<li>Every non-quarantined item has a quarantine action.</li>
+<li>Quarantining writes local runtime state.</li>
+<li>Movable global Skills are moved into the runtime quarantine directory.</li>
+<li>Repository Skills and unknown paths use state-only quarantine.</li>
+<li>Codex TOML MCP servers are disabled with <code>enabled = false</code> and keep their original section for restore.</li>
+<li>The workbench can refresh and show the updated state.</li>
+<li>Migration, config-write, and restore failures remain visible as migration notices.</li>
+</ul>
+<h3 id="4-3-one-click-quarantine">4.3 One-Click Quarantine</h3>
+<p>Users can quarantine all suggested items in one action, and can explicitly quarantine all optional items after confirmation.</p>
+<p>Acceptance criteria:</p>
+<ul>
+<li>The workbench exposes separate bulk actions for suggested items and optional items.</li>
+<li>The suggested bulk action only processes <code>suggested</code> items; the optional bulk action only processes <code>grace</code> items.</li>
+<li>The optional bulk action requires a separate confirmation because it overrides the 7-day protection period.</li>
+<li>The API returns quarantined count and item details.</li>
+<li>Partial failures do not undo successful quarantines.</li>
+</ul>
+<h3 id="4-4-unblock">4.4 Unblock</h3>
+<p>Users can restore a quarantined item.</p>
+<p>Acceptance criteria:</p>
+<ul>
+<li>Quarantined rows expose an unblock action.</li>
+<li>Moved Skills are restored to their original path.</li>
+<li>Isolated JSON MCP config entries are restored with their saved payload.</li>
+<li>Disabled TOML MCP config sections are restored from their saved original text.</li>
+<li>Restore conflicts keep the entry quarantined and do not overwrite user files.</li>
+</ul>
+<h2 id="5-product-surface">5. Product Surface</h2>
+<p>The workbench section includes:</p>
+<ul>
+<li>Top metrics: suggested, quarantined, optional, active.</li>
+<li>Bulk actions: quarantine all suggested items, or quarantine all optional items after confirmation.</li>
+<li>Item list grouped by status.</li>
+<li>Per-item actions: block and unblock.</li>
+</ul>
+<p>CLI:</p>
+<pre><code class="language-bash">openrelix skill-quarantine list
+openrelix skill-quarantine suggest
+openrelix skill-quarantine blocked
+openrelix skill-quarantine block skill:&lt;id&gt;
+openrelix skill-quarantine unblock mcp:&lt;id&gt;
+openrelix skill-quarantine block-all
+openrelix skill-quarantine block-grace-all</code></pre>
+<p>All commands support <code>--json</code>.</p>
+<h2 id="6-rules">6. Rules</h2>
+<ul>
+<li>Lookback window: 30 days.</li>
+<li>Optional isolation period: 7 days.</li>
+<li><code>usage_30d &gt; 0</code>: active.</li>
+<li><code>usage_30d == 0</code> and <code>age_days &lt; 7</code>: grace.</li>
+<li><code>usage_30d == 0</code> outside grace: suggested.</li>
+<li>Entries in runtime state: quarantined.</li>
+</ul>
+<p>Isolation:</p>
+<ul>
+<li>Safe global Skills are moved to <code>{runtime_dir}/skill-mcp-quarantine/skills/</code>.</li>
+<li>Repository Skills and unknown paths use state-only quarantine.</li>
+<li>JSON MCP server entries are removed from config and saved locally for restore.</li>
+<li>Codex TOML MCP servers are disabled with <code>enabled = false</code> and saved locally for restore.</li>
+<li>Unknown MCP formats use state-only quarantine.</li>
+</ul>
+<p>Hardening:</p>
+<ul>
+<li>Workbench and CLI mutations share a local runtime lock so concurrent clicks/commands do not move or write the same target at once.</li>
+<li>JSON/TOML MCP config files are backed up before mutation.</li>
+<li>Each isolation target records migration status; failures such as <code>move_failed</code>, <code>config_failed</code>, <code>toml_failed</code>, and <code>restore_conflict</code> are summarized as <code>migration_warnings</code>.</li>
+<li>The workbench shows persisted migration notices and immediate warning counts after an action.</li>
+</ul>
+<p>Filtering:</p>
+<ul>
+<li>Quarantined Skills are filtered from default asset rows.</li>
+<li>Quarantined MCP servers are filtered from MCP usage/default injection candidates.</li>
+<li>The Quarantine section still lists quarantined rows for restore.</li>
+</ul>
+<h2 id="7-data-model">7. Data Model</h2>
+<p>State file:</p>
+<pre><code class="language-text">{runtime_dir}/skill-mcp-quarantine.json</code></pre>
+<p>The state contains <code>schema_version</code>, <code>updated_at</code>, and an <code>entries</code> map keyed by <code>skill:&lt;id&gt;</code> or <code>mcp:&lt;id&gt;</code>. Entries also include <code>isolation_targets</code>, <code>migration_warnings</code>, and <code>migration_warning_count</code> so failed migrations can be shown without deleting or overwriting user files.</p>
+<h2 id="8-local-api">8. Local API</h2>
+<pre><code class="language-http">POST /skill-quarantine</code></pre>
+<p>Request:</p>
+<pre><code class="language-json">{
+  &quot;action&quot;: &quot;block|unblock|block-all|block-grace-all&quot;,
+  &quot;entity_key&quot;: &quot;skill:unused-skill&quot;
+}</code></pre>
+<p>The endpoint is local-only and follows the existing OpenRelix workbench token boundary. Responses include <code>migration_warning_count</code> and start a lightweight asset-layer refresh.</p>
+<h2 id="9-privacy-and-safety">9. Privacy and Safety</h2>
+<ul>
+<li>State stays local under runtime storage.</li>
+<li>The UI shows MCP server names, not command args or env.</li>
+<li>Saved JSON MCP payloads are local restore data only.</li>
+<li>JSON/TOML MCP config backups stay under the local runtime quarantine directory.</li>
+<li>Repository Skills are not moved.</li>
+<li>Restore never overwrites an existing path or MCP server entry.</li>
+</ul>
+<h2 id="10-verification">10. Verification</h2>
+<ul>
+<li>Unit test Skill move quarantine and restore.</li>
+<li>Unit test JSON MCP config isolation and restore.</li>
+<li>Unit test TOML MCP disable, backup, and restore.</li>
+<li>Unit test migration failure and restore conflict warnings.</li>
+<li>Unit test default view filtering for quarantined Skills/MCP servers.</li>
+<li>Unit test redaction placeholder restoration for local action attributes.</li>
+<li>Manual test <code>openrelix skill-quarantine list --json</code>.</li>
+<li>Manual test the workbench section and navigation.</li>
+<li>Performance test on a 100MB-class <code>overview-data.json</code>.</li>
+</ul>
+      </div>
+    </article>
+    <aside class="toc" aria-label="Table of contents">
+      <p class="toc-title">On this page</p>
+      <a class="toc-link" href="#1-background">1. Background</a>
+<a class="toc-link" href="#2-goals">2. Goals</a>
+<a class="toc-link" href="#3-non-goals">3. Non-Goals</a>
+<a class="toc-link" href="#4-user-stories">4. User Stories</a>
+<a class="toc-link sub" href="#4-1-suggested-items">4.1 Suggested Items</a>
+<a class="toc-link sub" href="#4-2-manual-quarantine">4.2 Manual Quarantine</a>
+<a class="toc-link sub" href="#4-3-one-click-quarantine">4.3 One-Click Quarantine</a>
+<a class="toc-link sub" href="#4-4-unblock">4.4 Unblock</a>
+<a class="toc-link" href="#5-product-surface">5. Product Surface</a>
+<a class="toc-link" href="#6-rules">6. Rules</a>
+<a class="toc-link" href="#7-data-model">7. Data Model</a>
+<a class="toc-link" href="#8-local-api">8. Local API</a>
+<a class="toc-link" href="#9-privacy-and-safety">9. Privacy and Safety</a>
+<a class="toc-link" href="#10-verification">10. Verification</a>
+      <p class="generated-note">After editing Markdown:<br><code>python3 scripts/build_local_docs.py</code><br>Auto-sync while editing:<br><code>python3 scripts/build_local_docs.py --watch</code></p>
+    </aside>
+  </main>
+  <script>
+    (() => {
+      const toc = document.querySelector(".toc");
+      const links = Array.from(document.querySelectorAll(".toc-link"));
+      const headings = links
+        .map((link) => document.getElementById(decodeURIComponent(link.hash.slice(1))))
+        .filter(Boolean);
+      if (!links.length || !headings.length) return;
+      let lastActiveId = "";
+      const applyActive = (activeId) => {
+        let activeLink = null;
+        links.forEach((link) => {
+          const isActive = link.hash === "#" + activeId;
+          link.classList.toggle("active", isActive);
+          link.setAttribute("aria-current", isActive ? "true" : "false");
+          if (isActive) activeLink = link;
+        });
+        if (activeLink && toc && activeId !== lastActiveId) {
+          activeLink.scrollIntoView({ block: "nearest", inline: "nearest" });
+          lastActiveId = activeId;
+        }
+      };
+      const getScrollActiveId = () => {
+        const marker = Math.min(window.innerHeight * 0.42, 260);
+        let activeId = headings[0].id;
+        for (const heading of headings) {
+          if (heading.getBoundingClientRect().top <= marker) activeId = heading.id;
+          else break;
+        }
+        return activeId;
+      };
+      const setActive = () => applyActive(getScrollActiveId());
+      const setHashActive = () => {
+        const hashId = decodeURIComponent(window.location.hash.slice(1));
+        if (hashId && headings.some((heading) => heading.id === hashId)) {
+          applyActive(hashId);
+        }
+        requestAnimationFrame(setActive);
+        window.setTimeout(setActive, 160);
+        window.setTimeout(setActive, 520);
+      };
+      window.addEventListener("scroll", setActive, { passive: true });
+      window.addEventListener("resize", setActive);
+      window.addEventListener("hashchange", setHashActive);
+      setHashActive();
+    })();
+  </script>
+</body>
+</html>

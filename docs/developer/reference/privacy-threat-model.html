@@ -316,6 +316,18 @@ External connectors
 <li>Document how failures behave when auth expires or a scope is missing.</li>
 </ol>
 <p>Connector imports should produce sanitized summaries, evidence references, or asset candidates. They should not turn OpenRelix into a raw cloud mirror.</p>
+<h2 id="product-analytics-policy">Product Analytics Policy</h2>
+<p>The macOS panel client may send privacy-bounded product analytics when <code>OPENRELIX_ANALYTICS_ENDPOINT</code> is configured. Analytics are enabled by default in that configured product path, with an in-app menu toggle and environment kill-switches (<code>OPENRELIX_ANALYTICS_ENABLED=0</code> or <code>OPENRELIX_ANALYTICS_DISABLED=1</code>).</p>
+<p>Allowed analytics fields:</p>
+<ul>
+<li>Random install ID and per-launch session ID.</li>
+<li>App version and coarse macOS version.</li>
+<li>Fixed event names: app launch, app quit, panel load state, panel ready, module visible/hidden, core control click, and Skill/MCP quarantine action outcomes.</li>
+<li>Fixed module/control IDs from a whitelist.</li>
+<li>Dwell duration in milliseconds and panel language (<code>zh</code> or <code>en</code>).</li>
+<li>Skill/MCP quarantine action/result/bucket enum values plus bounded aggregate counts for affected items, failures, and migration notices.</li>
+</ul>
+<p>Analytics must not include prompts, model responses, memory/review text, window titles, project names, skill/MCP names, entity keys, file paths, usernames, hostnames, tokens, cookies, connector content, local reports, raw state files, raw error messages, or generated panel content. The client should drop unrecognized event/property keys before sending and should not persist failed analytics payloads to disk. Any token embedded in the macOS app must be treated as a client-side ingestion token, not a service secret; privileged analytics credentials belong behind the collection endpoint.</p>
 <h2 id="host-context-policy">Host Context Policy</h2>
 <p>OpenRelix may write bounded summaries into enabled host-native contexts, but only through managed blocks.</p>
 <p>Allowed:</p>
@@ -389,6 +401,7 @@ npm pack --dry-run --json</code></pre>
 <a class="toc-link" href="#trust-boundaries">Trust Boundaries</a>
 <a class="toc-link" href="#threats-and-required-mitigations">Threats And Required Mitigations</a>
 <a class="toc-link" href="#connector-policy">Connector Policy</a>
+<a class="toc-link" href="#product-analytics-policy">Product Analytics Policy</a>
 <a class="toc-link" href="#host-context-policy">Host Context Policy</a>
 <a class="toc-link" href="#public-repo-and-package-policy">Public Repo And Package Policy</a>
 <a class="toc-link" href="#review-gates">Review Gates</a>

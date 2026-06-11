@@ -182,6 +182,6 @@ jobs:
               owner: context.repo.owner,
               repo: context.repo.repo,
               workflow_id: "publish.yml",
-              ref: "main",
+              ref: "${{ github.ref_name }}",
             });
-            core.notice("Dispatched Publish npm workflow.");
+            core.notice("Dispatched Publish npm workflow on ${{ github.ref_name }}.");

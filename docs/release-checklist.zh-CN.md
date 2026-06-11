@@ -73,7 +73,7 @@ npm pack --dry-run --json
 6. 验证 npm publish 或 trusted-publishing 输出。
 7. 在干净上下文中验证 `npx openrelix --version` 或 package metadata。
 
-`create-release.yml` 会自动执行这条版本线规则：发布 `x.y.0` 时，如果上一个 `bugfix/version_<x>_<y>` 分支还有未合入 `main` 的提交，会阻断 release；release 创建后，会在当前 release commit 上创建或复用新的远端维护分支 `bugfix/version_<x>_<y>`。
+`create-release.yml` 可以从 `main` 或指定维护分支（例如 `bugfix/version_0_3`）运行。它会读取所选 ref 上的 `package.json` 并在该 ref 上创建 release tag，然后用同一个 ref 触发 `publish.yml`，因此 patch 版本可以从维护分支发布。它也会自动执行版本线规则：发布 `x.y.0` 时，如果上一个 `bugfix/version_<x>_<y>` 分支还有未合入 `main` 的提交，会阻断 release；release 创建后，会在当前 release commit 上创建或复用新的远端维护分支 `bugfix/version_<x>_<y>`。
 
 提交进入远端 `bugfix/version_*` 分支后，`bugfix-backmerge.yml` 会先基于最新 `origin/main` 准备一次合并，在合并结果上跑提交检查，全部通过后才 push 回 `origin/main`。如果检查失败或 merge 冲突，workflow 保持失败，需要人工修复后再继续发布。
 
