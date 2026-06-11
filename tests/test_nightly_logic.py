@@ -12386,6 +12386,28 @@ Native Codex profile.
         self.assertIn("url.isFileURL && isPanelURL(url)", mac_client)
         self.assertIn("decisionHandler(.cancel)", mac_client)
 
+    def test_macos_client_reloads_stale_panel_when_app_returns_to_foreground(self):
+        mac_client = (ROOT / "macos" / "OpenRelixClient" / "main.swift").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("NSWindowDelegate", mac_client)
+        self.assertIn("loadedPanelModificationDate", mac_client)
+        self.assertIn("panelDirectoryMonitor", mac_client)
+        self.assertIn("func applicationDidBecomeActive", mac_client)
+        self.assertIn("func applicationShouldHandleReopen", mac_client)
+        self.assertIn("func windowDidBecomeKey", mac_client)
+        self.assertIn("reloadPanelIfChanged()", mac_client)
+        self.assertIn("refreshPanelDirectoryMonitor(for: panel)", mac_client)
+        self.assertIn("schedulePanelReloadCheck()", mac_client)
+        self.assertIn("DispatchSource.makeFileSystemObjectSource", mac_client)
+        self.assertIn("O_EVTONLY", mac_client)
+        self.assertIn("attributesOfItem(atPath: panel.path)", mac_client)
+        self.assertIn("let nextModificationDate = nextModificationDate, let loadedDate = loadedDate", mac_client)
+        self.assertIn("abs(nextModificationDate.timeIntervalSince(loadedDate)) > 0.001", mac_client)
+        self.assertIn("rememberLoadedPanel(panel)", mac_client)
+        self.assertIn("webView?.loadFileURL(panel, allowingReadAccessTo: stateRoot)", mac_client)
+
     def test_macos_client_has_privacy_bounded_panel_analytics(self):
         mac_client = (ROOT / "macos" / "OpenRelixClient" / "main.swift").read_text(
             encoding="utf-8"

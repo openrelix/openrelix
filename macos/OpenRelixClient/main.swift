@@ -796,10 +796,16 @@ private final class PanelAnalytics {
     }
 }
 
-private final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKNavigationDelegate, WKUIDelegate {
+private final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKScriptMessageHandler, WKNavigationDelegate, WKUIDelegate {
     private var window: NSWindow?
     private var webView: WKWebView?
     private var stateRoot = preferredStateRoot()
+    private var loadedPanelPath: String?
+    private var loadedPanelModificationDate: Date?
+    private var panelDirectoryMonitor: DispatchSourceFileSystemObject?
+    private var panelDirectoryFileDescriptor: CInt = -1
+    private var monitoredPanelDirectoryPath: String?
+    private var pendingPanelReloadCheck: DispatchWorkItem?
     private let analytics = PanelAnalytics()
     private var analyticsMenuItem: NSMenuItem?
     private let lightPanelBackground = NSColor(
@@ -826,11 +832,29 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessag
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        stopPanelDirectoryMonitor()
+        pendingPanelReloadCheck?.cancel()
         analytics.trackAppQuit()
+    }
+
+    func applicationDidBecomeActive(_ notification: Notification) {
+        reloadPanelIfChanged()
+    }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if !flag {
+            window?.makeKeyAndOrderFront(nil)
+        }
+        reloadPanelIfChanged()
+        return true
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         true
+    }
+
+    func windowDidBecomeKey(_ notification: Notification) {
+        reloadPanelIfChanged()
     }
 
     private func buildWindow() {
@@ -882,6 +906,7 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessag
             window.toolbarStyle = .unified
         }
         window.contentView = webView
+        window.delegate = self
         self.window = window
         applyPanelBackground(isDark: nil)
         window.makeKeyAndOrderFront(nil)
@@ -1086,12 +1111,100 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, WKScriptMessag
         analyticsMenuItem?.state = analytics.isUserDisabled ? .off : .on
     }
 
+    private func panelModificationDate(_ panel: URL) -> Date? {
+        let attributes = try? FileManager.default.attributesOfItem(atPath: panel.path)
+        return attributes?[.modificationDate] as? Date
+    }
+
+    private func stopPanelDirectoryMonitor() {
+        panelDirectoryMonitor?.cancel()
+        panelDirectoryMonitor = nil
+        panelDirectoryFileDescriptor = -1
+        monitoredPanelDirectoryPath = nil
+    }
+
+    private func refreshPanelDirectoryMonitor(for panel: URL) {
+        let directory = panel.deletingLastPathComponent()
+        let directoryPath = directory.standardizedFileURL.path
+        guard monitoredPanelDirectoryPath != directoryPath || panelDirectoryMonitor == nil else {
+            return
+        }
+
+        stopPanelDirectoryMonitor()
+        guard FileManager.default.fileExists(atPath: directoryPath) else {
+            return
+        }
+
+        let fileDescriptor = open(directoryPath, O_EVTONLY)
+        guard fileDescriptor >= 0 else {
+            return
+        }
+
+        let source = DispatchSource.makeFileSystemObjectSource(
+            fileDescriptor: fileDescriptor,
+            eventMask: [.write, .rename, .delete, .attrib],
+            queue: DispatchQueue.main
+        )
+        source.setEventHandler { [weak self] in
+            self?.schedulePanelReloadCheck()
+        }
+        source.setCancelHandler {
+            close(fileDescriptor)
+        }
+        panelDirectoryMonitor = source
+        panelDirectoryFileDescriptor = fileDescriptor
+        monitoredPanelDirectoryPath = directoryPath
+        source.resume()
+    }
+
+    private func schedulePanelReloadCheck() {
+        pendingPanelReloadCheck?.cancel()
+        let item = DispatchWorkItem { [weak self] in
+            self?.reloadPanelIfChanged()
+        }
+        pendingPanelReloadCheck = item
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.75, execute: item)
+    }
+
+    private func rememberLoadedPanel(_ panel: URL) {
+        loadedPanelPath = panel.standardizedFileURL.path
+        loadedPanelModificationDate = panelModificationDate(panel)
+    }
+
+    private func reloadPanelIfChanged() {
+        let nextStateRoot = preferredStateRoot()
+        let panel = panelURL(for: nextStateRoot)
+        refreshPanelDirectoryMonitor(for: panel)
+        guard FileManager.default.fileExists(atPath: panel.path) else {
+            return
+        }
+
+        let nextPath = panel.standardizedFileURL.path
+        let nextModificationDate = panelModificationDate(panel)
+        let loadedDate = loadedPanelModificationDate
+        let panelPathChanged = loadedPanelPath != nextPath
+        let panelContentChanged: Bool
+        if let nextModificationDate = nextModificationDate, let loadedDate = loadedDate {
+            panelContentChanged = abs(nextModificationDate.timeIntervalSince(loadedDate)) > 0.001
+        } else {
+            panelContentChanged = nextModificationDate != nil && loadedDate == nil
+        }
+
+        if panelPathChanged || panelContentChanged {
+            loadPanel()
+        }
+    }
+
     private func loadPanel() {
         stateRoot = preferredStateRoot()
         let panel = panelURL(for: stateRoot)
+        refreshPanelDirectoryMonitor(for: panel)
         if FileManager.default.fileExists(atPath: panel.path) {
+            rememberLoadedPanel(panel)
             webView?.loadFileURL(panel, allowingReadAccessTo: stateRoot)
         } else {
+            loadedPanelPath = nil
+            loadedPanelModificationDate = nil
             analytics.track("panel_load_failed", properties: ["reason": "missing_panel"])
             webView?.loadHTMLString(
                 missingPanelHTML(panelPath: panel.path, stateRootPath: stateRoot.path),
