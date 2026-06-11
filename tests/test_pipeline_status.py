@@ -3,7 +3,7 @@
 import json
 import sys
 from dataclasses import replace
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
@@ -64,21 +64,42 @@ class PipelineStatusTests(unittest.TestCase):
             self.assertEqual(saved["run_id"], payload["run_id"])
             self.assertEqual(saved["recent_runs"][0]["target_date"], "2026-05-06")
 
-    def test_recent_runs_keep_latest_twenty_four_entries(self):
+    def test_recent_runs_keep_latest_four_hundred_entries(self):
         rows = [
             {
                 "run_id": "run-{}".format(index),
                 "pipeline": "nightly_pipeline",
                 "status": "completed",
             }
-            for index in range(35)
+            for index in range(420)
         ]
 
         sanitized = pipeline_status._sanitize_recent_runs(rows)
 
-        self.assertEqual(len(sanitized), 24)
+        self.assertEqual(len(sanitized), 400)
         self.assertEqual(sanitized[0]["run_id"], "run-0")
-        self.assertEqual(sanitized[-1]["run_id"], "run-23")
+        self.assertEqual(sanitized[-1]["run_id"], "run-399")
+
+    def test_recent_runs_keep_two_week_history_by_timestamp(self):
+        now = datetime.fromisoformat("2026-06-10T12:00:00+08:00")
+        rows = [
+            {
+                "run_id": "fresh",
+                "pipeline": "nightly_pipeline",
+                "status": "completed",
+                "ended_at": (now - timedelta(days=13, hours=23)).timestamp(),
+            },
+            {
+                "run_id": "old",
+                "pipeline": "nightly_pipeline",
+                "status": "completed",
+                "ended_at": (now - timedelta(days=15)).timestamp(),
+            },
+        ]
+
+        sanitized = pipeline_status._sanitize_recent_runs(rows, now=now.timestamp())
+
+        self.assertEqual([row["run_id"] for row in sanitized], ["fresh"])
 
     def test_failed_status_includes_safe_failure_hint(self):
         with TemporaryDirectory() as tmpdir:

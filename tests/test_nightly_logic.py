@@ -1330,7 +1330,11 @@ class NightlyLogicTests(unittest.TestCase):
         self.assertEqual(payload["token_usage"]["provider"], "codex")
         self.assertEqual(payload["token_usage"]["range_start"], "2026-05-05")
         self.assertEqual(payload["token_usage"]["range_end"], "2026-05-11")
-        self.assertEqual(payload["token_usage"]["daily_rows"][0]["value"], 125)
+        codex_row = next(
+            row for row in payload["token_usage"]["daily_rows"]
+            if row.get("date") == "2026-05-10"
+        )
+        self.assertEqual(codex_row["value"], 125)
 
     def test_token_live_server_returns_stale_cache_and_refreshes_in_background(self):
         cached = {
@@ -7438,6 +7442,9 @@ Native Codex profile.
         self.assertIn("const defaultTokenDateRange = tokenDefaultDateRange(7);", html)
         self.assertIn("requestTimeoutMs: 90000,", html)
         self.assertIn("function tokenEffectiveWindowDays(filters, fallbackWindowDays)", html)
+        self.assertIn("const requestedDayDisplayLimit = Math.max", html)
+        self.assertIn("tokenDateRangeDays(state.tokenFilters || {}) || 0", html)
+        self.assertIn("Math.min(Math.max(allDailyRows.length, requestedDayDisplayLimit), requestedDayDisplayLimit)", html)
         self.assertIn("const fallbackRange = tokenDateRangeForDays(30, requestedEndDate);", html)
         self.assertIn("let startDate = activeFilters.startDate || fallbackRange.startDate;", html)
         self.assertIn("fallbackRange.startDate < startDate", html)
@@ -7466,6 +7473,7 @@ Native Codex profile.
         self.assertIn('data-token-range-days="3"', html)
         self.assertIn('data-token-range-days="7"', html)
         self.assertIn('data-token-range-days="30"', html)
+        self.assertNotIn('data-token-range-days="14"', html)
         self.assertIn('data-token-range-days="7" aria-pressed="true" data-active="true"', html)
         self.assertIn('token-filter-grid token-filter-top-grid', html)
         self.assertIn('token-filter-grid token-filter-bottom-grid', html)
@@ -12186,7 +12194,7 @@ Native Codex profile.
         self.assertIn("失败", collector.text)
         self.assertIn("日期 2026-05-07", collector.text)
         self.assertIn("快速回溯", collector.text)
-        self.assertNotIn("preliminary", collector.text)
+        self.assertNotIn("preliminary", html)
         self.assertIn("触发 05-07 19:19:28", collector.text)
         self.assertIn("结束 05-07 19:20:53", collector.text)
         self.assertIn("Date 2026-05-07", collector.text)
@@ -12212,7 +12220,7 @@ Native Codex profile.
         # sit inside a <details> so they only render on demand.
         self.assertIn("run-0", html)
         self.assertIn("run-3", html)
-        self.assertIn("查看更早 20 次深度回溯", html)
+        self.assertIn("查看更早 31 次深度回溯", html)
         self.assertIn("深度回溯（消耗 token）", html)
         details_start = html.find('<details class="pipeline-history-deep-extras">')
         self.assertGreater(details_start, -1)
@@ -12251,7 +12259,65 @@ Native Codex profile.
         self.assertIn("2026-05-07 · Quick backfill", collector.text)
         self.assertIn("2026-05-08T00:10:00+08:00 · 完整回溯", collector.text)
         self.assertIn("2026-05-08T00:10:00+08:00 · Full backfill", collector.text)
-        self.assertNotIn("preliminary", collector.text)
+
+    def test_pipeline_status_panel_shows_deep_token_daily_chart_and_hover_tooltip(self):
+        with mock.patch.object(
+            build_overview,
+            "current_local_datetime",
+            return_value=datetime.fromisoformat("2026-06-10T12:00:00+08:00"),
+        ):
+            html = build_overview.make_pipeline_status_panel(
+                {
+                    "pipeline": "nightly_pipeline",
+                    "title": "记忆整理流水线",
+                    "title_en": "Memory Synthesis Pipeline",
+                    "status": "completed",
+                    "stage": "manual",
+                    "current_step_index": 6,
+                    "step_count": 6,
+                    "steps": [],
+                    "recent_runs": [
+                        {
+                            "pipeline": "nightly_pipeline",
+                            "title": "记忆整理流水线",
+                            "title_en": "Memory Synthesis Pipeline",
+                            "status": "completed",
+                            "target_date": "2026-06-10",
+                            "stage": "manual",
+                            "started_at_iso": "2026-06-10T10:00:00+08:00",
+                            "token_usage": {
+                                "input_tokens": 3114,
+                                "output_tokens": 197,
+                            },
+                        },
+                        {
+                            "pipeline": "nightly_pipeline",
+                            "title": "快速回溯",
+                            "title_en": "Quick Backfill",
+                            "status": "completed",
+                            "target_date": "2026-06-10",
+                            "stage": "preliminary",
+                            "token_usage": {
+                                "input_tokens": 9999,
+                                "output_tokens": 9999,
+                            },
+                        },
+                    ],
+                }
+            )
+
+        self.assertIn("深度回溯 Token 消耗", html)
+        self.assertIn("pipeline-token-chart", html)
+        self.assertIn("pipeline-token-chart-hit", html)
+        self.assertIn("pipeline-token-hover-dot", html)
+        self.assertIn("pipeline-token-tooltip", html)
+        self.assertIn("pipelineTokenTotalFill", html)
+        self.assertNotIn("pipeline-token-table", html)
+        self.assertNotIn("<table", html)
+        self.assertIn("2026-06-10", html)
+        self.assertIn("3.3K", html)
+        self.assertNotIn("20K", html)
+        self.assertNotIn("preliminary", html)
 
     def test_installer_chinese_language_uses_chinese_guidance_for_install_steps(self):
         installer = (ROOT / "install" / "install.sh").read_text(encoding="utf-8")
@@ -14455,7 +14521,7 @@ Native Codex profile.
         self.assertEqual(view["today_total_tokens"], 2300)
         self.assertEqual(view["today_cost_usd"], 4.5)
         self.assertEqual(view["today_token_cost_display"], "2300 · $5")
-        self.assertIn("2026-04-26 至 2026-04-27", view["overview_note"])
+        self.assertIn("2026-04-14 至 2026-04-27", view["overview_note"])
         self.assertIn("2 个有数据日", view["overview_note"])
         self.assertIn("周期 Token", [card["label"] for card in view["summary_cards"]])
         self.assertIn("周期成本", [card["label"] for card in view["summary_cards"]])
@@ -14471,8 +14537,9 @@ Native Codex profile.
         self.assertIn("无缓存输入", view["today_breakdown"][0]["details"][0]["meta"])
         self.assertIn("占总输入", view["daily_rows"][-1]["details"][1]["meta"])
         self.assertIn("details", view["today_breakdown"][1])
-        self.assertEqual(view["daily_rows"][0]["tone"], "token-daily-mid")
-        self.assertEqual(view["daily_rows"][-1]["tone"], "token-daily-high")
+        active_daily_rows = [row for row in view["daily_rows"] if row["value"] > 0]
+        self.assertEqual(active_daily_rows[0]["tone"], "token-daily-mid")
+        self.assertEqual(active_daily_rows[-1]["tone"], "token-daily-high")
         self.assertEqual(
             [row["tone"] for row in view["today_breakdown"]],
             ["token-input", "token-cache", "token-output", "token-reasoning"],
@@ -14604,10 +14671,25 @@ Native Codex profile.
 
         self.assertEqual(
             [row["label"] for row in view["daily_rows"]],
-            ["04-21", "04-24", "04-26", "04-27", "04-28", "04-30", "05-03"],
+            [
+                "04-20",
+                "04-21",
+                "04-22",
+                "04-23",
+                "04-24",
+                "04-25",
+                "04-26",
+                "04-27",
+                "04-28",
+                "04-29",
+                "04-30",
+                "05-01",
+                "05-02",
+                "05-03",
+            ],
         )
         self.assertEqual(view["window_days"], 14)
-        self.assertIn("2026-04-21 至 2026-05-03", view["overview_note"])
+        self.assertIn("2026-04-20 至 2026-05-03", view["overview_note"])
         self.assertIn("7 个有数据日", view["overview_note"])
 
     def test_token_usage_view_filters_range_and_groups_by_month(self):
