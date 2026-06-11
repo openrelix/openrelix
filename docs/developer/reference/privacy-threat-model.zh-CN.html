@@ -327,7 +327,18 @@ tr:last-child td { border-bottom: 0; }
 <li>涉及第三方云记忆或 SaaS 持久化前，先确认合规边界。</li>
 <li>公开文档中只保留流程、字段形态、验证路径和结论。</li>
 </ul>
-<h3 id="5-release-surface">5. Release Surface 扩大</h3>
+<h3 id="5">5. 产品埋点外发</h3>
+<p>风险：为了判断 DAU、模块停留和产品卡点，把本地工作内容或身份信息随埋点发到外部服务。</p>
+<p>控制：</p>
+<ul>
+<li>只有配置了 <code>OPENRELIX_ANALYTICS_ENDPOINT</code> 的 macOS panel client 会联网发送埋点；该产品路径默认开启。</li>
+<li>用户可以在 OpenRelix 菜单中关闭，也可以通过 <code>OPENRELIX_ANALYTICS_ENABLED=0</code> 或 <code>OPENRELIX_ANALYTICS_DISABLED=1</code> 启动关闭。</li>
+<li>允许字段仅限随机 install ID、单次启动 session ID、app 版本、粗粒度 macOS 版本、固定事件名、白名单模块/控件 ID、停留毫秒数、panel 语言，以及 Skill/MCP 小黑屋 action/result/bucket 枚举和受限计数。</li>
+<li>禁止发送 prompt、模型回答、memory/review 正文、窗口标题、项目名、skill/MCP 名称、entity key、文件路径、用户名、主机名、token、Cookie、connector 内容、本地报告、raw state、原始错误全文或生成后的 panel 内容。</li>
+<li>客户端发送前必须丢弃未知事件和未知属性，失败的埋点 payload 不落盘。</li>
+<li>嵌入 macOS app 的 token 只能视为客户端 ingest token，不能当服务端密钥；高权限 analytics 凭证必须留在采集 endpoint 后面。</li>
+</ul>
+<h3 id="6-release-surface">6. Release Surface 扩大</h3>
 <p>风险：package allowlist 或站点资源扩大后，带出开发 harness、fixture、私有素材或生成报告。</p>
 <p>控制：</p>
 <ul>
@@ -363,7 +374,8 @@ tr:last-child td { border-bottom: 0; }
 <a class="toc-link sub" href="#2">2. 真实路径和账号泄漏</a>
 <a class="toc-link sub" href="#3-host-context">3. Host Context 过量注入</a>
 <a class="toc-link sub" href="#4-connector">4. Connector 数据外流</a>
-<a class="toc-link sub" href="#5-release-surface">5. Release Surface 扩大</a>
+<a class="toc-link sub" href="#5">5. 产品埋点外发</a>
+<a class="toc-link sub" href="#6-release-surface">6. Release Surface 扩大</a>
 <a class="toc-link" href="#section-4">贡献者清单</a>
 <a class="toc-link" href="#section-5">设计建议</a>
       <p class="generated-note">更新源 Markdown 后运行：<br><code>python3 scripts/build_local_docs.py</code><br>持续自动同步：<br><code>python3 scripts/build_local_docs.py --watch</code></p>

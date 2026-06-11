@@ -76,7 +76,7 @@ Use the repository's configured release workflows where possible:
 6. Verify npm publish or trusted-publishing output.
 7. Verify a fresh `npx openrelix --version` or package metadata check in a clean context.
 
-The `create-release.yml` workflow enforces the release-line rule for `x.y.0` versions: it blocks the release when the previous `bugfix/version_<x>_<y>` branch still has commits outside `main`, and after the release is created it creates or reuses the new remote branch `bugfix/version_<x>_<y>` at the release commit.
+The `create-release.yml` workflow can be run from `main` or from a selected maintenance branch such as `bugfix/version_0_3`. It reads `package.json` and creates the release tag from that selected ref, then dispatches `publish.yml` on the same ref so patch releases can publish from their maintenance branch. It also enforces the release-line rule for `x.y.0` versions: it blocks the release when the previous `bugfix/version_<x>_<y>` branch still has commits outside `main`, and after the release is created it creates or reuses the new remote branch `bugfix/version_<x>_<y>` at the release commit.
 
 After a commit lands on a remote `bugfix/version_*` branch, the `bugfix-backmerge.yml` workflow prepares a merge against the latest `origin/main`, runs the commit checks on that merged result, and pushes it back to `origin/main` only after validation passes. If validation fails or the merge conflicts, the workflow stays red and the branch needs a manual fix before release work continues.
 

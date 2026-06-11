@@ -2,8 +2,8 @@
 
 > Languages: English | [简体中文](skill-quarantine-prd.md)
 
-Version: 1.0  
-Date: 2026-06-05  
+Version: 1.0
+Date: 2026-06-05
 Status: Implemented locally
 
 ## 1. Background
