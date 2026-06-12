@@ -12477,9 +12477,24 @@ SKILL_QUARANTINE_EXPAND_VARIANTS = {
 }
 
 
+def make_skill_quarantine_colgroup():
+    return """
+      <colgroup>
+        <col class="skill-quarantine-col-name" />
+        <col class="skill-quarantine-col-type" />
+        <col class="skill-quarantine-col-usage" />
+        <col class="skill-quarantine-col-last" />
+        <col class="skill-quarantine-col-age" />
+        <col class="skill-quarantine-col-token" />
+        <col class="skill-quarantine-col-status" />
+        <col class="skill-quarantine-col-action" />
+      </colgroup>
+    """
+
+
 def make_skill_quarantine_rows(rows, action, visible_count=None):
     if not rows:
-        return '<tr><td colspan="7" class="empty-cell">{}</td></tr>'.format(
+        return '<tr><td colspan="8" class="empty-cell">{}</td></tr>'.format(
             panel_language_text_html("暂无条目。", "No items.")
         )
 
@@ -12502,6 +12517,12 @@ def make_skill_quarantine_rows(rows, action, visible_count=None):
         reason = str(row.get("reason") or "")
         source_tags = make_skill_quarantine_source_tags(row)
         usage_30d = safe_int(row.get("usage_30d", 0))
+        first_load_tokens = row.get("first_load_tokens")
+        first_load_tokens_display = (
+            compact_token(first_load_tokens)
+            if entity_type == "skill" and first_load_tokens is not None
+            else "—"
+        )
         last_used = str(row.get("last_used_at") or "—")
         isolation = skill_quarantine_isolation_label(str(row.get("isolation_status") or ""))
         if action == "unblock":
@@ -12572,6 +12593,7 @@ def make_skill_quarantine_rows(rows, action, visible_count=None):
               <td>{usage_30d}</td>
               <td>{last_used}</td>
               <td>{age}</td>
+              <td class="skill-quarantine-token-cell">{first_load_tokens}</td>
               <td>{status}</td>
               <td>{action_cell}</td>
             </tr>
@@ -12580,6 +12602,7 @@ def make_skill_quarantine_rows(rows, action, visible_count=None):
                 name=escape(name),
                 source_tags=source_tags,
                 entity_type=escape(skill_quarantine_type_label(entity_type)),
+                first_load_tokens=escape(str(first_load_tokens_display)),
                 usage_30d=escape(str(usage_30d)),
                 last_used=escape(last_used),
                 age=skill_quarantine_age_label(row),
@@ -12596,12 +12619,86 @@ def make_skill_quarantine_rows(rows, action, visible_count=None):
             rows,
             render_row,
             int(visible_count),
-            7,
+            8,
             item_label,
             "收起更多记录",
             group_id,
         )
     return "".join(render_row(row) for row in rows)
+
+
+def make_skill_quarantine_context_savings(context_savings):
+    if not isinstance(context_savings, dict):
+        context_savings = {}
+    hosts = context_savings.get("hosts") if isinstance(context_savings.get("hosts"), dict) else {}
+    total = safe_int(context_savings.get("total_estimated_tokens", 0))
+    ignored = safe_int(context_savings.get("ignored_state_only_targets", 0))
+    method_note = panel_language_text_html(
+        "按 skill 描述首次注入 token 和已隔离 MCP 配置块估算；缺少描述或只登记小黑屋状态的项不计入节省。",
+        "Estimated from first-load skill description tokens and isolated MCP config blocks; records without descriptions or state-only records are not counted as saved.",
+    )
+
+    def host_card(host_key, label):
+        bucket = hosts.get(host_key) if isinstance(hosts.get(host_key), dict) else {}
+        tokens = safe_int(bucket.get("estimated_tokens", 0))
+        skill_count = safe_int(bucket.get("skill_count", 0))
+        mcp_count = safe_int(bucket.get("mcp_count", 0))
+        unknown_count = safe_int(bucket.get("unknown_token_items", 0))
+        detail = panel_language_text_html(
+            "{} 个 skill，{} 个 MCP".format(skill_count, mcp_count),
+            "{} skills, {} MCPs".format(skill_count, mcp_count),
+        )
+        if unknown_count > 0:
+            detail = "{}{}".format(
+                detail,
+                panel_language_text_html(
+                    "；{} 个缺少描述未估算".format(unknown_count),
+                    "; {} missing descriptions".format(unknown_count),
+                ),
+            )
+        return """
+          <div class="skill-quarantine-saving-card">
+            <span>{label}</span>
+            <strong>{tokens}</strong>
+            <small>{detail}</small>
+          </div>
+        """.format(
+            label=escape(label),
+            tokens=escape(compact_token(tokens)),
+            detail=detail,
+        )
+
+    ignored_note = ""
+    if ignored > 0:
+        ignored_note = '<p class="skill-quarantine-saving-footnote">{}</p>'.format(
+            panel_language_text_html(
+                "另有 {} 个只登记小黑屋状态的来源，没有计入节省。".format(ignored),
+                "{} state-only sources are not counted as saved.".format(ignored),
+            )
+        )
+    return """
+      <section class="skill-quarantine-savings-card">
+        <div class="skill-quarantine-savings-head">
+          <div>
+            <h3>{title}</h3>
+            <small>{method_note}</small>
+          </div>
+          <span>{total_label}</span>
+        </div>
+        <div class="skill-quarantine-savings-grid">
+          {codex_card}
+          {claude_card}
+        </div>
+        {ignored_note}
+      </section>
+    """.format(
+        title=panel_language_text_html("Token 上下文节省估算", "Estimated Context Saved"),
+        method_note=method_note,
+        total_label=panel_language_text_html("合计 {}".format(compact_token(total)), "{} total".format(compact_token(total, language="en"))),
+        codex_card=host_card("codex", "Codex"),
+        claude_card=host_card("claude", "Claude"),
+        ignored_note=ignored_note,
+    )
 
 
 def make_skill_quarantine_panel(view):
@@ -12610,6 +12707,7 @@ def make_skill_quarantine_panel(view):
     suggested = list(view.get("suggested") or [])
     quarantined = list(view.get("quarantined") or [])
     grace = list(view.get("grace") or [])
+    context_savings = view.get("context_savings") if isinstance(view.get("context_savings"), dict) else {}
     project_skill_roots = list(view.get("project_skill_roots") or [])
     project_skill_root_candidates = list(view.get("project_skill_root_candidates") or [])
     lookback_days = safe_int(view.get("lookback_days", 30))
@@ -12725,6 +12823,7 @@ def make_skill_quarantine_panel(view):
         ),
     )
     warning_summary = make_skill_quarantine_warning_summary(quarantined)
+    context_savings_html = make_skill_quarantine_context_savings(context_savings)
     return """
     <section class="panel skill-quarantine-panel" id="skill-quarantine-section" data-discovered-assets-label="Skill/MCP Quarantine">
       {header_html}
@@ -12789,6 +12888,7 @@ def make_skill_quarantine_panel(view):
           </div>
           <div class="table-wrap asset-discovery-table-wrap">
             <table class="asset-discovery-table skill-quarantine-table">
+              {skill_quarantine_colgroup}
               <thead>
                 <tr>
                   <th>{name_header}</th>
@@ -12796,6 +12896,7 @@ def make_skill_quarantine_panel(view):
                   <th>{usage_header}</th>
                   <th>{last_header}</th>
                   <th>{age_header}</th>
+                  <th>{first_load_token_header}</th>
                   <th>{reason_header}</th>
                   <th>{action_header}</th>
                 </tr>
@@ -12814,6 +12915,7 @@ def make_skill_quarantine_panel(view):
           </div>
           <div class="table-wrap asset-discovery-table-wrap">
             <table class="asset-discovery-table skill-quarantine-table">
+              {skill_quarantine_colgroup}
               <thead>
                 <tr>
                   <th>{name_header}</th>
@@ -12821,6 +12923,7 @@ def make_skill_quarantine_panel(view):
                   <th>{usage_header}</th>
                   <th>{last_header}</th>
                   <th>{age_header}</th>
+                  <th>{first_load_token_header}</th>
                   <th>{reason_header}</th>
                   <th>{action_header}</th>
                 </tr>
@@ -12839,6 +12942,7 @@ def make_skill_quarantine_panel(view):
           </div>
           <div class="table-wrap asset-discovery-table-wrap">
             <table class="asset-discovery-table skill-quarantine-table">
+              {skill_quarantine_colgroup}
               <thead>
                 <tr>
                   <th>{name_header}</th>
@@ -12846,6 +12950,7 @@ def make_skill_quarantine_panel(view):
                   <th>{usage_header}</th>
                   <th>{last_header}</th>
                   <th>{age_header}</th>
+                  <th>{first_load_token_header}</th>
                   <th>{isolation_header}</th>
                   <th>{action_header}</th>
                 </tr>
@@ -12856,6 +12961,7 @@ def make_skill_quarantine_panel(view):
           {warning_summary}
         </section>
       </div>
+      {context_savings_html}
     </section>
     """.format(
         header_html=header_html,
@@ -12908,6 +13014,8 @@ def make_skill_quarantine_panel(view):
             action_html=quarantine_root_action_html,
         ),
         warning_summary=warning_summary,
+        context_savings_html=context_savings_html,
+        skill_quarantine_colgroup=make_skill_quarantine_colgroup(),
         suggested_title=panel_language_text_html("建议隔离", "Suggested Isolation"),
         suggested_note=panel_language_text_html("超过 7 天保护期且近 30 天未使用，建议默认停用。", "Past the 7-day protection period and unused for 30 days; recommended to disable by default."),
         grace_title=panel_language_text_html("可选隔离", "Optional Isolation"),
@@ -12919,6 +13027,7 @@ def make_skill_quarantine_panel(view):
         quarantined_count=skill_quarantine_count_label(quarantined_count),
         name_header=panel_language_text_html("名称", "Name"),
         type_header=panel_language_text_html("类型", "Type"),
+        first_load_token_header=panel_language_text_html("描述 Token", "Desc Token"),
         usage_header=panel_language_text_html("30 天", "30d"),
         last_header=panel_language_text_html("最后使用", "Last Used"),
         age_header=panel_language_text_html("创建天数", "Created for"),
@@ -20316,6 +20425,91 @@ def build_html(data):
       line-height: 1.25;
     }}
 
+    .skill-quarantine-savings-card {{
+      display: grid;
+      gap: 12px;
+      margin-top: 12px;
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: color-mix(in srgb, var(--panel) 72%, transparent);
+    }}
+
+    .skill-quarantine-savings-head {{
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+    }}
+
+    .skill-quarantine-savings-head h3 {{
+      margin: 0;
+      color: var(--ink);
+      font-size: 15px;
+      line-height: 1.3;
+    }}
+
+    .skill-quarantine-savings-head small,
+    .skill-quarantine-saving-footnote {{
+      display: block;
+      margin-top: 3px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 650;
+      line-height: 1.35;
+    }}
+
+    .skill-quarantine-savings-head > span {{
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 24px;
+      padding: 0 9px;
+      border: 1px solid color-mix(in srgb, var(--teal) 22%, var(--line));
+      border-radius: 999px;
+      background: color-mix(in srgb, var(--teal) 8%, transparent);
+      color: var(--teal);
+      font-size: 12px;
+      font-weight: 800;
+      white-space: nowrap;
+    }}
+
+    .skill-quarantine-savings-grid {{
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }}
+
+    .skill-quarantine-saving-card {{
+      min-width: 0;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--soft);
+    }}
+
+    .skill-quarantine-saving-card span,
+    .skill-quarantine-saving-card small {{
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+      line-height: 1.35;
+    }}
+
+    .skill-quarantine-saving-card strong {{
+      display: block;
+      margin: 4px 0;
+      color: var(--ink);
+      font-size: 24px;
+      font-variant-numeric: tabular-nums;
+      line-height: 1;
+    }}
+
+    .skill-quarantine-saving-footnote {{
+      margin: 0;
+    }}
+
     .skill-quarantine-grid {{
       display: grid;
       gap: 12px;
@@ -20376,11 +20570,45 @@ def build_html(data):
     }}
 
     .skill-quarantine-table {{
-      min-width: 920px;
+      min-width: 1080px;
+      table-layout: fixed;
+    }}
+
+    .skill-quarantine-col-name {{
+      width: 28%;
+    }}
+
+    .skill-quarantine-col-type {{
+      width: 84px;
+    }}
+
+    .skill-quarantine-col-usage,
+    .skill-quarantine-col-token {{
+      width: 76px;
+    }}
+
+    .skill-quarantine-col-last,
+    .skill-quarantine-col-age {{
+      width: 92px;
+    }}
+
+    .skill-quarantine-col-status {{
+      width: 150px;
+    }}
+
+    .skill-quarantine-col-action {{
+      width: 148px;
     }}
 
     .skill-quarantine-name {{
       font-size: 13px;
+    }}
+
+    .skill-quarantine-token-cell {{
+      color: var(--ink);
+      font-variant-numeric: tabular-nums;
+      font-weight: 760;
+      white-space: nowrap;
     }}
 
     .skill-quarantine-chip {{
@@ -20433,7 +20661,7 @@ def build_html(data):
       display: inline-flex;
       align-items: center;
       gap: 6px;
-      flex-wrap: wrap;
+      flex-wrap: nowrap;
     }}
 
     .skill-quarantine-action {{
@@ -26538,6 +26766,10 @@ def build_html(data):
         grid-template-columns: 1fr;
       }}
 
+      .skill-quarantine-savings-grid {{
+        grid-template-columns: 1fr;
+      }}
+
       .token-stat:nth-child(2n) {{
         border-right: 0;
       }}
@@ -32075,7 +32307,7 @@ def build_html(data):
         const row = document.createElement("tr");
         row.className = "skill-quarantine-empty-row";
         const cell = document.createElement("td");
-        cell.colSpan = 7;
+        cell.colSpan = 8;
         cell.className = "empty-cell";
         cell.textContent = skillQuarantineEmptyText();
         row.appendChild(cell);
@@ -32251,11 +32483,11 @@ def build_html(data):
           removeSkillQuarantineEmptyRow(targetTbody);
           const entry = payload && payload.entry ? payload.entry : {{}};
           setSkillQuarantineIsolationCell(
-            row.cells[5],
+            row.cells[6],
             entry.isolation_status || "state_only",
             skillQuarantineRecordWarningCount(entry)
           );
-          restoreSkillQuarantineButton(row.cells[6], entityKey);
+          restoreSkillQuarantineButton(row.cells[7], entityKey);
           targetTbody.appendChild(row);
           adjustSkillQuarantineBucket("quarantined", 1);
         }} else {{
@@ -32467,7 +32699,7 @@ def build_html(data):
         row.className = "skill-quarantine-delete-popover-row";
         row.setAttribute("data-skill-quarantine-delete-popover-for", entityKey);
         const cell = document.createElement("td");
-        cell.colSpan = 7;
+        cell.colSpan = 8;
         const popover = document.createElement("div");
         popover.className = "skill-quarantine-delete-popover";
         const title = document.createElement("strong");

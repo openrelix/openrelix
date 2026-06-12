@@ -7878,6 +7878,19 @@ Native Codex profile.
         self.assertIn("skill-quarantine-warning-inline", source)
         self.assertIn("skill-quarantine-table-title", source)
         self.assertIn("skill-quarantine-table-count", source)
+        self.assertIn("描述 Token", source)
+        self.assertIn("first_load_tokens", source)
+        self.assertIn("skill-quarantine-token-cell", source)
+        self.assertIn("make_skill_quarantine_colgroup", source)
+        self.assertIn("skill-quarantine-col-token", source)
+        self.assertIn("table-layout: fixed", source)
+        self.assertIn("flex-wrap: nowrap", source)
+        self.assertIn("Token 上下文节省估算", source)
+        self.assertIn("skill-quarantine-savings-card", source)
+        self.assertIn("缺少描述", source)
+        self.assertIn("cell.colSpan = 8", source)
+        self.assertIn("row.cells[6]", source)
+        self.assertIn("row.cells[7]", source)
         self.assertIn("make_skill_quarantine_source_tags", source)
         self.assertIn("skill-quarantine-source-tags", source)
         self.assertNotIn('<div class="table-subtle">{key}</div>', source)
@@ -7988,6 +8001,72 @@ Native Codex profile.
         self.assertIn("~/.codex/skills", html)
         self.assertNotIn('<div class="table-subtle">skill:unused-skill</div>', html)
 
+    def test_skill_quarantine_rows_show_first_load_token_column(self):
+        html = build_overview.make_skill_quarantine_rows(
+            [
+                {
+                    "entity_key": "skill:unused-skill",
+                    "entity_type": "skill",
+                    "identifier": "unused-skill",
+                    "display_name": "unused-skill",
+                    "usage_30d": 0,
+                    "first_load_tokens": 42,
+                    "reason": "unused_30d",
+                },
+                {
+                    "entity_key": "mcp:demo",
+                    "entity_type": "mcp",
+                    "identifier": "demo",
+                    "display_name": "demo",
+                    "usage_30d": 0,
+                    "reason": "no_calls",
+                },
+            ],
+            "block",
+        )
+
+        self.assertIn("skill-quarantine-token-cell", html)
+        self.assertIn("<td class=\"skill-quarantine-token-cell\">42</td>", html)
+        self.assertIn("<td class=\"skill-quarantine-token-cell\">—</td>", html)
+
+    def test_skill_quarantine_panel_shows_context_savings(self):
+        html = build_overview.make_skill_quarantine_panel(
+            {
+                "counts": {"suggested": 0, "grace": 0, "quarantined": 1},
+                "suggested": [],
+                "grace": [],
+                "quarantined": [],
+                "quarantine_root": "",
+                "context_savings": {
+                    "hosts": {
+                        "codex": {
+                            "estimated_tokens": 1200,
+                            "skill_count": 2,
+                        "mcp_count": 1,
+                        "item_count": 3,
+                        "unknown_token_items": 5,
+                    },
+                        "claude": {
+                            "estimated_tokens": 300,
+                            "skill_count": 1,
+                            "mcp_count": 0,
+                            "item_count": 1,
+                        },
+                    },
+                    "total_estimated_tokens": 1500,
+                    "ignored_state_only_targets": 4,
+                },
+            }
+        )
+
+        self.assertIn("Token 上下文节省估算", html)
+        self.assertIn("skill-quarantine-savings-card", html)
+        self.assertIn("Codex", html)
+        self.assertIn("Claude", html)
+        self.assertIn("2 个 skill，1 个 MCP", html)
+        self.assertIn("5 个缺少描述未估算", html)
+        self.assertIn("另有 4 个只登记小黑屋状态的来源", html)
+
     def test_skill_quarantine_rows_collapse_quarantined_after_five(self):
         rows = []
         for index in range(7):
@@ -8066,6 +8145,7 @@ Native Codex profile.
         self.assertIn("delete_quarantined_entity(PATHS, entity_key)", source)
         self.assertIn('"blocked"', source)
         self.assertIn('"failed_count"', source)
+        self.assertIn('"context_savings"', source)
 
     def test_skill_quarantine_refresh_is_only_needed_after_state_changes(self):
         self.assertTrue(token_live_server.skill_quarantine_response_needs_refresh("block", {"ok": True}))
