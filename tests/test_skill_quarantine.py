@@ -305,8 +305,14 @@ class SkillQuarantineTests(unittest.TestCase):
             project_root = home / "repo" / "candidate-app"
             claude_skill_root = project_root / ".claude" / "skills"
             ignored_aiden_root = project_root / ".aiden" / "skills"
+            direct_project_root = home / "direct-app"
+            direct_skill_root = direct_project_root / "skills"
+            nested_project_root = home / "work" / "platform" / "nested-app"
+            nested_skill_root = nested_project_root / ".agents" / "skills"
             claude_skill_root.mkdir(parents=True)
             ignored_aiden_root.mkdir(parents=True)
+            direct_skill_root.mkdir(parents=True)
+            nested_skill_root.mkdir(parents=True)
 
             with mock.patch.object(skill_quarantine.Path, "home", return_value=home), mock.patch.object(
                 skill_quarantine.asset_discovery.Path,
@@ -329,6 +335,8 @@ class SkillQuarantineTests(unittest.TestCase):
                 self.assertIn(".claude/skills", candidate["skill_dirs"])
                 self.assertNotIn(".aiden/skills", candidate["skill_dirs"])
                 self.assertFalse(candidate["already_added"])
+                self.assertIn(direct_project_root.resolve().as_posix(), candidate_paths)
+                self.assertIn(nested_project_root.resolve().as_posix(), candidate_paths)
 
                 skill_quarantine.add_project_skill_root(paths, project_root)
                 refreshed = skill_quarantine.list_project_skill_root_candidates(paths)

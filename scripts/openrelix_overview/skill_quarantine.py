@@ -36,6 +36,7 @@ LEGACY_STATE_FILENAME = "skill-mcp-" + "blackroom.json"
 PROJECT_SKILL_ROOTS_KEY = "project_skill_roots"
 PROJECT_SKILL_ROOT_CANDIDATE_LIMIT = 12
 PROJECT_SKILL_ROOT_CANDIDATE_CHILD_SCAN_LIMIT = 80
+PROJECT_SKILL_ROOT_CANDIDATE_NESTED_SCAN_LIMIT = 160
 PROJECT_SKILL_ROOT_CANDIDATE_HOME_DIRS = (
     "openrelix",
     "OpenRelix",
@@ -43,13 +44,29 @@ PROJECT_SKILL_ROOT_CANDIDATE_HOME_DIRS = (
     "AI-Personal-Assets",
 )
 PROJECT_SKILL_ROOT_CANDIDATE_PARENT_DIRS = (
+    "Code",
+    "code",
+    "Dev",
+    "dev",
+    "Desktop",
+    "Documents",
+    "GitHub",
+    "github",
+    "Projects",
     "repo",
+    "Repo",
     "repos",
+    "Repos",
+    "src",
+    "Source",
     "workspace",
+    "Workspace",
     "workspaces",
+    "Workspaces",
     "projects",
     "Developer",
-    "code",
+    "Work",
+    "work",
 )
 DEFAULT_LOOKBACK_DAYS = 30
 DEFAULT_GRACE_DAYS = 7
@@ -370,6 +387,20 @@ def _iter_child_dirs(root, limit=PROJECT_SKILL_ROOT_CANDIDATE_CHILD_SCAN_LIMIT):
         return
 
 
+def _iter_nested_project_candidate_dirs(parent, limit=PROJECT_SKILL_ROOT_CANDIDATE_NESTED_SCAN_LIMIT):
+    count = 0
+    for child in _iter_child_dirs(parent):
+        if count >= limit:
+            break
+        count += 1
+        yield child
+        for grandchild in _iter_child_dirs(child):
+            if count >= limit:
+                break
+            count += 1
+            yield grandchild
+
+
 def _project_skill_dir_matches(project_root):
     root = _resolved(project_root)
     matches = []
@@ -410,10 +441,12 @@ def _project_skill_root_candidate_paths(paths):
     add(Path.cwd())
     for name in PROJECT_SKILL_ROOT_CANDIDATE_HOME_DIRS:
         add(home / name)
+    for child in _iter_child_dirs(home):
+        add(child)
     for name in PROJECT_SKILL_ROOT_CANDIDATE_PARENT_DIRS:
         parent = home / name
         add(parent)
-        for child in _iter_child_dirs(parent):
+        for child in _iter_nested_project_candidate_dirs(parent):
             add(child)
     return candidates
 

@@ -329,6 +329,7 @@ private let panelUsageAnalyticsScript = """
     ['[data-skill-quarantine-action="block"]', "skill_quarantine_block_item"],
     ['[data-skill-quarantine-action="unblock"]', "skill_quarantine_unblock_item"],
     ['[data-skill-quarantine-action="delete"]', "skill_quarantine_delete_open"],
+    ['[data-skill-quarantine-project-choose]', "skill_quarantine_project_root_choose"],
     ['[data-skill-quarantine-action="add-project-skill-root"]', "skill_quarantine_project_root_add"],
     ['[data-skill-quarantine-action="remove-project-skill-root"]', "skill_quarantine_project_root_remove"]
   ];
@@ -547,6 +548,7 @@ private final class PanelAnalytics {
         "skill_quarantine_delete_open",
         "skill_quarantine_delete_confirm",
         "skill_quarantine_delete_cancel",
+        "skill_quarantine_project_root_choose",
         "skill_quarantine_project_root_add",
         "skill_quarantine_project_root_remove",
     ]
@@ -880,6 +882,7 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelega
         configuration.userContentController.add(self, name: "openrelixAnalytics")
         configuration.userContentController.add(self, name: "openrelixOpenExternal")
         configuration.userContentController.add(self, name: "openrelixEnsureTokenLive")
+        configuration.userContentController.add(self, name: "openrelixChooseProjectFolder")
 
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.navigationDelegate = self
@@ -942,6 +945,10 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelega
             ensureTokenLiveLaunchAgent()
             return
         }
+        if message.name == "openrelixChooseProjectFolder" {
+            chooseProjectFolderForPanel()
+            return
+        }
         if message.name == "openrelixAnalytics" {
             analytics.trackPanelMessage(message.body)
             return
@@ -950,6 +957,54 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelega
            let rawURL = message.body as? String,
            let url = URL(string: rawURL) {
             _ = openOutsidePanel(url)
+        }
+    }
+
+    private func javascriptStringLiteral(_ value: String) -> String {
+        guard
+            JSONSerialization.isValidJSONObject([value]),
+            let data = try? JSONSerialization.data(withJSONObject: [value], options: []),
+            let text = String(data: data, encoding: .utf8),
+            text.count >= 2
+        else {
+            return "\"\""
+        }
+        return String(text.dropFirst().dropLast())
+    }
+
+    private func sendProjectFolderSelectionToPanel(_ path: String?) {
+        let argument = path.map { javascriptStringLiteral($0) } ?? "null"
+        webView?.evaluateJavaScript(
+            "window.openrelixProjectFolderSelected && window.openrelixProjectFolderSelected(\(argument));",
+            completionHandler: nil
+        )
+    }
+
+    private func chooseProjectFolderForPanel() {
+        DispatchQueue.main.async {
+            let panel = NSOpenPanel()
+            panel.canChooseFiles = false
+            panel.canChooseDirectories = true
+            panel.allowsMultipleSelection = false
+            panel.canCreateDirectories = false
+            panel.prompt = "添加项目文件夹"
+            panel.message = "选择要纳入 OpenRelix skill 扫描的项目根目录。"
+            if let window = self.window {
+                panel.beginSheetModal(for: window) { response in
+                    guard response == .OK, let url = panel.url else {
+                        self.sendProjectFolderSelectionToPanel(nil)
+                        return
+                    }
+                    self.sendProjectFolderSelectionToPanel(url.standardizedFileURL.path)
+                }
+            } else {
+                let response = panel.runModal()
+                guard response == .OK, let url = panel.url else {
+                    self.sendProjectFolderSelectionToPanel(nil)
+                    return
+                }
+                self.sendProjectFolderSelectionToPanel(url.standardizedFileURL.path)
+            }
         }
     }
 

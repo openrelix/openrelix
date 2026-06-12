@@ -12339,8 +12339,8 @@ def make_skill_quarantine_project_root_rows(project_roots):
             </div>
           </li>
         """.format(
-            empty=panel_language_text_html("暂无常用项目路径", "No project paths"),
-            hint=panel_language_text_html("添加后会扫描项目内 skills 目录。", "Added paths scan project-local skill folders."),
+            empty=panel_language_text_html("暂无已添加项目", "No added projects"),
+            hint=panel_language_text_html("添加后会扫描项目内 skills 目录。", "Added projects scan project-local skill folders."),
         )
     rows = []
     for root in project_roots:
@@ -12401,7 +12401,7 @@ def make_skill_quarantine_project_candidate_rows(candidates):
           </li>
         """.format(
             empty=panel_language_text_html("暂无可用候选路径", "No project candidates"),
-            hint=panel_language_text_html("可展开手动输入作为兜底。", "Use manual entry as a fallback."),
+            hint=panel_language_text_html("可通过添加项目文件夹选择更多项目。", "Use Add project folder to select more projects."),
         )
     rows = []
     for candidate in candidates:
@@ -12835,30 +12835,21 @@ def make_skill_quarantine_panel(view):
           </div>
           <span class="skill-quarantine-table-count" id="skill-quarantine-project-root-count">{project_root_count}</span>
         </div>
-        <div class="skill-quarantine-project-shortcuts">
+        <div class="skill-quarantine-project-picker" id="skill-quarantine-project-picker">
           <div class="skill-quarantine-project-section-head">
-            <strong>{project_candidate_title}</strong>
-            <small>{project_candidate_note}</small>
+            <strong>{project_picker_title}</strong>
+            <small>{project_picker_note}</small>
           </div>
-          <ul class="skill-quarantine-project-roots is-candidates" id="skill-quarantine-project-candidates">
-            {project_candidate_rows}
-          </ul>
+          <button
+            class="skill-quarantine-project-choose"
+            type="button"
+            data-skill-quarantine-project-choose="true"
+            data-label="Add project folder"
+            data-label-zh="添加项目文件夹"
+            data-label-en="Add project folder"
+            title="{project_picker_title_attr}"
+          >{project_picker_label}</button>
         </div>
-        <details class="skill-quarantine-manual-entry">
-          <summary>{project_manual_summary}</summary>
-          <form class="skill-quarantine-project-form" id="skill-quarantine-project-form">
-            <input
-              class="skill-quarantine-project-input"
-              id="skill-quarantine-project-path"
-              name="project_path"
-              type="text"
-              autocomplete="off"
-              spellcheck="false"
-              placeholder="{project_path_placeholder}"
-            />
-            <button class="skill-quarantine-action" type="submit" data-label="添加并扫描">{project_add_label}</button>
-          </form>
-        </details>
         <div class="skill-quarantine-project-shortcuts">
           <div class="skill-quarantine-project-section-head">
             <strong>{project_root_title}</strong>
@@ -12866,6 +12857,15 @@ def make_skill_quarantine_panel(view):
           </div>
           <ul class="skill-quarantine-project-roots" id="skill-quarantine-project-roots">
             {project_root_rows}
+          </ul>
+        </div>
+        <div class="skill-quarantine-project-shortcuts">
+          <div class="skill-quarantine-project-section-head">
+            <strong>{project_candidate_title}</strong>
+            <small>{project_candidate_note}</small>
+          </div>
+          <ul class="skill-quarantine-project-roots is-candidates" id="skill-quarantine-project-candidates">
+            {project_candidate_rows}
           </ul>
         </div>
       </div>
@@ -12967,20 +12967,24 @@ def make_skill_quarantine_panel(view):
         header_html=header_html,
         project_settings_title=panel_language_text_html("常用项目路径", "Project Skill Paths"),
         project_settings_note=panel_language_text_html(
-            "优先点选候选项目；扫描 skills、.agents/skills、.codex/skills、.claude/skills。",
-            "Pick a candidate first; scans skills, .agents/skills, .codex/skills, and .claude/skills.",
+            "添加项目文件夹，或从常用项目中点选；扫描 skills、.agents/skills、.codex/skills、.claude/skills。",
+            "Add a project folder or pick a common project; scans skills, .agents/skills, .codex/skills, and .claude/skills.",
         ),
         project_root_count=skill_quarantine_count_label(len(project_skill_roots)),
-        project_candidate_title=panel_language_text_html("常用目录", "Common Directories"),
+        project_picker_title=panel_language_text_html("添加项目文件夹", "Add Project Folder"),
+        project_picker_note=panel_language_text_html(
+            "选择项目根目录后立即加入扫描。",
+            "Choose a project root to scan immediately.",
+        ),
+        project_picker_title_attr=escape("添加项目文件夹", quote=True),
+        project_picker_label=panel_language_text_html("添加项目文件夹", "Add project folder"),
+        project_candidate_title=panel_language_text_html("常用项目", "Common Projects"),
         project_candidate_note=panel_language_text_html(
             "先打开文件夹预览，确认后添加并扫描。",
             "Open the folder to preview, then add and scan.",
         ),
         project_candidate_rows=make_skill_quarantine_project_candidate_rows(project_skill_root_candidates),
-        project_manual_summary=panel_language_text_html("手动输入路径", "Manual path entry"),
-        project_path_placeholder=escape("/path/to/project", quote=True),
-        project_add_label=panel_language_text_html("添加并扫描", "Add and scan"),
-        project_root_title=panel_language_text_html("已添加路径", "Added Paths"),
+        project_root_title=panel_language_text_html("已添加项目", "Added Projects"),
         project_root_note=panel_language_text_html(
             "这些项目会在后续刷新中增量纳入 skill 扫描。",
             "These projects are included in incremental skill scans on refresh.",
@@ -20031,13 +20035,17 @@ def build_html(data):
       gap: 14px;
     }}
 
-    .skill-quarantine-head {{
+    .panel-head.skill-quarantine-head {{
+      display: grid;
+      grid-template-columns: max-content minmax(0, 1fr);
       align-items: flex-start;
+      gap: 8px 16px;
     }}
 
     .skill-quarantine-head-primary {{
       display: flex;
       align-items: center;
+      flex-wrap: wrap;
       gap: 12px;
       min-width: 0;
     }}
@@ -20053,6 +20061,16 @@ def build_html(data):
       padding: 0 14px;
       font-size: 13px;
       white-space: nowrap;
+    }}
+
+    .panel-head.skill-quarantine-head .panel-head-meta {{
+      justify-content: flex-start;
+      min-width: 0;
+    }}
+
+    .panel-head.skill-quarantine-head .panel-note {{
+      line-height: 1.45;
+      overflow-wrap: anywhere;
     }}
 
     .skill-quarantine-settings[hidden] {{
@@ -20117,42 +20135,16 @@ def build_html(data):
       line-height: 1.35;
     }}
 
-    .skill-quarantine-manual-entry {{
-      border: 1px solid var(--line);
-      border-radius: 7px;
-      background: var(--panel);
-      padding: 8px 10px;
-    }}
-
-    .skill-quarantine-manual-entry summary {{
-      color: var(--teal);
-      cursor: pointer;
-      font-size: 12px;
-      font-weight: 820;
-      line-height: 1.35;
-    }}
-
-    .skill-quarantine-manual-entry[open] summary {{
-      margin-bottom: 8px;
-    }}
-
-    .skill-quarantine-project-form {{
+    .skill-quarantine-project-picker {{
       display: grid;
-      grid-template-columns: minmax(220px, 1fr) auto;
-      gap: 8px;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 10px;
+      align-items: center;
       min-width: 0;
-    }}
-
-    .skill-quarantine-project-input {{
-      min-width: 0;
-      height: 34px;
-      padding: 0 10px;
       border: 1px solid var(--line);
       border-radius: 7px;
       background: var(--panel);
-      color: var(--ink);
-      font: inherit;
-      font-size: 13px;
+      padding: 10px;
     }}
 
     .skill-quarantine-project-roots {{
@@ -20227,7 +20219,8 @@ def build_html(data):
 
     .skill-quarantine-project-remove,
     .skill-quarantine-project-open,
-    .skill-quarantine-project-add {{
+    .skill-quarantine-project-add,
+    .skill-quarantine-project-choose {{
       min-height: 30px;
       padding: 0 10px;
       border: 1px solid color-mix(in srgb, var(--teal) 52%, var(--line));
@@ -20239,6 +20232,11 @@ def build_html(data):
       font-weight: 800;
       cursor: pointer;
       white-space: nowrap;
+    }}
+
+    .skill-quarantine-project-choose {{
+      min-height: 34px;
+      padding: 0 14px;
     }}
 
     .skill-quarantine-project-open {{
@@ -26817,6 +26815,16 @@ def build_html(data):
       }}
     }}
 
+    @media (max-width: 1180px) {{
+      .panel-head.skill-quarantine-head {{
+        grid-template-columns: 1fr;
+      }}
+
+      .panel-head.skill-quarantine-head .panel-head-meta {{
+        width: 100%;
+      }}
+    }}
+
     @media (max-width: 720px) {{
       .app-shell {{
         width: min(1280px, calc(100vw - 28px));
@@ -26866,7 +26874,7 @@ def build_html(data):
         justify-content: center;
       }}
 
-      .skill-quarantine-project-form,
+      .skill-quarantine-project-picker,
       .skill-quarantine-project-root {{
         grid-template-columns: 1fr;
       }}
@@ -27779,8 +27787,7 @@ def build_html(data):
         skillQuarantineStatus: document.getElementById("skill-quarantine-status"),
         skillQuarantineSettingsToggle: document.getElementById("skill-quarantine-settings-toggle"),
         skillQuarantineSettings: document.getElementById("skill-quarantine-settings"),
-        skillQuarantineProjectForm: document.getElementById("skill-quarantine-project-form"),
-        skillQuarantineProjectInput: document.getElementById("skill-quarantine-project-path"),
+        skillQuarantineProjectChoose: document.querySelector("[data-skill-quarantine-project-choose]"),
         skillQuarantineProjectCandidates: document.getElementById("skill-quarantine-project-candidates"),
         skillQuarantineProjectRoots: document.getElementById("skill-quarantine-project-roots"),
         skillQuarantineProjectRootCount: document.getElementById("skill-quarantine-project-root-count"),
@@ -31871,7 +31878,8 @@ def build_html(data):
           confirmDeleteNote: "隔离副本会移到废纸篓，删除后不能从小黑屋一键恢复使用。",
           confirmDeleteButton: "确认删除",
           cancelDeleteButton: "取消",
-          pathRequired: "请先输入项目路径",
+          pathRequired: "请先选择项目文件夹",
+          projectFolderUnavailable: "请在 OpenRelix App 中选择项目文件夹",
           projectSaved: "常用项目路径已更新，正在后台增量扫描",
           projectScanDone: "项目 skills 扫描完成，刷新后可查看最新结果",
           projectScanFailed: "项目 skills 扫描失败，请稍后重试或查看后台运行监控",
@@ -31899,7 +31907,8 @@ def build_html(data):
           confirmDeleteNote: "The isolated copy moves to Trash. It cannot be restored from quarantine afterward.",
           confirmDeleteButton: "Confirm delete",
           cancelDeleteButton: "Cancel",
-          pathRequired: "Enter a project path first",
+          pathRequired: "Choose a project folder first",
+          projectFolderUnavailable: "Choose project folders from the OpenRelix app",
           projectSaved: "Project skill paths updated. Incremental scan is running",
           projectScanDone: "Project skill scan completed. Reload to view the latest results",
           projectScanFailed: "Project skill scan failed. Try again later or check Background Monitor",
@@ -31925,6 +31934,52 @@ def build_html(data):
         }} catch (_error) {{
         }}
       }}
+
+      let pendingSkillQuarantineProjectFolderButton = null;
+
+      function nativeProjectFolderPickerHandler() {{
+        return window.webkit
+          && window.webkit.messageHandlers
+          && window.webkit.messageHandlers.openrelixChooseProjectFolder;
+      }}
+
+      function chooseSkillQuarantineProjectFolder(button) {{
+        const handler = nativeProjectFolderPickerHandler();
+        if (!handler) {{
+          setSkillQuarantineStatus(skillQuarantineMessage("projectFolderUnavailable"), "warning");
+          flashButtonLabel(button, currentLanguage === "en" ? "Use app" : "请用 App");
+          return;
+        }}
+        pendingSkillQuarantineProjectFolderButton = button || null;
+        if (button) {{
+          button.disabled = true;
+          button.textContent = currentLanguage === "en" ? "Choosing..." : "选择中...";
+        }}
+        try {{
+          handler.postMessage({{ source: "skill_quarantine" }});
+        }} catch (_error) {{
+          pendingSkillQuarantineProjectFolderButton = null;
+          if (button) {{
+            button.disabled = false;
+            button.textContent = currentLanguage === "en" ? "Add project folder" : "添加项目文件夹";
+          }}
+          setSkillQuarantineStatus(skillQuarantineMessage("projectFolderUnavailable"), "warning");
+        }}
+      }}
+
+      window.openrelixProjectFolderSelected = function (path) {{
+        const button = pendingSkillQuarantineProjectFolderButton;
+        pendingSkillQuarantineProjectFolderButton = null;
+        const selectedPath = String(path || "").trim();
+        if (!selectedPath) {{
+          if (button) {{
+            button.disabled = false;
+            button.textContent = currentLanguage === "en" ? "Add project folder" : "添加项目文件夹";
+          }}
+          return;
+        }}
+        submitSkillQuarantineAction("add-project-skill-root", "", button, {{ path: selectedPath }});
+      }};
 
       function skillQuarantineAnalyticsAction(action) {{
         const labels = {{
@@ -32067,7 +32122,7 @@ def build_html(data):
         const item = document.createElement("li");
         item.className = "skill-quarantine-project-root is-empty";
         const label = document.createElement("span");
-        label.textContent = currentLanguage === "en" ? "No project paths" : "暂无常用项目路径";
+        label.textContent = currentLanguage === "en" ? "No added projects" : "暂无已添加项目";
         const note = document.createElement("small");
         note.textContent = currentLanguage === "en"
           ? "Add a project root to scan local skill folders."
@@ -32084,8 +32139,8 @@ def build_html(data):
         label.textContent = currentLanguage === "en" ? "No project candidates" : "暂无可用候选路径";
         const note = document.createElement("small");
         note.textContent = currentLanguage === "en"
-          ? "Use manual entry as a fallback."
-          : "可展开手动输入作为兜底。";
+          ? "Use Add project folder to select more projects."
+          : "可通过添加项目文件夹选择更多项目。";
         item.appendChild(label);
         item.appendChild(note);
         return item;
@@ -32644,6 +32699,13 @@ def build_html(data):
       }}
 
       function skillQuarantineActionButtonLabel(action, button) {{
+        if (
+          action === "add-project-skill-root"
+          && button
+          && button.hasAttribute("data-skill-quarantine-project-choose")
+        ) {{
+          return currentLanguage === "en" ? "Add project folder" : "添加项目文件夹";
+        }}
         const labels = {{
           "block": ["隔离", "Quarantine"],
           "unblock": ["恢复使用", "Restore"],
@@ -33037,9 +33099,6 @@ def build_html(data):
                 "warning"
               );
             }} else if (applyResult.projectRootsChanged) {{
-              if (action === "add-project-skill-root" && elements.skillQuarantineProjectInput) {{
-                elements.skillQuarantineProjectInput.value = "";
-              }}
               setSkillQuarantineStatus(skillQuarantineMessage("projectSaved"), "success");
               watchSkillQuarantineProjectScan(payload);
             }} else if (applyResult.stale) {{
@@ -33158,21 +33217,10 @@ def build_html(data):
             elements.skillQuarantineSettingsToggle.setAttribute("aria-expanded", isHidden ? "true" : "false");
           }});
         }}
-        if (elements.skillQuarantineProjectForm) {{
-          elements.skillQuarantineProjectForm.addEventListener("submit", function (event) {{
+        if (elements.skillQuarantineProjectChoose) {{
+          elements.skillQuarantineProjectChoose.addEventListener("click", function (event) {{
             event.preventDefault();
-            const path = elements.skillQuarantineProjectInput
-              ? (elements.skillQuarantineProjectInput.value || "").trim()
-              : "";
-            if (!path) {{
-              setSkillQuarantineStatus(skillQuarantineMessage("pathRequired"), "warning");
-              if (elements.skillQuarantineProjectInput) {{
-                elements.skillQuarantineProjectInput.focus();
-              }}
-              return;
-            }}
-            const button = elements.skillQuarantineProjectForm.querySelector('button[type="submit"]');
-            submitSkillQuarantineAction("add-project-skill-root", "", button, {{ path: path }});
+            chooseSkillQuarantineProjectFolder(elements.skillQuarantineProjectChoose);
           }});
         }}
       }}

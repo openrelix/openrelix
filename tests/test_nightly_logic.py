@@ -7899,8 +7899,16 @@ Native Codex profile.
         self.assertIn("设置项目路径", source)
         self.assertIn("skill-quarantine-settings-toggle", source)
         self.assertIn("skill-quarantine-settings", source)
-        self.assertIn("skill-quarantine-project-form", source)
-        self.assertIn("常用目录", source)
+        self.assertIn("skill-quarantine-project-picker", source)
+        self.assertIn("添加项目文件夹", source)
+        self.assertIn("data-skill-quarantine-project-choose", source)
+        self.assertIn("openrelixChooseProjectFolder", source)
+        self.assertIn("openrelixProjectFolderSelected", source)
+        self.assertNotIn('id="skill-quarantine-project-form"', source)
+        self.assertNotIn('id="skill-quarantine-project-path"', source)
+        self.assertIn("@media (max-width: 1180px)", source)
+        self.assertIn(".panel-head.skill-quarantine-head", source)
+        self.assertIn("常用项目", source)
         self.assertIn("skill-quarantine-project-candidates", source)
         self.assertIn("project_skill_root_candidates", source)
         self.assertIn("make_skill_quarantine_project_candidate_rows", source)
@@ -7914,6 +7922,14 @@ Native Codex profile.
         self.assertIn("syncSkillQuarantineProjectCandidateButtons", source)
         self.assertIn('action === "add-project-skill-root"', source)
         self.assertIn('data-skill-quarantine-project-path', source)
+        self.assertLess(
+            source.index('id="skill-quarantine-project-picker"'),
+            source.index('id="skill-quarantine-project-roots"'),
+        )
+        self.assertLess(
+            source.index('id="skill-quarantine-project-roots"'),
+            source.index('id="skill-quarantine-project-candidates"'),
+        )
         self.assertIn("一键隔离可选项", source)
         self.assertIn("打开小黑屋文件夹", source)
         self.assertIn('data-label-zh="打开小黑屋文件夹"', source)
@@ -12502,6 +12518,10 @@ Native Codex profile.
         self.assertIn("openrelixTheme", mac_client)
         self.assertIn("openrelixOpenExternal", mac_client)
         self.assertIn("openrelixEnsureTokenLive", mac_client)
+        self.assertIn("openrelixChooseProjectFolder", mac_client)
+        self.assertIn("chooseProjectFolderForPanel", mac_client)
+        self.assertIn("NSOpenPanel()", mac_client)
+        self.assertIn("openrelixProjectFolderSelected", mac_client)
         self.assertIn("ensureTokenLiveLaunchAgent()", mac_client)
         self.assertIn('["kickstart", "-k", serviceTarget]', mac_client)
         self.assertIn("webView?.underPageBackgroundColor = background", mac_client)
