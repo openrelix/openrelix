@@ -63,6 +63,13 @@ NO_CALLS_REASON = "no_calls"
 NEW_GRACE_REASON = "new_grace"
 ACTIVE_REASON = "active"
 STATE_ONLY_STATUS = "state_only"
+CONTEXT_SAVING_HOSTS = ("codex", "claude")
+CONTEXT_SAVING_EFFECTIVE_STATUSES = {
+    "moved",
+    "already_moved",
+    "config_isolated",
+    "toml_disabled",
+}
 MIGRATION_WARNING_STATUSES = {
     "archive_failed",
     "backup_failed",
@@ -1008,6 +1015,7 @@ def _merge_entry_item(item, entry):
             "entity_type": entry.get("entity_type") or merged.get("entity_type", ""),
             "identifier": entry.get("identifier") or merged.get("identifier", ""),
             "display_name": entry.get("display_name") or merged.get("display_name", ""),
+            "description": merged.get("description") or entry.get("description", ""),
             "reason": entry.get("reason") or merged.get("reason", MANUAL_REASON),
             "blocked_at": entry.get("blocked_at", ""),
             "blocked_by": entry.get("blocked_by", ""),
@@ -1025,6 +1033,258 @@ def _merge_entry_item(item, entry):
     if not merged.get("usage_30d"):
         merged["usage_30d"] = int(entry.get("usage_30d") or 0)
     return merged
+
+
+def _rough_context_token_count(text):
+    text = str(text or "")
+    if not text.strip():
+        return 0
+    cjk_chars = 0
+    other_chars = 0
+    for char in text:
+        if char.isspace():
+            continue
+        codepoint = ord(char)
+        if (
+            0x3400 <= codepoint <= 0x4DBF
+            or 0x4E00 <= codepoint <= 0x9FFF
+            or 0xF900 <= codepoint <= 0xFAFF
+        ):
+            cjk_chars += 1
+        else:
+            other_chars += 1
+    return cjk_chars + ((other_chars + 3) // 4)
+
+
+def _skill_manifest_candidate_path(value):
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        path = Path(text).expanduser()
+    except (OSError, RuntimeError, ValueError):
+        return None
+    if not path.is_absolute():
+        return None
+    if path.name == SKILL_FILENAME:
+        return path
+    return path / SKILL_FILENAME
+
+
+def _iter_skill_description_manifest_paths(row):
+    seen = set()
+
+    def add(value):
+        path = _skill_manifest_candidate_path(value)
+        if not path:
+            return
+        key = path.as_posix()
+        if key in seen:
+            return
+        seen.add(key)
+        yield path
+
+    for source in (row or {}).get("sources", []) or []:
+        if not isinstance(source, dict):
+            continue
+        for field in ("manifest_entry_abspath", "manifest_abspath", "manifest_path"):
+            yield from add(source.get(field))
+    for target in (row or {}).get("isolation_targets", []) or []:
+        if not isinstance(target, dict):
+            continue
+        for field in (
+            "quarantine_path",
+            "archived_quarantine_path",
+            "backup_path",
+            "original_path",
+            "original_resolved_path",
+        ):
+            yield from add(target.get(field))
+    yield from add((row or {}).get("click_target"))
+
+
+def _skill_description_from_manifest(row):
+    for path in _iter_skill_description_manifest_paths(row):
+        if not (path.exists() or path.is_symlink()):
+            continue
+        frontmatter = asset_discovery.parse_skill_frontmatter(path)
+        description = str(frontmatter.get("description") or "").strip()
+        if description:
+            return asset_discovery._redact_display_text(description)
+    return ""
+
+
+def _skill_description_text(row):
+    if not isinstance(row, dict):
+        return ""
+    description = str(row.get("description") or "").strip()
+    if description:
+        return description
+    description = _skill_description_from_manifest(row)
+    if description:
+        row["description"] = description
+        row["description_source"] = "manifest_frontmatter"
+    return description
+
+
+def _skill_first_load_token_basis(row):
+    if not isinstance(row, dict):
+        return ""
+    if row.get("first_load_tokens") is None:
+        return ""
+    return "description"
+
+
+def _estimate_skill_first_load_tokens(row):
+    description = _skill_description_text(row)
+    if not description:
+        return None
+    return _rough_context_token_count(description)
+
+
+def _estimate_mcp_context_tokens(target):
+    if isinstance(target.get("saved_config"), dict):
+        text = json.dumps(target.get("saved_config"), ensure_ascii=False, sort_keys=True)
+    else:
+        text = (
+            target.get("saved_config_text")
+            or target.get("disabled_config_text")
+            or target.get("server")
+            or target.get("path")
+            or ""
+        )
+    return _rough_context_token_count(text)
+
+
+def _attach_context_token_estimates(rows):
+    for row in rows or []:
+        if not isinstance(row, dict):
+            continue
+        if row.get("entity_type") == SKILL_TYPE:
+            row["first_load_tokens"] = _estimate_skill_first_load_tokens(row)
+            row["first_load_token_basis"] = _skill_first_load_token_basis(row)
+        else:
+            row["first_load_tokens"] = None
+            row["first_load_token_basis"] = ""
+    return rows
+
+
+def _context_host_text(row, target):
+    values = [
+        target.get("host"),
+        target.get("kind"),
+        target.get("original_path"),
+        target.get("original_resolved_path"),
+        target.get("quarantine_path"),
+        row.get("identifier"),
+    ]
+    for label in row.get("source_labels", []) or []:
+        if isinstance(label, dict):
+            values.append(label.get("label"))
+            values.append(label.get("label_en"))
+    for source in row.get("sources", []) or []:
+        if isinstance(source, dict):
+            values.extend(
+                [
+                    source.get("kind"),
+                    source.get("source_root"),
+                    source.get("manifest_path"),
+                    source.get("manifest_abspath"),
+                    source.get("manifest_entry_abspath"),
+                ]
+            )
+    return " ".join(str(value or "") for value in values).lower()
+
+
+def _context_saving_hosts_for_target(row, target):
+    host = str(target.get("host") or "").strip().lower()
+    if host == "codex":
+        return ["codex"]
+    if host in {"claude", "claude_desktop"}:
+        return ["claude"]
+    text = _context_host_text(row, target)
+    hosts = []
+    if "claude" in text or "/.claude/" in text or ".claude/skills" in text:
+        hosts.append("claude")
+    if "codex" in text or "/.codex/" in text or ".codex/skills" in text:
+        hosts.append("codex")
+    if ".agents/skills" in text or "agent_skill" in text or "repo_skill" in text:
+        hosts.append("codex")
+    return [host for host in CONTEXT_SAVING_HOSTS if host in set(hosts)]
+
+
+def _empty_context_saving_bucket(host):
+    return {
+        "host": host,
+        "estimated_tokens": 0,
+        "skill_count": 0,
+        "mcp_count": 0,
+        "item_count": 0,
+        "unknown_token_items": 0,
+    }
+
+
+def _context_saving_stats(quarantined):
+    buckets = {host: _empty_context_saving_bucket(host) for host in CONTEXT_SAVING_HOSTS}
+    skill_keys = {host: set() for host in CONTEXT_SAVING_HOSTS}
+    mcp_keys = {host: set() for host in CONTEXT_SAVING_HOSTS}
+    item_keys = {host: set() for host in CONTEXT_SAVING_HOSTS}
+    unknown_token_keys = {host: set() for host in CONTEXT_SAVING_HOSTS}
+    ignored_state_only = 0
+    unattributed_items = 0
+
+    for row in quarantined or []:
+        if not isinstance(row, dict):
+            continue
+        row_key = row.get("entity_key") or entity_key(row.get("entity_type"), row.get("identifier"))
+        row_counted = False
+        row_had_effective_target = False
+        for target in row.get("isolation_targets", []) or []:
+            if not isinstance(target, dict):
+                continue
+            status = str(target.get("status") or "")
+            if status not in CONTEXT_SAVING_EFFECTIVE_STATUSES:
+                if status == STATE_ONLY_STATUS:
+                    ignored_state_only += 1
+                continue
+            row_had_effective_target = True
+            target_type = target.get("type") or row.get("entity_type")
+            tokens = (
+                _estimate_mcp_context_tokens(target)
+                if target_type == MCP_TYPE
+                else _estimate_skill_first_load_tokens(row)
+            )
+            hosts = _context_saving_hosts_for_target(row, target)
+            if not hosts:
+                continue
+            for host in hosts:
+                if tokens is None:
+                    unknown_token_keys[host].add(row_key)
+                    row_counted = True
+                    continue
+                if row_key not in item_keys[host]:
+                    buckets[host]["estimated_tokens"] += int(tokens or 0)
+                item_keys[host].add(row_key)
+                if target_type == MCP_TYPE:
+                    mcp_keys[host].add(row_key)
+                else:
+                    skill_keys[host].add(row_key)
+                row_counted = True
+        if row_had_effective_target and not row_counted:
+            unattributed_items += 1
+
+    for host in CONTEXT_SAVING_HOSTS:
+        buckets[host]["skill_count"] = len(skill_keys[host])
+        buckets[host]["mcp_count"] = len(mcp_keys[host])
+        buckets[host]["item_count"] = len(item_keys[host])
+        buckets[host]["unknown_token_items"] = len(unknown_token_keys[host])
+    return {
+        "hosts": buckets,
+        "total_estimated_tokens": sum(bucket["estimated_tokens"] for bucket in buckets.values()),
+        "ignored_state_only_targets": ignored_state_only,
+        "unattributed_items": unattributed_items,
+        "method": "estimated_from_skill_descriptions_and_mcp_config",
+    }
 
 
 def build_quarantine_view(
@@ -1079,11 +1339,13 @@ def build_quarantine_view(
         if key in by_key:
             continue
         normalized.append(_merge_entry_item({}, entry))
+    _attach_context_token_estimates(normalized)
 
     suggested = [row for row in normalized if row.get("status") == "suggested"]
     quarantined = [row for row in normalized if row.get("status") == "quarantined"]
     grace = [row for row in normalized if row.get("status") == "grace"]
     active = [row for row in normalized if row.get("status") == "active"]
+    context_savings = _context_saving_stats(quarantined)
     migration_warning_count = sum(len(row.get("migration_warnings", []) or []) for row in quarantined)
     sort_key = lambda row: (
         row.get("entity_type", ""),
@@ -1104,6 +1366,7 @@ def build_quarantine_view(
         "quarantined": sorted(quarantined, key=lambda row: (row.get("entity_type", ""), str(row.get("display_name", "")).lower())),
         "grace": sorted(grace, key=lambda row: (row.get("entity_type", ""), str(row.get("display_name", "")).lower())),
         "active": sorted(active, key=sort_key),
+        "context_savings": context_savings,
         "counts": {
             "suggested": len(suggested),
             "quarantined": len(quarantined),
@@ -1647,6 +1910,7 @@ def block_entity(
             "entity_type": item.get("entity_type"),
             "identifier": item.get("identifier"),
             "display_name": item.get("display_name") or item.get("identifier"),
+            "description": item.get("description") or entry.get("description", ""),
             "reason": reason or MANUAL_REASON,
             "blocked_by": blocked_by or "user",
             "blocked_at": entry.get("blocked_at") or _now_iso(),

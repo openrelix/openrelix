@@ -305,6 +305,8 @@ def skill_quarantine_project_view_payload(cached_view=None):
         "schema_version": view.get("schema_version"),
         "generated_at": view.get("generated_at"),
         "cached_at": view.get("cached_at"),
+        "counts": view.get("counts") if isinstance(view.get("counts"), dict) else {},
+        "context_savings": view.get("context_savings") if isinstance(view.get("context_savings"), dict) else {},
         "project_skill_roots": list_project_skill_roots(PATHS),
         "project_skill_root_candidates": list_project_skill_root_candidates(PATHS),
     }

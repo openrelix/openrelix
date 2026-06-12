@@ -83,6 +83,159 @@ class SkillQuarantineTests(unittest.TestCase):
             self.assertEqual(view["quarantine_root"], str(skill_quarantine.quarantine_root(paths)))
             self.assertTrue(skill_quarantine.quarantine_root(paths).is_dir())
 
+    def test_quarantine_view_estimates_context_savings_from_skill_descriptions(self):
+        with TemporaryDirectory() as tmp:
+            paths = runtime_paths_for_fixture(Path(tmp))
+            codex_description = "Codex helper description for first window injection."
+            claude_description = "Claude 项目技能描述。"
+            recovered_description = "Recovered description from quarantined SKILL frontmatter."
+            mcp_config = '[mcp_servers.demo]\ncommand = "node"\n'
+            recovered_skill_dir = paths.codex_home / "skills" / "missing-description"
+            recovered_skill_dir.mkdir(parents=True)
+            (recovered_skill_dir / "SKILL.md").write_text(
+                "---\nname: Missing Description\ndescription: {}\n---\n".format(recovered_description),
+                encoding="utf-8",
+            )
+            state = skill_quarantine._empty_state()
+            state["entries"] = {
+                "skill:codex-helper": {
+                    "entity_key": "skill:codex-helper",
+                    "entity_type": "skill",
+                    "identifier": "codex-helper",
+                    "display_name": "codex-helper",
+                    "description": codex_description,
+                    "usage_30d": 0,
+                    "isolation_status": "moved",
+                    "source_labels": [{"label": "~/.codex/skills", "label_en": "~/.codex/skills"}],
+                    "isolation_targets": [
+                        {
+                            "type": "skill",
+                            "kind": "codex_skill",
+                            "status": "moved",
+                            "original_path": str(paths.codex_home / "skills" / "codex-helper"),
+                        }
+                    ],
+                },
+                "skill:claude-helper": {
+                    "entity_key": "skill:claude-helper",
+                    "entity_type": "skill",
+                    "identifier": "claude-helper",
+                    "display_name": "claude-helper",
+                    "description": claude_description,
+                    "usage_30d": 0,
+                    "isolation_status": "moved",
+                    "source_labels": [{"label": "~/.claude/skills", "label_en": "~/.claude/skills"}],
+                    "isolation_targets": [
+                        {
+                            "type": "skill",
+                            "kind": "claude_skill",
+                            "status": "moved",
+                            "original_path": str(paths.claude_home / "skills" / "claude-helper"),
+                        }
+                    ],
+                },
+                "mcp:demo": {
+                    "entity_key": "mcp:demo",
+                    "entity_type": "mcp",
+                    "identifier": "demo",
+                    "display_name": "demo",
+                    "usage_30d": 0,
+                    "isolation_status": "toml_disabled",
+                    "isolation_targets": [
+                        {
+                            "type": "mcp",
+                            "host": "codex",
+                            "status": "toml_disabled",
+                            "saved_config_text": mcp_config,
+                        }
+                    ],
+                },
+                "skill:missing-description": {
+                    "entity_key": "skill:missing-description",
+                    "entity_type": "skill",
+                    "identifier": "missing-description",
+                    "display_name": "missing-description",
+                    "usage_30d": 0,
+                    "isolation_status": "moved",
+                    "source_labels": [{"label": "~/.codex/skills", "label_en": "~/.codex/skills"}],
+                    "isolation_targets": [
+                        {
+                            "type": "skill",
+                            "kind": "codex_skill",
+                            "status": "moved",
+                            "original_path": str(paths.codex_home / "skills" / "missing-description"),
+                        }
+                    ],
+                },
+                "skill:still-missing-description": {
+                    "entity_key": "skill:still-missing-description",
+                    "entity_type": "skill",
+                    "identifier": "still-missing-description",
+                    "display_name": "still-missing-description",
+                    "usage_30d": 0,
+                    "isolation_status": "moved",
+                    "source_labels": [{"label": "~/.codex/skills", "label_en": "~/.codex/skills"}],
+                    "isolation_targets": [
+                        {
+                            "type": "skill",
+                            "kind": "codex_skill",
+                            "status": "moved",
+                            "original_path": str(paths.codex_home / "skills" / "still-missing-description"),
+                        }
+                    ],
+                },
+                "skill:state-only": {
+                    "entity_key": "skill:state-only",
+                    "entity_type": "skill",
+                    "identifier": "state-only",
+                    "display_name": "state-only",
+                    "description": "This should not be counted as saved.",
+                    "usage_30d": 0,
+                    "isolation_status": skill_quarantine.STATE_ONLY_STATUS,
+                    "isolation_targets": [
+                        {
+                            "type": "skill",
+                            "status": skill_quarantine.STATE_ONLY_STATUS,
+                            "note": "project_skill_not_moved",
+                        }
+                    ],
+                },
+            }
+            skill_quarantine.write_state(paths, state)
+
+            view = skill_quarantine.build_quarantine_view(
+                paths,
+                today="2026-06-05",
+                activation_snapshot={"assets": [], "frequency_by_key": {}},
+                mcp_usage_view={"servers": []},
+                codex_homes=[paths.codex_home],
+            )
+
+            rows = {row["entity_key"]: row for row in view["quarantined"]}
+            codex_tokens = skill_quarantine._rough_context_token_count(codex_description)
+            claude_tokens = skill_quarantine._rough_context_token_count(claude_description)
+            recovered_tokens = skill_quarantine._rough_context_token_count(recovered_description)
+            mcp_tokens = skill_quarantine._rough_context_token_count(mcp_config)
+            self.assertEqual(rows["skill:codex-helper"]["first_load_tokens"], codex_tokens)
+            self.assertEqual(rows["skill:codex-helper"]["first_load_token_basis"], "description")
+            self.assertEqual(rows["skill:claude-helper"]["first_load_tokens"], claude_tokens)
+            self.assertEqual(rows["skill:missing-description"]["first_load_tokens"], recovered_tokens)
+            self.assertEqual(rows["skill:missing-description"]["description"], recovered_description)
+            self.assertEqual(rows["skill:missing-description"]["description_source"], "manifest_frontmatter")
+            self.assertIsNone(rows["skill:still-missing-description"]["first_load_tokens"])
+            self.assertEqual(rows["skill:still-missing-description"]["first_load_token_basis"], "")
+            self.assertIsNone(rows["mcp:demo"]["first_load_tokens"])
+
+            savings = view["context_savings"]
+            self.assertEqual(savings["method"], "estimated_from_skill_descriptions_and_mcp_config")
+            self.assertEqual(savings["hosts"]["codex"]["estimated_tokens"], codex_tokens + recovered_tokens + mcp_tokens)
+            self.assertEqual(savings["hosts"]["codex"]["skill_count"], 2)
+            self.assertEqual(savings["hosts"]["codex"]["mcp_count"], 1)
+            self.assertEqual(savings["hosts"]["codex"]["unknown_token_items"], 1)
+            self.assertEqual(savings["hosts"]["claude"]["estimated_tokens"], claude_tokens)
+            self.assertEqual(savings["hosts"]["claude"]["skill_count"], 1)
+            self.assertEqual(savings["ignored_state_only_targets"], 1)
+
     def test_action_lock_uses_runtime_lock_file(self):
         with TemporaryDirectory() as tmp:
             paths = runtime_paths_for_fixture(Path(tmp))
@@ -197,6 +350,7 @@ class SkillQuarantineTests(unittest.TestCase):
                         "entity_type": "skill",
                         "identifier": "unused-skill",
                         "display_name": "unused-skill",
+                        "description": "Unused skill description.",
                         "usage_30d": 0,
                         "sources": [
                             {
@@ -211,6 +365,7 @@ class SkillQuarantineTests(unittest.TestCase):
             entry = skill_quarantine.block_entity(paths, "skill:unused-skill", view=view)
 
             self.assertEqual(entry["isolation_status"], "moved")
+            self.assertEqual(entry["description"], "Unused skill description.")
             self.assertEqual(entry["source_labels"][0]["label"], "~/.codex/skills")
             quarantine_path = Path(entry["isolation_targets"][0]["quarantine_path"])
             self.assertFalse(skill_dir.exists())
