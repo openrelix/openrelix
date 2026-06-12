@@ -17239,14 +17239,14 @@ def _recent_run_token_record(row):
 
 def pipeline_token_run_day(row):
     row = row or {}
-    target_date = str(row.get("target_date") or "").strip()
-    if re.match(r"^\d{4}-\d{2}-\d{2}$", target_date):
-        return target_date
     for key in ("started_at_iso", "ended_at_iso"):
         value = str(row.get(key) or "").strip()
         match = re.match(r"^(\d{4}-\d{2}-\d{2})", value)
         if match:
             return match.group(1)
+    target_date = str(row.get("target_date") or "").strip()
+    if re.match(r"^\d{4}-\d{2}-\d{2}$", target_date):
+        return target_date
     return ""
 
 
@@ -17532,81 +17532,6 @@ def make_pipeline_token_summary(rows):
     output_display_en = compact_token(total_output, language="en")
     total_display_zh = compact_token(total_tokens, language="zh")
     total_display_en = compact_token(total_tokens, language="en")
-    runs_label_zh = "深度回溯 {} 次消耗 token".format(runs_with_tokens)
-    runs_label_en = "{} deep backfill runs consumed tokens".format(runs_with_tokens)
-    rows_html = []
-    for row in deep_rows:
-        record = _recent_run_token_record(row)
-        if not record:
-            continue
-        title = row.get("title") or row.get("pipeline") or ""
-        title_en = row.get("title_en") or title
-        target_date = str(row.get("target_date") or "").strip()
-        started = pipeline_history_time_display(row.get("started_at_iso"))
-        in_disp_zh = compact_token(record["input_tokens"], language="zh")
-        in_disp_en = compact_token(record["input_tokens"], language="en")
-        out_disp_zh = compact_token(record["output_tokens"], language="zh")
-        out_disp_en = compact_token(record["output_tokens"], language="en")
-        total_disp_zh = compact_token(record["total_tokens"], language="zh")
-        total_disp_en = compact_token(record["total_tokens"], language="en")
-        date_label_zh = "日期 {}".format(target_date) if target_date else "日期 —"
-        date_label_en = "Date {}".format(target_date) if target_date else "Date —"
-        time_label_zh = "触发 {}".format(started or "—")
-        time_label_en = "Started {}".format(started or "—")
-        rows_html.append(
-            """
-            <div class="pipeline-token-row">
-              <div class="pipeline-token-row-title">{title}</div>
-              <div class="pipeline-token-row-meta">
-                <span class="pipeline-token-meta">{date_zh}</span>
-                <span class="pipeline-token-meta">{date_en}</span>
-                <span class="pipeline-token-meta">{time_zh}</span>
-                <span class="pipeline-token-meta">{time_en}</span>
-              </div>
-              <div class="pipeline-token-row-stats">
-                <span class="pipeline-token-stat" data-kind="input">
-                  <span class="pipeline-token-stat-label">{input_label}</span>
-                  <span class="pipeline-token-stat-value">{input_zh}</span>
-                  <span class="pipeline-token-stat-value-en">{input_en}</span>
-                </span>
-                <span class="pipeline-token-stat" data-kind="output">
-                  <span class="pipeline-token-stat-label">{output_label}</span>
-                  <span class="pipeline-token-stat-value">{output_zh}</span>
-                  <span class="pipeline-token-stat-value-en">{output_en}</span>
-                </span>
-                <span class="pipeline-token-stat" data-kind="total">
-                  <span class="pipeline-token-stat-label">{total_label}</span>
-                  <span class="pipeline-token-stat-value">{total_zh}</span>
-                  <span class="pipeline-token-stat-value-en">{total_en}</span>
-                </span>
-              </div>
-            </div>
-            """.format(
-                title=panel_language_text_html(title, title_en),
-                date_zh=escape(date_label_zh),
-                date_en=escape(date_label_en),
-                time_zh=escape(time_label_zh),
-                time_en=escape(time_label_en),
-                input_label=panel_language_text_html("输入", "Input"),
-                output_label=panel_language_text_html("输出", "Output"),
-                total_label=panel_language_text_html("合计", "Total"),
-                input_zh=escape(in_disp_zh),
-                input_en=escape(in_disp_en),
-                output_zh=escape(out_disp_zh),
-                output_en=escape(out_disp_en),
-                total_zh=escape(total_disp_zh),
-                total_en=escape(total_disp_en),
-            )
-        )
-    if not rows_html:
-        rows_html.append(
-            '<div class="pipeline-token-empty">{}</div>'.format(
-                panel_language_text_html(
-                    "最近的深度回溯还没有记录到 token 明细。",
-                    "Recent deep backfill runs have no recorded token details yet.",
-                )
-            )
-        )
     return """
     <div class="pipeline-token-summary" id="pipeline-token-summary">
       <div class="pipeline-token-summary-header">
@@ -17631,7 +17556,6 @@ def make_pipeline_token_summary(rows):
       </div>
       <div class="pipeline-token-summary-note">{note}</div>
       {chart}
-      <div class="pipeline-token-rows">{rows}</div>
     </div>
     """.format(
         title=panel_language_text_html(
@@ -17649,18 +17573,17 @@ def make_pipeline_token_summary(rows):
         total_en=escape(total_display_en),
         note=panel_language_text_html(
             (
-                "最近 14 天按天统计，只包含完整/手动深度回溯记录；快速回溯不消耗模型 token。"
+                "最近 14 天按触发日期统计，只包含完整/手动深度回溯记录；快速回溯不消耗模型 token。"
                 if runs_with_tokens
                 else "最近 14 天暂无已记录的深度回溯 token 明细；后续完整/手动回溯完成后会自动累积。"
             ),
             (
-                "Daily stats for the latest 14 days; only full/manual deep backfill runs are counted. Quick backfill does not consume model tokens."
+                "Daily stats by trigger date for the latest 14 days; only full/manual deep backfill runs are counted. Quick backfill does not consume model tokens."
                 if runs_with_tokens
                 else "No recorded deep backfill token details in the latest 14 days yet; future full/manual backfills will accumulate here."
             ),
         ),
         chart=make_pipeline_token_chart(daily_rows),
-        rows="".join(rows_html),
     )
 
 
@@ -22133,89 +22056,6 @@ def build_html(data):
 
     .pipeline-token-legend-item.is-output::before {{
       background: #00a896;
-    }}
-
-    .pipeline-token-rows {{
-      display: grid;
-      gap: 8px;
-    }}
-
-    .pipeline-token-row {{
-      display: grid;
-      gap: 6px;
-      padding: 10px 12px;
-      border-radius: 10px;
-      background: var(--card);
-    }}
-
-    .pipeline-token-empty {{
-      padding: 10px 12px;
-      border-radius: 10px;
-      background: var(--card);
-      color: var(--muted);
-      font-size: 12px;
-      font-weight: 680;
-      line-height: 1.45;
-    }}
-
-    .pipeline-token-row-title {{
-      color: var(--ink);
-      font-size: 13px;
-      font-weight: 720;
-    }}
-
-    .pipeline-token-row-meta {{
-      display: flex;
-      flex-wrap: wrap;
-      gap: 6px;
-    }}
-
-    .pipeline-token-meta {{
-      display: inline-flex;
-      align-items: center;
-      min-height: 22px;
-      padding: 2px 8px;
-      border-radius: 999px;
-      background: var(--chip-muted-bg);
-      color: var(--muted);
-      font-size: 11px;
-      font-weight: 720;
-    }}
-
-    .pipeline-token-row-stats {{
-      display: flex;
-      flex-wrap: wrap;
-      gap: 6px;
-    }}
-
-    .pipeline-token-stat {{
-      display: inline-flex;
-      align-items: baseline;
-      gap: 6px;
-      padding: 4px 10px;
-      border-radius: 999px;
-      background: var(--chip-muted-bg);
-      color: var(--slate);
-      font-size: 12px;
-      font-weight: 720;
-    }}
-
-    .pipeline-token-stat-label {{
-      color: var(--muted);
-    }}
-
-    .pipeline-token-stat-value,
-    .pipeline-token-stat-value-en {{
-      color: var(--accent);
-      font-weight: 820;
-    }}
-
-    [lang="en"] .pipeline-token-stat-value {{
-      display: none;
-    }}
-
-    [lang="zh"] .pipeline-token-stat-value-en {{
-      display: none;
     }}
 
     .nightly-shell {{
@@ -27951,10 +27791,6 @@ def build_html(data):
       }}
 
       function pipelineTokenRunDay(row) {{
-        const targetDate = String((row && row.target_date) || "").trim();
-        if (/^\\d{{4}}-\\d{{2}}-\\d{{2}}$/.test(targetDate)) {{
-          return targetDate;
-        }}
         const candidates = [
           String((row && row.started_at_iso) || "").trim(),
           String((row && row.ended_at_iso) || "").trim(),
@@ -27962,6 +27798,10 @@ def build_html(data):
         for (const value of candidates) {{
           const match = value.match(/^(\\d{{4}}-\\d{{2}}-\\d{{2}})/);
           if (match) return match[1];
+        }}
+        const targetDate = String((row && row.target_date) || "").trim();
+        if (/^\\d{{4}}-\\d{{2}}-\\d{{2}}$/.test(targetDate)) {{
+          return targetDate;
         }}
         return "";
       }}
@@ -28311,72 +28151,15 @@ def build_html(data):
         let totalInput = 0;
         let totalOutput = 0;
         let runsWithTokens = 0;
-        const detailRows = [];
         deepRows.forEach(function (row) {{
           const record = pipelineRunTokenRecord(row);
           if (!record) return;
           runsWithTokens += 1;
           totalInput += record.input_tokens;
           totalOutput += record.output_tokens;
-          const title = localizeValue(
-            row.title || row.pipeline || "",
-            row.title_en || row.title || row.pipeline || ""
-          );
-          const targetDate = String(row.target_date || "").trim();
-          const started = compactPipelineTime(row.started_at_iso);
-          const dateZh = targetDate ? ("日期 " + targetDate) : "日期 —";
-          const dateEn = targetDate ? ("Date " + targetDate) : "Date —";
-          const timeZh = "触发 " + (started || "—");
-          const timeEn = "Started " + (started || "—");
-          detailRows.push(
-            '<div class="pipeline-token-row">' +
-              '<div class="pipeline-token-row-title">' + escapeHtml(title) + '</div>' +
-              '<div class="pipeline-token-row-meta">' +
-                '<span class="pipeline-token-meta">' + escapeHtml(dateZh) + '</span>' +
-                '<span class="pipeline-token-meta">' + escapeHtml(dateEn) + '</span>' +
-                '<span class="pipeline-token-meta">' + escapeHtml(timeZh) + '</span>' +
-                '<span class="pipeline-token-meta">' + escapeHtml(timeEn) + '</span>' +
-              '</div>' +
-              '<div class="pipeline-token-row-stats">' +
-                '<span class="pipeline-token-stat" data-kind="input">' +
-                  '<span class="pipeline-token-stat-label">' +
-                    escapeHtml(currentLanguage === "en" ? "Input" : "输入") +
-                  '</span>' +
-                  '<span class="pipeline-token-stat-value">' +
-                    escapeHtml(compactTokenValue(record.input_tokens)) +
-                  '</span>' +
-                '</span>' +
-                '<span class="pipeline-token-stat" data-kind="output">' +
-                  '<span class="pipeline-token-stat-label">' +
-                    escapeHtml(currentLanguage === "en" ? "Output" : "输出") +
-                  '</span>' +
-                  '<span class="pipeline-token-stat-value">' +
-                    escapeHtml(compactTokenValue(record.output_tokens)) +
-                  '</span>' +
-                '</span>' +
-                '<span class="pipeline-token-stat" data-kind="total">' +
-                  '<span class="pipeline-token-stat-label">' +
-                    escapeHtml(currentLanguage === "en" ? "Total" : "合计") +
-                  '</span>' +
-                  '<span class="pipeline-token-stat-value">' +
-                    escapeHtml(compactTokenValue(record.total_tokens)) +
-                  '</span>' +
-                '</span>' +
-              '</div>' +
-            '</div>'
-          );
         }});
         const totalTokens = totalInput + totalOutput;
         const dailyRows = pipelineTokenDailyRows(deepRows);
-        if (!detailRows.length) {{
-          detailRows.push(
-            '<div class="pipeline-token-empty">' +
-              escapeHtml(currentLanguage === "en"
-                ? "Recent deep backfill runs have no recorded token details yet."
-                : "最近的深度回溯还没有记录到 token 明细。") +
-            '</div>'
-          );
-        }}
         const titleText = currentLanguage === "en"
           ? "Deep Backfill Token Usage"
           : "深度回溯 Token 消耗";
@@ -28411,14 +28194,13 @@ def build_html(data):
             '<div class="pipeline-token-summary-note">' +
               escapeHtml(currentLanguage === "en"
                 ? (runsWithTokens
-                  ? "Daily stats for the latest 14 days; only full/manual deep backfill runs are counted. Quick backfill does not consume model tokens."
+                  ? "Daily stats by trigger date for the latest 14 days; only full/manual deep backfill runs are counted. Quick backfill does not consume model tokens."
                   : "No recorded deep backfill token details in the latest 14 days yet; future full/manual backfills will accumulate here.")
                 : (runsWithTokens
-                  ? "最近 14 天按天统计，只包含完整/手动深度回溯记录；快速回溯不消耗模型 token。"
+                  ? "最近 14 天按触发日期统计，只包含完整/手动深度回溯记录；快速回溯不消耗模型 token。"
                   : "最近 14 天暂无已记录的深度回溯 token 明细；后续完整/手动回溯完成后会自动累积。")) +
             '</div>' +
             renderPipelineTokenChart(dailyRows) +
-            '<div class="pipeline-token-rows">' + detailRows.join("") + '</div>' +
           '</div>'
         );
       }}
