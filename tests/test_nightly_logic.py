@@ -12260,11 +12260,66 @@ Native Codex profile.
         self.assertIn("2026-05-08T00:10:00+08:00 · 完整回溯", collector.text)
         self.assertIn("2026-05-08T00:10:00+08:00 · Full backfill", collector.text)
 
+    def test_pipeline_token_daily_rows_group_by_trigger_day_not_target_day(self):
+        with mock.patch.object(
+            build_overview,
+            "current_local_datetime",
+            return_value=datetime.fromisoformat("2026-06-12T12:00:00+08:00"),
+        ):
+            rows = build_overview.pipeline_token_daily_rows(
+                [
+                    {
+                        "pipeline": "nightly_pipeline",
+                        "title": "记忆整理流水线",
+                        "status": "completed",
+                        "target_date": "2026-06-05",
+                        "stage": "manual",
+                        "started_at_iso": "2026-06-12T00:04:02+08:00",
+                        "token_usage": {
+                            "input_tokens": 30000,
+                            "output_tokens": 3000,
+                        },
+                    },
+                    {
+                        "pipeline": "nightly_pipeline",
+                        "title": "记忆整理流水线",
+                        "status": "completed",
+                        "target_date": "2026-06-11",
+                        "stage": "manual",
+                        "started_at_iso": "2026-06-12T11:35:32+08:00",
+                        "token_usage": {
+                            "input_tokens": 10000,
+                            "output_tokens": 1000,
+                        },
+                    },
+                    {
+                        "pipeline": "nightly_pipeline",
+                        "title": "快速回溯",
+                        "status": "completed",
+                        "target_date": "2026-06-12",
+                        "stage": "preliminary",
+                        "started_at_iso": "2026-06-12T12:00:00+08:00",
+                        "token_usage": {
+                            "input_tokens": 999999,
+                            "output_tokens": 999999,
+                        },
+                    },
+                ]
+            )
+
+        rows_by_date = {row["date"]: row for row in rows}
+        self.assertEqual(rows_by_date["2026-06-12"]["input_tokens"], 40000)
+        self.assertEqual(rows_by_date["2026-06-12"]["output_tokens"], 4000)
+        self.assertEqual(rows_by_date["2026-06-12"]["total_tokens"], 44000)
+        self.assertEqual(rows_by_date["2026-06-12"]["runs"], 2)
+        self.assertEqual(rows_by_date["2026-06-05"]["total_tokens"], 0)
+        self.assertEqual(rows_by_date["2026-06-11"]["total_tokens"], 0)
+
     def test_pipeline_status_panel_shows_deep_token_daily_chart_and_hover_tooltip(self):
         with mock.patch.object(
             build_overview,
             "current_local_datetime",
-            return_value=datetime.fromisoformat("2026-06-10T12:00:00+08:00"),
+            return_value=datetime.fromisoformat("2026-06-12T12:00:00+08:00"),
         ):
             html = build_overview.make_pipeline_status_panel(
                 {
@@ -12282,9 +12337,9 @@ Native Codex profile.
                             "title": "记忆整理流水线",
                             "title_en": "Memory Synthesis Pipeline",
                             "status": "completed",
-                            "target_date": "2026-06-10",
+                            "target_date": "2026-06-05",
                             "stage": "manual",
-                            "started_at_iso": "2026-06-10T10:00:00+08:00",
+                            "started_at_iso": "2026-06-12T10:00:00+08:00",
                             "token_usage": {
                                 "input_tokens": 3114,
                                 "output_tokens": 197,
@@ -12313,8 +12368,12 @@ Native Codex profile.
         self.assertIn("pipeline-token-tooltip", html)
         self.assertIn("pipelineTokenTotalFill", html)
         self.assertNotIn("pipeline-token-table", html)
+        self.assertNotIn('<div class="pipeline-token-rows"', html)
+        self.assertNotIn('<div class="pipeline-token-row"', html)
         self.assertNotIn("<table", html)
-        self.assertIn("2026-06-10", html)
+        self.assertIn("最近 14 天按触发日期统计", html)
+        self.assertIn('data-date="2026-06-12"', html)
+        self.assertIn('data-date="2026-06-05" data-label="06/05" data-runs="0"', html)
         self.assertIn("3.3K", html)
         self.assertNotIn("20K", html)
         self.assertNotIn("preliminary", html)
