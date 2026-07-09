@@ -116,6 +116,164 @@ class CollectCodexActivityTests(unittest.TestCase):
         self.assertEqual(windows[0]["codex_electron_user_data_path"], "/tmp/Codex Profile")
         self.assertEqual(windows[0]["prompts"][0]["text"], "读取第二个 Codex home")
 
+    def test_session_file_collection_reads_codex_jsonl_without_history_prompt(self):
+        from tempfile import TemporaryDirectory
+        import json
+
+        with TemporaryDirectory() as tmpdir:
+            codex_home = Path(tmpdir) / "codex-home"
+            session_id = "019dcefe-37f1-7a83-a8a6-720bd6b79d7f"
+            session_path = (
+                codex_home
+                / "sessions"
+                / "2026"
+                / "04"
+                / "28"
+                / "rollout-2026-04-28T09-00-00-{}.jsonl".format(session_id)
+            )
+            session_path.parent.mkdir(parents=True)
+            rows = [
+                {
+                    "type": "session_meta",
+                    "timestamp": "2026-04-28T01:00:00Z",
+                    "payload": {
+                        "session_id": session_id,
+                        "id": session_id,
+                        "cwd": "/tmp/project",
+                        "originator": "codex",
+                        "source": "codex_cli_rs",
+                        "timestamp": "2026-04-28T01:00:00Z",
+                    },
+                },
+                {
+                    "type": "event_msg",
+                    "timestamp": "2026-04-28T01:00:00Z",
+                    "payload": {"type": "task_started", "turn_id": "turn-1"},
+                },
+                {"type": "turn_context", "payload": {"turn_id": "turn-1"}},
+                {
+                    "type": "event_msg",
+                    "timestamp": "2026-04-28T01:00:05Z",
+                    "payload": {"type": "user_message", "message": "采集最近 Codex 窗口"},
+                },
+                {
+                    "type": "event_msg",
+                    "timestamp": "2026-04-28T01:01:00Z",
+                    "payload": {
+                        "type": "task_complete",
+                        "turn_id": "turn-1",
+                        "completed_at": collect_codex_activity.epoch_from_iso("2026-04-28T01:01:00Z"),
+                        "last_agent_message": "已从 session JSONL 采到窗口。",
+                    },
+                },
+            ]
+            session_path.write_text(
+                "\n".join(json.dumps(row, ensure_ascii=False) for row in rows) + "\n",
+                encoding="utf-8",
+            )
+            profile = codex_profiles.CodexProfile(codex_home=codex_home, source="test")
+
+            windows = collect_codex_activity.load_session_file_windows_for_date(
+                "2026-04-28",
+                "manual",
+                profile=profile,
+            )
+            local_windows = collect_codex_activity.load_local_codex_windows_for_date(
+                "2026-04-28",
+                "manual",
+                profile=profile,
+            )
+
+        self.assertEqual(len(windows), 1)
+        window = windows[0]
+        self.assertEqual(window["window_id"], session_id)
+        self.assertEqual(window["source"], "codex_session_jsonl:codex_cli_rs")
+        self.assertEqual(window["prompt_count"], 1)
+        self.assertEqual(window["conclusion_count"], 1)
+        self.assertEqual(window["prompts"][0]["text"], "采集最近 Codex 窗口")
+        self.assertEqual(window["conclusions"][0]["text"], "已从 session JSONL 采到窗口。")
+        self.assertEqual(window["codex_session_jsonl"]["session_id"], session_id)
+        self.assertEqual([item["window_id"] for item in local_windows], [session_id])
+
+    def test_session_index_collection_uses_local_date_for_updated_threads(self):
+        from tempfile import TemporaryDirectory
+        import json
+
+        with TemporaryDirectory() as tmpdir:
+            codex_home = Path(tmpdir) / "codex-home"
+            session_id = "019dcefe-37f1-7a83-a8a6-720bd6b79d7f"
+            session_path = (
+                codex_home
+                / "sessions"
+                / "2026"
+                / "04"
+                / "27"
+                / "rollout-2026-04-27T23-55-00-{}.jsonl".format(session_id)
+            )
+            session_path.parent.mkdir(parents=True)
+            (codex_home / "session_index.jsonl").parent.mkdir(parents=True, exist_ok=True)
+            (codex_home / "session_index.jsonl").write_text(
+                json.dumps(
+                    {
+                        "id": session_id,
+                        "thread_name": "本地日期采集",
+                        "updated_at": "2026-04-27T16:30:00Z",
+                    },
+                    ensure_ascii=False,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            rows = [
+                {
+                    "type": "session_meta",
+                    "timestamp": "2026-04-27T15:55:00Z",
+                    "payload": {
+                        "session_id": session_id,
+                        "cwd": "/tmp/project",
+                        "originator": "codex",
+                        "source": "codex_cli_rs",
+                        "timestamp": "2026-04-27T15:55:00Z",
+                    },
+                },
+                {
+                    "type": "event_msg",
+                    "timestamp": "2026-04-27T16:30:00Z",
+                    "payload": {"type": "task_started", "turn_id": "turn-local"},
+                },
+                {
+                    "type": "event_msg",
+                    "timestamp": "2026-04-27T16:30:03Z",
+                    "payload": {"type": "user_message", "message": "按本地日期收进 4 月 28 日"},
+                },
+                {
+                    "type": "event_msg",
+                    "timestamp": "2026-04-27T16:31:00Z",
+                    "payload": {
+                        "type": "task_complete",
+                        "turn_id": "turn-local",
+                        "completed_at": collect_codex_activity.epoch_from_iso("2026-04-27T16:31:00Z"),
+                        "last_agent_message": "本地日期归属正确。",
+                    },
+                },
+            ]
+            session_path.write_text(
+                "\n".join(json.dumps(row, ensure_ascii=False) for row in rows) + "\n",
+                encoding="utf-8",
+            )
+            profile = codex_profiles.CodexProfile(codex_home=codex_home, source="test")
+
+            windows = collect_codex_activity.load_session_file_windows_for_date(
+                "2026-04-28",
+                "manual",
+                profile=profile,
+            )
+
+        self.assertEqual(len(windows), 1)
+        self.assertEqual(windows[0]["window_id"], session_id)
+        self.assertEqual(windows[0]["prompts"][0]["text"], "按本地日期收进 4 月 28 日")
+        self.assertEqual(windows[0]["conclusions"][0]["text"], "本地日期归属正确。")
+
     def test_app_server_thread_maps_to_existing_raw_window_shape(self):
         thread = {
             "id": "thread-1",

@@ -7778,6 +7778,8 @@ def normalize_window_activity_source(raw_window=None, daily_capture=None):
         return "claude-history"
     if raw_window.get("app_server") or source.startswith("codex_app_server") or collection_source == "app-server":
         return "app-server"
+    if raw_window.get("codex_session_jsonl") or source.startswith("codex_session_jsonl"):
+        return "history"
     if collection_source == "history_fallback":
         return "history_fallback"
     if source in {"cli", "history"} or collection_source == "history":
