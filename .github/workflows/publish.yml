@@ -25,8 +25,8 @@ jobs:
           node-version: "22.14.0"
           registry-url: "https://registry.npmjs.org/"
 
-      - name: Use latest npm
-        run: npm install -g npm@latest
+      - name: Use npm 11
+        run: npm install -g npm@11
 
       - name: Resolve package version
         id: version
