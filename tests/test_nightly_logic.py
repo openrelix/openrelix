@@ -2376,6 +2376,64 @@ wire_api = "responses"
         )
         self.assertEqual(chosen["stage"], "final")
 
+    def test_choose_preferred_summary_replaces_stale_duplicate_windows(self):
+        raw_payload = {
+            "window_count": 2,
+            "prompt_count": 2,
+            "conclusion_count": 2,
+            "windows": [
+                {"window_id": "w1"},
+                {"window_id": "w2"},
+            ],
+        }
+        existing = {
+            "date": "2026-04-26",
+            "generated_at": "2026-04-26T23:00:00+08:00",
+            "stage": "final",
+            "model_status": "completed",
+            "raw_window_count": 3,
+            "day_summary": "stale duplicate summary",
+            "window_summaries": [
+                dict(make_window_summary()[0], window_id="w1"),
+                dict(make_window_summary()[0], window_id="w2"),
+                dict(make_window_summary()[0], window_id="w2"),
+            ],
+            "durable_memories": [make_memory("durable-win", memory_type="procedural")],
+            "session_memories": [make_memory("session-win", memory_type="task")],
+            "low_priority_memories": [make_memory("low-win", priority="low")],
+            "keywords": ["memory"],
+            "next_actions": ["keep going"],
+        }
+        candidate = {
+            "date": "2026-04-26",
+            "generated_at": "2026-04-27T00:10:00+08:00",
+            "stage": "final",
+            "model_status": "completed",
+            "raw_window_count": 2,
+            "day_summary": "current source summary",
+            "window_summaries": [
+                dict(make_window_summary()[0], window_id="w1"),
+                dict(make_window_summary()[0], window_id="w2"),
+            ],
+            "durable_memories": [],
+            "session_memories": [],
+            "low_priority_memories": [],
+            "keywords": [],
+            "next_actions": [],
+        }
+
+        chosen, decision = nightly_consolidate.choose_preferred_summary(
+            existing,
+            candidate,
+            raw_payload,
+        )
+
+        self.assertIs(chosen, candidate)
+        self.assertEqual(decision["decision"], "accept_candidate")
+        self.assertEqual(decision["reason"], "candidate_matches_current_raw_windows")
+        self.assertTrue(decision["candidate_matches_current_raw_windows"])
+        self.assertFalse(decision["existing_matches_current_raw_windows"])
+
     def test_selector_keeps_yesterday_primary_and_manual_as_active(self):
         candidates = [
             {
