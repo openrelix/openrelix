@@ -2245,15 +2245,11 @@ def sync_review_outputs(include_index=False, include_native_display=False, verbo
             ),
             flush=True,
         )
-    if include_index:
-        if verbose:
-            print(localized("刷新中 [1/5]: 重建搜索索引。", "Refreshing [1/5]: rebuilding the search index."), flush=True)
-        rebuild_sqlite_index_if_available(verbose=verbose)
     if verbose:
         print(
             localized(
-                "刷新中 [2/5]: 同步或清理 host context 摘要。",
-                "Refreshing [2/5]: syncing or clearing the host context summary.",
+                "刷新中 [1/5]: 同步或清理 host context 摘要。",
+                "Refreshing [1/5]: syncing or clearing the host context summary.",
             ),
             flush=True,
         )
@@ -2282,8 +2278,8 @@ def sync_review_outputs(include_index=False, include_native_display=False, verbo
     if include_native_display and verbose:
         print(
             localized(
-                "刷新中 [3/5]: 更新记忆卡展示缓存。",
-                "Refreshing [3/5]: updating memory-card display cache.",
+                "刷新中 [2/5]: 更新记忆卡展示缓存。",
+                "Refreshing [2/5]: updating memory-card display cache.",
             ),
             flush=True,
         )
@@ -2292,16 +2288,16 @@ def sync_review_outputs(include_index=False, include_native_display=False, verbo
     elif verbose:
         print(
             localized(
-                "刷新中 [3/5]: 跳过记忆卡展示缓存。",
-                "Refreshing [3/5]: skipping memory-card display cache.",
+                "刷新中 [2/5]: 跳过记忆卡展示缓存。",
+                "Refreshing [2/5]: skipping memory-card display cache.",
             ),
             flush=True,
         )
     if verbose:
-        print(localized("刷新中 [4/5]: 补算并行任务总结。", "Refreshing [4/5]: generating parallel task summaries."), flush=True)
+        print(localized("刷新中 [3/5]: 补算并行任务总结。", "Refreshing [3/5]: generating parallel task summaries."), flush=True)
     run_task_summary_migration_if_needed(verbose=verbose)
     if verbose:
-        print(localized("刷新中 [5/5]: 重建 overview 和面板。", "Refreshing [5/5]: rebuilding overview and panel."), flush=True)
+        print(localized("刷新中 [4/5]: 重建 overview 和面板。", "Refreshing [4/5]: rebuilding overview and panel."), flush=True)
     cmd = [sys.executable, str(BUILD_OVERVIEW_SCRIPT)]
     if verbose:
         run_checked_with_progress(
@@ -2319,15 +2315,20 @@ def sync_review_outputs(include_index=False, include_native_display=False, verbo
             reminder_zh="仍在刷新: 已等待约 {} 分钟，面板重建仍在运行。",
             reminder_en="Still refreshing: waited about {} minutes; panel rebuild is still running.",
         )
+    else:
+        run_checked_quiet(cmd)
+    if include_index:
+        if verbose:
+            print(localized("刷新中 [5/5]: 重建搜索索引。", "Refreshing [5/5]: rebuilding the search index."), flush=True)
+        rebuild_sqlite_index_if_available(verbose=verbose)
+    if verbose:
         print(
             localized(
-                "刷新完成: 面板和摘要已更新；如果浏览器面板或 OpenRelix app 已经打开，请手动刷新当前页面或 app。",
-                "Refresh complete: panel and summary are updated; if the browser panel or OpenRelix app is already open, refresh it manually.",
+                "刷新完成: 面板、摘要和搜索索引已更新；如果浏览器面板或 OpenRelix app 已经打开，请手动刷新当前页面或 app。",
+                "Refresh complete: panel, summaries, and search index are updated; if the browser panel or OpenRelix app is already open, refresh it manually.",
             ),
             flush=True,
         )
-    else:
-        run_checked_quiet(cmd)
 
 
 def print_preliminary_ready_message():

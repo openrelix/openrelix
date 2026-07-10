@@ -459,6 +459,27 @@ class CollectCodexActivityTests(unittest.TestCase):
         self.assertEqual(window["conclusion_count"], 1)
         self.assertEqual(window["claude_code"]["summary"], "Claude memory work")
 
+    def test_claude_subagent_transcripts_are_not_top_level_windows(self):
+        from tempfile import TemporaryDirectory
+
+        with TemporaryDirectory() as tmpdir:
+            projects_dir = Path(tmpdir) / "projects"
+            session_file = projects_dir / "project" / "session.jsonl"
+            subagent_file = projects_dir / "project" / "session" / "subagents" / "agent.jsonl"
+            session_file.parent.mkdir(parents=True)
+            subagent_file.parent.mkdir(parents=True)
+            session_file.write_text("{}\n", encoding="utf-8")
+            subagent_file.write_text("{}\n", encoding="utf-8")
+
+            with mock.patch.object(collect_codex_activity, "CLAUDE_PROJECTS_DIR", projects_dir), mock.patch.object(
+                collect_codex_activity,
+                "CLAUDE_HISTORY_PATH",
+                Path(tmpdir) / "missing-history.jsonl",
+            ):
+                files = list(collect_codex_activity.iter_claude_session_files())
+
+        self.assertEqual(files, [session_file])
+
     def test_claude_session_ignores_tool_events_and_counts_turn_level_conclusions(self):
         from tempfile import TemporaryDirectory
         import json
