@@ -118,7 +118,7 @@ def app_server_unavailable_message(error, timeout_seconds):
         "Run `openrelix doctor --app-server-check` for a protocol probe, "
         "or set OPENRELIX_ACTIVITY_SOURCE=history to force the stable "
         "CODEX_HOME history/session collector."
-    ).format(PATHS.codex_bin, timeout_seconds, error)
+    ).format(resolve_codex_app_server_binary(), timeout_seconds, error)
 
 
 def profile_value(profile, key, default=""):
@@ -159,6 +159,10 @@ def discover_codex_profiles():
     return codex_profiles.collect_codex_profiles(PATHS, config=config, include_running=True)
 
 
+def resolve_codex_app_server_binary():
+    return codex_profiles.resolve_codex_app_server_binary(PATHS.codex_bin)
+
+
 def codex_collection_error_prefix(profile):
     return "CODEX_HOME={}".format(profile_codex_home(profile))
 
@@ -195,11 +199,12 @@ class CodexAppServerClient:
     def __init__(self, timeout_seconds=15.0, profile=None):
         self.timeout_seconds = timeout_seconds
         self.next_request_id = 1
+        self.codex_bin = resolve_codex_app_server_binary()
         env = os.environ.copy()
         if profile:
             env["CODEX_HOME"] = str(profile_codex_home(profile))
         self.process = subprocess.Popen(
-            [PATHS.codex_bin, "app-server", "--listen", "stdio://"],
+            [self.codex_bin, "app-server", "--listen", "stdio://"],
             cwd=str(PATHS.repo_root),
             env=env,
             stdin=subprocess.PIPE,
@@ -867,13 +872,32 @@ def load_history_windows_for_date(target_date, stage, profile=None):
 
 
 def dedupe_windows(windows):
-    seen = set()
+    positions = {}
     result = []
     for window in windows:
         key = (window.get("ai_host") or "codex", window.get("window_id") or "")
-        if key in seen:
+        if key in positions:
+            index = positions[key]
+            existing = result[index]
+            existing_session = bool(existing.get("codex_session_jsonl"))
+            incoming_session = bool(window.get("codex_session_jsonl"))
+            if incoming_session and not existing_session:
+                merged = dict(window)
+                if existing.get("app_server"):
+                    merged["app_server"] = existing["app_server"]
+                for field in ("window_summary", "thread_title"):
+                    if not merged.get(field) and existing.get(field):
+                        merged[field] = existing[field]
+                result[index] = merged
+            elif existing_session and window.get("app_server"):
+                merged = dict(existing)
+                merged["app_server"] = window["app_server"]
+                for field in ("window_summary", "thread_title"):
+                    if not merged.get(field) and window.get(field):
+                        merged[field] = window[field]
+                result[index] = merged
             continue
-        seen.add(key)
+        positions[key] = len(result)
         result.append(window)
     return result
 
@@ -1156,8 +1180,10 @@ def main():
     excluded_windows = []
     windows = []
     codex_profile_rows = []
+    codex_app_server_bin = ""
 
     if activity_host in {"codex", "all"} and args.activity_source in {"app-server", "auto"}:
+        codex_app_server_bin = resolve_codex_app_server_binary()
         profiles = discover_codex_profiles()
         codex_profile_rows = [
             {
@@ -1259,6 +1285,7 @@ def main():
         "activity_host": activity_host,
         "codex_profile_count": len(codex_profile_rows),
         "codex_profiles": codex_profile_rows,
+        "codex_app_server_bin": codex_app_server_bin,
         "host_counts": host_counts,
         "collection_errors": collection_errors,
         "window_count": len(windows),

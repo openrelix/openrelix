@@ -45,6 +45,25 @@ class CollectCodexActivityTests(unittest.TestCase):
         self.assertEqual(len(profiles), 1)
         self.assertEqual(profiles[0].process_id, 12346)
 
+    def test_running_chatgpt_app_server_exposes_bundled_codex_binary(self):
+        ps_text = (
+            "90625 /Applications/ChatGPT.app/Contents/Resources/codex "
+            "-c features.code_mode_host=true app-server --analytics-default-enabled\n"
+        )
+
+        binaries = codex_profiles.parse_codex_app_server_binaries_from_process_text(ps_text)
+
+        self.assertEqual(binaries, ["/Applications/ChatGPT.app/Contents/Resources/codex"])
+
+    def test_explicit_app_server_binary_overrides_discovery(self):
+        binary = codex_profiles.resolve_codex_app_server_binary(
+            "/usr/local/bin/codex",
+            env={codex_profiles.CODEX_APP_SERVER_BIN_ENV: "~/bin/codex-app"},
+            include_running=False,
+        )
+
+        self.assertEqual(binary, str(Path.home() / "bin" / "codex-app"))
+
     def test_history_collection_reads_requested_codex_home(self):
         from tempfile import TemporaryDirectory
         import json
@@ -327,6 +346,36 @@ class CollectCodexActivityTests(unittest.TestCase):
         self.assertEqual(window["thread_title"], "请帮我复盘")
         self.assertEqual(window["resume_id"], "thread-1")
         self.assertEqual(window["ai_host"], "codex")
+
+    def test_session_jsonl_wins_duplicate_merge_and_keeps_app_server_metadata(self):
+        app_server_window = {
+            "ai_host": "codex",
+            "window_id": "thread-1",
+            "source": "codex_app_server:appServer",
+            "window_summary": "App title",
+            "thread_title": "App title",
+            "prompt_count": 1,
+            "prompts": [{"text": "app prompt"}],
+            "app_server": {"thread_id": "thread-1"},
+        }
+        session_window = {
+            "ai_host": "codex",
+            "window_id": "thread-1",
+            "source": "codex_session_jsonl:vscode",
+            "window_summary": "",
+            "thread_title": "",
+            "prompt_count": 2,
+            "prompts": [{"text": "session prompt"}],
+            "codex_session_jsonl": {"session_id": "thread-1"},
+        }
+
+        windows = collect_codex_activity.dedupe_windows([app_server_window, session_window])
+
+        self.assertEqual(len(windows), 1)
+        self.assertEqual(windows[0]["source"], "codex_session_jsonl:vscode")
+        self.assertEqual(windows[0]["prompt_count"], 2)
+        self.assertEqual(windows[0]["thread_title"], "App title")
+        self.assertEqual(windows[0]["app_server"]["thread_id"], "thread-1")
 
     def test_primary_codex_home_profile_metadata_preserves_configured_symlink_entry(self):
         from tempfile import TemporaryDirectory

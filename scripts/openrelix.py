@@ -2625,8 +2625,9 @@ def doctor_model_check_detail(model_cli, output):
 
 
 def run_codex_app_server_help_check():
+    app_server_bin = overview_codex_profiles.resolve_codex_app_server_binary(PATHS.codex_bin)
     return subprocess.run(
-        [PATHS.codex_bin, "app-server", "--help"],
+        [app_server_bin, "app-server", "--help"],
         text=True,
         capture_output=True,
         timeout=10,
@@ -2634,11 +2635,13 @@ def run_codex_app_server_help_check():
 
 
 def run_doctor_app_server_check():
+    app_server_bin = overview_codex_profiles.resolve_codex_app_server_binary(PATHS.codex_bin)
     with TemporaryDirectory(prefix="openrelix-app-server-check-") as tmpdir:
         env = dict(os.environ)
         env["AI_ASSET_STATE_DIR"] = tmpdir
         env["CODEX_HOME"] = str(PATHS.codex_home)
         env["CODEX_BIN"] = str(PATHS.codex_bin)
+        env[overview_codex_profiles.CODEX_APP_SERVER_BIN_ENV] = app_server_bin
         env["PYTHONDONTWRITEBYTECODE"] = "1"
         return subprocess.run(
             [
@@ -2836,12 +2839,19 @@ def command_doctor(args):
     )
     append_sqlite_index_doctor_check(checks)
 
-    if command_exists(PATHS.codex_bin):
+    app_server_bin = overview_codex_profiles.resolve_codex_app_server_binary(PATHS.codex_bin)
+    if command_exists(app_server_bin):
         try:
             result = run_codex_app_server_help_check()
             output = "\n".join(part for part in (result.stdout, result.stderr) if part).strip()
             if result.returncode == 0:
-                append_doctor_check(checks, "codex_app_server_command", "ok", output.splitlines()[0] if output else "available")
+                detail = output.splitlines()[0] if output else "available"
+                append_doctor_check(
+                    checks,
+                    "codex_app_server_command",
+                    "ok",
+                    "{} via {}".format(detail, app_server_bin),
+                )
             else:
                 append_doctor_check(
                     checks,
@@ -2866,12 +2876,12 @@ def command_doctor(args):
             )
 
     if getattr(args, "app_server_check", False):
-        if not command_exists(PATHS.codex_bin):
+        if not command_exists(app_server_bin):
             append_doctor_check(
                 checks,
                 "codex_app_server_probe",
                 "fail",
-                str(PATHS.codex_bin),
+                str(app_server_bin),
                 localized("先修复 codex_bin，再运行 --app-server-check。", "Fix codex_bin first, then rerun --app-server-check."),
             )
         else:
