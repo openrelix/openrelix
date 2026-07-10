@@ -57,6 +57,31 @@ def local_datetime_from_epoch(ts):
     return datetime.fromtimestamp(int(ts)).astimezone().isoformat()
 
 
+def parse_iso_datetime(value):
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        return datetime.fromisoformat(text.replace("Z", "+00:00")).astimezone()
+    except ValueError:
+        return None
+
+
+def local_date_from_iso(value):
+    parsed = parse_iso_datetime(value)
+    return parsed.date().isoformat() if parsed else ""
+
+
+def local_datetime_from_iso(value):
+    parsed = parse_iso_datetime(value)
+    return parsed.isoformat() if parsed else ""
+
+
+def epoch_from_iso(value):
+    parsed = parse_iso_datetime(value)
+    return int(parsed.timestamp()) if parsed else 0
+
+
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--date", default=datetime.now().astimezone().date().isoformat())
@@ -93,7 +118,7 @@ def app_server_unavailable_message(error, timeout_seconds):
         "Run `openrelix doctor --app-server-check` for a protocol probe, "
         "or set OPENRELIX_ACTIVITY_SOURCE=history to force the stable "
         "CODEX_HOME history/session collector."
-    ).format(PATHS.codex_bin, timeout_seconds, error)
+    ).format(resolve_codex_app_server_binary(), timeout_seconds, error)
 
 
 def profile_value(profile, key, default=""):
@@ -134,6 +159,10 @@ def discover_codex_profiles():
     return codex_profiles.collect_codex_profiles(PATHS, config=config, include_running=True)
 
 
+def resolve_codex_app_server_binary():
+    return codex_profiles.resolve_codex_app_server_binary(PATHS.codex_bin)
+
+
 def codex_collection_error_prefix(profile):
     return "CODEX_HOME={}".format(profile_codex_home(profile))
 
@@ -170,11 +199,12 @@ class CodexAppServerClient:
     def __init__(self, timeout_seconds=15.0, profile=None):
         self.timeout_seconds = timeout_seconds
         self.next_request_id = 1
+        self.codex_bin = resolve_codex_app_server_binary()
         env = os.environ.copy()
         if profile:
             env["CODEX_HOME"] = str(profile_codex_home(profile))
         self.process = subprocess.Popen(
-            [PATHS.codex_bin, "app-server", "--listen", "stdio://"],
+            [self.codex_bin, "app-server", "--listen", "stdio://"],
             cwd=str(PATHS.repo_root),
             env=env,
             stdin=subprocess.PIPE,
@@ -539,10 +569,11 @@ def build_turn_prompt_map(session_items):
         elif item_type == "turn_context":
             current_turn_id = payload.get("turn_id")
         elif item_type == "event_msg" and payload.get("type") == "user_message":
-            if current_turn_id:
-                turn_prompts.setdefault(current_turn_id, []).append(payload.get("message", ""))
+            prompt_turn_id = payload.get("turn_id") or current_turn_id
+            if prompt_turn_id:
+                turn_prompts.setdefault(prompt_turn_id, []).append(payload.get("message", ""))
                 turn_prompt_meta.setdefault(
-                    current_turn_id,
+                    prompt_turn_id,
                     {
                         "first_timestamp": item.get("timestamp", ""),
                     },
@@ -554,6 +585,57 @@ def build_turn_prompt_map(session_items):
             "first_timestamp": turn_prompt_meta.get(turn_id, {}).get("first_timestamp", ""),
         }
     return result
+
+
+SESSION_ID_PATTERN = re.compile(
+    r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
+)
+
+
+def session_id_from_items(session_items, session_file=None):
+    for item in session_items:
+        if item.get("type") != "session_meta":
+            continue
+        payload = item.get("payload", {})
+        session_id = payload.get("session_id") or payload.get("id")
+        if session_id:
+            return str(session_id)
+    if session_file:
+        matches = SESSION_ID_PATTERN.findall(str(session_file))
+        if matches:
+            return matches[-1]
+    return Path(session_file).stem if session_file else ""
+
+
+def session_prompt_entries(session_items, target_date):
+    prompts = []
+    current_turn_id = None
+    for item in session_items:
+        item_type = item.get("type")
+        payload = item.get("payload", {})
+        if item_type == "event_msg" and payload.get("type") == "task_started":
+            current_turn_id = payload.get("turn_id") or current_turn_id
+            continue
+        if item_type == "turn_context":
+            current_turn_id = payload.get("turn_id") or current_turn_id
+            continue
+        if item_type != "event_msg" or payload.get("type") != "user_message":
+            continue
+        timestamp = item.get("timestamp", "")
+        if local_date_from_iso(timestamp) != target_date:
+            continue
+        text = str(payload.get("message") or "").strip()
+        if not text:
+            continue
+        prompts.append(
+            {
+                "ts": epoch_from_iso(timestamp),
+                "local_time": local_datetime_from_iso(timestamp),
+                "turn_id": payload.get("turn_id") or current_turn_id or "",
+                "text": text,
+            }
+        )
+    return prompts
 
 
 def load_session_metadata_and_conclusions(session_id, target_date, stage, session_file=None, profile=None):
@@ -621,6 +703,90 @@ def load_session_metadata_and_conclusions(session_id, target_date, stage, sessio
     return metadata, conclusions, raw_conclusion_count
 
 
+def session_index_session_ids_for_date(target_date, codex_home=None):
+    index_path = Path(codex_home or CODEX_HOME).expanduser() / "session_index.jsonl"
+    if not index_path.exists():
+        return []
+    session_ids = []
+    seen = set()
+    try:
+        lines = index_path.read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeDecodeError):
+        return []
+    for raw_line in lines:
+        line = raw_line.strip()
+        if not line:
+            continue
+        try:
+            item = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        session_id = str(item.get("id") or "").strip()
+        if not session_id or session_id in seen:
+            continue
+        date_values = [item.get("updated_at"), item.get("created_at")]
+        if target_date not in {local_date_from_iso(value) for value in date_values if value}:
+            continue
+        seen.add(session_id)
+        session_ids.append(session_id)
+    return session_ids
+
+
+def local_session_dir_for_date(target_date, codex_home=None):
+    year, month, day = target_date.split("-")
+    return Path(codex_home or CODEX_HOME).expanduser() / "sessions" / year / month / day
+
+
+def iter_session_files_for_date(target_date, codex_home=None):
+    codex_home = Path(codex_home or CODEX_HOME).expanduser()
+    by_path = {}
+    for session_file in find_session_files(
+        session_index_session_ids_for_date(target_date, codex_home=codex_home),
+        codex_home=codex_home,
+    ).values():
+        by_path[str(Path(session_file).resolve())] = session_file
+    date_dir = local_session_dir_for_date(target_date, codex_home=codex_home)
+    if date_dir.exists():
+        for session_file in date_dir.glob("*.jsonl"):
+            by_path[str(Path(session_file).resolve())] = session_file
+    return [by_path[key] for key in sorted(by_path)]
+
+
+def session_file_to_window(session_file, target_date, stage, profile=None):
+    session_items = load_session_items(session_file)
+    prompts = session_prompt_entries(session_items, target_date)
+    if not prompts:
+        return None
+    session_id = session_id_from_items(session_items, session_file=session_file)
+    metadata, conclusions, raw_conclusion_count = load_session_metadata_and_conclusions(
+        session_id,
+        target_date,
+        stage,
+        session_file=session_file,
+        profile=profile,
+    )
+    source = str(metadata.get("source") or "jsonl").strip() or "jsonl"
+    metadata["source"] = "codex_session_jsonl:{}".format(source)
+    metadata["ai_host"] = "codex"
+    metadata["thread_id"] = metadata.get("thread_id", "") or session_id
+    metadata["resume_id"] = metadata.get("resume_id", "") or session_id
+    metadata["codex_session_jsonl"] = {
+        "session_id": session_id,
+        "source": source,
+        "path": str(session_file),
+    }
+    return build_window_payload(target_date, metadata, prompts, conclusions, raw_conclusion_count)
+
+
+def load_session_file_windows_for_date(target_date, stage, profile=None):
+    windows = []
+    for session_file in iter_session_files_for_date(target_date, codex_home=profile_codex_home(profile)):
+        window = session_file_to_window(session_file, target_date, stage, profile=profile)
+        if window:
+            windows.append(window)
+    return windows
+
+
 def looks_like_review_window(prompt_entries):
     hits = 0
     for entry in prompt_entries:
@@ -681,6 +847,8 @@ def build_window_payload(target_date, metadata, prompts, conclusions, raw_conclu
     }
     if metadata.get("app_server"):
         window_payload["app_server"] = metadata["app_server"]
+    if metadata.get("codex_session_jsonl"):
+        window_payload["codex_session_jsonl"] = metadata["codex_session_jsonl"]
     if metadata.get("claude_code"):
         window_payload["claude_code"] = metadata["claude_code"]
     return window_payload
@@ -704,15 +872,41 @@ def load_history_windows_for_date(target_date, stage, profile=None):
 
 
 def dedupe_windows(windows):
-    seen = set()
+    positions = {}
     result = []
     for window in windows:
         key = (window.get("ai_host") or "codex", window.get("window_id") or "")
-        if key in seen:
+        if key in positions:
+            index = positions[key]
+            existing = result[index]
+            existing_session = bool(existing.get("codex_session_jsonl"))
+            incoming_session = bool(window.get("codex_session_jsonl"))
+            if incoming_session and not existing_session:
+                merged = dict(window)
+                if existing.get("app_server"):
+                    merged["app_server"] = existing["app_server"]
+                for field in ("window_summary", "thread_title"):
+                    if not merged.get(field) and existing.get(field):
+                        merged[field] = existing[field]
+                result[index] = merged
+            elif existing_session and window.get("app_server"):
+                merged = dict(existing)
+                merged["app_server"] = window["app_server"]
+                for field in ("window_summary", "thread_title"):
+                    if not merged.get(field) and window.get(field):
+                        merged[field] = window[field]
+                result[index] = merged
             continue
-        seen.add(key)
+        positions[key] = len(result)
         result.append(window)
     return result
+
+
+def load_local_codex_windows_for_date(target_date, stage, profile=None):
+    windows = []
+    windows.extend(load_session_file_windows_for_date(target_date, stage, profile=profile))
+    windows.extend(load_history_windows_for_date(target_date, stage, profile=profile))
+    return dedupe_windows(windows)
 
 
 def parse_claude_timestamp(value):
@@ -986,8 +1180,10 @@ def main():
     excluded_windows = []
     windows = []
     codex_profile_rows = []
+    codex_app_server_bin = ""
 
     if activity_host in {"codex", "all"} and args.activity_source in {"app-server", "auto"}:
+        codex_app_server_bin = resolve_codex_app_server_binary()
         profiles = discover_codex_profiles()
         codex_profile_rows = [
             {
@@ -1000,6 +1196,7 @@ def main():
         codex_windows = []
         app_server_profile_count = 0
         fallback_profile_count = 0
+        session_profile_count = 0
         for profile in profiles:
             try:
                 profile_windows = load_app_server_windows_for_date(
@@ -1012,6 +1209,10 @@ def main():
                 )
                 app_server_profile_count += 1
                 codex_windows.extend(profile_windows)
+                session_windows = load_session_file_windows_for_date(target_date, stage, profile=profile)
+                if session_windows:
+                    session_profile_count += 1
+                    codex_windows.extend(session_windows)
             except (AppServerError, OSError, subprocess.SubprocessError) as exc:
                 message = "{}: {}".format(
                     codex_collection_error_prefix(profile),
@@ -1020,12 +1221,14 @@ def main():
                 if args.activity_source == "app-server":
                     raise AppServerError(message) from exc
                 collection_errors.append(message)
-                codex_windows.extend(load_history_windows_for_date(target_date, stage, profile=profile))
+                codex_windows.extend(load_local_codex_windows_for_date(target_date, stage, profile=profile))
                 fallback_profile_count += 1
         if fallback_profile_count and not app_server_profile_count:
             collection_source = "history_fallback"
         elif fallback_profile_count:
             collection_source = "mixed"
+        elif session_profile_count:
+            collection_source = "app-server+session"
         else:
             collection_source = "app-server"
         windows.extend(dedupe_windows(codex_windows))
@@ -1041,7 +1244,7 @@ def main():
         ]
         codex_windows = []
         for profile in profiles:
-            codex_windows.extend(load_history_windows_for_date(target_date, stage, profile=profile))
+            codex_windows.extend(load_local_codex_windows_for_date(target_date, stage, profile=profile))
         windows.extend(dedupe_windows(codex_windows))
         collection_source = "history"
 
@@ -1082,6 +1285,7 @@ def main():
         "activity_host": activity_host,
         "codex_profile_count": len(codex_profile_rows),
         "codex_profiles": codex_profile_rows,
+        "codex_app_server_bin": codex_app_server_bin,
         "host_counts": host_counts,
         "collection_errors": collection_errors,
         "window_count": len(windows),

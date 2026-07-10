@@ -8,6 +8,10 @@ from pathlib import Path
 from typing import Iterable, Optional
 
 
+CODEX_APP_SERVER_BIN_ENV = "OPENRELIX_CODEX_APP_SERVER_BIN"
+CODEX_APP_SERVER_BINARY_SUFFIX = "/Contents/Resources/codex"
+
+
 @dataclass(frozen=True)
 class CodexProfile:
     codex_home: Path
@@ -98,6 +102,85 @@ def discover_running_codex_profiles(timeout=0.75):
     if result.returncode != 0:
         return []
     return parse_codex_profiles_from_process_text(result.stdout)
+
+
+def parse_codex_app_server_binaries_from_process_text(text):
+    binaries = []
+    seen = set()
+    for raw_line in str(text or "").splitlines():
+        _, command = split_process_line(raw_line)
+        if not re.search(r"(?:^|\s)app-server(?:\s|$)", command):
+            continue
+        match = re.match(
+            r"^(.+?{})(?:\s|$)".format(re.escape(CODEX_APP_SERVER_BINARY_SUFFIX)),
+            command,
+        )
+        if not match:
+            continue
+        binary = match.group(1).strip()
+        if binary in seen:
+            continue
+        seen.add(binary)
+        binaries.append(binary)
+    return binaries
+
+
+def discover_running_codex_app_server_binaries(timeout=0.75):
+    if sys.platform != "darwin":
+        return []
+    if os.environ.get("OPENRELIX_DISABLE_RUNNING_CODEX_DISCOVERY", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }:
+        return []
+    try:
+        result = subprocess.run(
+            ["ps", "axww", "-o", "pid=", "-o", "command="],
+            text=True,
+            errors="replace",
+            capture_output=True,
+            timeout=timeout,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return []
+    if result.returncode != 0:
+        return []
+    return parse_codex_app_server_binaries_from_process_text(result.stdout)
+
+
+def common_codex_app_server_binaries(home=None):
+    home = Path(home or Path.home()).expanduser()
+    app_names = ("Codex.app", "ChatGPT.app")
+    roots = (Path("/Applications"), home / "Applications")
+    return [
+        str(root / app_name / "Contents" / "Resources" / "codex")
+        for root in roots
+        for app_name in app_names
+    ]
+
+
+def resolve_codex_app_server_binary(fallback, env=None, include_running=True):
+    env = os.environ if env is None else env
+    explicit = str(env.get(CODEX_APP_SERVER_BIN_ENV, "") or "").strip()
+    if explicit:
+        return str(Path(explicit).expanduser())
+
+    candidates = []
+    if include_running:
+        candidates.extend(discover_running_codex_app_server_binaries())
+    common_candidates = [Path(item).expanduser() for item in common_codex_app_server_binaries()]
+    common_candidates.sort(
+        key=lambda path: path.stat().st_mtime if path.is_file() else 0,
+        reverse=True,
+    )
+    candidates.extend(str(path) for path in common_candidates)
+    for candidate in candidates:
+        path = Path(candidate).expanduser()
+        if path.is_file() and os.access(path, os.X_OK):
+            return str(path)
+    return str(fallback)
 
 
 def parse_path_list(value):
