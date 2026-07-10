@@ -235,6 +235,17 @@ class OpenRelixIndexTests(unittest.TestCase):
             self.assertEqual(raw_question_windows[0]["matched_messages"][0]["kind"], "prompt")
             self.assertEqual(raw_question_windows[0]["matched_messages"][0]["text"], "add search command")
 
+    def test_ensure_state_layout_keeps_rebuilt_index_fresh(self):
+        with TemporaryDirectory() as tmpdir:
+            paths = runtime_paths_for_state(tmpdir)
+            self.write_fixture_state(paths)
+            db_path = Path(tmpdir) / "runtime" / "test-index.sqlite3"
+            openrelix_index.rebuild_index(paths, db_path)
+
+            asset_runtime.ensure_state_layout(paths)
+
+            self.assertFalse(openrelix_index.index_status(paths, db_path)["stale"])
+
     def test_all_window_search_orders_fts_matches_by_recent_activity(self):
         with TemporaryDirectory() as tmpdir:
             paths = runtime_paths_for_state(tmpdir)

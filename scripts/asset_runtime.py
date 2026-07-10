@@ -1078,6 +1078,7 @@ def ensure_state_layout(paths: Optional[RuntimePaths] = None) -> RuntimePaths:
         paths.registry_dir / "memory_entries.jsonl",
         paths.registry_dir / "memory_items.jsonl",
     ):
-        file_path.touch(exist_ok=True)
+        if not file_path.exists():
+            file_path.touch()
 
     return paths
