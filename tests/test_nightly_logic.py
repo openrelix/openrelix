@@ -10794,7 +10794,9 @@ Native Codex profile.
 
             command = run.call_args.args[0]
             self.assertEqual(command[0], str(npx_bin))
-            self.assertEqual(command[2], "openrelix@0.3.0")
+            self.assertIn("openrelix@0.3.0", command)
+            self.assertIn("https://registry.npmjs.org/", command)
+            self.assertIn(str(openrelix.PATHS.runtime_dir / "npm-cache" / "0.3.0"), command)
             self.assertIn(str(bin_dir), run.call_args.kwargs["env"]["PATH"])
             self.assertEqual(run.call_args.kwargs["cwd"], str(root / "npm-update"))
 
@@ -10823,8 +10825,27 @@ Native Codex profile.
             openrelix.command_update(args)
 
         output = stdout.getvalue()
-        self.assertIn("/opt/homebrew/bin/npx -y openrelix@0.3.7 install", output)
+        self.assertIn("/opt/homebrew/bin/npx --yes --registry https://registry.npmjs.org/", output)
+        self.assertIn("openrelix@0.3.7 install", output)
         self.assertNotIn("openrelix@latest install", output)
+
+    def test_installed_command_package_info_reads_rendered_wrapper(self):
+        with TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            repo_root = root / "openrelix-package"
+            command_path = root / "bin" / "openrelix"
+            (repo_root / "scripts").mkdir(parents=True)
+            command_path.parent.mkdir(parents=True)
+            (repo_root / "package.json").write_text('{"version":"0.3.15"}\n', encoding="utf-8")
+            command_path.write_text(
+                '#!/bin/zsh\nexec "/usr/bin/python3" "{}/scripts/openrelix.py" "$@"\n'.format(repo_root),
+                encoding="utf-8",
+            )
+
+            version, installed_root = openrelix.installed_command_package_info(command_path)
+
+        self.assertEqual(version, "0.3.15")
+        self.assertEqual(installed_root, str(repo_root))
 
     def test_openrelix_update_reports_registry_lag_without_running_npx(self):
         args = argparse.Namespace(
@@ -12622,6 +12643,10 @@ Native Codex profile.
         command_template = expected_templates[0].read_text(encoding="utf-8")
         self.assertIn("scripts/openrelix.py", command_template)
         self.assertIn("OPENRELIX_ACTIVITY_SOURCE", command_template)
+
+        installer = (ROOT / "install" / "install.sh").read_text(encoding="utf-8")
+        self.assertIn('if [[ -L "$GLOBAL_COMMAND_PATH" ]]', installer)
+        self.assertIn('rm -f -- "$GLOBAL_COMMAND_PATH"', installer)
 
         token_live_template = expected_templates[2].read_text(encoding="utf-8")
         self.assertIn("<key>PATH</key>", token_live_template)

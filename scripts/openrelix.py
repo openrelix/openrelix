@@ -115,6 +115,7 @@ RENDER_TEMPLATE_SCRIPT = REPO_ROOT / "install" / "render_template.py"
 MACOS_CLIENT_APP_NAME = "OpenRelix.app"
 NPM_PACKAGE_NAME = PROJECT_PACKAGE_NAME
 NPM_LATEST_SPEC = "{}@latest".format(NPM_PACKAGE_NAME)
+NPM_PUBLIC_REGISTRY = "https://registry.npmjs.org/"
 COMMON_CLI_TOOL_PATHS = (
     "/opt/homebrew/bin",
     "/usr/local/bin",
@@ -1695,7 +1696,7 @@ def check_npm_package_version_installable(package_name, version, timeout=12):
     spec = "{}@{}".format(package_name, version)
     try:
         proc = subprocess.run(
-            [npm_bin, "view", spec, "version"],
+            [npm_bin, "view", spec, "version", "--registry", NPM_PUBLIC_REGISTRY],
             cwd=str(REPO_ROOT),
             env=cli_tool_env(),
             capture_output=True,
@@ -2027,10 +2028,16 @@ def detected_update_install_flags():
     return flags
 
 
-def build_update_install_command(recommended=False, npx_bin=None, package_spec=None):
+def build_update_install_command(recommended=False, npx_bin=None, package_spec=None, cache_dir=None):
     cmd = [
         npx_bin or "npx",
-        "-y",
+        "--yes",
+        "--registry",
+        NPM_PUBLIC_REGISTRY,
+    ]
+    if cache_dir:
+        cmd.extend(["--cache", str(cache_dir)])
+    cmd.extend([
         package_spec or NPM_LATEST_SPEC,
         "install",
         "--state-dir",
@@ -2043,7 +2050,7 @@ def build_update_install_command(recommended=False, npx_bin=None, package_spec=N
         MEMORY_MODE,
         "--activity-source",
         ACTIVITY_SOURCE,
-    ]
+    ])
     if recommended:
         cmd.extend(
             [
@@ -2059,6 +2066,27 @@ def build_update_install_command(recommended=False, npx_bin=None, package_spec=N
     else:
         cmd.extend(detected_update_install_flags())
     return cmd
+
+
+def installed_command_package_info(command_path=None):
+    raw_path = command_path or os.environ.get("AI_ASSET_COMMAND_PATH")
+    if not raw_path:
+        return "", ""
+    path = Path(raw_path).expanduser()
+    try:
+        text = path.read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        return "", ""
+    match = re.search(r'exec\s+"[^"]+"\s+"([^"]+)/scripts/openrelix\.py"\s+"\$@"', text)
+    if not match:
+        return "", ""
+    repo_root = Path(match.group(1))
+    package_path = repo_root / "package.json"
+    try:
+        version = str(json.loads(package_path.read_text(encoding="utf-8")).get("version") or "").strip()
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return "", str(repo_root)
+    return version, str(repo_root)
 
 
 def update_install_cwd():
@@ -3904,7 +3932,13 @@ def command_update(args):
         status = "update_available" if update_available else "up_to_date"
     npx_bin = resolve_cli_tool("npx")
     package_spec = "{}@{}".format(NPM_PACKAGE_NAME, latest_version) if latest_version else NPM_LATEST_SPEC
-    command = build_update_install_command(recommended=args.recommended, npx_bin=npx_bin, package_spec=package_spec)
+    cache_dir = PATHS.runtime_dir / "npm-cache" / (latest_version or "latest")
+    command = build_update_install_command(
+        recommended=args.recommended,
+        npx_bin=npx_bin,
+        package_spec=package_spec,
+        cache_dir=cache_dir,
+    )
     command_text = shlex.join(command)
     payload = {
         "package": NPM_PACKAGE_NAME,
@@ -3981,6 +4015,21 @@ def command_update(args):
             "自动重装未完成，退出码 {}。上面的更新命令可手动重试。".format(exc.returncode),
             "Automatic reinstall did not finish, exit code {}. Retry the update command above manually.".format(exc.returncode),
         ))
+    if latest_version and os.environ.get("AI_ASSET_COMMAND_PATH"):
+        installed_version, installed_repo_root = installed_command_package_info()
+        if not installed_version or compare_versions(installed_version, latest_version) < 0:
+            raise SystemExit(localized(
+                "更新命令已结束，但安装验收失败：期望版本 {}，实际版本 {}，运行目录 {}。".format(
+                    latest_version,
+                    installed_version or "unknown",
+                    installed_repo_root or "unknown",
+                ),
+                "The update command finished, but installation verification failed: expected {}, found {}, runtime root {}.".format(
+                    latest_version,
+                    installed_version or "unknown",
+                    installed_repo_root or "unknown",
+                ),
+            ))
 
 
 def resolve_memory_migration_dates(window_days, end_date=None):
