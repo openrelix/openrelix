@@ -2,12 +2,14 @@
 
 const { spawn, spawnSync } = require("node:child_process");
 const fs = require("node:fs");
+const os = require("node:os");
 const path = require("node:path");
 
 const repoRoot = path.resolve(__dirname, "..");
 const packageJsonPath = path.join(repoRoot, "package.json");
 const installScript = path.join(repoRoot, "install", "install.sh");
 const openrelixCli = path.join(repoRoot, "scripts", "openrelix.py");
+const npmPublicRegistry = "https://registry.npmjs.org/";
 
 function readPackageVersion() {
   try {
@@ -15,6 +17,17 @@ function readPackageVersion() {
   } catch (_) {
     return "0.0.0";
   }
+}
+
+function compareVersions(left, right) {
+  const leftParts = String(left || "").split(".").map((part) => Number.parseInt(part, 10) || 0);
+  const rightParts = String(right || "").split(".").map((part) => Number.parseInt(part, 10) || 0);
+  const size = Math.max(leftParts.length, rightParts.length);
+  for (let index = 0; index < size; index += 1) {
+    const delta = (leftParts[index] || 0) - (rightParts[index] || 0);
+    if (delta !== 0) return delta;
+  }
+  return 0;
 }
 
 function printHelp() {
@@ -86,9 +99,9 @@ function exitCodeForSignal(signal) {
   return 1;
 }
 
-function runManagedChild(command, args) {
+function runManagedChild(command, args, cwd = repoRoot) {
   const child = spawn(command, args, {
-    cwd: repoRoot,
+    cwd,
     stdio: "inherit",
     env: process.env,
   });
@@ -141,6 +154,15 @@ function runManagedChild(command, args) {
   });
 }
 
+function resolveLatestPackageVersion() {
+  const latest = spawnSync(
+    "npm",
+    ["view", "openrelix", "version", "--registry", npmPublicRegistry],
+    { cwd: os.tmpdir(), encoding: "utf8" }
+  );
+  return latest.status === 0 ? String(latest.stdout || "").trim() : "";
+}
+
 function runPythonCli(args) {
   if (!fs.existsSync(openrelixCli)) {
     console.error(`Missing CLI: ${openrelixCli}`);
@@ -166,19 +188,12 @@ function updateArgsToInstallArgs(args) {
 
   for (const arg of args) {
     if (arg === "--check") {
-      const latest = spawnSync("npm", ["view", "openrelix", "version"], {
-        cwd: repoRoot,
-        encoding: "utf8",
-      });
+      const latestVersion = resolveLatestPackageVersion();
       const currentVersion = readPackageVersion();
-      const latestVersion = latest.status === 0 ? String(latest.stdout || "").trim() : "";
       if (latestVersion) {
         console.log(`current=${currentVersion} latest=${latestVersion}`);
       } else {
         console.log(`current=${currentVersion} latest=unknown`);
-        if (latest.stderr) {
-          console.error(String(latest.stderr).trim());
-        }
       }
       return null;
     }
@@ -219,12 +234,31 @@ function handleUpdate(args) {
   if (installArgs === null) {
     return false;
   }
-  const command = ["npx", "-y", "openrelix@latest", "install", ...installArgs];
+  const latestVersion = resolveLatestPackageVersion();
+  const currentVersion = readPackageVersion();
+  const targetVersion = latestVersion && compareVersions(latestVersion, currentVersion) >= 0
+    ? latestVersion
+    : currentVersion;
+  const packageSpec = targetVersion ? `openrelix@${targetVersion}` : "openrelix@latest";
+  const cacheRoot = process.env.AI_ASSET_STATE_DIR
+    ? path.join(process.env.AI_ASSET_STATE_DIR, "runtime", "npm-cache")
+    : path.join(os.tmpdir(), "openrelix-npm-cache");
+  const command = [
+    "npx",
+    "--yes",
+    "--registry",
+    npmPublicRegistry,
+    "--cache",
+    path.join(cacheRoot, targetVersion || "latest"),
+    packageSpec,
+    "install",
+    ...installArgs,
+  ];
   if (args.includes("--print-command")) {
     console.log(command.map(shellQuote).join(" "));
     return false;
   }
-  runInstaller(installArgs);
+  runManagedChild(command[0], command.slice(1), os.tmpdir());
   return true;
 }
 

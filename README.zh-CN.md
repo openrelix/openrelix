@@ -291,7 +291,7 @@ analytics key 应保留在服务端。
 白名单 schema 转发到 PostHog Product Analytics，并且暂时不在 npm package allowlist
 里，直到有明确发布决策再扩大分发面。
 
-发布更新建议拆成两步：自动化里只跑 `openrelix update --check`，真正升级时再手动跑 `openrelix update --yes`。如果 npm 包已经是最新，但本机 app、LaunchAgent 或已生成面板需要重新同步，运行 `openrelix update --yes --force`。面板内的更新按钮会自动走这条修复路径，并在安装器完成后重载新生成的面板。每日校验默认放在 `09:30`，避开 `23:00` 当日预览和 `00:10` 前一日终版整理。
+发布更新建议拆成两步：自动化里只跑 `openrelix update --check`，真正升级时再手动跑 `openrelix update --yes`。如果 npm 包已经是最新，但本机 app、LaunchAgent 或已生成面板需要重新同步，运行 `openrelix update --yes --force`。更新会从官方 npm registry 解析精确版本，按版本隔离 npx cache，安全替换旧命令 symlink，并在报告成功前核对新命令实际指向的包版本。面板内的更新按钮会自动走这条修复路径，并在安装器完成后重载新生成的面板。每日校验默认放在 `09:30`，避开 `23:00` 当日预览和 `00:10` 前一日终版整理。
 
 如果所选 bin 目录还不在 `PATH` 中，installer 会向当前 shell rc 文件追加一个受管理的 `PATH` block，并打印当前 shell 可直接执行的一行 `export PATH=...`。
 

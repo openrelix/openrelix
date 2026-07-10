@@ -1493,9 +1493,13 @@ fi
 if (( INSTALL_GLOBAL_COMMAND )); then
   step "$(localized_text "安装全局 openrelix 命令..." "Installing the global openrelix command...")"
   mkdir -p "$BIN_DIR"
+  GLOBAL_COMMAND_PATH="$BIN_DIR/openrelix"
+  if [[ -L "$GLOBAL_COMMAND_PATH" ]]; then
+    rm -f -- "$GLOBAL_COMMAND_PATH"
+  fi
   "$PYTHON_BIN" "$REPO_ROOT/install/render_template.py" \
     --template "$REPO_ROOT/install/templates/bin/openrelix.tmpl" \
-    --output "$BIN_DIR/openrelix" \
+    --output "$GLOBAL_COMMAND_PATH" \
     --set "REPO_ROOT=$REPO_ROOT" \
     --set "STATE_ROOT=$STATE_DIR" \
     --set "CODEX_HOME=$CODEX_HOME" \
@@ -1508,7 +1512,7 @@ if (( INSTALL_GLOBAL_COMMAND )); then
     --set "CLAUDE_MODEL=$CLAUDE_MODEL" \
     --set "CLAUDE_SETTINGS=$CLAUDE_SETTINGS" \
     --set "CLAUDE_ENV_FILE=$CLAUDE_ENV_FILE"
-  chmod +x "$BIN_DIR/openrelix"
+  chmod +x "$GLOBAL_COMMAND_PATH"
   if ! path_contains_dir "$BIN_DIR"; then
     "$PYTHON_BIN" "$REPO_ROOT/install/configure_shell_path.py" \
       --config "$SHELL_RC_PATH" \
