@@ -1435,6 +1435,31 @@ def sort_key_for_summary(summary):
     return (summary_date.isoformat(), stage_rank, generated)
 
 
+def summary_matches_raw_windows(summary, raw_payload):
+    if not summary:
+        return False
+
+    try:
+        summary_count = int(summary.get("raw_window_count"))
+        raw_count = int(raw_payload.get("window_count"))
+    except (TypeError, ValueError):
+        return False
+    if summary_count != raw_count:
+        return False
+
+    summary_ids = Counter(
+        str(item.get("window_id") or "").strip()
+        for item in summary.get("window_summaries", [])
+        if str(item.get("window_id") or "").strip()
+    )
+    raw_ids = Counter(
+        str(item.get("window_id") or "").strip()
+        for item in raw_payload.get("windows", [])
+        if str(item.get("window_id") or "").strip()
+    )
+    return summary_ids == raw_ids
+
+
 def choose_preferred_summary(existing_summary, candidate_summary, raw_payload):
     candidate_quality = compute_summary_quality(candidate_summary, raw_payload)
     if not existing_summary:
@@ -1456,8 +1481,17 @@ def choose_preferred_summary(existing_summary, candidate_summary, raw_payload):
     existing_stage_rank = STAGE_PRIORITY.get(existing_quality["stage"], 0)
     candidate_substantive_score = candidate_quality["score"] - candidate_stage_rank * 3
     existing_substantive_score = existing_quality["score"] - existing_stage_rank * 3
+    candidate_matches_raw = summary_matches_raw_windows(candidate_summary, raw_payload)
+    existing_matches_raw = summary_matches_raw_windows(existing_summary, raw_payload)
 
-    if candidate_quality["score"] > existing_quality["score"] + QUALITY_REPLACE_THRESHOLD:
+    if (
+        candidate_summary.get("model_status") != "failed"
+        and candidate_matches_raw
+        and not existing_matches_raw
+    ):
+        reason = "candidate_matches_current_raw_windows"
+        chosen = candidate_summary
+    elif candidate_quality["score"] > existing_quality["score"] + QUALITY_REPLACE_THRESHOLD:
         reason = "candidate_quality_higher"
         chosen = candidate_summary
     elif (
@@ -1508,6 +1542,8 @@ def choose_preferred_summary(existing_summary, candidate_summary, raw_payload):
         "reason": reason,
         "candidate_quality": candidate_quality,
         "selected_quality": selected_quality,
+        "candidate_matches_current_raw_windows": candidate_matches_raw,
+        "existing_matches_current_raw_windows": existing_matches_raw,
     }
     if chosen is existing_summary:
         decision["existing_quality"] = existing_quality
