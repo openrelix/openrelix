@@ -10847,6 +10847,25 @@ Native Codex profile.
         self.assertEqual(version, "0.3.15")
         self.assertEqual(installed_root, str(repo_root))
 
+    def test_sync_review_outputs_rebuilds_index_after_overview(self):
+        calls = []
+
+        def record_quiet(command):
+            calls.append(Path(command[1]).name)
+
+        with mock.patch.object(openrelix, "run_checked_quiet", side_effect=record_quiet), mock.patch.object(
+            openrelix,
+            "run_task_summary_migration_if_needed",
+            side_effect=lambda **_: calls.append("task_summary"),
+        ), mock.patch.object(
+            openrelix,
+            "rebuild_sqlite_index_if_available",
+            side_effect=lambda **_: calls.append("index"),
+        ):
+            openrelix.sync_review_outputs(include_index=True, include_native_display=False, verbose=False)
+
+        self.assertEqual(calls[-2:], ["build_overview.py", "index"])
+
     def test_openrelix_update_reports_registry_lag_without_running_npx(self):
         args = argparse.Namespace(
             check=False,

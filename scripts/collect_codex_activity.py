@@ -1107,7 +1107,10 @@ def claude_session_file_to_window(session_file, target_date, stage):
 
 def iter_claude_session_files():
     if CLAUDE_PROJECTS_DIR.exists():
-        yield from CLAUDE_PROJECTS_DIR.rglob("*.jsonl")
+        for session_file in CLAUDE_PROJECTS_DIR.rglob("*.jsonl"):
+            if "subagents" in session_file.parts:
+                continue
+            yield session_file
     if CLAUDE_HISTORY_PATH.exists():
         yield CLAUDE_HISTORY_PATH
 
@@ -1256,7 +1259,7 @@ def main():
         else:
             collection_source = "mixed"
 
-    windows, excluded_windows = split_excluded_windows(windows)
+    windows, excluded_windows = split_excluded_windows(dedupe_windows(windows))
 
     if activity_host == "all" and not windows and not excluded_windows and not collection_errors:
         collection_errors.append("No Codex or Claude Code windows were found for {}".format(target_date))
